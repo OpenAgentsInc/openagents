@@ -652,6 +652,49 @@ or weaken an invariant.
     ]
   },
   {
+    "id": "getpaseo.paseo",
+    "title": "Paseo",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/getpaseo/paseo",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-17-paseo-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "timeline_delivery_law",
+        "kind": "reliability",
+        "summary": "Combine immediate live events with complete authoritative pagination, epoch and source-sequence identity, gap recovery, and projection lineage so every committed timeline row eventually displays.",
+        "stance": "adapt"
+      },
+      {
+        "id": "managed_and_provider_subagents",
+        "kind": "architecture",
+        "summary": "Keep managed work units and provider-owned child sessions distinct across identity, authority, transcript, lifecycle, detach, archive, recovery, and UI projection.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "cancellation_acknowledgement",
+        "kind": "reliability",
+        "summary": "Do not report cancellation as complete before provider acknowledgement or observed termination; receipt intent, escalation, fence advancement, and terminal outcome separately.",
+        "stance": "adapt"
+      },
+      {
+        "id": "scoped_idempotent_hub_execution",
+        "kind": "security",
+        "summary": "Use narrow relationship grants and stable external execution IDs, then add durable admission, leases, replay, workload identity, effect records, and signed terminal receipts.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "trusted_operator_host_authority",
+        "kind": "security",
+        "summary": "Reject network reachability, shared operator credentials, host-user execution, unauthenticated public service projection, and mutable JSON state as authority, containment, or recovery proof.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
