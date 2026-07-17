@@ -53,6 +53,77 @@ describe("H2 local thread fork persistence", () => {
     }
   })
 
+  test("retains a restored older-created conversation by recent access", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-restore-lru-"))
+    const file = path.join(root, "threads.json")
+    try {
+      writeFileSync(file, JSON.stringify({
+        version: 1,
+        threads: Array.from({ length: 5 }, (_, index) => ({
+          id: `newer-${index}`,
+          title: `Newer ${index}`,
+          createdAt: `2026-07-16T2${index}:00:00.000Z`,
+          updatedAt: `2026-07-16T2${index}:00:00.000Z`,
+          notes: [],
+        })),
+      }))
+      const store = makeThreadStore(file)
+      store.restoreThread({
+        id: "older-active",
+        title: "Older active chat",
+        createdAt: "2026-07-16T10:00:00.000Z",
+        updatedAt: "2026-07-17T00:00:00.000Z",
+        notes: [{ key: "assistant-1", role: "assistant", text: "Completed", timestamp: "19:00" }],
+      })
+
+      expect(store.open("older-active")?.createdAt).toBe("2026-07-16T10:00:00.000Z")
+      expect(store.list()).toHaveLength(5)
+      expect(store.open("newer-0")).toBeNull()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("does not evict an older-created chat between turn completion and continuation", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-active-lru-"))
+    const file = path.join(root, "threads.json")
+    try {
+      writeFileSync(file, JSON.stringify({
+        version: 1,
+        threads: [
+          {
+            id: "older-active",
+            title: "Fast Follow",
+            createdAt: "2026-07-16T10:00:00.000Z",
+            updatedAt: "2026-07-16T10:00:00.000Z",
+            notes: [],
+          },
+          ...Array.from({ length: 4 }, (_, index) => ({
+            id: `newer-${index}`,
+            title: `Newer ${index}`,
+            createdAt: `2026-07-16T2${index}:00:00.000Z`,
+            updatedAt: `2026-07-16T2${index}:00:00.000Z`,
+            notes: [],
+          })),
+        ],
+      }))
+      const store = makeThreadStore(file)
+      expect(store.append("older-active", {
+        key: "turn-1-assistant",
+        role: "assistant",
+        text: "First turn completed",
+        timestamp: "23:59",
+      })).not.toBeNull()
+
+      store.newThread("Blank newer chat")
+
+      expect(store.open("older-active")?.notes.at(-1)?.text).toBe("First turn completed")
+      expect(store.list()).toHaveLength(5)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("creates distinct seeded threads while leaving the seed and first fork unmutated", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-history-fork-"))
     try {

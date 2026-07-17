@@ -5,7 +5,6 @@ import { titleChatThreadFromMessage } from "@openagentsinc/khala-sync"
 import { Schema } from "@effect-native/core/effect"
 
 import {
-  compareDesktopThreadsByCreatedAt,
   decode,
   DesktopThreadSchema,
   type DesktopMessage,
@@ -15,6 +14,8 @@ import {
 const maxThreads = 5
 const maxNotes = 80
 const titleFor = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, 48) || "New chat"
+const compareDesktopThreadsByLastAccess = (left: DesktopThread, right: DesktopThread): number =>
+  right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
 
 export const makeThreadStore = (file: string) => {
   const read = (): DesktopThread[] => {
@@ -27,7 +28,11 @@ export const makeThreadStore = (file: string) => {
     } catch { return [] }
   }
   const write = (threads: DesktopThread[]): DesktopThread[] => {
-    const bounded = [...threads].sort(compareDesktopThreadsByCreatedAt).slice(0, maxThreads)
+    // This file is the bounded mutable-composer cache, not the sidebar's
+    // presentation catalog. Retain the five most recently accessed threads
+    // so an older-created conversation cannot disappear while its active turn
+    // is still streaming or immediately before Full Auto continues it.
+    const bounded = [...threads].sort(compareDesktopThreadsByLastAccess).slice(0, maxThreads)
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     if (process.platform !== "win32") chmodSync(path.dirname(file), 0o700)
     const temporary = `${file}.tmp`
