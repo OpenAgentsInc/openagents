@@ -42,6 +42,10 @@
     system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --oa-font-mono: "Disket Mono", "SFMono-Regular", "Cascadia Code", "Roboto Mono",
     Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  /* Exact source text cannot use the display-mono's unicase glyphs: shell
+     commands, paths, flags, and hashes must preserve case visually. */
+  --oa-font-code: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, Monaco,
+    Consolas, "Liberation Mono", monospace;
 }
 
 .oa-font-accent,

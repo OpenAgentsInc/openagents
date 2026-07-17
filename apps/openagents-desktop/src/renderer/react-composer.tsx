@@ -690,6 +690,7 @@ export const DecisionSurface = ({
     >
       <DialogContent
         className="oa-react-decision"
+        overlayClassName="oa-react-decision-overlay"
         aria-describedby={`decision-description-${card.questionRef}`}
       >
         <DialogHeader>
@@ -701,7 +702,7 @@ export const DecisionSurface = ({
                 ? "Submitted. Waiting for the runtime to confirm the outcome."
                 : submitting
                   ? "Submitting this decision…"
-                  : "Choose an option. Closing this dialog does not approve or deny anything."}
+                  : "Review the request below. Closing this window leaves it pending."}
           </DialogDescription>
         </DialogHeader>
         {isApprovalCardKind(kind) ? (() => {

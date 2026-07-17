@@ -113,8 +113,8 @@ const approvalThread = (): DesktopThread =>
         questions: [
           {
             questionRef: "question.visual.approval",
-            question: "Allow running `pnpm test` in this workspace?",
-            header: "Tool approval",
+            question: "/bin/zsh -lc \"shasum -a 256 /tmp/commandcode-audit/package.tgz && unzip -q /tmp/commandcode-audit/package.tgz -d /tmp/commandcode-audit/unpacked\"",
+            header: "Command approval",
             options: [
               { optionRef: "option.approve", label: "Approve" },
               { optionRef: "option.deny", label: "Deny" },
@@ -176,7 +176,10 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
     case "thread-plan-card":
       return selected(fixtureBase(), planThread());
     case "approval-card":
-      return selected(fixtureBase(), approvalThread());
+      return {
+        ...selected(fixtureBase(), approvalThread()),
+        questionAnswerHostAvailable: true,
+      };
     case "reasoning-disclosure":
       return selected(fixtureBase(), reasoningThread());
     case "full-auto-running": {

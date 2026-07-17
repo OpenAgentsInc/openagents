@@ -81,6 +81,7 @@ describe("visual-baseline fixture states", () => {
     expect(approval).toBeDefined();
     expect(approval!.question!.status).toBe("pending");
     expect(approval!.question!.kind).toBe("tool_approval");
+    expect(state.questionAnswerHostAvailable).toBe(true);
     expect(approval!.question!.questions[0]!.options.map((option) => option.label)).toEqual([
       "Approve",
       "Deny",

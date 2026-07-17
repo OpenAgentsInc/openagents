@@ -1870,11 +1870,128 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   }
 }
 
+.oa-react-decision-overlay {
+  background: color-mix(in srgb, var(--en-color-background) 78%, transparent);
+  backdrop-filter: blur(2px);
+}
+
 .oa-react-decision {
-  border: 1px solid var(--en-color-borderSubtle);
-  background: var(--en-color-surfaceRaised);
+  width: min(640px, calc(100vw - 32px)) !important;
+  max-width: 640px !important;
+  max-height: min(680px, calc(100vh - 32px)) !important;
+  gap: var(--en-spacing-4) !important;
+  overflow-y: auto;
+  padding: var(--en-spacing-5) !important;
+  border: 1px solid var(--en-color-borderStrong) !important;
+  border-radius: var(--en-radius-lg) !important;
+  background: var(--en-color-surfaceRaised) !important;
   color: var(--en-color-textPrimary);
-  box-shadow: var(--en-elevation-overlay-shadow);
+  box-shadow: none;
+}
+
+.oa-react-decision [data-slot="dialog-header"] {
+  gap: var(--en-spacing-1);
+  padding-right: var(--en-spacing-6);
+}
+
+.oa-react-decision [data-slot="dialog-title"] {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.oa-react-decision [data-slot="dialog-description"] {
+  max-width: 58ch;
+  color: var(--en-color-textSecondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.oa-react-decision > [data-slot="dialog-close"] {
+  top: var(--en-spacing-3);
+  right: var(--en-spacing-3);
+  left: auto;
+}
+
+/* The shared approval component is a compact ledger row in the timeline.
+   Inside the live decision dialog it becomes the dialog body: no nested-card
+   chrome, no repeated title, and enough room to inspect the full command. */
+.oa-react-decision > .oa-react-approval-card {
+  width: 100% !important;
+  margin: 0 !important;
+  grid-template-columns: 32px minmax(0, 1fr) !important;
+  align-items: start;
+  gap: var(--en-spacing-3);
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--en-radius-none) !important;
+  background: transparent !important;
+}
+
+.oa-react-decision > .oa-react-approval-card > .oa-react-event-icon {
+  width: 32px;
+  height: 32px;
+  border-color: var(--en-color-borderStrong);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceSunken);
+}
+
+.oa-react-decision > .oa-react-approval-card > div {
+  min-width: 0;
+}
+
+.oa-react-decision > .oa-react-approval-card > div > strong {
+  display: none !important;
+}
+
+.oa-react-decision > .oa-react-approval-card > div > p {
+  margin: 0 0 var(--en-spacing-2);
+  color: var(--en-color-textSecondary);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.oa-react-decision > .oa-react-approval-card > div > code {
+  display: block;
+  width: 100%;
+  max-height: min(240px, 36vh);
+  overflow: auto !important;
+  padding: var(--en-spacing-3);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceSunken);
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-code);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  text-overflow: clip !important;
+  text-transform: none !important;
+  white-space: pre-wrap !important;
+}
+
+.oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions,
+.oa-react-decision > .oa-react-approval-card > .oa-react-approval-decision {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions {
+  gap: var(--en-spacing-2);
+  margin-top: var(--en-spacing-1);
+}
+
+.oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions button {
+  min-width: 72px;
+  min-height: 32px;
+  padding: 0 var(--en-spacing-3);
+  font-size: 12px;
+}
+
+.oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions button:focus-visible {
+  outline: 2px solid var(--en-color-focusRing);
+  outline-offset: 2px;
 }
 
 .oa-react-decision-questions,
@@ -1925,6 +2042,33 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   margin: 0;
   color: var(--en-color-danger);
   font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .oa-react-decision {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 24px) !important;
+    padding: var(--en-spacing-4) !important;
+  }
+
+  .oa-react-decision > .oa-react-approval-card {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .oa-react-decision > .oa-react-approval-card > .oa-react-event-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions,
+  .oa-react-decision > .oa-react-approval-card > .oa-react-approval-decision {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .oa-react-decision > .oa-react-approval-card > .oa-react-approval-actions button {
+    flex: 1 1 0;
+  }
 }
 
 .oa-react-rail-scrim {
