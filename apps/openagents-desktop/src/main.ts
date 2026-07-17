@@ -15,7 +15,7 @@ import { homedir, release as osRelease } from "node:os"
 import { createHash, randomUUID } from "node:crypto"
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { execFile, execFileSync } from "node:child_process"
-import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session, type WebContents } from "electron"
+import { BrowserWindow, Menu, Notification, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session, type WebContents } from "electron"
 import { Effect } from "effect"
 import {
   fetchFleetRunClientProjection,
@@ -314,8 +314,13 @@ import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./fu
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
-import { migrateLegacyFullAutoRegistry, openFullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import {
+  FULL_AUTO_RUN_TERMINAL_STATES,
+  migrateLegacyFullAutoRegistry,
+  openFullAutoRunRegistry,
+} from "./full-auto-run-registry.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
+import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -3982,7 +3987,81 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     },
   }).then(dispatched => {
     for (const dispatchedThreadRef of dispatched) broadcastFullAutoThreadUpdate(dispatchedThreadRef)
+    // FA-RUN-03 (#8971): every existing reconciliation trigger (turn
+    // completion, startup, continue-now) is ALSO a liveness-sweep trigger --
+    // a stalled run on a DIFFERENT thread than the one that just dispatched
+    // is caught as a side effect of ordinary Full Auto activity, not only by
+    // the periodic watchdog below.
+    sweepFullAutoRunLiveness()
   }))
+
+/**
+ * FA-RUN-03 (#8971): the main-owned liveness/stall sweep. Re-evaluates every
+ * non-terminal, non-draft `FullAutoRun`'s liveness against its durable
+ * fields and current thread-level snapshot (`settleFullAutoRunLiveness`),
+ * and fires a dedup'd, permission-gated OS notification on a genuinely new
+ * Retrying/Stalled classification. Deliberately synchronous and side-effect
+ * bounded (no provider calls) -- safe to run cheaply and often.
+ */
+const fullAutoLivenessNotifiedKeys = new Map<string, string>()
+
+const fullAutoLivenessNotificationPermitted = (): boolean => {
+  const notifications = preferencesStore.snapshot().notifications
+  // Reuses the existing durable, explicit, revocable "Announce background
+  // task/agent completion" preference (ref-only; never prompt/code) as the
+  // permission gate the issue requires, rather than inventing a new consent
+  // surface for this one signal.
+  if (!notifications.taskCompletion) return false
+  if (!notifications.onlyWhenUnfocused) return true
+  return !BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
+}
+
+const sweepFullAutoRunLiveness = (): void => {
+  for (const run of fullAutoRunRegistry.list()) {
+    if (run.state === "draft" || FULL_AUTO_RUN_TERMINAL_STATES.has(run.state)) continue
+    const snapshot = {
+      threadRecord: run.threadRef === undefined ? null : fullAutoRegistry.record(run.threadRef),
+      turnRunning: run.threadRef !== undefined && fullAutoLiveState.get(run.threadRef)?.state === "turn_running",
+    }
+    const { projection } = settleFullAutoRunLiveness(fullAutoRunRegistry, run, snapshot)
+    const decision = decideFullAutoLivenessNotification({
+      runRef: run.runRef,
+      runTitle: run.title,
+      projectedState: projection.projectedState,
+      cause: projection.cause,
+      previousDedupKey: fullAutoLivenessNotifiedKeys.get(run.runRef) ?? null,
+      permissionGranted: fullAutoLivenessNotificationPermitted(),
+    })
+    if (decision === null) continue
+    fullAutoLivenessNotifiedKeys.set(run.runRef, decision.dedupKey)
+    if (!decision.notify) continue
+    // Redaction is structural (decideFullAutoLivenessNotification never sees
+    // objective/doneCondition/transcript text), so this call site cannot
+    // leak private content even by mistake.
+    if (Notification.isSupported()) {
+      new Notification({ title: decision.title, body: decision.body, silent: false }).show()
+    }
+  }
+}
+
+/**
+ * The bounded periodic trigger that actually closes the 2026-07-17 incident
+ * gap: without it, a run with no OTHER reconciliation trigger firing (no
+ * turn ever completes, nothing else toggles Full Auto) would never be
+ * re-evaluated at all. This is a periodic CALLER INTO the one existing
+ * serialized queue (`fullAutoReconcileQueue`, the same queue turn completion
+ * and startup already use) -- never a second scheduler or a parallel
+ * dispatch mechanism. Cheap (no provider calls) and interval-bounded well
+ * above the liveness SLO window so it cannot itself cause dispatch pressure.
+ */
+const FULL_AUTO_LIVENESS_WATCHDOG_INTERVAL_MS = 60_000
+const runFullAutoLivenessSweep = (): Promise<void> =>
+  fullAutoReconcileQueue(() => Promise.resolve(sweepFullAutoRunLiveness()))
+const fullAutoLivenessWatchdog = setInterval(() => {
+  void runFullAutoLivenessSweep().catch(() => {})
+}, FULL_AUTO_LIVENESS_WATCHDOG_INTERVAL_MS)
+fullAutoLivenessWatchdog.unref?.()
+
 // Startup resume: once existing interrupted-turn recovery settles, any
 // thread still marked enabled with nothing in flight gets its next
 // continuation dispatched here -- this is what survives a full app

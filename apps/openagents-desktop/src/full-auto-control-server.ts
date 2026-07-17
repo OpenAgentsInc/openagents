@@ -30,9 +30,14 @@ import type { FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
 import type { LocalTurnRecord } from "./local-turn-journal.ts"
 import { FULL_AUTO_DEFAULT_LANE } from "./full-auto-lane.ts"
 import {
-  settleFullAutoRunFromThreadState,
+  retryFullAutoRunNow,
+  settleFullAutoRunLiveness,
+  type FullAutoLivenessProjection,
+} from "./full-auto-liveness.ts"
+import {
   type FullAutoRun,
   type FullAutoRunRegistry,
+  type FullAutoRunThreadSnapshot,
 } from "./full-auto-run-registry.ts"
 import type { DesktopThread } from "./chat-contract.ts"
 import type { ProviderLaneRegistry, ProviderLaneRegistryEntry } from "./provider-lane-registry.ts"
@@ -215,7 +220,7 @@ const projectRecord = (
   live: live ?? { state: "idle", turnRef: null },
 })
 
-const projectRun = (run: FullAutoRun): FullAutoControlRun => ({
+const projectRun = (run: FullAutoRun, projection: FullAutoLivenessProjection): FullAutoControlRun => ({
   runRef: run.runRef,
   threadRef: run.threadRef ?? null,
   title: run.title,
@@ -239,17 +244,43 @@ const projectRun = (run: FullAutoRun): FullAutoControlRun => ({
   stoppedAt: run.stoppedAt ?? null,
   completedAt: run.completedAt ?? null,
   transitions: run.transitions,
+  stallCause: projection.cause,
+  nextRetryAt: projection.nextRetryAt,
+  recoveryAction: projection.recoveryAction,
 })
 
-/** Settles a run against the current thread-level truth before projecting
- * it -- the single place Pausing->Paused, cap/failure/orphan sync, and
- * every read of a run's state agree with each other (see
- * `settleFullAutoRunFromThreadState` for the exact rules). */
-const settleRun = (capabilities: FullAutoControlCapabilities, run: FullAutoRun): FullAutoRun =>
-  settleFullAutoRunFromThreadState(capabilities.runRegistry, run, {
-    threadRecord: run.threadRef === undefined ? null : capabilities.registry.record(run.threadRef),
-    turnRunning: run.threadRef !== undefined && capabilities.liveState(run.threadRef)?.state === "turn_running",
-  })
+const threadSnapshot = (
+  capabilities: FullAutoControlCapabilities,
+  run: FullAutoRun,
+): FullAutoRunThreadSnapshot => ({
+  threadRecord: run.threadRef === undefined ? null : capabilities.registry.record(run.threadRef),
+  turnRunning: run.threadRef !== undefined && capabilities.liveState(run.threadRef)?.state === "turn_running",
+})
+
+/** FA-RUN-03 (#8971): settles a run against the current thread-level truth
+ * (Pausing->Paused, cap/failure/orphan sync -- `settleFullAutoRunFromThreadState`'s
+ * exact rules) AND the liveness/stall classifier before projecting it, so
+ * every GET/mutation response and the sidebar/control-API AC ("Sidebar/run
+ * view and control API return the same typed state and retry deadline")
+ * always agree with the persisted state. */
+const settleRun = (
+  capabilities: FullAutoControlCapabilities,
+  run: FullAutoRun,
+  now: () => Date,
+): Readonly<{ run: FullAutoRun; projection: FullAutoLivenessProjection }> =>
+  settleFullAutoRunLiveness(capabilities.runRegistry, run, threadSnapshot(capabilities, run), now)
+
+/** Settle + project in one call -- every response on the run-level surface
+ * routes through this so GET and every mutation agree on the same typed
+ * state, cause, and retry deadline (see `settleRun`'s doc comment). */
+const projectSettled = (
+  capabilities: FullAutoControlCapabilities,
+  run: FullAutoRun,
+  now: () => Date,
+): FullAutoControlRun => {
+  const { run: settled, projection } = settleRun(capabilities, run, now)
+  return projectRun(settled, projection)
+}
 
 const projectTurns = (records: ReadonlyArray<LocalTurnRecord>): ReadonlyArray<FullAutoControlTurn> =>
   [...records]
@@ -340,7 +371,8 @@ const auditLog = (operation: string, threadRef: string, outcome: string): void =
 export const startFullAutoControlServer = (
   input: StartFullAutoControlServerInput,
 ): Promise<FullAutoControlServer> => {
-  const credential = mintFullAutoControlCredential({ now: (input.now ?? (() => new Date()))() })
+  const now = input.now ?? (() => new Date())
+  const credential = mintFullAutoControlCredential({ now: now() })
   const instanceId = `oafa_instance_${randomBytes(24).toString("base64url")}`
   const capabilities = input.capabilities
 
@@ -467,7 +499,7 @@ export const startFullAutoControlServer = (
       sendJson(response, 200, {
         schema: FULL_AUTO_CONTROL_SCHEMA,
         serverInstanceId: instanceId,
-        runs: capabilities.runRegistry.list().map(run => projectRun(settleRun(capabilities, run))),
+        runs: capabilities.runRegistry.list().map(run => projectSettled(capabilities, run, now)),
       })
       return
     }
@@ -551,11 +583,11 @@ export const startFullAutoControlServer = (
       )
       void capabilities.triggerReconciliation().catch(() => {})
       auditLog("runs/start", startedThreadRef, `ok runRef=${result.run.runRef}`)
-      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
       return
     }
 
-    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop|handoff))?$/.exec(url.pathname)
+    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop|handoff|retry-now))?$/.exec(url.pathname)
     if (runMatch !== null) {
       const runRef = decodeFullAutoControlRunRef(decodeURIComponent(runMatch[1]!))
       if (runRef === null) {
@@ -577,7 +609,7 @@ export const startFullAutoControlServer = (
         sendJson(response, 200, {
           schema: FULL_AUTO_CONTROL_SCHEMA,
           serverInstanceId: instanceId,
-          run: projectRun(settleRun(capabilities, run)),
+          run: projectSettled(capabilities, run, now),
         })
         return
       }
@@ -626,7 +658,7 @@ export const startFullAutoControlServer = (
           )
         }
         auditLog("runs/pause", run.threadRef ?? runRef, `ok state=${result.run.state}`)
-        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
         return
       }
 
@@ -689,7 +721,51 @@ export const startFullAutoControlServer = (
         }
         void capabilities.triggerReconciliation().catch(() => {})
         auditLog("runs/resume", run.threadRef ?? runRef, "ok")
-        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+        return
+      }
+
+      if (runAction === "retry-now") {
+        // FA-RUN-03 (#8971), AC-48: legal only from Stalled, and only when
+        // the CURRENT (freshly classified) cause is plausibly recoverable --
+        // never a retry that is guaranteed to repeat the same nonrecoverable
+        // failure. First settle the run (so a stale-but-actually-recovered
+        // record, or a fresh orphan/cap/failure-limit sync, is reflected
+        // before deciding) exactly like every other read on this surface.
+        const { run: settled } = settleRun(capabilities, run, now)
+        const result = retryFullAutoRunNow(
+          capabilities.runRegistry,
+          settled,
+          threadSnapshot(capabilities, settled),
+          { actor: "control_api" },
+          now,
+        )
+        if (!result.ok) {
+          if (result.reason === "not_stalled") {
+            sendError(response, 409, {
+              error: "illegal_transition",
+              message: `Retry now is legal only from Stalled (current state: ${result.state}).`,
+              fromState: result.state,
+              toState: "retrying",
+            })
+            return
+          }
+          sendError(response, 409, {
+            error: "not_recoverable",
+            message: `This run's current stall cause (${result.cause ?? "unknown_error"}) cannot be resolved by retrying; Stop is the safe action.`,
+            stallCause: result.cause ?? undefined,
+          })
+          return
+        }
+        if (settled.threadRef !== undefined) {
+          capabilities.appendSystemNote(
+            settled.threadRef,
+            `Full Auto run retry requested programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+          )
+        }
+        void capabilities.triggerReconciliation().catch(() => {})
+        auditLog("runs/retry-now", settled.threadRef ?? runRef, "ok")
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
         return
       }
 
@@ -800,7 +876,7 @@ export const startFullAutoControlServer = (
         sendJson(response, 200, {
           schema: FULL_AUTO_CONTROL_SCHEMA,
           ok: true,
-          run: projectRun(rebound),
+          run: projectSettled(capabilities, rebound, now),
           transition: transitionRecord,
         })
         return
@@ -836,7 +912,7 @@ export const startFullAutoControlServer = (
         )
       }
       auditLog("runs/stop", run.threadRef ?? runRef, "ok")
-      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
       return
     }
 

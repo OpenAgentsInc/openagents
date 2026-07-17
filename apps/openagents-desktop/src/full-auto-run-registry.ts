@@ -253,6 +253,12 @@ export const FullAutoRunSchema = Schema.Struct({
   createdAt: Schema.String,
   startedAt: Schema.optional(Schema.String),
   lastProgressAt: Schema.optional(Schema.String),
+  /** FA-RUN-03 (#8971): stamped every time the liveness/stall classifier
+   * evaluates this run (whether or not anything changed). A large gap here
+   * is direct durable evidence the app itself was not ticking recently
+   * (sleep/quit/crash), not an inference from run content -- see
+   * `full-auto-liveness.ts`'s `staleCheckCause`. */
+  lastLivenessCheckAt: Schema.optional(Schema.String),
   pausedAt: Schema.optional(Schema.String),
   stoppedAt: Schema.optional(Schema.String),
   completedAt: Schema.optional(Schema.String),
@@ -459,6 +465,10 @@ export type FullAutoRunRegistry = Readonly<{
    * "caller already checked" shape. Never invoked directly by a renderer or
    * CLI without going through that gated route. */
   rebindProfile: (runRef: string, profile: FullAutoProfile) => FullAutoRun | null
+  /** FA-RUN-03 (#8971): stamp `lastLivenessCheckAt`. A no-op state change --
+   * never appends a transition record -- so periodic liveness sweeps can
+   * touch every active run cheaply without spamming transition history. */
+  touchLiveness: (runRef: string, timestamp: string) => FullAutoRun | null
   recordAttempt: (
     runRef: string,
     outcome: "success" | "failure",
@@ -616,6 +626,15 @@ export const openFullAutoRunRegistry = (
     return runs[index]!
   }
 
+  const touchLiveness: FullAutoRunRegistry["touchLiveness"] = (runRef, timestamp) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)({ ...runs[index]!, lastLivenessCheckAt: timestamp })
+    runs[index] = next
+    persist()
+    return next
+  }
+
   const recordAttempt: FullAutoRunRegistry["recordAttempt"] = (runRef, outcome, options) => {
     const index = findIndex(runRef)
     if (index === -1) return null
@@ -669,6 +688,7 @@ export const openFullAutoRunRegistry = (
     transition: transitionInternal,
     bindThread,
     rebindProfile,
+    touchLiveness,
     recordAttempt,
     reviseObjective,
   }

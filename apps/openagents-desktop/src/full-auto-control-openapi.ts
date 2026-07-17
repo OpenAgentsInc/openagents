@@ -3,6 +3,10 @@ import {
   FULL_AUTO_CONTROL_TURNS_LIMIT,
 } from "./full-auto-control-contract.ts"
 import {
+  FullAutoRecoveryActionSchema,
+  FullAutoStallCauseSchema,
+} from "./full-auto-liveness.ts"
+import {
   FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
   FULL_AUTO_RUN_OBJECTIVE_LIMIT,
   FULL_AUTO_RUN_REASON_LIMIT,
@@ -65,6 +69,13 @@ const illegalTransitionResponse = {
 
 const runNotFoundResponse = {
   description: "No Full Auto run exists for that runRef.",
+  content: { "application/json": { schema: errorResponseSchema } },
+} as const
+
+const notRecoverableResponse = {
+  description:
+    "FA-RUN-03 (#8971), AC-48: the run's current stall cause fails closed -- a retry cannot plausibly " +
+    "fix it. `stallCause` on the error body names the cause; Stop is the one safe action.",
   content: { "application/json": { schema: errorResponseSchema } },
 } as const
 
@@ -474,6 +485,30 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/runs/{runRef}/retry-now": {
+      post: {
+        operationId: "retryFullAutoRunNow",
+        summary: "FA-RUN-03 (#8971), AC-48: the owner-actionable recovery affordance for a Stalled run.",
+        description:
+          "Legal only from Stalled, and only when the freshly classified stall cause is plausibly " +
+          "recoverable (a missing provider session, a stale FA-H3 lease, a bare reconciliation gap, or " +
+          "an unclassified error). A nonrecoverable cause (a missing thread record, a workspace mismatch, " +
+          "or an auth/admission failure) refuses with 409 not_recoverable, naming Stop as the one safe " +
+          "action instead. On success the run transitions Stalled -> Retrying and the shared serialized " +
+          "reconcile pass is scheduled, exactly like every other Full Auto trigger.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "Retrying; the shared reconcile pass was scheduled.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunMutationResponse" } } },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+          "409": notRecoverableResponse,
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -689,6 +724,7 @@ export const fullAutoControlOpenApiDocument = {
               "lane_not_eligible",
               "active_run_conflict",
               "illegal_transition",
+              "not_recoverable",
             ],
           },
           message: { type: "string", minLength: 1, maxLength: 600 },
@@ -698,6 +734,7 @@ export const fullAutoControlOpenApiDocument = {
           fromState: { $ref: "#/components/schemas/FullAutoRunState" },
           toState: { $ref: "#/components/schemas/FullAutoRunState" },
           handoffRefusalReason: { $ref: "#/components/schemas/ProviderHandoffRefusalReason" },
+          stallCause: { $ref: "#/components/schemas/FullAutoStallCause" },
         },
       },
       ProviderHandoffRefusalReason: {
@@ -765,6 +802,14 @@ export const fullAutoControlOpenApiDocument = {
         type: "string",
         enum: [...FullAutoRunStateSchema.literals],
       },
+      FullAutoStallCause: {
+        type: "string",
+        enum: [...FullAutoStallCauseSchema.literals],
+      },
+      FullAutoRecoveryAction: {
+        type: "string",
+        enum: [...FullAutoRecoveryActionSchema.literals],
+      },
       FullAutoRunTransitionRecord: {
         type: "object",
         required: ["from", "to", "actor", "at", "reason"],
@@ -785,6 +830,7 @@ export const fullAutoControlOpenApiDocument = {
           "workspaceRef", "lane", "turnCap", "successfulAttempts", "failedAttempts", "state",
           "stateRevision", "terminalReason", "predecessorRunRef", "migratedFrom", "createdAt",
           "startedAt", "lastProgressAt", "pausedAt", "stoppedAt", "completedAt", "transitions",
+          "stallCause", "nextRetryAt", "recoveryAction",
         ],
         additionalProperties: false,
         properties: {
@@ -811,6 +857,12 @@ export const fullAutoControlOpenApiDocument = {
           stoppedAt: { type: ["string", "null"] },
           completedAt: { type: ["string", "null"] },
           transitions: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunTransitionRecord" } },
+          stallCause: {
+            type: ["string", "null"],
+            enum: [...FullAutoStallCauseSchema.literals, null],
+          },
+          nextRetryAt: { type: ["string", "null"] },
+          recoveryAction: { $ref: "#/components/schemas/FullAutoRecoveryAction" },
         },
       },
       FullAutoControlRunListResponse: {

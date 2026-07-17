@@ -9,6 +9,10 @@ import {
   FullAutoDisabledBySchema,
 } from "./full-auto-registry.ts"
 import {
+  FullAutoRecoveryActionSchema,
+  FullAutoStallCauseSchema,
+} from "./full-auto-liveness.ts"
+import {
   FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
   FULL_AUTO_RUN_OBJECTIVE_LIMIT,
   FULL_AUTO_RUN_REASON_LIMIT,
@@ -153,6 +157,17 @@ export const FullAutoControlRunSchema = Schema.Struct({
   stoppedAt: Schema.NullOr(Schema.String),
   completedAt: Schema.NullOr(Schema.String),
   transitions: Schema.Array(FullAutoRunTransitionRecordSchema),
+  /**
+   * FA-RUN-03 (#8971): the main-owned liveness projection, always computed
+   * fresh against the current state (never a stale cached field). `state`
+   * above already reflects `stallCause`/`nextRetryAt` when a liveness settle
+   * pass has run -- these three fields are the "why" and "what can I do"
+   * that a generic `state: "stalled"` alone cannot express (AC "Sidebar/run
+   * view and control API return the same typed state and retry deadline").
+   */
+  stallCause: Schema.NullOr(FullAutoStallCauseSchema),
+  nextRetryAt: Schema.NullOr(Schema.String),
+  recoveryAction: FullAutoRecoveryActionSchema,
 })
 export type FullAutoControlRun = typeof FullAutoControlRunSchema.Type
 
@@ -308,6 +323,11 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
    * never a partial state change). See `handoffRefusalReason` on the error
    * body for the exact reason. */
   "handoff_refused",
+  /** FA-RUN-03 (#8971): retry-now was requested on a run that is not
+   * Stalled, or whose current classified cause fails closed (AC "Nonrecoverable
+   * states fail closed and present one safe action"). `stallCause` on the
+   * error body names the cause; the safe action is always Stop. */
+  "not_recoverable",
 ])
 export type FullAutoControlErrorTag = typeof FullAutoControlErrorTagSchema.Type
 
@@ -326,6 +346,8 @@ export const FullAutoControlErrorSchema = Schema.Struct({
   toState: Schema.optional(FullAutoRunStateSchema),
   /** handoff_refused only: the exact typed refusal reason (FA-AC-59). */
   handoffRefusalReason: Schema.optional(ProviderHandoffRefusalReasonSchema),
+  /** not_recoverable only: the classified cause that failed closed. */
+  stallCause: Schema.optional(FullAutoStallCauseSchema),
 })
 export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
 
@@ -358,6 +380,10 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "post", path: "/v1/full-auto/runs/{runRef}/stop", operationId: "stopFullAutoRun" },
   // FA-HO-01 (#8975): manual cross-provider handoff, legal only while paused.
   { method: "post", path: "/v1/full-auto/runs/{runRef}/handoff", operationId: "handoffFullAutoRun" },
+  // FA-RUN-03 (#8971): AC-48's owner-actionable recovery affordance -- legal
+  // only from Stalled, and only when the freshly classified cause is
+  // recoverable; a nonrecoverable cause refuses with `not_recoverable`.
+  { method: "post", path: "/v1/full-auto/runs/{runRef}/retry-now", operationId: "retryFullAutoRunNow" },
 ] as const
 export type FullAutoControlRoute = (typeof FULL_AUTO_CONTROL_ROUTES)[number]
 
