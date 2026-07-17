@@ -100,6 +100,7 @@ import {
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
+import { invokeDesktopThreadVisibilityApply } from "./thread-visibility-bridge-contract.ts"
 import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
@@ -392,6 +393,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       value,
     ),
     write: (value: unknown) => invokeDesktopThreadExportWrite(
+      (channel, request) => ipcRenderer.invoke(channel, request),
+      value,
+    ),
+  },
+  threadVisibility: {
+    apply: (value: unknown) => invokeDesktopThreadVisibilityApply(
       (channel, request) => ipcRenderer.invoke(channel, request),
       value,
     ),

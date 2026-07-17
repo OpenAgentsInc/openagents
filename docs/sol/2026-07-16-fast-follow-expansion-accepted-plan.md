@@ -1545,6 +1545,15 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T18:12:38Z`
 
+### CLAIM-STATUS
+
+- implementation: added one fixed schema-decoded visibility apply contract and exposed it through the sandboxed preload allowlist
+- privacy/authority proof: exact intent and identity-bound receipt evidence only; no raw IPC, receipt metadata, content, membership, administrator, publication, filesystem, process, or provider authority escapes
+- focused proof: all 19 bridge/store/disclosure tests passed; the full Desktop package typecheck and production preload build passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage awaits the separately owned committed seed update for the new mobile-component teardown
+- residual: main-process handler registration/composition, renderer command/pixels, actual audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
