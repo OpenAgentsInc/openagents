@@ -138,7 +138,11 @@ const projectedFeature = (
   }
 }
 
-const projectBoundedHistory = (thread: DesktopThread): Readonly<{
+/** FA-HO-01 (#8975): exported so the host-owned ProviderHandoffEnvelope
+ * builder (full-auto-provider-handoff.ts) reuses the exact same bounded
+ * projection as the existing interactive manual-switch path -- one bound
+ * history projector, never two that could drift. */
+export const projectBoundedHistory = (thread: DesktopThread): Readonly<{
   history: ReadonlyArray<ProviderLaneHistoryMessage>
   truncated: boolean
 }> => {

@@ -17,6 +17,10 @@ import {
   FullAutoRunStateSchema,
   FullAutoRunTransitionRecordSchema,
 } from "./full-auto-run-registry.ts"
+import {
+  ProviderHandoffRefusalReasonSchema,
+  ProviderHandoffTransitionRecordSchema,
+} from "./full-auto-provider-handoff.ts"
 import { LocalTurnDispositionSchema, LocalTurnPhaseSchema } from "./local-turn-journal.ts"
 
 /**
@@ -173,6 +177,34 @@ export const FullAutoControlRunMutationResponseSchema = Schema.Struct({
 })
 export type FullAutoControlRunMutationResponse = typeof FullAutoControlRunMutationResponseSchema.Type
 
+/**
+ * FA-HO-01 (#8975): POST /v1/full-auto/runs/{runRef}/handoff -- a manual
+ * provider switch legal ONLY while the run is `paused` (FA-AC-58). The
+ * caller names the target lane; the server re-validates its admission/auth/
+ * capability eligibility (FA-AC-59) before rebinding the run's execution
+ * profile, so a refusal leaves the run's current lane/profile untouched
+ * (rollback, never a partial state change).
+ */
+export const FullAutoControlRunHandoffRequestSchema = Schema.Struct({
+  targetLaneRef: LaneRef,
+  reason: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_REASON_LIMIT))),
+})
+export type FullAutoControlRunHandoffRequest = typeof FullAutoControlRunHandoffRequestSchema.Type
+export const decodeFullAutoControlRunHandoffRequest = (
+  value: unknown,
+): FullAutoControlRunHandoffRequest | null => {
+  const decoded = Schema.decodeUnknownExit(FullAutoControlRunHandoffRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
+export const FullAutoControlRunHandoffResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  ok: Schema.Literal(true),
+  run: FullAutoControlRunSchema,
+  transition: ProviderHandoffTransitionRecordSchema,
+})
+export type FullAutoControlRunHandoffResponse = typeof FullAutoControlRunHandoffResponseSchema.Type
+
 /** Coarse live state riding alongside the durable record (FA-H4 vocabulary). */
 export const FullAutoControlLiveSchema = Schema.Struct({
   state: CodexLocalFullAutoLiveStateSchema,
@@ -271,6 +303,11 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
   /** FA-AC-43: the requested run-lifecycle transition is not legal from the
    * run's current state (for example Resume from a non-Paused state). */
   "illegal_transition",
+  /** FA-HO-01/FA-AC-59: the target lane failed admission/auth/capability
+   * re-validation; the run's current lane/profile is unchanged (rollback,
+   * never a partial state change). See `handoffRefusalReason` on the error
+   * body for the exact reason. */
+  "handoff_refused",
 ])
 export type FullAutoControlErrorTag = typeof FullAutoControlErrorTagSchema.Type
 
@@ -287,6 +324,8 @@ export const FullAutoControlErrorSchema = Schema.Struct({
   /** illegal_transition only: the exact refused edge. */
   fromState: Schema.optional(FullAutoRunStateSchema),
   toState: Schema.optional(FullAutoRunStateSchema),
+  /** handoff_refused only: the exact typed refusal reason (FA-AC-59). */
+  handoffRefusalReason: Schema.optional(ProviderHandoffRefusalReasonSchema),
 })
 export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
 
@@ -317,6 +356,8 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "post", path: "/v1/full-auto/runs/{runRef}/pause", operationId: "pauseFullAutoRun" },
   { method: "post", path: "/v1/full-auto/runs/{runRef}/resume", operationId: "resumeFullAutoRun" },
   { method: "post", path: "/v1/full-auto/runs/{runRef}/stop", operationId: "stopFullAutoRun" },
+  // FA-HO-01 (#8975): manual cross-provider handoff, legal only while paused.
+  { method: "post", path: "/v1/full-auto/runs/{runRef}/handoff", operationId: "handoffFullAutoRun" },
 ] as const
 export type FullAutoControlRoute = (typeof FULL_AUTO_CONTROL_ROUTES)[number]
 

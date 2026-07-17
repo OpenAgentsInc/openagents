@@ -10,6 +10,13 @@ import {
   FullAutoRunActorSchema,
   FullAutoRunStateSchema,
 } from "./full-auto-run-registry.ts"
+import {
+  PROVIDER_HANDOFF_ENVELOPE_SCHEMA,
+  PROVIDER_HANDOFF_REASON_LIMIT,
+  ProviderHandoffDispositionSchema,
+  ProviderHandoffOmissionReasonSchema,
+  ProviderHandoffRefusalReasonSchema,
+} from "./full-auto-provider-handoff.ts"
 
 /**
  * FA-H13 (#8886): the hand-authored OpenAPI 3.1 document for the Phase 1
@@ -73,6 +80,13 @@ const notFoundResponse = {
 
 const invalidRequestResponse = {
   description: "The path parameter or request body failed schema validation.",
+  content: { "application/json": { schema: errorResponseSchema } },
+} as const
+
+const handoffRefusedResponse = {
+  description:
+    "The target lane failed admission/auth/capability re-validation (FA-AC-59), or handoff is not " +
+    "available on this server instance; the run's current lane/profile is unchanged.",
   content: { "application/json": { schema: errorResponseSchema } },
 } as const
 
@@ -426,6 +440,40 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/runs/{runRef}/handoff": {
+      post: {
+        operationId: "handoffFullAutoRun",
+        summary: "Manual cross-provider handoff (FA-HO-01 #8975). Legal ONLY while paused.",
+        description:
+          "Re-checks the target lane's admission, auth, and Full Auto/background-question eligibility " +
+          "(FA-AC-59) before rebinding the run's execution profile; a refusal leaves the run's current " +
+          "lane/profile unchanged (rollback, never a partial state change). On success, assembles a " +
+          "host-owned ProviderHandoffEnvelope from the run's objective/doneCondition and the existing " +
+          "bounded Desktop-visible history projection -- never provider-private session state -- and " +
+          "appends a durable transition receipt naming the exact source/target provider identities, " +
+          "actor, time, reason, and truncation disposition. Resume (a separate call) dispatches the " +
+          "next turn on the new lane.",
+        parameters: [runRefParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunHandoffRequest" } },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The run's execution profile was rebound to the target lane and the transition receipt was recorded.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunHandoffResponse" } },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+          "409": handoffRefusedResponse,
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -649,6 +697,68 @@ export const fullAutoControlOpenApiDocument = {
           activeRunRef: { type: "string", minLength: 1, maxLength: 180 },
           fromState: { $ref: "#/components/schemas/FullAutoRunState" },
           toState: { $ref: "#/components/schemas/FullAutoRunState" },
+          handoffRefusalReason: { $ref: "#/components/schemas/ProviderHandoffRefusalReason" },
+        },
+      },
+      ProviderHandoffRefusalReason: {
+        type: "string",
+        enum: [...ProviderHandoffRefusalReasonSchema.literals],
+      },
+      ProviderHandoffDisposition: {
+        type: "string",
+        enum: [...ProviderHandoffDispositionSchema.literals],
+      },
+      ProviderHandoffOmissionReason: {
+        type: "string",
+        enum: [...ProviderHandoffOmissionReasonSchema.literals],
+      },
+      ProviderHandoffTransitionRecord: {
+        type: "object",
+        required: ["handoffRef", "from", "to", "actor", "at", "reason", "disposition", "truncated"],
+        additionalProperties: false,
+        description:
+          "The durable, owner-visible receipt every handoff appends (FA-AC-58): exact from/to provider " +
+          "lane identities, actor, time, reason, and an explicit truncation/omission disposition. Never " +
+          "the raw envelope contents.",
+        properties: {
+          handoffRef: { type: "string", minLength: 1, maxLength: 180 },
+          runRef: { type: "string", minLength: 1, maxLength: 180 },
+          threadRef: { type: "string", minLength: 1, maxLength: 120 },
+          from: { type: "string", minLength: 1, maxLength: 80 },
+          to: { type: "string", minLength: 1, maxLength: 80 },
+          actor: { type: "string", enum: [...FullAutoRunActorSchema.literals] },
+          at: { type: "string" },
+          reason: { type: "string", minLength: 1, maxLength: PROVIDER_HANDOFF_REASON_LIMIT },
+          disposition: { $ref: "#/components/schemas/ProviderHandoffDisposition" },
+          truncated: { type: "boolean" },
+          refusalReason: { $ref: "#/components/schemas/ProviderHandoffRefusalReason" },
+          envelopeSchema: { type: "string", const: PROVIDER_HANDOFF_ENVELOPE_SCHEMA },
+          correlationRef: { type: "string", minLength: 1, maxLength: 180 },
+        },
+      },
+      FullAutoControlRunHandoffRequest: {
+        type: "object",
+        required: ["targetLaneRef"],
+        additionalProperties: false,
+        properties: {
+          targetLaneRef: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            description: "The admitted ProviderLane ref to switch to. Re-validated server-side before anything changes.",
+          },
+          reason: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_REASON_LIMIT },
+        },
+      },
+      FullAutoControlRunHandoffResponse: {
+        type: "object",
+        required: ["schema", "ok", "run", "transition"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          ok: { type: "boolean", const: true },
+          run: { $ref: "#/components/schemas/FullAutoControlRun" },
+          transition: { $ref: "#/components/schemas/ProviderHandoffTransitionRecord" },
         },
       },
       FullAutoRunState: {

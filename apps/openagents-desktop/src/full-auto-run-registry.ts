@@ -451,6 +451,14 @@ export type FullAutoRunRegistry = Readonly<{
     input: Readonly<{ to: FullAutoRunState; actor: FullAutoRunActor; reason: string; correlationRef?: string }>,
   ) => FullAutoRunTransitionResult
   bindThread: (runRef: string, threadRef: string) => FullAutoRun | null
+  /** FA-HO-01 (#8975): rebind the execution profile (provider lane) after a
+   * caller-validated provider handoff. This function trusts the caller
+   * already performed target admission/auth/capability re-validation and any
+   * required state gating (the control-API handoff route requires
+   * `paused`) -- it only performs the durable write, mirroring `bindThread`'s
+   * "caller already checked" shape. Never invoked directly by a renderer or
+   * CLI without going through that gated route. */
+  rebindProfile: (runRef: string, profile: FullAutoProfile) => FullAutoRun | null
   recordAttempt: (
     runRef: string,
     outcome: "success" | "failure",
@@ -600,6 +608,14 @@ export const openFullAutoRunRegistry = (
     return runs[index]!
   }
 
+  const rebindProfile: FullAutoRunRegistry["rebindProfile"] = (runRef, profile) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    runs[index] = Schema.decodeUnknownSync(FullAutoRunSchema)({ ...runs[index]!, profile })
+    persist()
+    return runs[index]!
+  }
+
   const recordAttempt: FullAutoRunRegistry["recordAttempt"] = (runRef, outcome, options) => {
     const index = findIndex(runRef)
     if (index === -1) return null
@@ -652,6 +668,7 @@ export const openFullAutoRunRegistry = (
     rerun,
     transition: transitionInternal,
     bindThread,
+    rebindProfile,
     recordAttempt,
     reviseObjective,
   }

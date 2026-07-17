@@ -14,6 +14,7 @@ import {
   FULL_AUTO_CONTROL_SCHEMA,
   FULL_AUTO_CONTROL_TURNS_LIMIT,
   decodeFullAutoControlEnableRequest,
+  decodeFullAutoControlRunHandoffRequest,
   decodeFullAutoControlRunRef,
   decodeFullAutoControlRunStartRequest,
   decodeFullAutoControlStartRequest,
@@ -33,7 +34,13 @@ import {
   type FullAutoRun,
   type FullAutoRunRegistry,
 } from "./full-auto-run-registry.ts"
-import type { ProviderLaneRegistryEntry } from "./provider-lane-registry.ts"
+import type { DesktopThread } from "./chat-contract.ts"
+import type { ProviderLaneRegistry, ProviderLaneRegistryEntry } from "./provider-lane-registry.ts"
+import {
+  buildProviderHandoffEnvelope,
+  providerHandoffDispositionForEnvelope,
+  type ProviderHandoffRegistry,
+} from "./full-auto-provider-handoff.ts"
 
 /**
  * FA-H13 (#8886): the Phase 1 local Full Auto control server. A plain
@@ -154,6 +161,18 @@ export type FullAutoControlCapabilities = Readonly<{
    * lane accepted the interrupt; Pause still transitions to Pausing and
    * waits for the turn to resolve either way. */
   interruptLiveTurn?: (threadRef: string) => boolean
+  /** FA-HO-01 (#8975): the same admission/auth/capability re-check the
+   * existing interactive manual-switch IPC handler already uses. Absent
+   * means the handoff route refuses cleanly rather than mutating anything. */
+  providerLaneRegistry?: Pick<ProviderLaneRegistry, "switchThread">
+  /** The Desktop thread bound to a run, for the envelope's bounded-history
+   * projection. Absent threadRef or a null return both project an empty,
+   * explicitly-omitted context rather than fabricating history. */
+  getThread?: (threadRef: string) => DesktopThread | null
+  /** FA-HO-01 (#8975): the durable receipt store every handoff appends to,
+   * independent of restart. Absent means the handoff route refuses cleanly
+   * (never a silent, unreceipted switch). */
+  providerHandoffRegistry?: ProviderHandoffRegistry
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -536,7 +555,7 @@ export const startFullAutoControlServer = (
       return
     }
 
-    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop))?$/.exec(url.pathname)
+    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop|handoff))?$/.exec(url.pathname)
     if (runMatch !== null) {
       const runRef = decodeFullAutoControlRunRef(decodeURIComponent(runMatch[1]!))
       if (runRef === null) {
@@ -671,6 +690,101 @@ export const startFullAutoControlServer = (
         void capabilities.triggerReconciliation().catch(() => {})
         auditLog("runs/resume", run.threadRef ?? runRef, "ok")
         sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+        return
+      }
+
+      if (runAction === "handoff") {
+        // FA-AC-58: a manual provider switch is legal only while paused --
+        // the exact same state gate Resume enforces, so a switch can never
+        // race an active dispatch.
+        if (run.state !== "paused") {
+          sendError(response, 409, {
+            error: "illegal_transition",
+            message: `A provider handoff is legal only while paused (current state: ${run.state}).`,
+            fromState: run.state,
+            toState: run.state,
+          })
+          return
+        }
+        const body = decodeFullAutoControlRunHandoffRequest(await readJsonBody(request))
+        if (body === null) {
+          sendError(response, 400, {
+            error: "invalid_request",
+            message: "handoff requires a JSON body: { targetLaneRef, reason? }.",
+          })
+          return
+        }
+        if (capabilities.providerLaneRegistry === undefined || capabilities.providerHandoffRegistry === undefined) {
+          sendError(response, 409, {
+            error: "handoff_refused",
+            message: "Provider handoff is not available on this server instance.",
+          })
+          return
+        }
+        const sourceLaneRef = run.profile?.lane ?? FULL_AUTO_DEFAULT_LANE
+        const targetLaneRef = body.targetLaneRef
+        const reason = body.reason ?? `Provider handoff requested via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`
+        const thread = run.threadRef === undefined ? null : (capabilities.getThread?.(run.threadRef) ?? null)
+        // FA-AC-59: re-check target admission/auth/capability eligibility
+        // through the exact same gate the existing interactive manual-switch
+        // path uses -- a refusal leaves the run's lane/profile untouched
+        // (rollback, never a partial state change).
+        const switchResult = capabilities.providerLaneRegistry.switchThread({
+          threadRef: run.threadRef ?? runRef,
+          laneRef: targetLaneRef,
+          lanes: await (capabilities.listLanes?.() ?? Promise.resolve([])),
+          thread,
+          requiredCapabilities: ["fullAuto"],
+        })
+        if (!switchResult.ok) {
+          auditLog("runs/handoff", run.threadRef ?? runRef, `refused ${switchResult.reason}`)
+          sendError(response, 409, {
+            error: "handoff_refused",
+            message: switchResult.message,
+            handoffRefusalReason: switchResult.reason,
+          })
+          return
+        }
+        const at = (input.now ?? (() => new Date()))().toISOString()
+        const envelope = buildProviderHandoffEnvelope({
+          run,
+          sourceLaneRef,
+          targetLaneRef,
+          thread,
+          reason,
+          actor: "control_api",
+          at,
+        })
+        const disposition = providerHandoffDispositionForEnvelope(envelope)
+        const transitionRecord = capabilities.providerHandoffRegistry.record({
+          runRef: run.runRef,
+          ...(run.threadRef === undefined ? {} : { threadRef: run.threadRef }),
+          from: sourceLaneRef,
+          to: targetLaneRef,
+          actor: "control_api",
+          at,
+          reason,
+          disposition,
+          truncated: envelope.contextTruncated,
+          envelopeSchema: envelope.schema,
+        })
+        const rebound = capabilities.runRegistry.rebindProfile(runRef, { ...run.profile, lane: targetLaneRef })
+        if (rebound === null) {
+          sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+          return
+        }
+        capabilities.appendSystemNote(
+          run.threadRef ?? runRef,
+          `Provider handoff: ${sourceLaneRef} → ${targetLaneRef} (${disposition}). Reason: ${reason} ` +
+          `(caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+        )
+        auditLog("runs/handoff", run.threadRef ?? runRef, `ok ${sourceLaneRef}->${targetLaneRef} disposition=${disposition}`)
+        sendJson(response, 200, {
+          schema: FULL_AUTO_CONTROL_SCHEMA,
+          ok: true,
+          run: projectRun(rebound),
+          transition: transitionRecord,
+        })
         return
       }
 

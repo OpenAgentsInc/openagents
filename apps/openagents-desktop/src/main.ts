@@ -315,6 +315,7 @@ import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
 import { migrateLegacyFullAutoRegistry, openFullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -1143,6 +1144,13 @@ const fullAutoRegistry = openFullAutoRegistry(
  * layered on top of the unchanged `fullAutoRegistry` above. */
 const fullAutoRunRegistry = openFullAutoRunRegistry(
   path.join(app.getPath("userData"), "full-auto", "runs.json"),
+)
+/** FA-HO-01 (#8975): the durable cross-provider handoff receipt store, kept
+ * independent of `fullAutoRunRegistry.transitions` (lifecycle-state edges,
+ * not provider-pair edges) so a future FullAutoRunReport (#8972) can list
+ * every handoff for a run without conflating the two event kinds. */
+const providerHandoffRegistry = openProviderHandoffRegistry(
+  path.join(app.getPath("userData"), "full-auto", "provider-handoffs.json"),
 )
 /** FA-AC-41: additive, idempotent migration from the legacy per-thread
  * `enabled: boolean` registry -- safe to call on every startup; a threadRef
@@ -3741,6 +3749,46 @@ ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) 
   if (result.ok && result.previousLaneRef !== result.laneRef) {
     if (result.laneRef === "codex-local") codexLocal.resetContinuity(result.threadRef)
     if (result.laneRef === "fable-local") fableLocal.resetContinuity(result.threadRef)
+    // FA-HO-01 (#8975): every successful switch appends a durable receipt --
+    // exact from/to identities, actor, time, reason, and truncation
+    // disposition -- naming the SAME host-owned bounded projection the
+    // switch itself already carried (never provider-private session state).
+    // A thread may or may not have a bound FullAutoRun; the envelope builder
+    // handles both honestly rather than inventing an objective.
+    const boundRun = fullAutoRunRegistry.findByThreadRef(result.threadRef)
+    const at = new Date().toISOString()
+    const envelope = buildProviderHandoffEnvelope({
+      run: boundRun,
+      sourceLaneRef: result.previousLaneRef,
+      targetLaneRef: result.laneRef,
+      thread,
+      reason: "Manual provider switch requested from the composer.",
+      actor: "owner_ui",
+      at,
+    })
+    const disposition = providerHandoffDispositionForEnvelope(envelope)
+    providerHandoffRegistry.record({
+      ...(boundRun === null ? {} : { runRef: boundRun.runRef }),
+      threadRef: result.threadRef,
+      from: result.previousLaneRef,
+      to: result.laneRef,
+      actor: "owner_ui",
+      at,
+      reason: envelope.reason,
+      disposition,
+      truncated: envelope.contextTruncated,
+      envelopeSchema: envelope.schema,
+    })
+    const receipted = threads().append(result.threadRef, {
+      key: randomUUID(),
+      role: "system",
+      text: `Provider handoff: ${result.previousLaneRef} → ${result.laneRef} (${disposition}).`,
+      timestamp: at,
+      meta: { lane: result.laneRef },
+    })
+    if (receipted !== null && !event.sender.isDestroyed()) {
+      event.sender.send(DesktopLocalTurnRecoveryUpdateChannel, receipted)
+    }
   }
   if (!result.ok && thread !== null) {
     const updated = threads().append(thread.id, {
@@ -4064,6 +4112,11 @@ if (isFullAutoControlEnabled(process.env)) {
         const projection = projectProviderLaneCapabilities(report)
         return projection.admission === "admitted" && projection.fullAuto === true
       },
+      // FA-HO-01 (#8975): the SAME admission/auth/capability re-check the
+      // existing interactive manual-switch IPC handler already uses.
+      providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
+      getThread: threadRef => threads().open(threadRef),
+      providerHandoffRegistry,
     },
     controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
     ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535
