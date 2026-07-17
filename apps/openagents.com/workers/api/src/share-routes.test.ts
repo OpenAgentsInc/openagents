@@ -108,6 +108,7 @@ const makeScriptedD1 = (
         updatedAt: string
       }>
     | undefined
+  insertCount: () => number
 }> => {
   const bindings: Array<QueryBinding> = []
   let share:
@@ -128,6 +129,7 @@ const makeScriptedD1 = (
         updatedAt: string
       }>
     | undefined
+  let inserts = 0
 
   const db: D1Database = {
     batch: <T = unknown>(statements: Array<D1PreparedStatement>) =>
@@ -210,6 +212,7 @@ const makeScriptedD1 = (
           bindings.push({ query, values })
 
           if (query.includes('INSERT INTO share_projections')) {
+            inserts += 1
             share = {
               audienceJson: String(values[7]),
               canonicalUrl: String(values[1]),
@@ -242,7 +245,12 @@ const makeScriptedD1 = (
     }),
   }
 
-  return { bindings, db, insertedShare: () => share }
+  return {
+    bindings,
+    db,
+    insertedShare: () => share,
+    insertCount: () => inserts,
+  }
 }
 
 const routeRequest = async (
@@ -251,6 +259,7 @@ const routeRequest = async (
     agentToken?: string
     body: Record<string, unknown>
     db: D1Database
+    idempotencyKey?: string
     targetSelectors?: Array<Record<string, unknown>>
   }>,
 ): Promise<Response> => {
@@ -296,6 +305,9 @@ const routeRequest = async (
       headers: {
         authorization: `Bearer ${input.adminToken ?? input.agentToken ?? 'none'}`,
         'content-type': 'application/json',
+        ...(input.idempotencyKey === undefined
+          ? {}
+          : { 'Idempotency-Key': input.idempotencyKey }),
       },
       method: 'POST',
     }),
@@ -388,6 +400,73 @@ describe('share routes', () => {
     expect(response.status).toBe(201)
     expect(targetSelectors).toEqual([])
     expect(insertedShare()?.ownerUserId).toBe('user_agent_1')
+  })
+
+  test('replays an exact authenticated create without a second insert', async () => {
+    const { db, insertCount } = makeScriptedD1(['user_agent_1'])
+    const request = {
+      agentToken: 'agent-token',
+      body: {
+        audience: { _tag: 'Public' },
+        source: {
+          id: 'team_openagents_core',
+          kind: 'team-thread',
+          teamId: 'team_openagents_core',
+        },
+        title: 'Agent API share',
+      },
+      db,
+      idempotencyKey: 'publication.thread.1',
+    }
+    const first = await routeRequest(request)
+    const firstBody = await first.json<{ id: string }>()
+    const second = await routeRequest(request)
+    const secondBody = await second.json<{ id: string }>()
+
+    expect(first.status).toBe(201)
+    expect(first.headers.get('Idempotency-Replayed')).toBe('false')
+    expect(second.status).toBe(200)
+    expect(second.headers.get('Idempotency-Replayed')).toBe('true')
+    expect(secondBody.id).toBe(firstBody.id)
+    expect(insertCount()).toBe(1)
+  })
+
+  test('refuses conflicting reuse and malformed keys without another insert', async () => {
+    const { db, insertCount } = makeScriptedD1(['user_agent_1'])
+    const base = {
+      agentToken: 'agent-token',
+      body: {
+        audience: { _tag: 'Public' },
+        source: {
+          id: 'team_openagents_core',
+          kind: 'team-thread',
+          teamId: 'team_openagents_core',
+        },
+        title: 'Original title',
+      },
+      db,
+      idempotencyKey: 'publication.thread.conflict',
+    }
+    expect((await routeRequest(base)).status).toBe(201)
+    const conflict = await routeRequest({
+      ...base,
+      body: { ...base.body, title: 'Different title' },
+    })
+    expect(conflict.status).toBe(409)
+    await expect(conflict.json()).resolves.toEqual({
+      error: 'idempotency_conflict',
+    })
+    expect(insertCount()).toBe(1)
+
+    const malformed = await routeRequest({
+      ...base,
+      idempotencyKey: 'contains space',
+    })
+    expect(malformed.status).toBe(400)
+    await expect(malformed.json()).resolves.toMatchObject({
+      error: 'bad_request',
+    })
+    expect(insertCount()).toBe(1)
   })
 
   test('requires an explicit target user selector for admin-created shares', async () => {

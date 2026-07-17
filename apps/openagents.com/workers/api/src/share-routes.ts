@@ -10,6 +10,12 @@ import type { OperatorTargetUser } from './operator-targets'
 import { openAgentsDatabase } from './runtime'
 import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
 import {
+  type ShareCreateReplayExpectation,
+  decodeShareCreateIdempotencyKey,
+  deriveShareCreateId,
+  matchesShareCreateReplay,
+} from './share-create-idempotency'
+import {
   ShareAccessService,
   ShareProjectionBuilder,
   type ShareProjectionError,
@@ -534,6 +540,15 @@ const handleCreateShare = <Session extends ShareSession>(
 
     const { actor } = actorResolution
     const { viewer } = actor
+    const idempotency = decodeShareCreateIdempotencyKey(
+      request.headers.get('Idempotency-Key'),
+    )
+    if (idempotency._tag === 'Invalid') {
+      return yield* new ShareProjectionMalformed({
+        reason:
+          'Idempotency-Key must contain 1-128 visible ASCII characters without spaces',
+      })
+    }
     const create = yield* decodeShareCreateRequest(body)
     const source = yield* loadSourceBundle(env, viewer, create.source)
     const access = yield* ShareAccessService
@@ -549,7 +564,12 @@ const handleCreateShare = <Session extends ShareSession>(
     const urlService = yield* ShareUrlService
     const receipts = yield* ShareReceiptService
     const builder = yield* ShareProjectionBuilder
-    const shareId = makeShareId()
+    const shareId =
+      idempotency._tag === 'Valid'
+        ? yield* Effect.promise(() =>
+            deriveShareCreateId(viewer.userId, idempotency.value),
+          )
+        : makeShareId()
     const now = currentIsoTimestamp()
     const canonicalUrl = urlService.canonicalUrlForShareId(shareId)
     const receiptRefs = [receipts.createdRef(shareId)]
@@ -581,22 +601,87 @@ const handleCreateShare = <Session extends ShareSession>(
             ...(create.title === undefined ? {} : { title: create.title }),
           },
     )
-    const record = yield* repository.create({
+    const redactionPolicyId =
+      create.redactionPolicyId?.trim() === ''
+        ? 'default'
+        : (create.redactionPolicyId ?? 'default')
+    const replayExpectation: ShareCreateReplayExpectation = {
       audience: create.audience,
       canonicalUrl,
-      ownerUserId: source.ownerUserId,
-      projectId: source.projectId,
-      projection,
-      redactionPolicyId:
-        create.redactionPolicyId?.trim() === ''
-          ? 'default'
-          : (create.redactionPolicyId ?? 'default'),
-      shareId,
-      source: projection.source,
-      teamId: source.teamId,
-      title: projection.title,
       expiresAt: create.expiresAt ?? null,
-    })
+      ownerUserId: source.ownerUserId,
+      redactionPolicyId,
+      source: projection.source,
+      title: projection.title,
+    }
+    const existing =
+      idempotency._tag === 'Valid'
+        ? yield* repository.readById(shareId)
+        : undefined
+    if (existing !== undefined) {
+      if (
+        !matchesShareCreateReplay(
+          existing,
+          replayExpectation,
+          currentEpochMillis(),
+        )
+      ) {
+        return noStoreJsonResponse(
+          { error: 'idempotency_conflict' },
+          { status: 409 },
+        )
+      }
+
+      return appendActorCookies(
+        noStoreJsonResponse(
+          {
+            id: existing.id,
+            url: existing.canonicalUrl,
+            audienceLabel: existing.projection.audienceLabel,
+            status: existing.projection.status,
+          },
+          { headers: { 'Idempotency-Replayed': 'true' }, status: 200 },
+        ),
+        actor,
+        dependencies,
+      )
+    }
+    const creation = yield* repository
+      .create({
+        audience: create.audience,
+        canonicalUrl,
+        ownerUserId: source.ownerUserId,
+        projectId: source.projectId,
+        projection,
+        redactionPolicyId,
+        shareId,
+        source: projection.source,
+        teamId: source.teamId,
+        title: projection.title,
+        expiresAt: create.expiresAt ?? null,
+      })
+      .pipe(
+        Effect.map(record => ({ record, replayed: false as const })),
+        Effect.catch(error =>
+          idempotency._tag !== 'Valid'
+            ? Effect.fail(error)
+            : repository
+                .readById(shareId)
+                .pipe(
+                  Effect.flatMap(record =>
+                    record !== undefined &&
+                    matchesShareCreateReplay(
+                      record,
+                      replayExpectation,
+                      currentEpochMillis(),
+                    )
+                      ? Effect.succeed({ record, replayed: true as const })
+                      : Effect.fail(error),
+                  ),
+                ),
+        ),
+      )
+    const { record } = creation
     const response = noStoreJsonResponse(
       {
         id: record.id,
@@ -604,7 +689,12 @@ const handleCreateShare = <Session extends ShareSession>(
         audienceLabel: record.projection.audienceLabel,
         status: record.projection.status,
       },
-      { status: 201 },
+      {
+        headers: {
+          'Idempotency-Replayed': creation.replayed ? 'true' : 'false',
+        },
+        status: creation.replayed ? 200 : 201,
+      },
     )
 
     return appendActorCookies(response, actor, dependencies)

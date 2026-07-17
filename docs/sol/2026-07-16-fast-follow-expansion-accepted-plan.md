@@ -2131,6 +2131,16 @@ Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T20:45:03Z`
 
+### CLAIM-STATUS
+
+- implementation: added authenticated owner-scoped UUIDv5 identity, exact semantic replay, conflicting-key refusal, and concurrent-create reread reconciliation to existing `/api/share` creation
+- privacy/authority proof: ordinary source loading and audience authorization still run; replay matches only exact active record semantics; no credential, content, migration, schema, audience, Desktop host, or renderer authority widened
+- focused proof: 32/32 idempotency/share route/projection tests passed; API package typecheck passed with two pre-existing Effect advisories
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec is 188/190 from the known environment digest drift plus an unrelated offline distribution timeout reproduced twice; root Fast Follow remains 6/7 from the separately owned teardown seed; shared `core.bare=true` was not mutated and `check:fast` passed under a task-local work-tree override
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-27-idempotent-share-create-reconciliation-receipt.md`
+- residual: client publication retry/reconciliation, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
