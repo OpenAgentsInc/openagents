@@ -231,11 +231,35 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
           capturedAuthToken = config.authToken
           return liveTransport({ bootstraps, lifecycle })
         },
-        sessionOptions: { sleep: () => Promise.resolve(), random: () => 0 },
+        sessionOptions: {
+          sleep: () => new Promise(resolve => setTimeout(resolve, 1)),
+          random: () => 0,
+        },
       })
       await waitFor(() => host.status().syncPhase === "live")
       expect(host.conversation()).not.toBeNull()
       expect(host.interactions()).not.toBeNull()
+      expect(host.portable()).not.toBeNull()
+      expect(await Effect.runPromise(host.portable()!.snapshot())).toMatchObject({
+        status: { phase: "live", cursor: 0, pendingCommandCount: 0 },
+        sessions: [],
+        targetDirectories: [],
+        attachments: [],
+        commands: [],
+        issues: [],
+      })
+      await Effect.runPromise(host.portable()!.request({
+        schema: "openagents.portable_session_command.v1",
+        commandRef: "command.mobile.stop.host-test",
+        idempotencyKey: "idempotency.mobile.stop.host-test",
+        ownerRef: "user.mobile",
+        sessionRef: "session.mobile.host-test",
+        kind: "stop",
+        expectedAttachmentRef: "attachment.mobile.host-test",
+        expectedGeneration: 1,
+        expiresAt: "2026-07-17T13:00:00.000Z",
+      }))
+      expect((await Effect.runPromise(host.portable()!.snapshot())).status.pendingCommandCount).toBe(1)
       expect(await host.coding().directory()).toEqual({
         authority: "confirmed",
         phase: "live",
@@ -260,6 +284,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
       expect(host.interactions()).toBeNull()
+      expect(host.portable()).toBeNull()
       expect(host.drafts()).not.toBeNull()
       expect(await host.coding().directory()).toMatchObject({
         authority: "withheld",

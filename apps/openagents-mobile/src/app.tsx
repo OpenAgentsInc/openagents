@@ -5,6 +5,10 @@ import * as Updates from "expo-updates"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Linking } from "react-native"
 import { SafeAreaProvider } from "react-native-safe-area-context"
+import { Effect } from "effect"
+import type {
+  ConfirmedPortableSessionSnapshot,
+} from "@openagentsinc/khala-sync-client"
 
 declare const require: (id: string) => unknown
 
@@ -27,6 +31,12 @@ import {
 import { prepareMobileCodingAttachmentDelivery } from "./coding/mobile-coding-attachment-delivery"
 import type { MobileExecutionTargetOption } from "./coding/mobile-execution-targets"
 import {
+  buildMobilePortableSessionCommand,
+  projectMobilePortableSessionControl,
+  type MobilePortableControlAction,
+  type MobilePortableUnavailableReason,
+} from "./coding/mobile-portable-session-controls"
+import {
   selectMobileConversation,
   type MobileConversationThread,
   type MobileConversationSelection,
@@ -47,6 +57,16 @@ import {
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
+  portableSnapshot: ConfirmedPortableSessionSnapshot | null
+  watchPortable: (listener: (snapshot: ConfirmedPortableSessionSnapshot) => void) => () => void
+  requestPortableAction: (input: Readonly<{
+    sessionRef: string
+    action: MobilePortableControlAction
+    destinationTargetRef?: string
+  }>) => Promise<Readonly<
+    | { state: "queued"; snapshot: ConfirmedPortableSessionSnapshot }
+    | { state: "rejected"; reason: MobilePortableUnavailableReason; snapshot: ConfirmedPortableSessionSnapshot | null }
+  >>
   activeComposer: () => MobileCodingComposerSession | null
   executionTargets: ReadonlyArray<MobileExecutionTargetOption>
   fleetRuns?: FleetRunClientProjection
@@ -117,6 +137,10 @@ const selectAuthenticatedMobileExperience = async (
   if (conversation.mode !== "sync") return { conversation }
   const executionTargetCatalog = await syncHost.executionTargets()
   const fleetRunResult = await syncHost.fleetRuns()
+  const portable = syncHost.portable()
+  const portableSnapshot = portable === null
+    ? null
+    : await Effect.runPromise(portable.snapshot())
   const executionTargets = executionTargetCatalog?.options ?? []
   const host = conversation.host
   let activeComposer: MobileCodingComposerSession | null = null
@@ -168,6 +192,32 @@ const selectAuthenticatedMobileExperience = async (
     conversation,
     coding: {
       directory,
+      portableSnapshot,
+      watchPortable: listener => syncHost.watchPortable(listener),
+      requestPortableAction: async input => {
+        if (portable === null) {
+          return { state: "rejected", reason: "authority_unavailable", snapshot: null }
+        }
+        const latest = await Effect.runPromise(portable.snapshot())
+        const control = projectMobilePortableSessionControl(latest, input.sessionRef)
+        const built = buildMobilePortableSessionCommand({
+          control,
+          action: input.action,
+          invocationRef: `tap.${randomUUID()}`,
+          issuedAt: new Date().toISOString(),
+          ...(input.destinationTargetRef === undefined
+            ? {}
+            : { destinationTargetRef: input.destinationTargetRef }),
+        })
+        if (built.state === "rejected") {
+          return { state: "rejected", reason: built.reason, snapshot: latest }
+        }
+        await Effect.runPromise(portable.request(built.command))
+        return {
+          state: "queued",
+          snapshot: await Effect.runPromise(portable.snapshot()),
+        }
+      },
       activeComposer: () => activeComposer,
       executionTargets,
       ...(fleetRunResult.state === "available"
@@ -246,6 +296,7 @@ export const App = () => {
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
+  const portableSubscriptionRef = useRef<(() => void) | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
   useEffect(() => {
     syncPhaseRef.current = syncPhase
@@ -277,8 +328,19 @@ export const App = () => {
         })
   }
   const publishCodingBinding = (binding: MobileCodingHomeBinding | undefined): void => {
+    portableSubscriptionRef.current?.()
+    portableSubscriptionRef.current = null
     codingBindingRef.current = binding
     setCodingBinding(binding)
+    if (binding !== undefined) {
+      portableSubscriptionRef.current = binding.watchPortable(snapshot => {
+        const current = codingBindingRef.current
+        if (current === undefined) return
+        const updated = { ...current, portableSnapshot: snapshot }
+        codingBindingRef.current = updated
+        setCodingBinding(updated)
+      })
+    }
     if (binding !== undefined) void targetDeliveryRef.current?.flush()
   }
   const sessionActions = useMemo(() => ({
@@ -471,6 +533,8 @@ export const App = () => {
       notificationSubscription?.remove()
       targetDelivery?.close()
       targetDeliveryRef.current = null
+      portableSubscriptionRef.current?.()
+      portableSubscriptionRef.current = null
       syncHost?.close()
       syncHostRef.current = null
     }

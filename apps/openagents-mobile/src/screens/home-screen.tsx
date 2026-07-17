@@ -16,6 +16,13 @@ import type {
   MobileCodingComposerSession,
 } from "../coding/mobile-coding-composer"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
+import type {
+  ConfirmedPortableSessionSnapshot,
+} from "@openagentsinc/khala-sync-client"
+import type {
+  MobilePortableControlAction,
+  MobilePortableUnavailableReason,
+} from "../coding/mobile-portable-session-controls"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
@@ -43,6 +50,15 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
+    portableSnapshot: ConfirmedPortableSessionSnapshot | null
+    requestPortableAction: (input: Readonly<{
+      sessionRef: string
+      action: MobilePortableControlAction
+      destinationTargetRef?: string
+    }>) => Promise<Readonly<
+      | { state: "queued"; snapshot: ConfirmedPortableSessionSnapshot }
+      | { state: "rejected"; reason: MobilePortableUnavailableReason; snapshot: ConfirmedPortableSessionSnapshot | null }
+    >>
     activeComposer: () => MobileCodingComposerSession | null
     executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
     fleetRuns?: import("@openagentsinc/khala-sync").FleetRunClientProjection

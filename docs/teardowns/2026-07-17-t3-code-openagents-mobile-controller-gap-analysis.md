@@ -37,6 +37,30 @@ Terminal, Preview, Artifacts/Receipts, push registration, voice, and physical
 iOS/Android parity receipts remain open. Cached rows remain counted-but-hidden
 whenever Sync authority is withheld.
 
+## Implementation update — portable-session controls
+
+The second bounded PORT-06 packet landed on 2026-07-17 through #8947–#8949.
+The shared Sync client now reads confirmed portable sessions, attachment
+generations, target directories, accepted commands, and terminal outcomes from
+the authenticated owner scope. Mobile joins that authority to the inspected
+controller session and exposes typed Stop, Checkpoint, Move, Resume, and
+Failback commands with explicit destination selection.
+
+The UI fails closed for stale or malformed authority, ambiguous attachments,
+unready/same-source destinations, and commands already in flight. A mobile tap
+is shown as queued until a server projection confirms acceptance or a durable
+outcome; it is never presented as a completed host move from local mutation
+state. Confirmed outcome status and bounded evidence counts reconcile through
+the same authenticated Sync subscription.
+
+This closes the **mobile portable-command surface**, not the real-movement
+prerequisite or full PORT-06 acceptance. The server/runner must still execute
+checkpoint → quiesce → attach generation N+1 → revoke/close generation N,
+prove failback and crash recovery across two distinct hosts, and publish the
+signed receipts required by PORT-03. Until then, these controls are an honest
+command controller over confirmed authority, not evidence that a live session
+has physically moved.
+
 ## Executive decision
 
 OpenAgents should target **full mobile-controller parity with T3 Code**, but

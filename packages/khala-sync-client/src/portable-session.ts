@@ -86,8 +86,10 @@ export const createKhalaSyncPortableSessions = (input: Readonly<{
   ownerScope: SyncScope
   store: KhalaSyncLocalStore
   session: KhalaSyncSession
+  /** Reuse the exact mutator instance registered in the session overlay. */
+  mutator?: ClientMutator<PortableSessionCommand>
 }>): KhalaSyncPortableSessions => {
-  const mutator = createPortableRequestCommandMutator()
+  const mutator = input.mutator ?? createPortableRequestCommandMutator()
   const pendingCommandCount = (): number => input.session.pending().filter(
     mutation => String(mutation.name) === PORTABLE_REQUEST_COMMAND_MUTATOR_NAME,
   ).length

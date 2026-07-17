@@ -15,6 +15,8 @@ import {
   createKhalaSyncAgentTimeline,
   createKhalaSyncLiveAgentGraph,
   createKhalaSyncCodingCatalog,
+  createKhalaSyncPortableSessions,
+  createPortableRequestCommandMutator,
   createKhalaSyncCodingComposerDrafts,
   createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
@@ -28,6 +30,8 @@ import {
   type KhalaSyncLiveAgentGraph,
   type KhalaSyncCodingCatalog,
   type KhalaSyncCodingComposerDrafts,
+  type ConfirmedPortableSessionSnapshot,
+  type KhalaSyncPortableSessions,
   type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
@@ -63,6 +67,8 @@ export type MobileSyncHost = Readonly<{
   interactions: () => KhalaSyncRuntimeInteractions | null
   drafts: () => KhalaSyncCodingComposerDrafts | null
   coding: () => MobileCodingNavigation
+  portable: () => KhalaSyncPortableSessions | null
+  watchPortable: (listener: (snapshot: ConfirmedPortableSessionSnapshot) => void) => () => void
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   unlinkAccount:()=>void
@@ -98,6 +104,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
   let interactions: KhalaSyncRuntimeInteractions | null = null
   let drafts: KhalaSyncCodingComposerDrafts | null = null
   let codingCatalog: KhalaSyncCodingCatalog | null = null
+  let portable: KhalaSyncPortableSessions | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -145,6 +152,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     runtime = null
     interactions = null
     codingCatalog = null
+    portable = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
   }
@@ -187,6 +195,23 @@ export const openMobileSyncHostCore = (input: Readonly<{
         : null,
     drafts: () => closed ? null : drafts,
     coding: () => coding,
+    portable: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portable
+        : null,
+    watchPortable: listener => {
+      if (session === null || scope === null || portable === null || session.state(scope).phase !== "live") {
+        return () => undefined
+      }
+      const watchedSession = session
+      const watchedScope = scope
+      const watchedPortable = portable
+      return watchedSession.subscribeChanges(changedScope => {
+        if (String(changedScope) !== String(watchedScope) ||
+            watchedSession.state(watchedScope).phase !== "live") return
+        void Effect.runPromise(watchedPortable.snapshot()).then(listener, () => undefined)
+      })
+    },
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -205,10 +230,12 @@ export const openMobileSyncHostCore = (input: Readonly<{
       })
       const runtimeMutators = createRuntimeClientMutators()
       const interactionMutator = createRuntimeInteractionClientMutator()
+      const portableCommandMutator = createPortableRequestCommandMutator()
       const overlay = Effect.runSync(createOverlay(store, [
         ...Object.values(mutators),
         ...Object.values(runtimeMutators),
         interactionMutator,
+        portableCommandMutator,
       ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
@@ -239,6 +266,13 @@ export const openMobileSyncHostCore = (input: Readonly<{
         mutator: interactionMutator,
       })
       codingCatalog = createKhalaSyncCodingCatalog({ store, session, ownerScope: scope })
+      portable = createKhalaSyncPortableSessions({
+        ownerRef: ownerUserId,
+        ownerScope: scope,
+        store,
+        session,
+        mutator: portableCommandMutator,
+      })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

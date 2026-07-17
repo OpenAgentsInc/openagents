@@ -23,6 +23,7 @@ import {
   projectLiveAgentGraphPresentation,
   resolveLiveAgentGraphSelection,
   type ScopeSyncState,
+  type ConfirmedPortableSessionSnapshot,
 } from "@openagentsinc/khala-sync-client"
 import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
 
@@ -42,6 +43,12 @@ import {
 } from "../coding/mobile-coding-composer"
 import type { MobileCodingAttachmentDeliveryResult } from "../coding/mobile-coding-attachment-delivery"
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
+import {
+  projectMobilePortableSessionControl,
+  type MobilePortableControlAction,
+  type MobilePortableSessionControl,
+  type MobilePortableUnavailableReason,
+} from "../coding/mobile-portable-session-controls"
 import type {
   MobileConversationHost,
   MobileConversationSelection,
@@ -102,6 +109,13 @@ export interface HomeState {
   readonly codingDirectory: MobileCodingDirectory | null
   readonly controllerDestination: MobileControllerDestination
   readonly inspectedControllerSessionRef: string | null
+  readonly portableSnapshot: ConfirmedPortableSessionSnapshot | null
+  readonly selectedPortableDestinationRef: string | null
+  readonly portableSubmittingAction: MobilePortableControlAction | null
+  readonly portableNotice: Readonly<{
+    kind: "queued" | "rejected"
+    message: string
+  }> | null
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
@@ -226,6 +240,10 @@ export const initialHomeState: HomeState = {
   codingDirectory: null,
   controllerDestination: "recent",
   inspectedControllerSessionRef: null,
+  portableSnapshot: null,
+  selectedPortableDestinationRef: null,
+  portableSubmittingAction: null,
+  portableNotice: null,
   codingComposer: null,
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
@@ -268,6 +286,14 @@ export const ControllerDestinationSelected = defineIntent(
 export const ControllerSessionInspected = defineIntent(
   "ControllerSessionInspected",
   Schema.Struct({ sessionRef: Schema.String }),
+)
+export const PortableDestinationSelected = defineIntent(
+  "PortableDestinationSelected",
+  Schema.String,
+)
+export const PortableControlRequested = defineIntent(
+  "PortableControlRequested",
+  Schema.Struct({ action: Schema.Literals(["stop", "checkpoint", "move", "resume", "failback"]) }),
 )
 export const CodingComposerAttachmentsRequested = defineIntent(
   "CodingComposerAttachmentsRequested",
@@ -318,6 +344,8 @@ export const homeIntentDefinitions = [
   CodingSessionSelected,
   ControllerDestinationSelected,
   ControllerSessionInspected,
+  PortableDestinationSelected,
+  PortableControlRequested,
   CodingComposerAttachmentsRequested,
   CodingExecutionTargetSelected,
   RuntimeInteractionOptionToggled,
@@ -435,9 +463,124 @@ const controllerFactLabel = (
   ? ("providerRef" in fact ? fact.providerRef : fact.runtimeRef)
   : `Unavailable · ${fact.reason.replaceAll("_", " ")}`
 
+const portableUnavailableCopy = (reason: MobilePortableUnavailableReason): string => {
+  switch (reason) {
+    case "authority_unavailable": return "Portable authority is not live on this device."
+    case "projection_invalid": return "Portable controls are withheld because confirmed state is incomplete."
+    case "session_not_portable": return "This session is not portable yet."
+    case "target_directory_missing": return "No confirmed destination directory is available."
+    case "attachment_authority_ambiguous": return "The active session attachment is ambiguous."
+    case "source_target_missing": return "The confirmed source target is unavailable."
+    case "command_in_flight": return "Wait for the current portable command to reconcile."
+    case "action_requires_active_attachment": return "This action requires an active session attachment."
+    case "action_requires_suspended_attachment": return "Resume requires a suspended session attachment."
+    case "destination_required": return "Choose a destination first."
+    case "destination_not_ready": return "The selected destination is not ready."
+    case "destination_is_source": return "Choose a destination different from the source."
+    case "failback_target_missing": return "No ready owner-local failback target is available."
+    case "invalid_invocation": return "The portable command could not be admitted."
+  }
+}
+
+const portableActionLabel = (action: MobilePortableControlAction): string => {
+  switch (action) {
+    case "checkpoint": return "Checkpoint"
+    case "move": return "Move session"
+    case "resume": return "Resume session"
+    case "failback": return "Fail back"
+    case "stop": return "Stop session"
+  }
+}
+
+const portableControlViews = (
+  control: MobilePortableSessionControl,
+  state: HomeState,
+): ReadonlyArray<View> => {
+  if (control.state === "unavailable") return [Text({
+    key: "portable-controls-unavailable",
+    content: portableUnavailableCopy(control.reason),
+    variant: "caption",
+    color: "warning",
+  })]
+  const actionButtons: ReadonlyArray<MobilePortableControlAction> = [
+    "checkpoint", "move", "resume", "failback", "stop",
+  ]
+  return [
+    Text({
+      key: "portable-source",
+      content: `Portable source ${control.sourceTarget.targetClass} · ${control.sourceTarget.targetRef}\nGeneration ${control.sourceAttachment.generation} · ${control.sourceAttachment.state}`,
+      variant: "caption",
+      color: "textMuted",
+    }),
+    ...control.actions.move.destinations.map(target => Button({
+      key: `portable-destination-${target.targetRef}`,
+      label: `${state.selectedPortableDestinationRef === target.targetRef ? "Selected · " : ""}${target.targetClass} · ${target.targetRef}`,
+      variant: state.selectedPortableDestinationRef === target.targetRef ? "secondary" : "ghost",
+      onPress: IntentRef("PortableDestinationSelected", StaticPayload(target.targetRef)),
+      a11y: { label: `Select portable destination ${target.targetRef}, ${target.health}` },
+      style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
+    })),
+    ...(control.pendingCommand === null
+      ? control.pendingLocalCommandCount > 0
+        ? [Text({
+            key: "portable-local-pending",
+            content: "Command queued · awaiting server acceptance",
+            variant: "caption",
+            color: "warning",
+          })]
+        : []
+      : [Text({
+          key: "portable-command-pending",
+          content: `Pending ${control.pendingCommand.kind} · ${control.pendingCommand.commandRef}`,
+          variant: "caption",
+          color: "warning",
+        })]),
+    ...(control.latestOutcome === null ? [] : [Text({
+      key: "portable-command-outcome",
+      content: `Last confirmed command · ${control.latestOutcome.status}\n${control.latestOutcome.commandRef} · Evidence ${control.latestOutcome.evidenceRefs.length}`,
+      variant: "caption",
+      color: control.latestOutcome.status === "completed" ? "textPrimary" : "warning",
+    })]),
+    ...(state.portableNotice === null ? [] : [Text({
+      key: "portable-command-notice",
+      content: state.portableNotice.message,
+      variant: "caption",
+      color: state.portableNotice.kind === "queued" ? "textMuted" : "warning",
+    })]),
+    ...actionButtons.map(action => {
+      const availability = control.actions[action]
+      const needsDestination = action === "move" || action === "failback"
+      const selectedDestinationAllowed = !needsDestination || (
+        state.selectedPortableDestinationRef !== null &&
+        availability.destinations.some(target => target.targetRef === state.selectedPortableDestinationRef)
+      )
+      const unavailableReason = availability.reason ?? (needsDestination && !selectedDestinationAllowed
+        ? "destination_required"
+        : null)
+      const disabled = state.portableSubmittingAction !== null || !availability.available || !selectedDestinationAllowed
+      const label = state.portableSubmittingAction === action
+        ? `${portableActionLabel(action)} queued…`
+        : portableActionLabel(action)
+      return Button({
+        key: `portable-action-${action}`,
+        label,
+        variant: action === "move" ? "primary" : action === "stop" ? "ghost" : "secondary",
+        onPress: IntentRef("PortableControlRequested", StaticPayload({ action })),
+        disabled,
+        a11y: {
+          label: disabled && unavailableReason !== null
+            ? `${portableActionLabel(action)} unavailable. ${portableUnavailableCopy(unavailableReason)}`
+            : `${portableActionLabel(action)} from ${control.sourceTarget.targetRef}${needsDestination ? ` to ${state.selectedPortableDestinationRef}` : ""}`,
+        },
+        style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
+      })
+    }),
+  ]
+}
+
 const controllerSessionDetail = (
   session: MobileControllerSession,
-  accessibility: MobileAccessibilityProfile,
+  state: HomeState,
 ): View => Stack({
   key: `controller-session-detail-${session.sessionRef}`,
   direction: "column",
@@ -485,8 +628,19 @@ const controllerSessionDetail = (
         ? "Continue unavailable until session recovery"
         : `Continue ${session.repositoryName} session`,
     },
-    style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+    style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
   }),
+  ...(state.portableSnapshot === null
+    ? [Text({
+        key: "portable-authority-unavailable",
+        content: "Portable controls are unavailable until confirmed portable authority is projected.",
+        variant: "caption",
+        color: "textMuted",
+      })]
+    : portableControlViews(
+        projectMobilePortableSessionControl(state.portableSnapshot, session.sessionRef),
+        state,
+      )),
 ])
 
 const controllerDestinationRows = (
@@ -543,7 +697,7 @@ export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<Vie
       a11y: { label: "Mobile controller destination" },
       style: { width: "full" },
     }),
-    ...(inspected === null ? [] : [controllerSessionDetail(inspected, state.accessibility)]),
+    ...(inspected === null ? [] : [controllerSessionDetail(inspected, state)]),
     ...controllerDestinationRows(directory, state.controllerDestination, state.accessibility),
   ]
 }
@@ -739,6 +893,15 @@ export interface HomeProgramOptions {
   readonly accessibility?: MobileAccessibilityProfile
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
+    portableSnapshot?: ConfirmedPortableSessionSnapshot | null
+    requestPortableAction?: (input: Readonly<{
+      sessionRef: string
+      action: MobilePortableControlAction
+      destinationTargetRef?: string
+    }>) => Promise<Readonly<
+      | { state: "queued"; snapshot: ConfirmedPortableSessionSnapshot }
+      | { state: "rejected"; reason: MobilePortableUnavailableReason; snapshot: ConfirmedPortableSessionSnapshot | null }
+    >>
     activeComposer: () => MobileCodingComposerSession | null
     executionTargets?: ReadonlyArray<MobileExecutionTargetOption>
     fleetRuns?: FleetRunClientProjection
@@ -1404,9 +1567,90 @@ export const makeHomeHandlers = (
       const directory = projectMobileControllerDirectory(current.codingDirectory)
       return directory.authority === "confirmed" &&
           directory.recent.some(session => session.sessionRef === sessionRef)
-        ? { ...current, inspectedControllerSessionRef: sessionRef }
-        : { ...current, inspectedControllerSessionRef: null }
+        ? {
+            ...current,
+            inspectedControllerSessionRef: sessionRef,
+            selectedPortableDestinationRef: null,
+            portableNotice: null,
+          }
+        : {
+            ...current,
+            inspectedControllerSessionRef: null,
+            selectedPortableDestinationRef: null,
+            portableNotice: null,
+          }
     }),
+    PortableDestinationSelected: targetRef => SubscriptionRef.update(state, current => {
+      if (current.inspectedControllerSessionRef === null || current.portableSnapshot === null) return current
+      const control = projectMobilePortableSessionControl(
+        current.portableSnapshot,
+        current.inspectedControllerSessionRef,
+      )
+      return control.state === "ready" && control.targets.some(target =>
+        target.targetRef === targetRef && target.health === "ready" &&
+        target.targetRef !== control.sourceTarget.targetRef)
+        ? { ...current, selectedPortableDestinationRef: targetRef, portableNotice: null }
+        : current
+    }),
+    PortableControlRequested: options.coding?.requestPortableAction === undefined
+      ? () => Effect.void
+      : ({ action }) => Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          if (before.inspectedControllerSessionRef === null ||
+              before.portableSubmittingAction !== null) return
+          if (before.portableSnapshot === null) {
+            yield* SubscriptionRef.update(state, current => ({
+              ...current,
+              portableNotice: { kind: "rejected" as const, message: portableUnavailableCopy("authority_unavailable") },
+            }))
+            return
+          }
+          const control = projectMobilePortableSessionControl(
+            before.portableSnapshot,
+            before.inspectedControllerSessionRef,
+          )
+          const destinationRequired = action === "move" || action === "failback"
+          const availability = control.state === "ready" ? control.actions[action] : null
+          const destinationAllowed = !destinationRequired || (
+            before.selectedPortableDestinationRef !== null &&
+            availability?.destinations.some(target =>
+              target.targetRef === before.selectedPortableDestinationRef) === true
+          )
+          const rejection = control.state === "unavailable"
+            ? control.reason
+            : !availability!.available
+              ? availability!.reason ?? "invalid_invocation"
+              : !destinationAllowed
+                ? "destination_required"
+                : null
+          if (rejection !== null) {
+            yield* SubscriptionRef.update(state, current => ({
+              ...current,
+              portableNotice: { kind: "rejected" as const, message: portableUnavailableCopy(rejection) },
+            }))
+            return
+          }
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            portableSubmittingAction: action,
+            portableNotice: null,
+          }))
+          const result = yield* Effect.promise(() => options.coding!.requestPortableAction!({
+            sessionRef: before.inspectedControllerSessionRef!,
+            action,
+            ...(destinationRequired && before.selectedPortableDestinationRef !== null
+              ? { destinationTargetRef: before.selectedPortableDestinationRef }
+              : {}),
+          }))
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            portableSnapshot: result.snapshot ?? current.portableSnapshot,
+            portableSubmittingAction: null,
+            portableNotice: result.state === "queued"
+              ? { kind: "queued" as const, message: `${action} queued for confirmed reconciliation.` }
+              : { kind: "rejected" as const, message: portableUnavailableCopy(result.reason) },
+          }))
+        }),
     [AgentStackToggled]: () => SubscriptionRef.update(state, current => ({
       ...current,
       khala: {
@@ -1518,6 +1762,8 @@ export interface HomeProgramHandle {
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
     readonly inspectSession: (sessionRef: string) => void
+    readonly selectPortableDestination: (targetRef: string) => void
+    readonly requestPortableControl: (action: MobilePortableControlAction) => void
   }
   readonly accessibility: {
     readonly setProfile: (profile: MobileAccessibilityProfile) => void
@@ -1544,6 +1790,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       const programInitialState: HomeState = {
         ...baseInitialState,
         codingDirectory: options.coding?.directory ?? null,
+        portableSnapshot: options.coding?.portableSnapshot ?? null,
         codingComposer: activeComposer,
         codingExecutionTargets: options.coding?.executionTargets ?? [],
         ...(options.coding?.fleetRuns === undefined
@@ -1613,6 +1860,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     conversationThreads: [],
                     activeThreadRef: null,
                     codingComposer: null,
+                    portableSnapshot: null,
+                    selectedPortableDestinationRef: null,
+                    portableSubmittingAction: null,
+                    portableNotice: null,
                     codingAttachmentPicking: false,
                     codingAttachmentStatus: null,
                     khala: initialKhalaState,
@@ -1628,6 +1879,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           inspectSession: sessionRef => fireRef(IntentRef(
             "ControllerSessionInspected",
             StaticPayload({ sessionRef }),
+          )),
+          selectPortableDestination: targetRef => fireText(
+            IntentRef("PortableDestinationSelected", ComponentValueBinding()),
+            targetRef,
+          ),
+          requestPortableControl: action => fireRef(IntentRef(
+            "PortableControlRequested",
+            StaticPayload({ action }),
           )),
         },
         accessibility: {
