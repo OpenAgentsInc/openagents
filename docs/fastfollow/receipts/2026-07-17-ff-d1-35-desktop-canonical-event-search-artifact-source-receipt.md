@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "3e79a76d718304bb58cef184da97d6587167cca6"
 claim_revision: "8067dda00f7ed42f5cea27f3b9160ea3e3bcf292"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "dc1f35a9692ad0b7b46b221b6336c085c8162ca2"
 proof_rung: "desktop_canonical_event_search_artifact_acquisition"
 observed_at: "2026-07-17T23:25:18Z"
 ---
@@ -78,5 +78,6 @@ groups, register acquisition in `main.ts`, or prove an installed runtime
 journey. Those residuals, owner acceptance, and Day 1 completion remain
 unclaimed.
 
-The exact tested implementation tree will replace `pending_remote_landing`
-when it lands on `origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`dc1f35a9692ad0b7b46b221b6336c085c8162ca2` before this documentation-only
+claim release.

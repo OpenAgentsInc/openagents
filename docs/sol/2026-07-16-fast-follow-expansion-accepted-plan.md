@@ -2815,6 +2815,15 @@ runtime-rendered evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-35-desktop-canonical-event-search-artifact-source-receipt.md`
 - residual: receipt catalog persistence, broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `8067dda00f7ed42f5cea27f3b9160ea3e3bcf292`
+- implementation_revision: `dc1f35a9692ad0b7b46b221b6336c085c8162ca2`
+- status: released; FF-D1-35 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-35-desktop-canonical-event-search-artifact-source-receipt.md`
+- released_at: `2026-07-17T23:26:56Z`
+- residual: receipt catalog persistence, broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
