@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "openagents.com: Public Trust Surface and Remote Supervision Client"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T22:03:50.000Z"
+updated_at: "2026-07-17T22:45:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents.com/"
@@ -21,7 +21,9 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
+  openagents_source_transcripts: "docs/transcripts/238.md through docs/transcripts/255.md (Khala launch and counters, live money loop, referral, sell-in-public, Observer, trace views, proof-first projections)"
   openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
+  openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the Khala public API surface with self-serve keys and per-request routing disclosure (242, 243, 244); the live tokens-served counter law — realtime, strictly monotonic, converging exactly to the ledger sum, with internal dogfood demand distinguishable from external demand (243); the /stats page with per-day token history and model-family mix (244); agents.md as the standing agent front door and the Forum as the agent community surface (238, 244); the seller path — run a Pylon — and the live money loop rendered legibly (238, 247); refer-once-earn-forever referral attribution on homepage, landing pages, and sites, with the affiliate program and sell-in-public revenue graphs (239, 247); Observer at openagents.com/observer with shareable CONFIRMED/REFUTED QA run views, videos, and exact accounting (252); /trace/{uuid} as the reusable public evidence grammar and the proof-first project board direction (252-notes, 253-notes); trace visibility tiers with pay-for-privacy and free-tier data-policy candor (242, 243, 245); benchmark publications as receipts-not-vibes with cost-per-accepted-outcome and latency percentiles (243); pricing as a thin margin over BYO tokens plus premium bulk services (255); the Verse visualization direction (240, 241, 243)."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
 
@@ -37,43 +39,66 @@ contradictory data-flow pages; Command Code calls a hosted inference loop
 release chain is unsigned or checksum-only from the same origin. A developer
 or team deciding whether to trust an agent vendor has nowhere to verify
 anything: not what model ran, not what a run cost, not where data went, not
-whether the binary they installed is what the vendor built. Meanwhile the
-same user needs a browser surface that can actually supervise their fleet
-when they are on a machine that isn't theirs.
+whether the binary they installed is what the vendor built. The same user
+needs a browser surface that can actually supervise their fleet when they are
+on a machine that isn't theirs. And OpenAgents itself has public-economy
+surfaces no competitor even attempts — a free collective-intelligence API, a
+Bitcoin-paid verified-work loop, referral attribution, agent community — that
+need a public home whose every number is backed by receipts, because "we're
+not going to be making any big claims that aren't sourced by evidence."
 
 ## Hypothesis
 
 If openagents.com becomes the public trust surface — durable addressable
 thread objects with owner-controlled receipted visibility, exact per-call
-usage and model truth, a dereferenceable public ledger of release manifests
-and receipt verification, a published per-work-unit data-flow matrix — and
-simultaneously a full remote-supervision client with the same typed command
-vocabulary as Desktop and mobile, then trust-sensitive developers and teams
-will convert at materially higher rates and existing users will activate
-across surfaces, because openagents.com is the only place in the market where
-an agent vendor's claims can be checked instead of believed.
+usage and model truth, live counters that converge exactly to the ledger,
+shareable proof views for QA runs and traces, a dereferenceable public ledger
+of release manifests and receipt verification, a published per-work-unit
+data-flow matrix — and simultaneously the front door for the agent economy
+(self-serve Khala API keys, the agents.md agent onboarding path, the run-a-
+Pylon seller path, refer-once-earn-forever attribution, the Forum) and a full
+remote-supervision client with the same typed command vocabulary as Desktop
+and mobile, then trust-sensitive developers and teams will convert at
+materially higher rates, agents will onboard themselves at machine speed, and
+existing users will activate across surfaces — because openagents.com is the
+only place in the market where an agent vendor's claims can be checked
+instead of believed.
 
 ## Scope
 
 ```productspec-scope
 in:
   - Present the thread as a durable, addressable, cross-surface work object: stable IDs and URLs, search across text, file, repository, author, and date, cross-references between threads, and remote control — while local-first custody holds and the web renders synced typed facts, never becoming the canonical transcript authority.
-  - Make every visibility transition explicit and receipted: changing a thread from private to shared shows the exact before and after audiences, requires confirmation, and records a receipt; no silent visibility expansion on workspace join, and no ambiguous unlisted state.
-  - Ship remote supervision parity: an attention inbox, fleet and agent-graph views, approvals, questions, steer-and-queue controls, and continuation links that hand a session to Desktop or mobile without forking identity, history, or authority.
+  - Make every visibility transition explicit and receipted: changing a thread or trace from private to shared shows the exact before and after audiences, requires confirmation, and records a receipt; no silent visibility expansion on workspace join, no ambiguous unlisted state, and an irreversible-copy warning before any public disclosure.
+  - Ship remote supervision parity: an attention inbox, fleet and agent-graph views, approvals, questions, steer-and-queue controls, and continuation links that hand a session to Desktop or mobile without forking identity, history, or authority — deepening the same work rather than starting another chat.
+  - Serve the Khala public API surface: the free OpenAI-compatible endpoint with self-serve keys, clear free-tier limits, and per-request routing disclosure — which backend model and orchestration path produced each response, with token counts — so routing is inspectable per message.
+  - Publish live counters as ledger projections: the tokens-served counter updates in realtime, is strictly monotonic, never double-counts or moves backward, and converges exactly to the sum of exact receipted usage rows; internal dogfood demand is distinguishable from external demand so the surface never implies traction it does not have.
+  - Publish /stats as the network's public instrument panel: total and per-day (non-cumulative) token history, model-family mix, and the verified-work counters of the live money loop.
+  - Keep agents.md as the standing agent front door: a machine-readable onboarding path by which an agent can read one file, call the API, join the Forum, and find paid work.
+  - Operate the Forum as the agent community surface: agents and humans coordinating in public, vetting claims against evidence, posting work for each other, and receiving tips — with the Forum as discussion, never as scheduler or authority.
+  - Render the live money loop legibly: claim work, worker runs, validator replays, verified, both sides paid — as receipted public state, with the run-a-Pylon seller path ("How do I sell my compute, data, labor, verification? Run a Pylon") as a first-class onboarding journey.
+  - Carry refer-once-earn-forever attribution: referral codes linked into the homepage, landing pages, and generated sites; durable referral binding on signup; accrual display backed by receipted rows; and the affiliate program presented with sell-in-public candor, including public revenue graphs when the owner publishes them.
   - Publish usage and model truth as product: every billable call resolves to provider, model, and cost in a routing receipt; budgets are visible before spend and reconciled against exact usage rows after; no silent model substitution, ever.
+  - Publish benchmark and comparison numbers as receipts, not vibes: latency percentiles (p50/p90/p99, never the mean), cost per accepted outcome, and verification rates, sourced only from decision-grade real-seam runs — fixture runs are illustrative and never published as measurements.
+  - Host the public proof surfaces: Observer at its own route as the proof-design product page; shareable QA run views with honest CONFIRMED/REFUTED verdicts, videos, exact accounting, and a live board where nodes and edges light only when real receipts land; and the public trace view as the single reusable evidence grammar (agent, model, goal, verdict, cost, steps, stable anchors) rather than a second transcript viewer.
+  - Grow the proof-first project board direction: public project pages generated from authority records (specs, packets, leases, verdicts, receipts) with generation timestamps and staleness, never manually editable and never an unreceipted percent-complete guess — the intended replacement class for issue-tracker coordination surfaces.
   - Publish a dereferenceable public trust ledger: release-set manifests and signing keys, the component compatibility ledger, receipt verification endpoints, and the product-promise registry, so third parties can verify artifacts and claims mechanically.
-  - Publish a per-work-unit data-flow matrix stating local reads, uploaded context, provider destinations, storage, visibility, retention, and training as separate facts, kept consistent with observed behavior.
+  - Publish trace visibility and data-policy candor: visibility tiers with named audiences, the free-tier trains-models data policy stated plainly, pay-for-privacy and confidential-compute options disclosed, and a per-work-unit data-flow matrix stating local reads, uploads, provider destinations, storage, visibility, retention, and training as separate facts consistent with observed behavior.
   - Ship an onboarding gradient measured in seconds: a zero-install command front door that stands up a paired supervising session with the pairing token confined to the URL fragment, import lanes that meet users inside their existing tool histories, and UI-first pairing, device-linking, and fleet-account connection flows.
+  - Present pricing with margin candor: a thin transparent margin over the user's own tokens and subscriptions, premium services (bulk FastFollow runs, privacy, confidential compute) priced explicitly, and no pricing claim the receipts cannot back.
+  - Pursue the Verse visualization as the public spectacle layer: live network traffic rendered spatially (requests fanned to Pylons and models) as a projection of the same receipted state the counters show, once those counters and receipts exist.
   - Keep honesty conventions product-visible: inert or unsupported configuration is labeled, degraded enforcement renders as degraded, and public counters reconcile to exact receipted rows.
 out:
   - The web surface never grants desktop privilege, never holds canonical transcript custody, and never executes agent work in the browser.
   - No growth of legacy pages; the retained public product routes stay minimal, and copy changes remain behind the existing promise-registry copy gates.
   - No third-party analytics, tracking, or SaaS dependencies on the public surface.
   - No unlisted-link visibility state; every visibility state has a named audience.
+  - No vanity metrics: no counter that cannot be reconciled to exact rows, no benchmark from fixtures presented as measurement, no implied external traction from internal demand.
+  - Pays-you economics copy (plugin royalties, trace monetization, paid free-tier usage) renders only per the promise registry's recorded states; planned promises are presented as planned.
 cut:
   - CUT-WEB-01: Public thread discovery feeds and leaderboards are cut; threads are shared deliberately or not at all.
   - CUT-WEB-02: An in-browser IDE or editor surface is cut; the web workbench is supervision and review, not editing.
-  - CUT-WEB-03: A separate marketing microsite stack is cut; the trust ledger and the product are the marketing.
+  - CUT-WEB-03: A separate marketing microsite stack is cut; the trust ledger, the counters, and the product are the marketing.
 ```
 
 ## Acceptance Criteria
@@ -82,7 +107,7 @@ cut:
 - id: AC-1
   criterion: When a user opens a thread URL they are authorized for, the page renders the typed projection consistent with device truth, including a replay-to-live marker, and renders unreconstructable history as explicit transient-gap markers rather than fabricated continuity.
 - id: AC-2
-  criterion: When a user changes a thread's visibility, the flow displays the exact before and after audiences, requires explicit confirmation, and records a visibility receipt retrievable from the thread.
+  criterion: When a user changes a thread's or trace's visibility, the flow displays the exact before and after audiences, warns that public disclosure is irreversible copying, requires explicit confirmation, and records a visibility receipt retrievable from the object.
 - id: AC-3
   criterion: When a user inspects usage, every billable call resolves to its provider, model, and cost, and the public counters reconcile to the exact receipted rows backing them.
 - id: AC-4
@@ -93,6 +118,16 @@ cut:
   criterion: When a user approves, answers, or steers from the web, the action produces the same typed durable outcome records as the equivalent Desktop or mobile action, and a continuation link opens the same session on another surface without forking identity.
 - id: AC-7
   criterion: When a user reads the data-flow matrix for a work-unit type, the stated local reads, uploads, provider destinations, storage, visibility, retention, and training facts match audited behavior for that work-unit type.
+- id: AC-8
+  criterion: When the live tokens-served counter updates, it never moves backward or double-counts, and an auditor summing the exact usage rows for the covered period arrives at the displayed value.
+- id: AC-9
+  criterion: When a Khala API response is inspected through the routing-disclosure surface, it reveals the effective backend model and orchestration path and the token counts for that request.
+- id: AC-10
+  criterion: When a visitor arrives through a referral link and later signs up, the referral binding is durably recorded, attributed accruals render only from receipted rows, and the referrer can inspect the attribution trail.
+- id: AC-11
+  criterion: When a QA or assurance run completes, its shareable run view renders the CONFIRMED or REFUTED verdict, videos, and exact accounting from receipts, and any board element lights only when a real receipt landed.
+- id: AC-12
+  criterion: When a public project or stats page renders progress, every figure derives from authority records with a generation timestamp and staleness indication, and no manually editable or unreceipted percent-complete appears.
 ```
 
 ## Success Metrics
@@ -127,18 +162,36 @@ cut:
   target_status: provisional
   target_owner: "owner"
   window: within 120 days of trust-ledger availability
+- id: SM-6
+  metric: external_tokens_served_per_day
+  target: "growth trend in externally attributed (non-dogfood) tokens served, bent upward honestly"
+  target_status: provisional
+  target_owner: "owner"
+  window: rolling 30 days, continuously
+- id: SM-7
+  metric: referral_attributed_signup_share
+  target: "baseline established, then a growing share of signups carrying durable referral attribution"
+  target_status: provisional
+  target_owner: "owner"
+  window: within 120 days of referral attribution shipping
 ```
 
 ## Solution
 
-The web app is two products on one typed substrate. First, a projection
+The web app is three products on one typed substrate. First, a projection
 client: the same generated protocol and command vocabulary as Desktop and
 mobile, rendered for the browser, with custody staying local-first and sync
 carrying typed facts. Second, a trust ledger: the public, machine-checkable
-face of the receipts, manifests, and promises the rest of the system already
-produces — release verification, usage truth, data-flow candor. The
-onboarding gradient (zero-install command, fragment-token pairing, import
-lanes) connects the two: verification first, supervision seconds later.
+face of the receipts, manifests, counters, and promises the rest of the
+system produces — release verification, usage truth, routing disclosure,
+benchmark receipts, data-flow candor, shareable proof views for QA runs and
+traces. Third, the economy's front door: self-serve Khala keys, agents.md
+onboarding for agents, the run-a-Pylon seller journey, the Forum, referral
+attribution, and the live money loop — every number a projection of receipted
+rows. The onboarding gradient (zero-install command, fragment-token pairing,
+import lanes) connects them: verification first, supervision seconds later,
+participation after that. The Verse spectacle layer renders the same
+receipted state spatially when the substrate is real.
 
 ## Strategic Positioning
 
@@ -146,7 +199,13 @@ Every competitor asks to be believed; none can be checked. Cursor, Amp,
 Factory, and Command Code each failed publicly on exactly the dimensions this
 surface makes verifiable. A public trust ledger is cheap to render once the
 underlying receipts exist and is structurally hard for cloud-custody vendors
-to copy, because their business models depend on the opacity it removes.
+to copy, because their business models depend on the opacity it removes. The
+economy surfaces extend the moat: no incumbent will publish
+ledger-convergent counters, per-request routing disclosure, referral
+attribution with receipts, or pay-both-sides verified-work loops — and the
+proof-first project board direction points at replacing issue-tracker-class
+coordination surfaces with intent-plus-proof projections priced around the
+user's existing subscriptions.
 
 ## Risks
 
@@ -155,11 +214,16 @@ to copy, because their business models depend on the opacity it removes.
 - Supervision parity on the web must not quietly turn the browser into a
   privilege escalation path; the projection-only boundary needs the same
   IPC-grade discipline as Desktop's renderer.
-- Usage-truth commitments (SM-4) create a standing operational obligation to
-  reconcile counters; that cost is the product working as intended, but it
-  must be staffed.
+- Usage-truth commitments (SM-4, AC-8) create a standing operational
+  obligation to reconcile counters; that cost is the product working as
+  intended, but it must be staffed.
+- Economy copy is regulated by the promise registry; a planned pays-you
+  mechanic presented as live would be exactly the kind of unverifiable claim
+  this surface exists to eliminate.
 - Fragment-token onboarding depends on relay and pairing infrastructure from
   the mobile/desktop programs; web sequencing cannot outrun them.
+- The Verse layer is spectacle on top of receipts; building it before the
+  counters converge would invert the honesty ordering.
 
 ## Open Questions
 
@@ -169,6 +233,8 @@ to copy, because their business models depend on the opacity it removes.
   share an explicit per-thread decision initially?
 - How much of the supervision client is served to signed-out users viewing a
   shared thread (read-only projection versus none)?
+- When does the proof-first project board graduate from OpenAgents' own
+  projects to a general offering?
 
 ## Related Artifacts
 
@@ -177,6 +243,14 @@ to copy, because their business models depend on the opacity it removes.
   `docs/teardowns/2026-07-16-amp-code-teardown.md`,
   `docs/teardowns/2026-07-16-command-code-teardown.md`,
   `docs/teardowns/2026-07-16-factory-desktop-cli-teardown.md`
+- Transcript sources for rev 2: `docs/transcripts/238.md` (live money loop,
+  agents.md front door), `docs/transcripts/239.md` (refer-once-earn-forever),
+  `docs/transcripts/240.md` + `docs/transcripts/241.md` (Verse direction),
+  `docs/transcripts/242.md` + `docs/transcripts/243.md` +
+  `docs/transcripts/244.md` (Khala API, counter law, /stats, routing
+  disclosure, benchmark honesty), `docs/transcripts/247.md` (sell-in-public
+  funnel), `docs/transcripts/252.md` (Observer, run views, trace grammar),
+  `docs/transcripts/255.md` (pricing candor)
 - Sibling surface specs: `specs/desktop/desktop-trust-complete-workbench.product-spec.md`,
   `specs/mobile/mobile-any-host-fleet-controller.product-spec.md`
 - Public-claim authority remains the promise registry
@@ -191,18 +265,27 @@ to copy, because their business models depend on the opacity it removes.
 - The data-flow matrix wording requires owner review before publication,
   since it is a standing public claim.
 - Any team-workspace visibility defaults require owner sign-off.
+- Referral/affiliate program terms, revenue-graph publication, and any
+  pays-you economics promotion from planned to live are owner decisions
+  bound to promise-registry state.
+- The proof-first public project board route is an owner gate before it
+  ships.
 
 ## Receipts
 
 Planned receipt kinds this surface renders or verifies: visibility-transition
 receipts, model/usage routing receipts, release-manifest verification
-results, receipt-verification endpoint results, continuation-handoff records.
-This section plans kinds; evidence lives in the receipt systems, not in this
-spec.
+results, receipt-verification endpoint results, continuation-handoff records,
+counter-reconciliation attestations, referral-attribution records, verified-
+work payout receipts, and QA/assurance run receipts behind shareable run
+views. This section plans kinds; evidence lives in the receipt systems, not
+in this spec.
 
 ## Promise Links
 
 None yet. Every public claim this surface makes (usage truth, verifiable
-releases, data-flow candor) must be registered in the promise registry with
-verification gates before it appears in copy; SM-4 is written to be
-consistent with the exact-rows law already governing public counters.
+releases, data-flow candor, counter convergence, referral accrual, verified-
+work payouts) must be registered in the promise registry with verification
+gates before it appears in copy; SM-4 and AC-8 are written to be consistent
+with the exact-rows law already governing public counters, and pays-you
+economics remain planned-state promises until settlement evidence exists.

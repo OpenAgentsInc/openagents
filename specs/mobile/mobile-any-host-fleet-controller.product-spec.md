@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T22:03:50.000Z"
+updated_at: "2026-07-17T22:45:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-mobile/"
@@ -21,7 +21,9 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
+  openagents_source_transcripts: "docs/transcripts/238.md through docs/transcripts/255.md (mobile remote-control doctrine, fleet supervision, overnight runs, UI-first operations)"
   openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
+  openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -29,7 +31,11 @@ tool_metadata:
 
 An owner running parallel coding agents is away from the desk exactly when
 the fleet needs them: an approval blocks a turn, a question stalls a thread,
-a finished change needs review and push. Today's mobile options are either
+a finished change needs review and push. The transcripts make the stakes
+concrete: overnight fleet runs across six connected accounts racked up
+billions of tokens — and also produced duplicate PRs, agents stepping on each
+other, and runs that "crapped out after 30 minutes because you hit some
+limit," discovered only the next morning. Today's mobile options are either
 chat companions that cannot control real work, or single-vendor controllers
 with structural trust defects: T3 Code's mobile app proves full controller
 breadth (multi-environment pairing, diff review, Git controls, native
@@ -42,31 +48,39 @@ raw credentials, and every consequential action leaving a durable receipt.
 
 ## Hypothesis
 
-If OpenAgents mobile is a complete controller client of the same typed
-engine protocol as Desktop — an any-host environment directory with owned
-relay reachability, a durable per-environment offline outbox, an attention
-inbox that pins what needs the owner, and full workbench modes (thread,
-files, changes, terminal, preview, artifacts) — and adds what no competitor
-has (portable session identity across hosts, scoped revocable capability
-grants, receipts on every consequential action), then owners will keep
-materially more unattended work running because supervision stops being
-desk-bound: approvals get answered in minutes from anywhere, and delegating
-overnight or away-from-desk work becomes rational.
+If OpenAgents mobile is the fleet's remote control — a complete controller
+client of the same typed engine protocol as Desktop, over the same durable
+session refs, where "a command sent from a subway tunnel resolves to exactly
+one outcome" — with an any-host environment directory, a durable
+per-environment offline outbox, an attention inbox that pins what needs the
+owner, full workbench modes, and what no competitor has (portable session
+identity across hosts, scoped revocable capability grants, receipts on every
+consequential action), then owners will keep materially more unattended work
+running: approvals get answered in minutes from anywhere, overnight fleet
+runs get caught and steered before they waste the night, and delegating
+away-from-desk work becomes rational because supervision stops being
+desk-bound.
 
 ## Scope
 
 ```productspec-scope
 in:
-  - Operate strictly as a controller: the phone issues the same typed commands as Desktop and web against server-owned sessions, and never executes agent work, holds raw provider credentials, or receives raw filesystem paths.
+  - Operate strictly as a remote control: the phone issues the same typed commands as Desktop and web against the same durable session refs (steer, queue, stop, approve, answer), never executes agent work, holds no desktop token or raw provider credential, and never receives raw filesystem paths.
+  - Resolve every command to exactly one outcome across intermittent connectivity: durable admission acknowledgements, worker epochs, and ordered replay guarantee that a command sent from a dead zone lands once or fails visibly, never twice and never silently.
   - Ship an any-host environment directory as the first product layer: discovery, QR and manual pairing that exchanges a bootstrap credential for a scoped session credential, cached offline environment truth, and reachability presented as classed hints rather than proof.
   - Route remote reachability through owned relay infrastructure that is end-to-end encrypted and grants reachability without authorization; the client still presents its normal credential to the environment.
   - Bind every environment-facing grant to DPoP-style scope-limited, revocable capability tokens stored in the device vault; every consequential remote action records a durable outcome and receipt.
+  - Make overnight-fleet supervision the anchor journey: see every running workstream across hosts and accounts, catch a run that stalled on an exhausted account or a blocking question, steer or re-dispatch it from the phone, and arrive at a morning review of what completed, what needs attention, and what evidence backs each claim.
+  - Show fleet capacity as quantities, not presence: connected accounts and Pylons with available, busy, and queued counts, readiness lights lit only from decoded fresh receipts ("no receipt means no light"), and honest provider-condition errors (exhausted, rate-limited) rather than generic failures.
+  - Display effective execution identity on mobile exactly as on Desktop: every message's metadata shows the observed effective model, provider, and account, never an inference from the requested brand.
   - Treat the portable session as the stable object: a session moves owner-local to managed cloud and back through quiesce, checkpoint, detach, attach, resume, and failback verbs, with exclusive attachment generations so exactly one host executes, secret-free checkpoints, and source-cleanup receipts.
-  - Ship the workbench mode graph: Attention, Recent, Repositories, and Hosts entry points; per-session Thread, Files, Changes, Terminal, Preview, and Artifacts modes; routes and sheets on phone, list-plus-detail-plus-inspector on tablet, from one adaptive app.
-  - Provide a durable per-environment offline outbox built on durable admission: commands queued with client-chosen idempotent IDs, admission acknowledged before the UI shows accepted, explicit steer-versus-queue choice surfaced, worker epochs and ordered replay on reconnect.
-  - Ship attention as a product: an inbox where actionable items (approvals, questions, blockers) are pinned and never collapse; privacy-generic push payloads that revalidate at open and deep-link to the exact session; lock-screen presence for running work; share targets and quick actions as controller citizens.
+  - Ship the workbench mode graph, supervision-first: Attention, Recent, Repositories, and Hosts entry points; per-session Thread, Files, Changes, Terminal, Preview, and Artifacts modes; routes and sheets on phone, list-plus-detail-plus-inspector on tablet, from one adaptive app.
+  - Provide a durable per-environment offline outbox built on durable admission: commands queued with client-chosen idempotent IDs, admission acknowledged before the UI shows accepted, explicit steer-versus-queue choice surfaced, and the queue visible, editable, and cancellable.
+  - Ship attention as a product: an inbox where actionable items (approvals, questions, blockers) are pinned and never collapse; privacy-generic push payloads that revalidate at open and deep-link to the exact session; lock-screen presence for running work; share targets and quick actions as controller citizens; notification state is never completion authority.
   - Render the complete agent-graph projection with the same typed density rules as Desktop: full roster, live child lifecycle, drill-down into child transcripts, explicit gap accounting.
   - Make Changes writeback safe by construction: no force push, exact post-image receipts on every mutation.
+  - Make every operation UI-first: enrollment, environment pairing, visibility modes, policy, and grant revocation are screens and buttons — never CLI runbooks — while remaining available programmatically for agents.
+  - Project counters and earnings as receipted facts: tokens served, work verified, sats earned, and referral accruals render as projections reconcilable to exact receipted rows, with any pays-you economics copy strictly following the promise registry's recorded states.
   - Add voice as a session-neutral control channel over a sequenced, acknowledged dictation transport, layered after the controller core is complete.
   - Verify against disposable real servers with seeded deterministic state across device geometries, plus fault injection (network loss, token revocation, host restart), keeping fixture, deployed, and physical-device evidence as separate claims.
 out:
@@ -75,6 +89,7 @@ out:
   - No third-party hosted relay, tunnel, identity, or build/update dependencies; infrastructure is owned.
   - No web-wrapper shell and no second UI tree; one typed component contract renders both phone and tablet.
   - Notification state is never completion authority; only durable outcomes and receipts complete an action in the UI.
+  - Mobile authoring of ProductSpecs and full workroom authoring flows are deferred; supervision precedes authoring on this surface, per the multiplayer contract's explicit exclusion.
 cut:
   - CUT-MOB-01: Pixel-streaming remote desktop is cut; the phone renders typed projections, not screen mirrors.
   - CUT-MOB-02: General on-phone code editing is cut to bounded review comments and small staged edits; full editing remains a desktop concern.
@@ -90,7 +105,7 @@ cut:
 - id: AC-2
   criterion: When a user approves a tool call, steers a turn, or pushes a change from the phone, the action records a durable outcome with a receipt, and the UI completes only from that outcome, never from a notification alone.
 - id: AC-3
-  criterion: When the device is offline, commands queue in a visible per-environment outbox and replay exactly once on reconnect via idempotent IDs, with admitted and pending states rendered distinctly.
+  criterion: When the device is offline or on intermittent connectivity, commands queue in a visible, editable, cancellable per-environment outbox and resolve to exactly one outcome on reconnect via idempotent IDs, worker epochs, and ordered replay, with admitted and pending states rendered distinctly.
 - id: AC-4
   criterion: When a session is moved from an owner-local host to a managed host and back, exactly one attachment generation is executing at every moment, the checkpoint contains no secrets, and the source host's cleanup is receipted.
 - id: AC-5
@@ -103,6 +118,12 @@ cut:
   criterion: When the fault-injection suite severs the network, revokes a token, or restarts a host mid-action, the app shows honest degraded states (transient gap, unreachable, revoked) and never fabricates success.
 - id: AC-9
   criterion: When the release verification harness runs, screenshot matrices against disposable real servers pass across phone and tablet geometries, and physical-device evidence is recorded separately from simulator evidence.
+- id: AC-10
+  criterion: When the fleet view renders connected accounts and Pylons, capacity appears as quantities (available, busy, queued) backed by decoded fresh receipts; absent or stale evidence renders as unknown, never as ready, and provider exhaustion surfaces as the named provider condition.
+- id: AC-11
+  criterion: When any assistant message is inspected on mobile, its metadata shows the observed effective model, provider, and account for that turn, matching the Desktop projection of the same session.
+- id: AC-12
+  criterion: When a user enrolls a device, changes a visibility mode, revokes a grant, or adjusts policy, the complete flow is achievable through screens and buttons with no terminal command required.
 ```
 
 ## Success Metrics
@@ -137,6 +158,12 @@ cut:
   target_status: provisional
   target_owner: "owner"
   window: within 120 days of portable movement shipping
+- id: SM-6
+  metric: overnight_run_interventions_from_mobile
+  target: "baseline established: share of overnight fleet runs receiving a corrective mobile action (steer, re-dispatch, approval) before morning"
+  target_status: provisional
+  target_owner: "owner"
+  window: within 90 days of fleet supervision shipping
 ```
 
 ## Solution
@@ -144,19 +171,27 @@ cut:
 The phone is the fleet's remote control, not its runtime. One Effect Native
 application model renders phone and tablet; all state arrives as typed
 projections of the same engine protocol Desktop consumes, over Sync and the
-owned relay. The environment directory and pairing come first; portable
-session movement is the substrate that makes "which host" a detail rather
-than an identity; the workbench modes, outbox, and attention inbox make
-supervision complete; receipts make it trustworthy. T3 Code's mobile app is
-the breadth bar; the trust layer is the difference.
+owned relay. The same session refs resolve everywhere: steer, queue, and stop
+from the phone are the same typed intents Desktop dispatches, with durable
+admission and replay making each one land exactly once. The environment
+directory and pairing come first; portable session movement is the substrate
+that makes "which host" a detail rather than an identity; the workbench
+modes, outbox, and attention inbox make supervision complete; receipts make
+it trustworthy; and the overnight-fleet morning review is the journey the
+whole surface is tuned for. T3 Code's mobile app is the breadth bar; the
+trust layer is the difference.
 
 ## Strategic Positioning
 
 Competitors prove demand for mobile supervision (T3's full controller,
 Cursor's remote control, Amp's mobile thread control) but every one couples
-it to a single vendor cloud or an environment-local thread model. Any-host
-control plus portable session identity plus receipts is the position no one
-else can copy without rebuilding their custody model.
+it to a single vendor cloud or an environment-local thread model. The
+founder's stated payoff — "when I've gotten mobile working, it's been
+amazing — controlling this kind of stuff from a mobile app" — depends on the
+one-interface consolidation Desktop provides: because the engine holds all
+accounts and capacity, the phone can be a thin, complete controller over all
+of it. Any-host control plus portable session identity plus receipts is the
+position no one else can copy without rebuilding their custody model.
 
 ## Risks
 
@@ -168,6 +203,9 @@ else can copy without rebuilding their custody model.
   hold under audit.
 - Push-attention latency targets depend on platform notification behavior
   the app does not control; measure honestly before committing targets.
+- Earnings and counter projections must never outrun the promise registry;
+  pays-you copy on a store-distributed app is a public claim with review
+  consequences.
 - Voice adds transcription privacy surface; it stays behind the controller
   core and its own custody review.
 
@@ -180,12 +218,20 @@ else can copy without rebuilding their custody model.
   Changes and Terminal)?
 - Do Live Activities ship at initial GA or after push attention proves
   reliable?
+- When supervision is solid, what is the first authoring affordance worth
+  adding — spec review sign-off, or full conversational spec authoring?
 
 ## Related Artifacts
 
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Controller-parity evidence: `docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md`,
   `docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md`
+- Transcript sources for rev 2: `docs/transcripts/244.md` (mobile-control
+  payoff, one-interface consolidation), `docs/transcripts/246.md` +
+  `docs/transcripts/250.md` (overnight fleet runs, evidence-gated fleet
+  truth), `docs/transcripts/253-notes.md` (supervision-before-authoring),
+  `docs/transcripts/255.md` (remote-control doctrine, exactly-one-outcome,
+  UI-first operations)
 - Sibling surface specs: `specs/desktop/desktop-trust-complete-workbench.product-spec.md`,
   `specs/web/openagents-com-trust-surface.product-spec.md`
 - Portable-session intent: `specs/openagents/portable-coding-sessions.product-spec.md`
@@ -199,17 +245,23 @@ else can copy without rebuilding their custody model.
 - Push-notification entitlement and APNs key management.
 - Sign-off on the lost-device revocation flow before scoped tokens ship
   broadly.
+- Any earnings, payout, or referral-accrual display requires the matching
+  promise-registry state and settlement evidence before it renders as more
+  than a receipted projection.
 
 ## Receipts
 
 Planned receipt kinds this surface renders or triggers: remote-action
 outcome receipts, writeback post-image receipts, session-movement and
 source-cleanup receipts, grant issuance and revocation receipts, outbox
-replay records. This section plans kinds; evidence lives in the receipt
-systems, not in this spec.
+replay records, account-rotation records surfaced from the engine, and
+earnings/counter projections reconcilable to exact rows. This section plans
+kinds; evidence lives in the receipt systems, not in this spec.
 
 ## Promise Links
 
 None yet. Public claims derived from this spec (any-host control, phone
-never executes, exactly-once replay) must land in the promise registry with
-verification gates before they appear in copy.
+never executes, exactly-once replay, earnings displays) must land in the
+promise registry with verification gates before they appear in copy; the
+pays-you economics remain `planned`-state promises until settlement evidence
+exists.
