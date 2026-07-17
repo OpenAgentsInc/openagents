@@ -2149,6 +2149,72 @@ Day 1 completion remain later packets.
 - released_at: `2026-07-17T21:01:36Z`
 - residual: client publication retry/reconciliation, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-28 — Desktop public-share idempotent retry transport
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-27. The server
+now owns a reviewed authenticated `Idempotency-Key` reconciliation contract,
+while the existing Desktop public-visibility transport still sends only one
+attempt and reports every ambiguous delivery as unknown. Active work continues
+to own Desktop `main.ts` and renderer surfaces; named-group authority and
+canonical-export evidence remain unavailable. This packet therefore wires one
+bounded idempotent retry only into the already-authorized public-share adapter.
+Workspace-members retry remains a separate later packet.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-publication-transport.ts`
+- `apps/openagents-desktop/src/thread-visibility-publication-transport.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-28-desktop-public-share-idempotent-retry-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the exact applied public-visibility receipt, FF-D1-23 owner
+authorization, FF-D1-27 authenticated owner-scoped `Idempotency-Key`, same-key
+semantic replay, `201` first creation, `200` replay, bounded response decoding,
+credential custody, and ref-only request/response privacy. Server routes,
+schemas, migrations, workspace/named-group adapters, `main.ts`, preload,
+renderer, provider, and Sync contracts remain unchanged.
+
+Required behavior:
+
+- derive one bounded visible-ASCII publication key from the exact disclosure
+  receipt identity without exposing raw content, credentials, paths, or
+  provider data;
+- validate the complete request before reading the host-custodied token, then
+  send at most two identical authenticated ref-only create requests carrying
+  the same key and body;
+- retry exactly once only for transport failure, retryable/ambiguous HTTP
+  status, unreadable body, or malformed/unsafe success evidence;
+- accept only `201` with `Idempotency-Replayed: false` or `200` with
+  `Idempotency-Replayed: true`, plus the existing bounded active same-origin
+  share response; and
+- never retry definitive authentication, authorization, malformed-request, or
+  idempotency-conflict refusal, and keep exhausted ambiguity typed unknown.
+
+Proof: focused public-publication, disclosure, authorization, and FF-D1-27
+server-contract tests; Desktop typecheck; Fast Follow, behavior-contract,
+ProductSpec, Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only bounded public-share client retry and
+reconciliation. Workspace-members retry, named-group authority/publication,
+canonical-export evidence authority, actual `main.ts` composition, renderer
+command/pixels, installed/runtime-rendered evidence, and Day 1 completion
+remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-28-20260717`
+- base: `20f352f33213e4aa9c908f468391787cca496c74`
+- worktree/branch: `openagents-ff-d1-28` / detached `origin/main`
+- scope: one bounded same-key retry and exact replay acceptance for Desktop public visibility publication
+- paths: the FF-D1-28 owned implementation paths above
+- hot files: existing public-publication transport/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact receipt-derived key, at-most-two identical attempts, FF-D1-27 201/200 replay distinction, definitive refusal, exhausted unknown, and unchanged credential/content boundary
+- dependencies: FF-D1-27 released; no relevant open bug issue or competing claim; all audited worktrees leave these two Desktop transport paths unmodified; active Desktop host/UI, teardown, T3, and Full Auto files explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T21:15:00Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
