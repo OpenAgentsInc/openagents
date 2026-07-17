@@ -3,12 +3,13 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_20.desktop_thread_visibility_preload.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "implementation_ready_for_claim_release"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "3d2797a54fadfba9e783e997bee79d0a51d197b9"
 claim_revision: "10878526eb95201820e0ceae88a85351d92cd18c"
+implementation_revision: "d4f4fff6fe54ab6d1fc9b38aad899c7229d0ae3f"
 proof_rung: "sandboxed_thread_visibility_apply_boundary"
 observed_at: "2026-07-17T18:17:30Z"
 ---
@@ -24,6 +25,10 @@ receipts and releases, Fast Follow revision 3, the accepted plan, relevant
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed unchanged on `origin/main` at
+`d4f4fff6fe54ab6d1fc9b38aad899c7229d0ae3f`. This documentation-only release
+annotation records that remote fact; it does not extend the implemented scope.
 
 No open issue, worktree, or claim owns the new visibility bridge paths or
 `preload.cts`. Active work continues to own Desktop `main.ts` and broad renderer
