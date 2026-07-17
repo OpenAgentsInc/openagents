@@ -2406,6 +2406,70 @@ remain later packets.
 - released_at: `2026-07-17T21:54:17Z`
 - residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-31 — Desktop confirmed-timeline export-command composition
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-30. The
+target-owned confirmed-timeline adapter and canonical export command exist but
+remain uncomposed, while authoritative supersession/reversion and named-group
+membership are unavailable and active work owns Desktop `main.ts`, renderer,
+and installed-runtime surfaces. This packet therefore adds one new-file-only
+Effect composition that binds the confirmed evidence reader to the existing
+owner-only export command without touching those active surfaces.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-command.ts`
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-command.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-31-desktop-confirmed-timeline-export-command-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-30's exact settled confirmed-timeline reader, FF-D1-11's
+owner-only canonical export command, the existing evidence-unavailable and
+invalid-evidence outcomes, exact persistence/digest/receipt dependencies, and
+one eventual host call site. Export schemas, persistence, IPC, preload,
+`main.ts`, renderer, provider, named-group, server, and Sync contracts remain
+unchanged.
+
+Required behavior:
+
+- accept the explicit confirmed-timeline snapshot authority plus the existing
+  command persistence, receipt, observation, and digest dependencies, without
+  hidden defaults or new authority;
+- bind `readEvidence` only to the FF-D1-30 reader and preserve its exact
+  fail-closed unavailable result through the existing command outcome;
+- defer the confirmed-timeline lookup until a valid owner-only canonical export
+  intent reaches command execution, and read only the intent's exact thread;
+- preserve existing deterministic compilation, persistence, idempotency,
+  receipt, and rejection behavior without exposing source exceptions, local
+  paths, credentials, provider payloads, or host authority; and
+- return only the existing command surface so a later `main.ts` packet has one
+  bounded composition call rather than reconstructing the evidence seam.
+
+Proof: focused confirmed-timeline command composition, adapter, export command,
+compiler, event-authority, and Sync timeline tests; Desktop typecheck; Fast
+Follow, behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and
+repository-required checks.
+
+Close rule: this packet closes only confirmed-timeline-to-command composition.
+Authoritative supersession/reversion evidence, named-group authority/publication,
+actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-31-20260717`
+- base: `c478f1449c298716c18993ba0733a48d7a9767d2`
+- worktree/branch: `openagents-ff-d1-31` / detached `origin/main`
+- scope: compose one exact settled confirmed-timeline evidence authority into the existing owner-only canonical export command
+- paths: the FF-D1-31 owned implementation paths above
+- hot files: two new Desktop command-composition/test files; accepted-plan ledger and Sol manifest
+- hot contracts: deferred exact-thread lookup, FF-D1-30 fail-closed evidence, FF-D1-11 command outcomes, unchanged persistence and receipt authority, and no host/UI ownership
+- dependencies: FF-D1-30 released; no relevant open bug issue or competing claim; all audited worktrees leave the new paths unclaimed; active Desktop host/UI, T3, Full Auto, teardown, and release files explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T22:06:37Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
