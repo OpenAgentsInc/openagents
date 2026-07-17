@@ -609,6 +609,49 @@ or weaken an invariant.
     ]
   },
   {
+    "id": "aaif.goose",
+    "title": "Goose",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/aaif-goose/goose",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-17-goose-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "one_engine_many_clients",
+        "kind": "architecture",
+        "summary": "Project CLI, desktop, editor, SDK, terminal, and automation clients from one durable agent engine instead of duplicating runtime authority per surface.",
+        "stance": "adapt"
+      },
+      {
+        "id": "bidirectional_acp_mcp",
+        "kind": "protocol",
+        "summary": "Use ACP in both host and provider directions and MCP as the capability plane while preserving foreign-native identity, events, permission semantics, and losses.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "audience_safe_projection",
+        "kind": "security",
+        "summary": "Preserve audience boundaries through persistence, protocol conversion, search, export, orchestration, and compaction, with executable non-disclosure tests.",
+        "stance": "adapt"
+      },
+      {
+        "id": "workflow_artifacts",
+        "kind": "reliability",
+        "summary": "Make recipes, hooks, schedules, and subagents inspectable engine concepts, then compile them into admitted work, durable leases, fencing, and receipts.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "autonomous_host_authority",
+        "kind": "security",
+        "summary": "Reject autonomous host-user execution, model permission classification, and optional containers as substitutes for deterministic policy and enforced containment.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
