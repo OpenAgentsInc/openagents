@@ -1213,3 +1213,18 @@ those release proofs early.
   contract, and Sol receipt
 - exclusions: environment pairing/health and endpoint provisioning (`T3M-F1`),
   installed iOS/Android/live paired proof (`T3M-F2`), changes/review (`T3M-D2`)
+
+### CLAIM-RELEASE
+
+- landed: `7ef1cfe155bd84db19791ea9768485c8b178c432` on `main`
+- verification: pre-rebase 213 mobile tests, 36 behavior-contract tests,
+  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 26
+  environment/files/Sol tests and mobile typecheck
+- authority note: the verified native session host alone constructs the
+  authenticated client; bearer material stays in headers, redirects and ambient
+  credentials are disabled, and response bytes are bounded before exact D1.1
+  decoding
+- close boundary: `T3M-D1` is complete in application code. Environment
+  registration/pairing/health and installed live endpoint evidence remain
+  explicitly `T3M-F1`/`T3M-F2`; ordered work advances to `T3M-D2`
+- verified_at: `2026-07-17T23:08:02Z`
