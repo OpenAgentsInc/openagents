@@ -728,3 +728,15 @@ dependency; active-run queue/stop remains `T3M-B2.3`.
   transport honestly; connecting a real paired environment provider remains a
   `T3M-D1`/`T3M-F1` release dependency; queue/stop remains `T3M-B2.3`
 - verified_at: `2026-07-17T22:04:49Z`
+
+### CLAIM-RELEASE
+
+- landed: `31f2aa4683055c9e75ac911a53a070e4fecf44c3` on `main`
+- verification: post-rebase 106 repository-path, slash discovery, composer
+  toolbar/attachments, authoritative Home, accessibility, local-first registry,
+  RN renderer, behavior-contract, and Sol tests; mobile typecheck; pre-rebase
+  `pnpm run check`
+- residual: `T3M-B2.2b` query/presentation/admission is complete; the real paired
+  environment provider remains a `T3M-D1`/`T3M-F1` dependency; active-run
+  queue/stop presentation is next in `T3M-B2.3`; full mobile parity remains open
+  through `T3M-F2`
