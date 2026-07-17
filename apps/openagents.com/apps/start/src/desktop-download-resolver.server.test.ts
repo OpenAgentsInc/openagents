@@ -10,8 +10,13 @@
  * Everything runs against an in-process FIXTURE Ed25519 keypair and the
  * checked-in ReleaseSet v2 fixture from the desktop contract suite. The
  * production private key is never read, loaded, or printed.
+ *
+ * The feed harness below reproduces the REAL, now-landed `apps/oa-updates`
+ * ReleaseSet v2 feed shape (`apps/oa-updates/src/release-set-feed.ts`):
+ * a mutable pointer naming an immutable candidate by SHA-256 generation, with
+ * the candidate responses carrying `x-openagents-release-generation`.
  */
-import { generateKeyPairSync } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -31,11 +36,9 @@ import {
   detectDesktopClient,
   emitDesktopDownloadTelemetry,
   referrerCategory,
-  releaseSetPayloadPath,
-  releaseSetSignaturePath,
-  v1ManifestPath,
-  v1PointerPath,
-  v1SignaturePath,
+  releaseSetCandidatePayloadPath,
+  releaseSetCandidateSignaturePath,
+  releaseSetPointerPath,
   type DesktopDownloadTelemetryEvent,
 } from './desktop-download-resolver.server'
 
@@ -76,52 +79,73 @@ const sign = (raw: string, key: ReleaseSigningKey = signingKey) => {
   return { payload: payloadBytes, signature: JSON.stringify(envelope) }
 }
 
-// --- fixture v1 manifest (bounded migration path) ---------------------------
+const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
 
-const v1Manifest = {
-  schema: 'openagents.desktop.update_manifest.v1',
-  app: 'openagents-desktop',
-  channel: 'rc',
-  version: '0.1.0-rc.13',
-  artifactName: 'OpenAgents-0.1.0-rc.13-arm64.dmg',
-  artifactSha256: 'e1'.repeat(32),
-  artifactByteLength: 303959067,
-  releasedAt: '2026-07-14T21:05:24.119Z',
-  notesRef: 'release.notes.0.1.0-rc.13',
-} as const
-const v1Bytes = new TextEncoder().encode(JSON.stringify(v1Manifest))
-const v1Envelope = JSON.stringify(signReleasePayload(v1Bytes, signingKey).envelope)
-const v1ArtifactUrl =
-  'https://storage.googleapis.com/fixture-updates/desktop/OpenAgents-0.1.0-rc.13-arm64.dmg'
-const v1Pointer = JSON.stringify({
-  channel: 'rc',
-  version: '0.1.0-rc.13',
-  artifactName: 'OpenAgents-0.1.0-rc.13-arm64.dmg',
-  artifactUrl: v1ArtifactUrl,
-})
+// --- harness: real pointer + immutable-candidate feed shape ------------------
 
-// --- harness -----------------------------------------------------------------
-
-type FeedFile = string | Uint8Array
+type FeedFile = string | Uint8Array | { body: string | Uint8Array; headers: Record<string, string> }
+type Channel = 'stable' | 'rc'
 const BASE = 'https://updates.fixture.test'
 
+/**
+ * `makeFetch` auto-derives `x-openagents-release-generation` from the
+ * `candidates/<generation>/` path segment (exactly what the real feed does),
+ * so ordinary tests never have to set it by hand. A test may override the
+ * served body/headers explicitly (an object entry) to simulate a mismatched
+ * or malicious origin.
+ */
 const makeFetch = (files: Map<string, FeedFile>): typeof fetch =>
   ((input: RequestInfo | URL) => {
     const pathname = new URL(String(input)).pathname
-    const body = files.get(pathname)
-    return Promise.resolve(
-      body === undefined
-        ? new Response('not found', { status: 404 })
-        : new Response(body as BodyInit, { status: 200 }),
-    )
+    const entry = files.get(pathname)
+    if (entry === undefined) return Promise.resolve(new Response('not found', { status: 404 }))
+    const isOverride =
+      typeof entry === 'object' && !(entry instanceof Uint8Array) && 'body' in entry
+    const body = isOverride ? (entry as { body: string | Uint8Array }).body : entry
+    const candidateMatch = pathname.match(/\/candidates\/([0-9a-f]{64})\//)
+    const autoHeaders: Record<string, string> =
+      candidateMatch !== null ? { 'x-openagents-release-generation': candidateMatch[1]! } : {}
+    const headers = isOverride
+      ? { ...autoHeaders, ...(entry as { headers: Record<string, string> }).headers }
+      : autoHeaders
+    return Promise.resolve(new Response(body as BodyInit, { status: 200, headers }))
   }) as typeof fetch
 
+/** Publish one signed candidate + its pointer into the feed file map. */
+const publishCandidate = (
+  files: Map<string, FeedFile>,
+  channel: Channel,
+  raw: string,
+  options?: Readonly<{
+    key?: ReleaseSigningKey
+    revision?: number
+    previousGeneration?: string | null
+    publishedAt?: string
+  }>,
+): Readonly<{ generation: string; payload: Uint8Array; signature: string }> => {
+  const { payload, signature } = sign(raw, options?.key)
+  const signatureBytes = new TextEncoder().encode(signature)
+  const generation = sha256Hex(payload)
+  const pointer = {
+    schema: 'openagents.desktop.release_pointer.v2',
+    channel,
+    revision: options?.revision ?? 1,
+    generation,
+    previousGeneration: options?.previousGeneration ?? null,
+    payloadSha256: generation,
+    signatureSha256: sha256Hex(signatureBytes),
+    publishedAt: options?.publishedAt ?? '2026-07-16T11:00:00.000Z',
+  }
+  files.set(releaseSetPointerPath(channel), JSON.stringify(pointer))
+  files.set(releaseSetCandidatePayloadPath(channel, generation), payload)
+  files.set(releaseSetCandidateSignaturePath(channel, generation), signature)
+  return { generation, payload, signature }
+}
+
 const rcFeed = (raw: string = fixtureRaw): Map<string, FeedFile> => {
-  const { payload, signature } = sign(raw)
-  return new Map<string, FeedFile>([
-    [releaseSetPayloadPath('rc'), payload],
-    [releaseSetSignaturePath('rc'), signature],
-  ])
+  const files = new Map<string, FeedFile>()
+  publishCandidate(files, 'rc', raw, { revision: 1 })
+  return files
 }
 
 const NOW = Date.parse('2026-07-16T12:00:00.000Z')
@@ -372,17 +396,98 @@ describe('fail-closed verification', () => {
   })
 
   test('a signature from a different key under the pinned kid is rejected', async () => {
-    const { payload } = sign(fixtureRaw)
-    const forged = sign(fixtureRaw, otherKey)
-    const files = new Map<string, FeedFile>([
-      [releaseSetPayloadPath('rc'), payload],
-      [releaseSetSignaturePath('rc'), forged.signature],
-    ])
+    const files = new Map<string, FeedFile>()
+    publishCandidate(files, 'rc', fixtureRaw, { key: otherKey })
     const { body } = await resolveJson(makeResolver({ files }))
     expect(body.availability).toBe('unavailable')
     expect(body.reason).toBe('release_set_verification_failed')
   })
 
+  test('a stable set served on the rc channel pointer is a channel mismatch', async () => {
+    const files = new Map<string, FeedFile>()
+    publishCandidate(files, 'rc', stableRaw)
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('release_set_verification_failed')
+  })
+
+  test('unparseable signature JSON is feed_schema_invalid', async () => {
+    // The pointer's signatureSha256 must match the ACTUALLY served signature
+    // bytes ('not json') or the SHA-256 binding check would reject it first
+    // (as `release_candidate_mismatch`) before the JSON parser ever runs.
+    const { payload } = sign(fixtureRaw)
+    const generation = sha256Hex(payload)
+    const unparseableSignature = 'not json'
+    const files = new Map<string, FeedFile>([
+      [
+        releaseSetPointerPath('rc'),
+        JSON.stringify({
+          schema: 'openagents.desktop.release_pointer.v2',
+          channel: 'rc',
+          revision: 1,
+          generation,
+          previousGeneration: null,
+          payloadSha256: generation,
+          signatureSha256: sha256Hex(new TextEncoder().encode(unparseableSignature)),
+          publishedAt: '2026-07-16T11:00:00.000Z',
+        }),
+      ],
+      [releaseSetCandidatePayloadPath('rc', generation), payload],
+      [releaseSetCandidateSignaturePath('rc', generation), unparseableSignature],
+    ])
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('feed_schema_invalid')
+  })
+
+  test('a malformed pointer (missing field) is rejected before any candidate fetch', async () => {
+    const files = new Map<string, FeedFile>()
+    publishCandidate(files, 'rc', fixtureRaw)
+    files.set(
+      releaseSetPointerPath('rc'),
+      JSON.stringify({ schema: 'openagents.desktop.release_pointer.v2', channel: 'rc' }),
+    )
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('release_pointer_invalid')
+  })
+
+  test('a pointer naming a candidate that was never published is feed_unreachable', async () => {
+    const files = new Map<string, FeedFile>()
+    const { payload, signature } = sign(fixtureRaw)
+    const generation = sha256Hex(payload)
+    files.set(
+      releaseSetPointerPath('rc'),
+      JSON.stringify({
+        schema: 'openagents.desktop.release_pointer.v2',
+        channel: 'rc',
+        revision: 1,
+        generation,
+        previousGeneration: null,
+        payloadSha256: generation,
+        signatureSha256: sha256Hex(new TextEncoder().encode(signature)),
+        publishedAt: '2026-07-16T11:00:00.000Z',
+      }),
+    )
+    // The candidate objects are never written to `files`.
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('feed_unreachable')
+  })
+})
+
+// --- the required mutation test: tampered content cannot pass verification ---
+
+describe('mutation test: tampered artifacts cannot pass verification', () => {
+  // The attacker in this scenario controls BOTH the unsigned pointer AND the
+  // storage layer (a compromised bucket, a cache-poisoning MITM) — everything
+  // except the Ed25519 private key. They rewrite the payload's URL, hash, or
+  // target, then relabel the unsigned pointer's generation/payloadSha256 to
+  // match their own tampered bytes exactly (trivial, since nothing signs the
+  // pointer itself) and reuse the ORIGINAL valid signature bytes/hash. If the
+  // resolver only checked the SHA-256 pointer<->candidate binding, this would
+  // pass. It must still be rejected by Ed25519 verification of the (now
+  // mismatched) payload against the original signature.
   const mutations: ReadonlyArray<[string, string, string]> = [
     ['url', 'OpenAgents-2.4.0-rc.3-rc-darwin-arm64.dmg', 'OpenAgents-2.4.0-rc.3-rc-darwin-arm64-evil.dmg'],
     ['hash', '4b672044ba1e15584f48e3b7716454dc3c08f8badb1c7d05912e9db607dfbdca', 'f'.repeat(64)],
@@ -390,49 +495,190 @@ describe('fail-closed verification', () => {
     ['target', '"target":"darwin-arm64"', '"target":"darwin-x64"'],
   ]
   for (const [field, needle, replacement] of mutations) {
-    test(`mutation test: a changed ${field} cannot pass verification`, async () => {
+    test(`a changed ${field} cannot pass verification even with a self-consistent pointer`, async () => {
       const { payload, signature } = sign(fixtureRaw)
-      const mutated = new TextEncoder().encode(
+      const mutatedPayload = new TextEncoder().encode(
         new TextDecoder().decode(payload).replace(needle, replacement),
       )
-      expect(mutated).not.toEqual(payload)
+      expect(mutatedPayload).not.toEqual(payload)
+      const signatureBytes = new TextEncoder().encode(signature)
+      const mutatedGeneration = sha256Hex(mutatedPayload)
+
       const files = new Map<string, FeedFile>([
-        [releaseSetPayloadPath('rc'), mutated],
-        [releaseSetSignaturePath('rc'), signature],
+        [
+          releaseSetPointerPath('rc'),
+          JSON.stringify({
+            schema: 'openagents.desktop.release_pointer.v2',
+            channel: 'rc',
+            revision: 1,
+            generation: mutatedGeneration,
+            previousGeneration: null,
+            // Self-consistent: the attacker-controlled pointer matches the
+            // attacker-controlled bytes exactly.
+            payloadSha256: mutatedGeneration,
+            signatureSha256: sha256Hex(signatureBytes),
+            publishedAt: '2026-07-16T11:00:00.000Z',
+          }),
+        ],
+        [releaseSetCandidatePayloadPath('rc', mutatedGeneration), mutatedPayload],
+        [releaseSetCandidateSignaturePath('rc', mutatedGeneration), signature],
       ])
       const { body } = await resolveJson(makeResolver({ files }))
       expect(body.availability).toBe('unavailable')
       expect(body.reason).toBe('release_set_verification_failed')
       expect(JSON.stringify(body)).not.toContain('https://')
+      expect(JSON.stringify(body)).not.toContain('evil')
     })
   }
 
-  test('a stable set served on the rc channel pointer is a channel mismatch', async () => {
-    const { payload, signature } = sign(stableRaw)
+  test('a candidate served at the wrong generation path (header mismatch) is rejected', async () => {
+    // Two DIFFERENT valid, independently signed candidates. The pointer names
+    // generation A, but the origin (compromised CDN cache/object swap) serves
+    // candidate B's bytes at that path, with B's own generation header.
+    const a = sign(fixtureRaw)
+    const b = sign(rcNextRaw)
+    const genA = sha256Hex(a.payload)
+    const genB = sha256Hex(b.payload)
     const files = new Map<string, FeedFile>([
-      [releaseSetPayloadPath('rc'), payload],
-      [releaseSetSignaturePath('rc'), signature],
+      [
+        releaseSetPointerPath('rc'),
+        JSON.stringify({
+          schema: 'openagents.desktop.release_pointer.v2',
+          channel: 'rc',
+          revision: 1,
+          generation: genA,
+          previousGeneration: null,
+          payloadSha256: genA,
+          signatureSha256: sha256Hex(new TextEncoder().encode(a.signature)),
+          publishedAt: '2026-07-16T11:00:00.000Z',
+        }),
+      ],
+      // Served AT the genA path, but it is really candidate B's bytes, with
+      // its own (mismatched) generation header — makeFetch's override form
+      // lets us set that header explicitly.
+      [
+        releaseSetCandidatePayloadPath('rc', genA),
+        { body: b.payload, headers: { 'x-openagents-release-generation': genB } },
+      ],
+      [releaseSetCandidateSignaturePath('rc', genA), a.signature],
     ])
     const { body } = await resolveJson(makeResolver({ files }))
     expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('release_set_verification_failed')
+    expect(body.reason).toBe('release_candidate_mismatch')
   })
 
-  test('unparseable signature JSON is feed_schema_invalid', async () => {
-    const { payload } = sign(fixtureRaw)
+  test('a candidate whose bytes hash does not match the pointer is rejected even with a matching header', async () => {
+    const { payload, signature } = sign(fixtureRaw)
+    const generation = sha256Hex(payload)
+    const tampered = new TextEncoder().encode(
+      new TextDecoder().decode(payload).replace(RC_VERSION, '9.9.9-rc.9'),
+    )
     const files = new Map<string, FeedFile>([
-      [releaseSetPayloadPath('rc'), payload],
-      [releaseSetSignaturePath('rc'), 'not json'],
+      [
+        releaseSetPointerPath('rc'),
+        JSON.stringify({
+          schema: 'openagents.desktop.release_pointer.v2',
+          channel: 'rc',
+          revision: 1,
+          generation,
+          previousGeneration: null,
+          payloadSha256: generation, // pins the ORIGINAL hash
+          signatureSha256: sha256Hex(new TextEncoder().encode(signature)),
+          publishedAt: '2026-07-16T11:00:00.000Z',
+        }),
+      ],
+      // The header still (correctly) claims `generation`, but the actual
+      // bytes served no longer hash to it.
+      [
+        releaseSetCandidatePayloadPath('rc', generation),
+        { body: tampered, headers: { 'x-openagents-release-generation': generation } },
+      ],
+      [releaseSetCandidateSignaturePath('rc', generation), signature],
     ])
     const { body } = await resolveJson(makeResolver({ files }))
     expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('feed_schema_invalid')
+    expect(body.reason).toBe('release_candidate_mismatch')
   })
 })
 
-// --- cache, freshness, pointer changes ---------------------------------------
+// --- replay / rollback protection --------------------------------------------
 
-describe('cache and freshness', () => {
+describe('replay and rollback protection', () => {
+  test('a pointer whose revision goes backward is rejected, not silently served', async () => {
+    let now = NOW
+    const files = rcFeed() // revision 1
+    const resolver = makeResolver({ files, nowMs: () => now })
+    const headers = { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' }
+
+    const first = await resolveJson(resolver, { headers })
+    expect(first.body.version).toBe(RC_VERSION)
+
+    // Promote forward once so the resolver has a revision-2 baseline.
+    const first0 = publishCandidate(files, 'rc', fixtureRaw, { revision: 1 })
+    publishCandidate(files, 'rc', rcNextRaw, {
+      revision: 2,
+      previousGeneration: first0.generation,
+      publishedAt: '2026-07-16T11:05:00.000Z',
+    })
+    now += 61_000
+    const forward = await resolveJson(resolver, { headers })
+    expect(forward.body.version).toBe(RC_NEXT_VERSION)
+
+    // Attacker/stale-cache replays the OLD revision-1 pointer+candidate.
+    publishCandidate(files, 'rc', fixtureRaw, { revision: 1, publishedAt: '2026-07-16T11:00:00.000Z' })
+    now += 61_000
+    const replayed = await resolveJson(resolver, { headers })
+    expect(replayed.body.availability).toBe('unavailable')
+    expect(replayed.body.reason).toBe('release_pointer_replayed')
+    expect(JSON.stringify(replayed.body)).not.toContain('https://')
+  })
+
+  test('a same-revision fork (different content, same revision number) is rejected', async () => {
+    let now = NOW
+    const files = rcFeed() // revision 1, some generation G1
+    const resolver = makeResolver({ files, nowMs: () => now })
+    await resolveJson(resolver) // establishes the TOFU baseline at revision 1
+
+    // A different candidate claiming the SAME revision number (a fork/replay
+    // of a sibling promotion) must not silently replace the trusted one.
+    now += 61_000
+    publishCandidate(files, 'rc', rcNextRaw, { revision: 1, publishedAt: '2026-07-16T11:00:00.000Z' })
+    const { body } = await resolveJson(resolver)
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('release_pointer_replayed')
+  })
+
+  test('a broken previousGeneration chain at revision N+1 is rejected', async () => {
+    let now = NOW
+    const files = rcFeed() // revision 1
+    const resolver = makeResolver({ files, nowMs: () => now })
+    await resolveJson(resolver)
+
+    now += 61_000
+    // Revision 2 claims a previousGeneration that does not match the
+    // resolver's actually-observed revision-1 generation.
+    publishCandidate(files, 'rc', rcNextRaw, {
+      revision: 2,
+      previousGeneration: 'a'.repeat(64),
+      publishedAt: '2026-07-16T11:05:00.000Z',
+    })
+    const { body } = await resolveJson(resolver)
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('release_pointer_replayed')
+  })
+
+  test('a first-ever pointer for a channel is trusted on sight (TOFU) once fully verified', async () => {
+    const { body } = await resolveJson(makeResolver(), {
+      headers: { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' },
+    })
+    expect(body.availability).toBe('available')
+    expect(body.version).toBe(RC_VERSION)
+  })
+})
+
+// --- cache, freshness, pointer changes, concurrency ---------------------------
+
+describe('cache, freshness, and concurrency', () => {
   test('pointer change: after the TTL the new set is served whole — never mixed', async () => {
     let now = NOW
     const files = rcFeed()
@@ -443,15 +689,19 @@ describe('cache and freshness', () => {
     expect(first.body.version).toBe(RC_VERSION)
 
     // Promotion happens: the channel pointer now serves rc.4.
-    const next = sign(rcNextRaw)
-    files.set(releaseSetPayloadPath('rc'), next.payload)
-    files.set(releaseSetSignaturePath('rc'), next.signature)
+    const initial = publishCandidate(files, 'rc', fixtureRaw, { revision: 1 })
 
     // Within the TTL the cached rc.3 snapshot is still served (consistent).
     now += 30_000
     const cached = await resolveJson(resolver, { headers })
     expect(cached.body.version).toBe(RC_VERSION)
     expect(String((cached.body.selected as Record<string, unknown>).url)).toContain(RC_VERSION)
+
+    publishCandidate(files, 'rc', rcNextRaw, {
+      revision: 2,
+      previousGeneration: initial.generation,
+      publishedAt: '2026-07-16T11:05:00.000Z',
+    })
 
     // Past the TTL the resolver revalidates and serves rc.4 atomically.
     now += 31_000
@@ -474,7 +724,7 @@ describe('cache and freshness', () => {
 
     expect((await resolveJson(resolver, { headers })).body.availability).toBe('available')
 
-    files.clear() // feed goes down (and no v1 either)
+    files.clear() // feed goes down
     now += 61_000
     const { body } = await resolveJson(resolver, { headers })
     expect(body.availability).toBe('unavailable')
@@ -483,9 +733,7 @@ describe('cache and freshness', () => {
 
   test('channels are cached separately and never cross-serve', async () => {
     const files = rcFeed()
-    const stable = sign(stableRaw)
-    files.set(releaseSetPayloadPath('stable'), stable.payload)
-    files.set(releaseSetSignaturePath('stable'), stable.signature)
+    publishCandidate(files, 'stable', stableRaw, { revision: 1 })
     const resolver = makeResolver({ files })
     const headers = { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' }
 
@@ -503,90 +751,124 @@ describe('cache and freshness', () => {
     expect(rcAgain.body.version).toBe(RC_VERSION)
     expect(String((rcAgain.body.selected as Record<string, unknown>).url)).toContain('-rc-')
   })
+
+  test('concurrent revalidations singleflight — 8 callers share exactly one fetch chain', async () => {
+    const files = rcFeed()
+    let totalCalls = 0
+    let inFlightFetches = 0
+    let maxConcurrent = 0
+    const baseFetch = makeFetch(files)
+    const trackedFetch: typeof fetch = (async (...args: Parameters<typeof fetch>) => {
+      totalCalls += 1
+      inFlightFetches += 1
+      maxConcurrent = Math.max(maxConcurrent, inFlightFetches)
+      try {
+        return await baseFetch(...args)
+      } finally {
+        inFlightFetches -= 1
+      }
+    }) as typeof fetch
+
+    const resolver = createDesktopDownloadResolver({
+      config: { baseUrl: BASE, defaultChannel: 'rc', pin, cacheTtlMs: 60_000 },
+      fetchFn: trackedFetch,
+      nowMs: () => NOW,
+    })
+    const headers = { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' }
+
+    // Fire 8 concurrent cold requests for the same channel; they must all
+    // resolve to the SAME verified snapshot from ONE underlying fetch chain
+    // (singleflight), never a torn mix and never 8 independent races.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => resolveJson(resolver, { headers })),
+    )
+    for (const { body } of results) {
+      expect(body.availability).toBe('available')
+      expect(body.version).toBe(RC_VERSION)
+    }
+    // Exactly one pointer + one payload + one signature fetch for all 8
+    // concurrent callers — proof of singleflight, not just bounded
+    // concurrency.
+    expect(totalCalls).toBe(3)
+    expect(maxConcurrent).toBeLessThanOrEqual(2)
+  })
 })
 
-// --- bounded v1 migration path ------------------------------------------------
+// --- bounded body / stream error handling -------------------------------------
 
-describe('bounded v1 darwin-arm64 migration (release-set feed not yet published)', () => {
-  const v1Files = (): Map<string, FeedFile> =>
-    new Map<string, FeedFile>([
-      [v1ManifestPath('rc'), v1Bytes],
-      [v1SignaturePath('rc'), v1Envelope],
-      [v1PointerPath('rc'), v1Pointer],
-    ])
-
-  test('serves the signed v1 manifest truth for darwin-arm64', async () => {
-    const { body } = await resolveJson(makeResolver({ files: v1Files() }), {
-      headers: { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' },
-    })
-    expect(body.availability).toBe('available')
-    expect(body.source).toBe('v1_darwin_arm64_migration')
-    expect(body.version).toBe('0.1.0-rc.13')
-    const selected = body.selected as Record<string, unknown>
-    expect(selected.target).toBe('darwin-arm64')
-    expect(selected.format).toBe('dmg')
-    expect(selected.url).toBe(v1ArtifactUrl)
-    expect(selected.sha256).toBe(v1Manifest.artifactSha256)
-    expect(selected.byteLength).toBe(v1Manifest.artifactByteLength)
-    expect(body.alternatives).toEqual([])
+describe('bounded body and stream error handling', () => {
+  test('an oversized pointer body is rejected without buffering it whole', async () => {
+    const files = rcFeed()
+    files.set(releaseSetPointerPath('rc'), 'x'.repeat(64 * 1024))
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('feed_schema_invalid')
   })
 
-  test('a target the v1 set does not carry is honestly unavailable-to-choose', async () => {
-    const { body } = await resolveJson(makeResolver({ files: v1Files() }), {
-      headers: { 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' },
+  test('a declared content-length larger than the cap is rejected before reading the body', async () => {
+    const files = new Map<string, FeedFile>()
+    publishCandidate(files, 'rc', fixtureRaw)
+    files.set(releaseSetPointerPath('rc'), {
+      body: JSON.stringify({ schema: 'openagents.desktop.release_pointer.v2' }),
+      headers: { 'content-length': String(64 * 1024 * 1024) },
     })
-    expect(body.availability).toBe('choose_manually')
-    expect(body.reason).toBe('target_unavailable')
-    expect(body.options as Array<unknown>).toHaveLength(1)
+    const { body } = await resolveJson(makeResolver({ files }))
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('feed_schema_invalid')
   })
 
-  test('an unsigned pointer whose artifact name mismatches the signed manifest is rejected', async () => {
-    const files = v1Files()
+  test('a streaming body read failure fails closed, never throws through the route', async () => {
+    const files = rcFeed()
+    const baseFetch = makeFetch(files)
+    const failingFetch: typeof fetch = (async (input: RequestInfo | URL) => {
+      const pathname = new URL(String(input)).pathname
+      if (pathname === releaseSetPointerPath('rc')) {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('simulated network failure mid-stream'))
+            },
+          }),
+          { status: 200 },
+        )
+      }
+      return baseFetch(input)
+    }) as typeof fetch
+    const resolver = createDesktopDownloadResolver({
+      config: { baseUrl: BASE, defaultChannel: 'rc', pin, cacheTtlMs: 60_000 },
+      fetchFn: failingFetch,
+      nowMs: () => NOW,
+    })
+    const { body } = await resolveJson(resolver)
+    expect(body.availability).toBe('unavailable')
+    expect(body.reason).toBe('feed_schema_invalid')
+  })
+
+  test('an oversized candidate payload is rejected', async () => {
+    const files = new Map<string, FeedFile>()
+    const { signature } = sign(fixtureRaw)
+    const oversized = new TextEncoder().encode(
+      JSON.stringify({ padding: 'x'.repeat(600 * 1024) }),
+    )
+    const generation = sha256Hex(oversized)
     files.set(
-      v1PointerPath('rc'),
+      releaseSetPointerPath('rc'),
       JSON.stringify({
+        schema: 'openagents.desktop.release_pointer.v2',
         channel: 'rc',
-        version: '0.1.0-rc.13',
-        artifactName: 'OpenAgents-0.1.0-rc.13-arm64.dmg',
-        artifactUrl: 'https://storage.googleapis.com/fixture-updates/desktop/EvilPayload.dmg',
+        revision: 1,
+        generation,
+        previousGeneration: null,
+        payloadSha256: generation,
+        signatureSha256: sha256Hex(new TextEncoder().encode(signature)),
+        publishedAt: '2026-07-16T11:00:00.000Z',
       }),
     )
+    files.set(releaseSetCandidatePayloadPath('rc', generation), oversized)
+    files.set(releaseSetCandidateSignaturePath('rc', generation), signature)
     const { body } = await resolveJson(makeResolver({ files }))
     expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('v1_pointer_mismatch')
-    expect(JSON.stringify(body)).not.toContain('EvilPayload')
-  })
-
-  test('a tampered v1 manifest fails verification', async () => {
-    const files = v1Files()
-    files.set(
-      v1ManifestPath('rc'),
-      new TextEncoder().encode(JSON.stringify({ ...v1Manifest, version: '9.9.9-rc.1' })),
-    )
-    const { body } = await resolveJson(makeResolver({ files }))
-    expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('v1_manifest_verification_failed')
-  })
-
-  test('past the migration window the v1 path is closed, not revived', async () => {
-    const { body } = await resolveJson(
-      makeResolver({ files: v1Files(), nowMs: () => Date.parse('2026-10-15T00:00:01Z') }),
-    )
-    expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('v1_selection_rejected')
-  })
-
-  test('a broken v2 feed never downgrades to v1 (fallback is 404-only)', async () => {
-    const files = v1Files()
-    const { payload, signature } = sign(fixtureRaw)
-    const mutated = new TextEncoder().encode(
-      new TextDecoder().decode(payload).replace(RC_VERSION, '9.9.9-rc.9'),
-    )
-    files.set(releaseSetPayloadPath('rc'), mutated)
-    files.set(releaseSetSignaturePath('rc'), signature)
-    const { body } = await resolveJson(makeResolver({ files }))
-    expect(body.availability).toBe('unavailable')
-    expect(body.reason).toBe('release_set_verification_failed')
+    expect(body.reason).toBe('feed_schema_invalid')
   })
 })
 

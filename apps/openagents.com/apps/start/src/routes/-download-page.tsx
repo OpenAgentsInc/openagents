@@ -353,9 +353,11 @@ function ReleaseNotes({
 }: {
   resolution: Extract<DesktopDownloadResolution, { version: string }>
 }) {
-  // The bounded v1 migration feed carries an internal notes ref, not human
-  // release-notes text — never expose raw internal feed details on the page.
-  if (resolution.releaseNotes === null || resolution.source !== 'release_set_v2') return null
+  // The bounded v1 migration feed (which carried an internal notes ref, not
+  // human release-notes text) is retired — the resolver contract now only
+  // ever reports `release_set_v2` (#8923) — so the only remaining gate is
+  // whether the promoted release set carries notes at all.
+  if (resolution.releaseNotes === null) return null
   return (
     <section aria-labelledby="oa-download-notes-title" className="oa-download-section">
       <h2 id="oa-download-notes-title">What’s new in {resolution.version}</h2>

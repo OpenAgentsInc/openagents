@@ -4,8 +4,8 @@
  * The page renders exclusively from `openagents.desktop.download_resolution.v1`
  * projections (DIST-10 #8923). Fixtures below are hand-built typed
  * resolutions covering: every target/format projection, unknown detection,
- * explicit override, unavailable feeds, partial rollout (the live v1
- * darwin-arm64 migration shape), version changes, and the telemetry seam
+ * explicit override, unavailable feeds, partial rollout (a promoted release
+ * set carrying only one target), version changes, and the telemetry seam
  * (every CTA goes through the artifact redirect that emits the validated
  * `artifact_redirect` event — never a raw artifact URL).
  */
@@ -113,11 +113,12 @@ const overrideAvailable: DesktopDownloadResolution = {
   alternatives: fullCatalog.filter(a => !(a.target === 'darwin-x64' && a.format === 'dmg')),
 }
 
-// The live partial-rollout shape today: the bounded v1 darwin-arm64 migration
-// feed carries exactly one artifact.
+// A partial-rollout shape: a promoted v2 release set that currently carries
+// exactly one target (the resolver contract only ever reports one source now
+// that the bounded v1 darwin-arm64 migration path has been retired — #8923).
 const partialV1: DesktopDownloadResolution = {
   schema: 'openagents.desktop.download_resolution.v1',
-  source: 'v1_darwin_arm64_migration',
+  source: 'release_set_v2',
   channel: 'rc',
   version: V1_VERSION,
   releasedAt: '2026-07-14T21:05:24.119Z',
@@ -139,7 +140,7 @@ const chooseUnknown: DesktopDownloadResolution = {
 
 const chooseWindowsUnavailable: DesktopDownloadResolution = {
   schema: 'openagents.desktop.download_resolution.v1',
-  source: 'v1_darwin_arm64_migration',
+  source: 'release_set_v2',
   channel: 'rc',
   version: V1_VERSION,
   releasedAt: '2026-07-14T21:05:24.119Z',
@@ -224,7 +225,7 @@ describe('/download page — resolver-driven states', () => {
     }
   })
 
-  test('partial rollout (live v1 darwin-arm64 feed) claims exactly one target', () => {
+  test('partial rollout (a release set promoting only one target) claims exactly one target', () => {
     const html = render(ok(partialV1))
 
     expect(html).toContain(`Version ${V1_VERSION}`)
@@ -240,10 +241,11 @@ describe('/download page — resolver-driven states', () => {
     expect(html).toContain('The Intel build is not yet available.')
     expect(html).toContain('Windows builds are not yet available.')
     expect(html).toContain('Linux builds are not yet available.')
-    // The v1 migration feed carries an internal notes ref, not human notes —
-    // raw internal feed details never render.
-    expect(html).not.toContain('release.notes.')
-    expect(html).not.toContain('What’s new')
+    // Any non-null `releaseNotes` on the (only) `release_set_v2` source
+    // renders as-is — the resolver contract is the trust boundary for its
+    // content, not this page.
+    expect(html).toContain('release.notes.')
+    expect(html).toContain('What’s new')
   })
 
   test('unknown client renders the explicit chooser, not a guessed download', () => {

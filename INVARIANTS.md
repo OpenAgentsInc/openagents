@@ -589,12 +589,27 @@ More specific invariant ledgers apply inside imported apps and packages.
   target-resolution/download receipts are the release boundary. The server-side
   resolver enforcing this (DIST-10, #8923) is
   `apps/openagents.com/apps/start/src/desktop-download-resolver.server.ts`
-  (`/api/public/desktop-download` + `/artifact` redirect): pinned Ed25519
-  verification via the landed ReleaseSet v2 / bounded v1 seams, fail-closed
-  unavailable projections with no URL, per-channel TTL cache that never serves
-  an expired snapshot, and schema-validated public-safe download telemetry —
-  covered by `desktop-download-resolver.server.test.ts` including URL/hash/
-  target mutation proofs. The public `/download` page consuming it (DIST-11,
+  (`/api/public/desktop-download` + `/artifact` redirect), integrated against
+  the real, now-landed ReleaseSet v2 feed (DIST-09, #8922,
+  `apps/oa-updates/src/release-set-feed.ts`): the resolver fetches the
+  channel's mutable pointer, then fetches ONLY the immutable candidate it
+  names by generation (never a "current" alias directly), binds the
+  candidate's `x-openagents-release-generation` header and the SHA-256 of its
+  actual bytes to the pointer's declared generation/hashes, and only then
+  verifies the Ed25519 signature — the signature, not the pointer's own
+  unsigned hash labels, is the actual root of trust. Each resolver instance
+  also rejects any new pointer whose revision/publishedAt moves backward,
+  forks at the same revision, or breaks the observed `previousGeneration`
+  chain (anti-replay/rollback), singleflights concurrent revalidation per
+  channel so a slower stale fetch can never clobber a fresher one, and reads
+  every response through a capped streaming reader that fails closed on
+  overflow or stream error rather than buffering an unbounded body. The
+  bounded v1 darwin-arm64 migration path (used only while #8922 did not yet
+  exist) has been retired now that the real v2 authority is live: it fails
+  closed to an unavailable projection with no URL, per-channel TTL cache
+  that never serves an expired snapshot, and schema-validated public-safe
+  download telemetry — covered by `desktop-download-resolver.server.test.ts`
+  including URL/hash/target mutation proofs. The public `/download` page consuming it (DIST-11,
   #8924) renders exclusively from that resolver projection via an SSR route
   loader (`routes/download.tsx` + `routes/-download-page.tsx`): a platform
   renders as available exactly when the promoted release set carries its

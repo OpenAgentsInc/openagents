@@ -87,12 +87,12 @@ Desktop packaging now requires an explicit build target and a real isolated stag
 
 - issues: #8923 (epic #8913)
 - commits: (integration commit on main)
-- contracts-specs: openagents.desktop.download_resolution.v1 + download_telemetry.v1; GET /api/public/desktop-download (+/artifact 302); DIST-09 feed-path assumptions documented in desktop-download-resolver.server.ts
-- invariants: /download INVARIANTS entry annotated; unavailable responses carry no URL; broken v2 never downgrades to v1
-- evidence: 57 resolver tests + seam 7 + start suite 305 green; live smoke resolved signed 0.1.0-rc.13 and 302'd to an HTTP-200 artifact
-- lane: fable-dist10-resolver-20260716
+- contracts-specs: openagents.desktop.download_resolution.v1 + download_telemetry.v1; GET /api/public/desktop-download (+/artifact 302); integrated against the REAL now-landed ReleaseSet v2 feed routes in `apps/oa-updates/src/release-set-feed.ts` (pointer + immutable candidate paths), not the earlier assumed shape
+- invariants: /download INVARIANTS entry annotated; unavailable responses carry no URL; the bounded v1 darwin-arm64 migration path is retired now that the real v2 authority is live (no downgrade surface remains); candidate content is bound to the pointer by generation header + SHA-256 before Ed25519 verification; pointer revision/publishedAt/previousGeneration chain is monotonically enforced per resolver instance (anti-replay/rollback); concurrent revalidation is singleflighted per channel; response bodies are read through a capped streaming reader that fails closed on overflow or stream error
+- evidence: start suite 333 tests green (up from 305 pre-repair) including the required URL/hash/target mutation test (a tampered artifact with a self-consistent forged pointer still fails Ed25519 verification), pointer/candidate generation-mismatch tests, replay/rollback rejection tests, a singleflight concurrency proof (8 concurrent cold requests -> exactly 3 underlying fetch calls), and bounded-body/stream-error tests; `pnpm run check` and `pnpm run check:fast` both green
+- lane: fable-dist10-resolver-20260716 (initial landing, reopened after independent audit found 5 P0/P1 blockers) -> codex-dist10-resolver-repair-20260716 (WIP checkpoint 658c181050, interrupted/untested) -> claude-dist10-resolver-repair-20260717 (finished the repair, integrated against the real landed #8922 feed, closed)
 
-openagents.com now resolves Desktop downloads from the cryptographically verified release feed instead of hand-written links. Visitors get the right installer for their platform with explicit alternatives, and the site can never serve a download URL that does not match the signed release — including fixing a dead pinned link that had been returning 404.
+openagents.com now resolves Desktop downloads from the cryptographically verified release feed instead of hand-written links. Visitors get the right installer for their platform with explicit alternatives, and the site can never serve a download URL that does not match the signed release — including fixing a dead pinned link that had been returning 404. This entry supersedes the earlier assumed-feed-shape version of DIST-10: the resolver now consumes the real published ReleaseSet v2 pointer/candidate contract and closes five published security/concurrency findings (unbound redirect content, replay/rollback, partial-feed downgrade, cache races, and unbounded body reads).
 
 ## One owner release command: step graph, preflight, dry-run, resumable transactions (DIST-13, #8926 slice 1)
 
