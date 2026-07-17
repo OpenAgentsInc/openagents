@@ -229,7 +229,7 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
       exit 75
     fi
   fi
-  if ! git -C "$source_repo" show "$target_sha:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs" > "$supervisor_path"; then
+  if ! git -C "$source_repo" show "${target_sha}:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs" > "$supervisor_path"; then
     rm -rf "$lock_dir" "$supervisor_path"
     echo "oa-dev: target commit does not contain the restart supervisor" >&2
     exit 1
