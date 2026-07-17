@@ -4509,6 +4509,7 @@ const smokeReactSidebarDestinations = `(async () => {
     ((settings?.textContent ?? '').includes('Codex') || (settings?.textContent ?? '').includes('No account connected.'))
   await document.fonts.ready
   const fontFamilies = ['Inter Variable', 'Zalando Sans', 'Disket Mono']
+  await Promise.all(fontFamilies.map(family => document.fonts.load('12px "' + family + '"')))
   const fontsLoaded = fontFamilies.every(family => document.fonts.check('12px "' + family + '"')) &&
     !Array.from(document.fonts).some(face => fontFamilies.includes(face.family.replaceAll('"', '')) && face.status === 'error')
   click('shell-settings-toggle')
@@ -5477,6 +5478,7 @@ const smokeSettingsHarnessMaintenance = `(async () => {
 const smokeIssue8983Fonts = `(async () => {
   await document.fonts.ready
   const families = ['Inter Variable', 'Zalando Sans', 'Disket Mono']
+  await Promise.all(families.map(family => document.fonts.load('12px "' + family + '"')))
   const checks = Object.fromEntries(families.map(family => [family, document.fonts.check('12px "' + family + '"')]))
   const failed = Array.from(document.fonts).filter(face => families.includes(face.family.replaceAll('"', '')) && face.status === 'error').map(face => face.family)
   return { ok: Object.values(checks).every(Boolean) && failed.length === 0, checks, failed }
