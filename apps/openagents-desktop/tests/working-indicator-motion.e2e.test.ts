@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process"
+import { createRequire } from "node:module"
 import path from "node:path"
 import { describe, expect, test } from "vite-plus/test"
 
@@ -15,7 +16,7 @@ type ProbeReceipt = Readonly<{
 }>
 
 const desktopRoot = path.resolve(import.meta.dirname, "..")
-const electron = path.join(desktopRoot, "node_modules", ".bin", "electron")
+const electron: string = createRequire(import.meta.url)("electron")
 const probe = path.join(import.meta.dirname, "fixtures", "working-indicator-motion-probe.cjs")
 
 describe("openagents_desktop.working_indicator_continuous_motion.v1", () => {

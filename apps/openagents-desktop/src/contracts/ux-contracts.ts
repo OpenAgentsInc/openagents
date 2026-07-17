@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.6",
+    version: "2026-07-16.7",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -4211,7 +4211,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "The search doesn't seem to fucking work at all. One of the chats is titled Assurance, but when I start typing in the first few letters there, it does not show it.",
         authorityBoundary:
-          "Typing in the sidebar session search filters the list with case-insensitive substring matching over session titles and workspace labels — bounded deterministic field matching over the owner-local corpus (the semantic-routing invariant's bounded-field exception), never keyword intent routing. The search operates over the FULL loss-accounted catalog store (every root, including beyond the sidebar's current page), not just rendered rows: instant title matches come straight from the hydrated catalog cache, and the host content index (itself now byte-bounded per session, so a multi-GB rollout can no longer crash or starve it) merges in when it settles. While the host response is in flight the empty state says 'Searching…'; 'No sessions match.' renders only once settled; clearing the query restores the full list. The index remains a rebuildable cache, never catalog/page authority.",
+          "Typing in the sidebar session search filters the list with case-insensitive substring matching over session titles and workspace labels — bounded deterministic field matching over the owner-local corpus (the semantic-routing invariant's bounded-field exception), never keyword intent routing. The search operates over the FULL loss-accounted catalog store (every root, including beyond the sidebar's ten recent rows), not just rendered rows: instant title matches come straight from the hydrated catalog cache, and the host content index (itself now byte-bounded per session, so a multi-GB rollout can no longer crash or starve it) merges in when it settles. While the host response is in flight the empty state says 'Searching…'; 'No sessions match.' renders only once settled; clearing the query restores the bounded recent list. The index remains a rebuildable cache, never catalog/page authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/history-workspace.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
@@ -4226,7 +4226,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "Through the real intent registry on a 45-root fixture catalog: a title prefix ('Ass') filters to the matching session even though it sits beyond the 40-row first page; the no-match state is explicit; clearing restores the full list; a deferred host response shows 'Searching…' (never a false no-match) and merges content results when it settles.",
+              "Through the real intent registry on a 45-root fixture catalog: a title prefix ('Ass') filters to the matching session even though it sits beyond the ten recent rows; the no-match state is explicit; clearing restores the recent-ten list; a deferred host response shows 'Searching…' (never a false no-match) and merges content results when it settles.",
           },
           {
             id: "session_search.instant_and_merge_helpers",
@@ -4257,6 +4257,44 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "Desktop typecheck, the shell/history-workspace/history-catalog-scale suites, and the built-host smoke's session-search steps with screenshot receipts.",
       },
       {
+        contractId: "openagents_desktop.history.recent_ten_search_all.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "sidebar recent chats and full-history search",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "in openagents, I only want to see the most recent ten chats in the sidebar. Search should search through all chats, but on the recent, only show the most recent ten.",
+        authorityBoundary:
+          "The unfiltered Desktop sidebar projects exactly the ten newest-created unique Codex chats across app-local threads and the recent-first loss-accounted Codex catalog, or every chat when fewer than ten exist. Later activity in an older chat does not reorder it. The recent list has no load-more affordance and cannot expand through the legacy catalog window. This is presentation-only: the full catalog remains hydrated and searchable, instant title matching reads every catalog root, and the bounded host content index may return matching chats outside the recent ten. Clearing search returns to the recent-ten projection. Search does not become catalog authority and no session identity, persistence, or execution authority changes.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/shell.test.ts",
+        ],
+        oracles: [
+          {
+            id: "recent_chats.exact_ten_without_paging",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Projects a mixed local/catalog history larger than ten, proves the normal sidebar renders exactly the ten newest unique chats, exposes no load-more row, and cannot expand when the legacy visible-root count changes.",
+          },
+          {
+            id: "recent_chats.search_reaches_full_catalog",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Searches a 45-root fixture for a title outside the recent ten, proves the result appears through the real intent registry, then clears search and proves the sidebar returns to exactly ten recent rows without the out-of-window match.",
+          },
+        ],
+        verification:
+          "Desktop shell tests and typecheck enforce the recent-ten projection and preserve full-catalog search semantics.",
+      },
+      {
         contractId: "openagents_desktop.history.sidebar_header_truthful_scope.v1",
         state: "enforced",
         surface: "openagents-desktop",
@@ -4267,7 +4305,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "That says coding history all time, but it only has five chats, so that's definitely not all time.",
         authorityBoundary:
-          "The sidebar header's scope claim must match the projection's real semantics: 'Coding history · scanning…' before hydration settles, a counted disclosure 'Coding history · N of M' while the loss-accounted catalog is paged (M counts every catalogued session for this surface, deduplicated against local threads; explicit 'Load K more' paging reaches the remainder per the episode-248 loss-accounted v2 contract — recent-first bounded disclosure, no age ceiling, no silent truncation), and 'Coding history · all N' only when every catalogued session is shown. A label is never allowed to claim more than the projection delivers. The root cause this contract pins closed: the catalog graph build read whole rollout files to derive titles, ENOMEMed on a real 4.5 GB rollout, and silently collapsed the 'all time' surface to the 24-hour recent list; catalog title scans, page reads, and search-index content reads are now byte-bounded/streaming so an oversized session degrades to a fallback title instead of taking down the catalog. Scope wording only — no marketing copy changed.",
+          "The sidebar header's scope claim must match the projection's real semantics: 'Recent chats · scanning…' before hydration settles and 'Recent chats · N' after hydration, where N is the exact number of rows rendered and never exceeds ten. The header never claims all-time disclosure; the full loss-accounted catalog remains reachable through search. Catalog title scans, page reads, and search-index content reads remain byte-bounded/streaming so an oversized session degrades to a fallback title instead of taking down catalog or search.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/codex-history.ts",
@@ -4284,7 +4322,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "On a >page-size multi-root fixture: the header reads 'scanning…' pre-hydration, 'N of M' with an explicit 'Load K more' row while paged, 'all N' only at full disclosure, never double-counts local threads that are also catalogued, and formats the owner's 1,543-scale counts with separators.",
+              "On a catalog larger than ten: the header reads 'scanning…' pre-hydration and then the exact bounded recent count, never exposes a load-more row, never double-counts local threads that are also catalogued, and keeps the searchable total separate from the visible count.",
           },
           {
             id: "history_header.catalog_survives_oversized_rollouts",
@@ -4300,7 +4338,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "Built-Electron smoke asserts the sidebar header states the fixture catalog's true counted scope ('Coding history · all 1') — the untrue 'all time' claim fails the smoke.",
+              "Built-Electron smoke asserts the sidebar header states the fixture catalog's true recent scope ('Recent chats · 1') — an untrue all-time claim fails the smoke.",
           },
         ],
         verification:

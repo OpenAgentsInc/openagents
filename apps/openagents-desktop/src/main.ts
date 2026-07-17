@@ -4838,10 +4838,9 @@ const smokeCodexHistoryDetails = `(async () => {
   const selectedInReact = first.getAttribute("data-selected") === "true" || first.getAttribute("aria-current") === "page"
   const detailVisible = document.querySelector('[data-en-key="history-workspace-split"]') !== null ||
     (selectedInReact && document.querySelector('[data-en-key="shell-transcript"]') !== null)
-  // #8789: the header states the projection's REAL scope with a counted
-  // disclosure. Prior smoke passes may persist another fixture session, so
-  // assert the truthful counted form rather than a brittle exact fixture size.
-  const truthfulCount = /^Coding history · all [1-9][0-9,]*$/.test(sidebar?.textContent ?? "")
+  // The header states the bounded recent scope. Prior smoke passes may persist
+  // another fixture session, so accept the truthful one-through-ten count.
+  const truthfulCount = /^Recent chats · (?:[1-9]|10)$/.test(sidebar?.textContent ?? "")
   return { ok: truthfulCount && detailVisible, header: sidebar?.textContent ?? null, selectedInReact }
 })()`
 

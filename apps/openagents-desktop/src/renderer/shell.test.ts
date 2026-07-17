@@ -17,6 +17,7 @@ import {
   desktopShellIntents,
   desktopShellView,
   desktopConversationShortcutTargets,
+  desktopRecentChatLimit,
   desktopSidebarHistoryDisclosure,
   desktopSidebarHistoryLabel,
   delegateTranscriptForAgent,
@@ -493,7 +494,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "workspace-home")).toBeUndefined()
     // #8789: before hydration settles the header claims scanning, never a
     // scope ("all time") the projection has not yet earned.
-    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · scanning…")
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Recent chats · scanning…")
     expect(navItemById(view, "sidebar-thread-test-thread")?.label).toBe("New chat")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(navItemById(view, "sidebar-thread-test-thread")?.meta).toBeDefined()
@@ -682,7 +683,7 @@ describe("desktopShellView (state -> component tree)", () => {
     })).toEqual([{ kind: "runtime", threadRef: testThread.id }])
   })
 
-  test("large Codex catalogs use one virtual scroll owner and pending selection is active immediately", () => {
+  test("large Codex catalogs show only the ten most recent chats and keep pending selection active", () => {
     const roots = Array.from({ length: 50 }, (_, index) => ({
       threadRef:`history-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
       createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
@@ -693,8 +694,8 @@ describe("desktopShellView (state -> component tree)", () => {
     const nav=nodeByKey(view,"sidebar-navigation")
     const history=(nav?.sections as Array<AnyNode>)[1]
     expect(history?.id).toBe("sidebar-history-list")
-    expect((history?.items as Array<unknown>)).toHaveLength(42)
-    expect(navItemById(view,"sidebar-history-load-more")).toMatchObject({label:"Load 10 more"})
+    expect((history?.items as Array<unknown>)).toHaveLength(desktopRecentChatLimit)
+    expect(navItemById(view,"sidebar-history-load-more")).toBeUndefined()
     expect(nav?.activeId).toBe("sidebar-thread-history-7")
   })
 
@@ -708,6 +709,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const state={...baseState,host:"electron/darwin",threads:locals,historyShortcutHintsVisible:true,history:{...baseState.history,catalog:{roots,agents:roots}}}
     const view=desktopShellView(state)
     const targets=desktopConversationShortcutTargets(state)
+    expect(targets).toHaveLength(desktopRecentChatLimit)
     expect(targets.slice(0,5)).toEqual([...locals].reverse().map(thread=>({kind:"runtime" as const,threadRef:thread.id})))
     targets.slice(0,9).forEach((target,index)=>expect(navItemById(view,`sidebar-thread-${target.threadRef}`)?.meta).toBe(`⌘${index+1}`))
     expect(navItemById(view,`sidebar-thread-${targets[9]?.threadRef}`)?.meta).toBe("")
@@ -3977,9 +3979,9 @@ describe("theme parity (one OpenAgents product theme, many hosts)", () => {
 // rc.10 owner incident batch (#8788 search does not filter, #8789 untrue
 // "ALL TIME" header). Contracts:
 //   openagents_desktop.history.session_search_filters.v1
-//   openagents_desktop.history.sidebar_header_truthful_scope.v1
+//   openagents_desktop.history.recent_ten_search_all.v1
 // ---------------------------------------------------------------------------
-describe("truthful sidebar header with counted disclosure (#8789)", () => {
+describe("recent-ten sidebar with full-history search", () => {
   const historyRoot = (index: number, title = `Session ${index}`) => ({
     threadRef: `hist-${index}`, parentThreadRef: null, title, status: "completed" as const,
     createdAt: "2026-07-10T00:00:00Z", updatedAt: `2026-07-${String(1 + (index % 9)).padStart(2, "0")}T00:00:00.000Z`,
@@ -3997,6 +3999,7 @@ describe("truthful sidebar header with counted disclosure (#8789)", () => {
       "openagents_desktop.composer.focused_on_open.v1",
       "openagents_desktop.history.session_search_filters.v1",
       "openagents_desktop.history.sidebar_header_truthful_scope.v1",
+      "openagents_desktop.history.recent_ten_search_all.v1",
     ]) {
       expect(openAgentsDesktopUxContractRegistry.contracts.find(
         (contract) => contract.contractId === contractId,
@@ -4005,25 +4008,54 @@ describe("truthful sidebar header with counted disclosure (#8789)", () => {
   })
 
   test("before hydration settles the header says scanning — never a scope claim", () => {
-    expect(desktopSidebarHistoryLabel(baseState)).toBe("Coding history · scanning…")
+    expect(desktopSidebarHistoryLabel(baseState)).toBe("Recent chats · scanning…")
   })
 
-  test(">page-size catalog: counted disclosure, explicit paging, no silent truncation", () => {
-    // 1 local thread + 45 catalog roots; the first page shows 40 of them.
+  test("recent ordering follows immutable creation time, not later chat activity", () => {
+    const state: DesktopShellState = {
+      ...baseState,
+      threads: [{
+        ...testThread,
+        id: "older-local",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      }],
+      history: {
+        ...baseState.history,
+        hydrated: true,
+        catalog: {
+          roots: [{
+            ...historyRoot(0, "Newer-created history"),
+            createdAt: "2026-07-15T00:00:00.000Z",
+            updatedAt: "2026-07-15T00:00:00.000Z",
+          }],
+          agents: [],
+        },
+      },
+    }
+
+    expect(desktopConversationShortcutTargets(state)).toEqual([
+      { kind: "history", threadRef: "hist-0" },
+      { kind: "runtime", threadRef: "older-local" },
+    ])
+  })
+
+  test(">limit catalog: exactly ten recent rows, no paging affordance, full search count retained", () => {
     const state = hydratedState()
-    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 41, total: 46 })
-    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · 41 of 46")
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 10, total: 46 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Recent chats · 10")
     const view = desktopShellView(state)
-    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Coding history · 41 of 46")
-    // Explicit paging affordance names the remainder — nothing is silently cut.
-    expect(navItemById(view, "sidebar-history-load-more")?.label).toBe("Load 5 more")
-    expect((nodeByKey(view, "sidebar-navigation")?.a11y as { label?: string })?.label).toBe("41 of 46 sessions")
+    expect((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.label).toBe("Recent chats · 10")
+    expect(((nodeByKey(view, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.items as Array<unknown>)).toHaveLength(10)
+    expect(navItemById(view, "sidebar-history-load-more")).toBeUndefined()
+    expect((nodeByKey(view, "sidebar-navigation")?.a11y as { label?: string })?.label).toBe("10 recent sessions; search all 46 sessions")
   })
 
-  test("once every catalogued session is disclosed the header claims exactly that — all N", () => {
+  test("raising the legacy catalog window cannot expand the recent list", () => {
     const state = hydratedState({ visibleRootCount: 45 })
-    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 46, total: 46 })
-    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · all 46")
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 10, total: 46 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Recent chats · 10")
+    expect(((nodeByKey(desktopShellView(state), "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.items as Array<unknown>)).toHaveLength(10)
     expect(navItemById(desktopShellView(state), "sidebar-history-load-more")).toBeUndefined()
   })
 
@@ -4035,12 +4067,13 @@ describe("truthful sidebar header with counted disclosure (#8789)", () => {
       history: overlapping,
     }
     expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 1, total: 1 })
-    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · all 1")
+    expect(desktopSidebarHistoryLabel(state)).toBe("Recent chats · 1")
   })
 
-  test("large counts render with thousands separators — the owner's 1,543 case", () => {
+  test("large searchable catalogs do not change the recent-ten label", () => {
     const state = hydratedState({ catalog: { roots: Array.from({ length: 1_543 }, (_, index) => historyRoot(index)), agents: [] }, visibleRootCount: 4 })
-    expect(desktopSidebarHistoryLabel(state)).toBe("Coding history · 5 of 1,544")
+    expect(desktopSidebarHistoryDisclosure(state)).toEqual({ shown: 10, total: 1_544 })
+    expect(desktopSidebarHistoryLabel(state)).toBe("Recent chats · 10")
   })
 })
 
@@ -4073,12 +4106,15 @@ describe("session search filters the list (#8788)", () => {
       const noMatch = yield* SubscriptionRef.get(state)
       expect(noMatch.history.searchResults).toEqual([])
       expect(nodeByKey(desktopShellView(noMatch), "sidebar-search-empty")).toMatchObject({ content: "No sessions match." })
-      // Clearing restores the full session list.
+      // Clearing restores the bounded recent list, while search itself reached
+      // a title outside that list.
       yield* registry.dispatch(resolveIntentRef(IntentRef("HistorySearchChanged", StaticPayload(""))))
       const cleared = yield* SubscriptionRef.get(state)
       expect(cleared.history.searchResults).toEqual([])
       const clearedView = desktopShellView(cleared)
       expect(navItemById(clearedView, "sidebar-thread-hist-0")).toBeDefined()
+      expect(((nodeByKey(clearedView, "sidebar-navigation")?.sections as Array<AnyNode>)[1]?.items as Array<unknown>)).toHaveLength(10)
+      expect(navItemById(clearedView, "sidebar-thread-hist-44")).toBeUndefined()
       expect(nodeByKey(clearedView, "sidebar-search-empty")).toBeUndefined()
     }))
   })

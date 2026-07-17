@@ -3917,22 +3917,18 @@ export const runtimeCardMessage = (note: DesktopNoteEntry): TranscriptMessage =>
       : queueChipMessage(note, runtime)
 }
 
+export const desktopRecentChatLimit = 10
+
 const historySidebarItems = (state: DesktopShellState, shortcutOffset: number, excludedIds: ReadonlySet<string>) => {
   const codexRoots=state.history.catalog.roots.filter(thread => thread.source === "codex")
-  const roots=codexRoots.slice(0,state.history.visibleRootCount).filter(thread => !excludedIds.has(thread.threadRef))
-  const rows=roots.map((thread,index) => ({
+  const roots=codexRoots.filter(thread => !excludedIds.has(thread.threadRef)).slice(0,desktopRecentChatLimit)
+  return roots.map((thread,index) => ({
     id:`sidebar-thread-${thread.threadRef}`,
     label:thread.title,
     meta:state.historyShortcutHintsVisible ? desktopConversationShortcutLabel(state, index + shortcutOffset) : formatRelativeTimestamp(thread.updatedAt),
     accessibilityLabel:`Open ${historySourceBadgeLabel(thread.source)} chat ${thread.title}, ${thread.descendantCount} descendant agents`,
     onSelect:IntentRef("HistoryConversationSelected",StaticPayload(thread.threadRef)),
   }))
-  return state.history.visibleRootCount>=codexRoots.length?rows:[...rows,{
-    id:"sidebar-history-load-more",
-    label:`Load ${Math.min(historyCatalogPageSize,codexRoots.length-state.history.visibleRootCount)} more`,
-    accessibilityLabel:`Load older Codex conversations, ${state.history.visibleRootCount} of ${codexRoots.length} shown`,
-    onSelect:IntentRef("HistoryCatalogMoreRequested"),
-  }]
 }
 
 const visibleCodexThreads = (state: DesktopShellState) =>
@@ -3951,16 +3947,13 @@ const sidebarConversationItems = (state: DesktopShellState) => {
   const localById = new Map(local.map(item => [item.id.replace("sidebar-thread-", ""), item]))
   const localThreadIds = new Set(visibleCodexThreads(state).map(thread => thread.id))
   const history = historySidebarItems(state, local.length, localThreadIds)
-  const loadMore = history.find(item => item.id === "sidebar-history-load-more")
-  const historyById = new Map(history
-    .filter(item => item.id !== "sidebar-history-load-more")
-    .map(item => [item.id.replace("sidebar-thread-", ""), item]))
+  const historyById = new Map(history.map(item => [item.id.replace("sidebar-thread-", ""), item]))
   const rows = desktopConversationShortcutTargets(state).map((target, index) => {
     const item = target.kind === "runtime" ? localById.get(target.threadRef) : historyById.get(target.threadRef)
     if (item === undefined || !state.historyShortcutHintsVisible) return item
     return { ...item, meta: desktopConversationShortcutLabel(state, index) }
   }).filter((item): item is NonNullable<typeof item> => item !== undefined)
-  return loadMore === undefined ? rows : [...rows, loadMore]
+  return rows
 }
 
 export type DesktopConversationShortcutTarget = Readonly<{
@@ -3971,48 +3964,46 @@ export type DesktopConversationShortcutTarget = Readonly<{
 export const desktopConversationShortcutLabel = (state: Pick<DesktopShellState, "host">, index: number): string =>
   index >= 9 ? "" : state.host.includes("darwin") ? `⌘${index + 1}` : `Ctrl+${index + 1}`
 
-/** One canonical order for visible shortcut labels and keyboard activation. */
-export const desktopConversationShortcutTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> => {
-  if (historySearchActive(state.history)) return []
+const desktopRecentConversationTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> => {
   const localThreads = visibleCodexThreads(state)
   const localIds = new Set(localThreads.map(thread => thread.id))
   return [
-    ...localThreads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id, updatedAt: thread.updatedAt })),
-    ...state.history.catalog.roots.slice(0, state.history.visibleRootCount)
+    ...localThreads.map(thread => ({ kind: "runtime" as const, threadRef: thread.id, createdAt: thread.createdAt ?? thread.updatedAt })),
+    ...state.history.catalog.roots
       .filter(thread => thread.source === "codex" && !localIds.has(thread.threadRef))
-      .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef, updatedAt: thread.updatedAt })),
-  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.threadRef.localeCompare(right.threadRef))
-    .map(({ updatedAt: _, ...target }) => target)
+      .slice(0, desktopRecentChatLimit)
+      .map(thread => ({ kind: "history" as const, threadRef: thread.threadRef, createdAt: thread.createdAt })),
+  ].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.threadRef.localeCompare(right.threadRef))
+    .slice(0, desktopRecentChatLimit)
+    .map(({ createdAt: _, ...target }) => target)
 }
+
+/** One canonical order for visible shortcut labels and keyboard activation. */
+export const desktopConversationShortcutTargets = (state: DesktopShellState): ReadonlyArray<DesktopConversationShortcutTarget> =>
+  historySearchActive(state.history) ? [] : desktopRecentConversationTargets(state)
 
 /**
  * Counted disclosure for the sidebar session list (#8789, owner verbatim:
  * "That says coding history all time, but it only has five chats, so that's
- * definitely not all time."). `shown` counts the rows the projection actually
- * renders (local threads + the paged catalog slice, deduplicated); `total`
- * counts every session the loss-accounted catalog holds for this surface. A
- * label is never allowed to claim more than the projection delivers.
+ * definitely not all time."). `shown` counts the recent rows the projection
+ * actually renders; `total` counts every session available to search.
  */
 export const desktopSidebarHistoryDisclosure = (state: DesktopShellState): Readonly<{ shown: number; total: number }> => {
   const local = visibleCodexThreads(state)
   const localIds = new Set(local.map(thread => thread.id))
   const codexRoots = state.history.catalog.roots.filter(thread => thread.source === "codex")
-  const shownHistory = codexRoots.slice(0, state.history.visibleRootCount).filter(thread => !localIds.has(thread.threadRef)).length
   const totalHistory = codexRoots.filter(thread => !localIds.has(thread.threadRef)).length
-  return { shown: local.length + shownHistory, total: local.length + totalHistory }
+  return { shown: desktopRecentConversationTargets(state).length, total: local.length + totalHistory }
 }
 
 /**
  * The header states the projection's REAL scope: an explicit scanning state
- * before hydration settles, a counted "N of M" bounded disclosure while the
- * catalog is paged, and "all N" only when every catalogued session is shown.
+ * before hydration settles, then the exact count in the bounded recent list.
  */
 export const desktopSidebarHistoryLabel = (state: DesktopShellState): string => {
-  if (state.history.hydrated !== true) return "Coding history · scanning…"
-  const { shown, total } = desktopSidebarHistoryDisclosure(state)
-  return shown >= total
-    ? `Coding history · all ${total.toLocaleString("en-US")}`
-    : `Coding history · ${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`
+  if (state.history.hydrated !== true) return "Recent chats · scanning…"
+  const { shown } = desktopSidebarHistoryDisclosure(state)
+  return `Recent chats · ${shown.toLocaleString("en-US")}`
 }
 
 const shellSidebar = (state: DesktopShellState): View => {
@@ -4062,7 +4053,7 @@ const shellSidebar = (state: DesktopShellState): View => {
             ? {id:"sidebar-history-list",label:`Search · ${visibleSearchCount} result${visibleSearchCount===1?"":"s"}${state.history.searchTruncated?" (bounded)":""}`,items:historySearchResultSidebarItems(state.history)}
             : {id:"sidebar-history-list",label:desktopSidebarHistoryLabel(state),items:sidebarConversationItems(state)},
         ],
-        a11y:{role:"list",label:`${disclosure.shown.toLocaleString("en-US")} of ${disclosure.total.toLocaleString("en-US")} sessions`},
+        a11y:{role:"list",label:`${disclosure.shown.toLocaleString("en-US")} recent sessions; search all ${disclosure.total.toLocaleString("en-US")} sessions`},
         style:{flex:1,minHeight:0,width:"full"},
       }),
       historySearchField(state.history),
