@@ -1550,10 +1550,12 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
       // Packaging inputs (icon, signing entitlements) come from the exported
       // source revision, not the developer checkout.
       await mkdir(path.join(staged, "resources"), { recursive: true });
-      await cp(
-        path.join(stagedSourceApp, "resources", "openagents-icon.icns"),
-        path.join(staged, "resources", "openagents-icon.icns"),
-      );
+      for (const icon of ["openagents-icon.icns", "openagents-icon.png"]) {
+        await cp(
+          path.join(stagedSourceApp, "resources", icon),
+          path.join(staged, "resources", icon),
+        );
+      }
       await mkdir(path.join(staged, "build"), { recursive: true });
       for (const entitlements of ["entitlements.mac.plist", "entitlements.mac.inherit.plist"]) {
         await cp(

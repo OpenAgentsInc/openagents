@@ -166,6 +166,7 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(staging).toContain("rustTargetTriple");
     expect(staging).toContain("chmod(destination, 0o755)");
     expect(staging).toContain("manifest.json");
+    expect(staging).toContain('["openagents-icon.icns", "openagents-icon.png"]');
     expect(config.packagerConfig?.extendInfo).toMatchObject({
       NSMicrophoneUsageDescription: expect.any(String),
     });
