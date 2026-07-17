@@ -421,7 +421,7 @@ export interface StagingViolation {
  * proven fails closed as `unknown_executable_identity`.
  */
 export const executableDestinationAllowlist: ReadonlyArray<RegExp> = [
-  /^node_modules\/@openai\/codex-(?:darwin|win32|linux)-(?:arm64|x64)\/vendor\/[^/]+\/(?:bin\/(?:codex|codex-code-mode-host)(?:\.exe)?|codex-path\/rg(?:\.exe)?|codex-resources\/(?:bwrap|zsh\/bin\/zsh))$/,
+  /^node_modules\/@openai\/codex-(?:darwin|win32|linux)-(?:arm64|x64)\/vendor\/[^/]+\/(?:bin\/(?:codex|codex-code-mode-host)(?:\.exe)?|codex-path\/rg(?:\.exe)?|codex-resources\/(?:bwrap|zsh\/bin\/zsh|codex-command-runner\.exe|codex-windows-sandbox-setup\.exe))$/,
   /^node_modules\/@anthropic-ai\/claude-agent-sdk-(?:darwin|win32|linux)-(?:arm64|x64)(?:-musl)?\/claude(?:\.exe)?$/,
   /^native\/(?:arm64|x64)\/oa-desktop-audio(?:\.exe)?$/,
 ];

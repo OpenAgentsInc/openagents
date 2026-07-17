@@ -627,6 +627,26 @@ describe("DIST-03 staged-tree oracle", () => {
     );
   });
 
+  test("admits the target-correct Codex Windows command and sandbox helpers", () => {
+    const files = [
+      ...cleanStagedTree("win32-x64"),
+      ...["codex-command-runner.exe", "codex-windows-sandbox-setup.exe"].map((name, index) => ({
+        path: `node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/codex-resources/${name}`,
+        byteLength: 64,
+        executable: true,
+        header: pe("x64"),
+        sha256: digest(String(index + 1)),
+      })),
+    ];
+    expect(stagedTreeViolations(auditInput("win32-x64", files))).toEqual([]);
+    expect(stagedTreeViolations(auditInput("win32-arm64", files))).toContainEqual(
+      expect.objectContaining({
+        kind: "foreign_architecture_binary",
+        path: expect.stringContaining("codex-resources/codex-command-runner.exe"),
+      }),
+    );
+  });
+
   test("script executables are admitted only inside dist/ or a required runtime package", () => {
     const script = {
       byteLength: 32,
