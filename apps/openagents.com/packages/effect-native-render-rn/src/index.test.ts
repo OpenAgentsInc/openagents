@@ -676,6 +676,59 @@ describe("React Native renderer host boundaries", () => {
     expect(structure).toContain('"disabled":true')
   })
 
+  test("replaces empty Send with exact Stop while preserving non-empty steering", async () => {
+    const events: Array<readonly [string, unknown]> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => {
+      events.push([ref.name, payload])
+    })
+    const render = (text: string, stopping = false) => renderReactNativeView(
+      Composer({
+        key: "composer-active-run",
+        doc: text === "" ? [] : [{ kind: "text", text }],
+        mode: "normal",
+        placeholder: "Steer current turn",
+        onSubmit: IntentRef("SteerCurrentTurn"),
+        submitLabel: "Steer current turn",
+        onStop: IntentRef("RequestStopConfirmation"),
+        stopping,
+      }),
+      {
+        React: { createElement },
+        ReactNative: { ...reactNative, Platform: { OS: "android", Version: 35 } },
+      },
+      report,
+      { platform: "android" },
+    )
+    const findSubmit = (node: ReactNodeLike): ReactElementLike | null => {
+      if (typeof node !== "object" || node === null || !("props" in node)) return null
+      const element = node as ReactElementLike
+      if (element.props.testID === "en-composer-submit") return element
+      const children = element.props.children
+      for (const child of Array.isArray(children) ? children : [children]) {
+        const found = findSubmit(child as ReactNodeLike)
+        if (found !== null) return found
+      }
+      return null
+    }
+
+    const stop = findSubmit(render(""))
+    expect(stop?.props.accessibilityLabel).toBe("Stop current turn")
+    expect(stop?.props.disabled).toBe(false)
+    ;(stop?.props.onPress as () => void)()
+    await Effect.runPromise(nextTask)
+    expect(events).toEqual([["RequestStopConfirmation", null]])
+
+    const steer = findSubmit(render("Use the existing test"))
+    expect(steer?.props.accessibilityLabel).toBe("Steer current turn")
+    ;(steer?.props.onPress as () => void)()
+    await Effect.runPromise(nextTask)
+    expect(events.at(-1)).toEqual(["SteerCurrentTurn", "Use the existing test"])
+
+    const pendingStop = findSubmit(render("", true))
+    expect(pendingStop?.props.accessibilityLabel).toBe("Stopping current turn")
+    expect(pendingStop?.props.disabled).toBe(true)
+  })
+
   test("keeps the T3-style collapsed composer quiet until it has content", () => {
     const element = renderReactNativeView(
       Composer({

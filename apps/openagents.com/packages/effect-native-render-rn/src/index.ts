@@ -3098,11 +3098,12 @@ const renderComposer = (
       if (view.onSubmit !== undefined) runReportedIntent(report, view.onSubmit, event.nativeEvent?.text ?? composerPlainText(view.doc))
     }
   })
-  const submitDisabled = view.disabled === true || view.submitting === true ||
-    view.onSubmit === undefined || (
-      composerPlainText(view.doc).trim().length === 0 &&
-      (view.attachments?.length ?? 0) === 0
-    )
+  const composerHasContent = composerPlainText(view.doc).trim().length > 0 ||
+    (view.attachments?.length ?? 0) > 0
+  const stopMode = !composerHasContent && view.onStop !== undefined
+  const submitDisabled = view.disabled === true || (stopMode
+    ? view.stopping === true
+    : view.submitting === true || view.onSubmit === undefined || !composerHasContent)
   const submit = createElement(
     dependencies,
     dependencies.ReactNative.Pressable,
@@ -3110,10 +3111,15 @@ const renderComposer = (
       key: "submit",
       testID: "en-composer-submit",
       accessibilityRole: "button",
-      accessibilityLabel: view.onSubmit === undefined
-        ? "Send unavailable"
-        : view.submitting === true ? "Message is sending" : "Send message",
-      accessibilityState: { disabled: submitDisabled, busy: view.submitting === true },
+      accessibilityLabel: stopMode
+        ? view.stopping === true ? "Stopping current turn" : "Stop current turn"
+        : view.onSubmit === undefined
+          ? "Send unavailable"
+          : view.submitting === true ? "Message is sending" : view.submitLabel ?? "Send message",
+      accessibilityState: {
+        disabled: submitDisabled,
+        busy: stopMode ? view.stopping === true : view.submitting === true,
+      },
       disabled: submitDisabled,
       style: {
         width: 44,
@@ -3123,17 +3129,21 @@ const renderComposer = (
         justifyContent: "center",
         backgroundColor: submitDisabled
           ? colorValue(theme, "surfaceRaised")
-          : "#0a84ff"
+          : stopMode ? "#ff453a" : "#0a84ff"
       },
-      ...(submitDisabled || view.onSubmit === undefined ? {} : {
-        onPress: () => runReportedIntent(report, view.onSubmit!, composerPlainText(view.doc))
-      })
+      ...(submitDisabled
+        ? {}
+        : stopMode
+          ? { onPress: () => runReportedIntent(report, view.onStop!) }
+          : view.onSubmit === undefined
+            ? {}
+            : { onPress: () => runReportedIntent(report, view.onSubmit!, composerPlainText(view.doc)) })
     },
     createElement(
       dependencies,
       dependencies.ReactNative.Text,
       { style: { color: submitDisabled ? colorValue(theme, "textMuted") : "#ffffff", fontSize: 18, fontWeight: "600" } },
-      view.submitting === true ? "…" : "↑"
+      stopMode ? view.stopping === true ? "…" : "■" : view.submitting === true ? "…" : "↑"
     )
   )
   const attachment = view.onAttachmentRequest === undefined
@@ -5416,13 +5426,19 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
     const focus = textFieldRef.current?.focus?.()
     if (focus !== undefined) void focus.catch(() => undefined)
   }, [isFocused, textFieldRef])
-  const submitDisabled = view.disabled === true || view.submitting === true ||
-    view.onSubmit === undefined || (
-      composerPlainText(view.doc).trim().length === 0 &&
-      (view.attachments?.length ?? 0) === 0
-    )
+  const composerHasContent = controlledValue.trim().length > 0 ||
+    (view.attachments?.length ?? 0) > 0
+  const stopMode = !composerHasContent && view.onStop !== undefined
+  const submitDisabled = view.disabled === true || (stopMode
+    ? view.stopping === true
+    : view.submitting === true || view.onSubmit === undefined || !composerHasContent)
   const submit = (): void => {
-    if (submitDisabled || view.onSubmit === undefined) return
+    if (submitDisabled) return
+    if (stopMode) {
+      runReportedIntent(report, view.onStop!)
+      return
+    }
+    if (view.onSubmit === undefined) return
     const value = textState.get()
     runReportedIntent(report, view.onSubmit, value)
     if (view.clearOnSubmit === true) {
@@ -5466,16 +5482,18 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
       expoUi.Button,
       {
         key: "submit",
-        accessibilityLabel: view.onSubmit === undefined
-          ? "Send unavailable"
-          : view.submitting === true ? "Message is sending" : "Send message",
+        accessibilityLabel: stopMode
+          ? view.stopping === true ? "Stopping current turn" : "Stop current turn"
+          : view.onSubmit === undefined
+            ? "Send unavailable"
+            : view.submitting === true ? "Message is sending" : view.submitLabel ?? "Send message",
         onPress: submit,
         modifiers: [
           expoUi.modifiers.frame({ width: 44, height: 44 }),
           expoUi.modifiers.glassEffect({
             glass: submitDisabled
               ? { variant: "regular", interactive: false }
-              : { variant: "regular", interactive: true, tint: "#0a84ff" },
+              : { variant: "regular", interactive: true, tint: stopMode ? "#ff453a" : "#0a84ff" },
             shape: "circle"
           }),
           ...(submitDisabled && expoUi.modifiers.disabled !== undefined
@@ -5484,7 +5502,9 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         ]
       },
       createElement(dependencies, expoUi.Image, {
-        systemName: view.submitting === true ? "ellipsis" : "arrow.up",
+        systemName: stopMode
+          ? view.stopping === true ? "ellipsis" : "stop.fill"
+          : view.submitting === true ? "ellipsis" : "arrow.up",
         size: 17,
         color: submitDisabled ? colorValue(theme, "textMuted") : "#ffffff"
       })

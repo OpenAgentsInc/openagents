@@ -707,6 +707,86 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(chromeProps(program.initialState).sending).toBe(false)
   })
 
+  test("confirms composer Stop for only the exact active run and clears stale confirmation", async () => {
+    const runRef = "run.mobile.stop-confirmation"
+    const running: MobileConversationThread = {
+      ...initialThread,
+      timeline: {
+        status: { phase: "live", cursor: 12, pendingMutationCount: 0 },
+        run: {
+          runRef,
+          routeRef: initialThread.threadRef,
+          runtime: "codex",
+          backend: "pylon",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+          version: 12,
+        },
+        events: [],
+      },
+    }
+    const controls: Array<Readonly<{ action: string; runRef: string; threadRef: string }>> = []
+    const canceled: MobileConversationThread = {
+      ...running,
+      timeline: {
+        ...running.timeline!,
+        run: {
+          ...running.timeline!.run!,
+          status: "canceled",
+          canceledAt: now,
+          version: 13,
+        },
+      },
+    }
+    const host: MobileConversationHost = {
+      listThreads: async () => [running],
+      newThread: async () => ({ ok: true, thread: running }),
+      openThread: async () => running,
+      sendMessage: async () => ({ ok: true, thread: running }),
+      controlTurn: async input => {
+        controls.push(input)
+        return { ok: true, thread: canceled }
+      },
+    }
+    const program = buildHomeProgram({ conversation: {
+      ...selection(host),
+      threads: [running],
+      activeThread: running,
+    } })
+    const initial = JSON.stringify(renderContentView(program.initialState))
+    expect(initial).toContain("Send steers this exact running turn")
+    expect(initial).toContain('"placeholder":"Steer current turn"')
+    expect(initial).toContain('"name":"RuntimeTurnStopConfirmationRequested"')
+
+    program.khala.requestStopConfirmation("run.foreign")
+    await Effect.runPromise(settle)
+    expect((await Effect.runPromise(lastState(program))).khala.runtimeStopConfirmationRunRef).toBeNull()
+
+    program.khala.requestStopConfirmation(runRef)
+    await Effect.runPromise(settle)
+    let state = await Effect.runPromise(lastState(program))
+    expect(state.khala.runtimeStopConfirmationRunRef).toBe(runRef)
+    expect(JSON.stringify(renderContentView(state))).toContain("Confirm stop current turn")
+
+    program.khala.dismissStopConfirmation(runRef)
+    await Effect.runPromise(settle)
+    expect((await Effect.runPromise(lastState(program))).khala.runtimeStopConfirmationRunRef).toBeNull()
+
+    program.khala.requestStopConfirmation(runRef)
+    await Effect.runPromise(settle)
+    program.khala.confirmStop(runRef)
+    await Effect.runPromise(settle)
+    state = await Effect.runPromise(lastState(program))
+    expect(controls).toMatchObject([{ action: "cancel", runRef, threadRef: initialThread.threadRef }])
+    expect(state.khala.runtimeTurn).toMatchObject({ runRef, status: "canceled" })
+    expect(state.khala.runtimeStopConfirmationRunRef).toBeNull()
+  })
+
   test("renders grouped pending questions and resolves only after the confirmed decision", async () => {
     const pending: MobileConversationThread = {
       ...initialThread,
@@ -883,14 +963,20 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     } })
 
     const initial = JSON.stringify(renderContentView(program.initialState))
-    expect(initial).toContain('"label":"Cancel turn"')
+    expect(initial).toContain('"name":"RuntimeTurnStopConfirmationRequested"')
+    expect(initial).toContain("Send steers this exact running turn")
     expect(initial).not.toContain('"label":"Retry"')
 
-    program.khala.controlTurn({ action: "cancel", runRef: "turn.mobile.control" })
+    program.khala.requestStopConfirmation("turn.mobile.control")
+    await Effect.runPromise(settle)
+    expect(JSON.stringify(renderContentView(await Effect.runPromise(lastState(program)))))
+      .toContain('"label":"Stop turn"')
+    program.khala.confirmStop("turn.mobile.control")
     await Effect.runPromise(settle)
     const submitting = await Effect.runPromise(lastState(program))
     expect(submitting.khala.runtimeControlSubmittingAction).toBe("cancel")
-    expect(JSON.stringify(renderContentView(submitting))).toContain('"label":"Canceling…","variant":"secondary","disabled":true')
+    expect(JSON.stringify(renderContentView(submitting))).toContain("Stop requested · awaiting confirmed runtime update")
+    expect(JSON.stringify(renderContentView(submitting))).toContain('"stopping":true')
     expect(controls).toMatchObject([{
       action: "cancel",
       runRef: "turn.mobile.control",

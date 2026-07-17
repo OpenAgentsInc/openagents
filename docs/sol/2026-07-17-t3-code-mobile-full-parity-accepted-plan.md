@@ -740,3 +740,81 @@ dependency; active-run queue/stop remains `T3M-B2.3`.
   environment provider remains a `T3M-D1`/`T3M-F1` dependency; active-run
   queue/stop presentation is next in `T3M-B2.3`; full mobile parity remains open
   through `T3M-F2`
+
+## Active packet — T3M-B2.3a
+
+Outcome: make active-run composer admission and Stop behavior explicit before
+adding a real durable queue-next transport: exact same-run steering for every
+steerable confirmed state, a compact composer-local status, and confirmed Stop
+with destructive confirmation.
+
+Owned paths:
+
+- `apps/openagents.com/packages/effect-native-core/src/index.ts`
+- `apps/openagents.com/packages/effect-native-render-rn/src/index.ts`
+- `apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts`
+- `apps/openagents-mobile/src/screens/mobile-composer-run-control.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/src/conversation/mobile-conversation.ts`
+- `apps/openagents-mobile/tests/mobile-composer-run-control.test.ts`
+- `apps/openagents-mobile/tests/mobile-conversation.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: exact active thread/run identity, provider-neutral follow-up vs
+new-turn distinction, confirmed runtime control, Effect Native Composer action,
+destructive confirmation, behavior registry, and Sol manifest.
+
+Required behavior:
+
+- queued, running, waiting-for-input, and stop-pending states are named beside
+  the composer; the placeholder and action copy state whether text will steer
+  the exact current run, wait, or start a new turn;
+- running and waiting-for-input follow-ups use the exact active run and never
+  fall through to start a concurrent turn;
+- when an active draft is empty, the composer action becomes Stop; a first tap
+  requests confirmation and only the exact current run can be confirmed;
+- Stop pending preserves the editable draft, disables duplicate control, and
+  remains pending until a confirmed runtime update or typed failure;
+- terminal and replaced runs clear stale confirmation; unavailable control
+  authority remains visibly disabled;
+- this slice does not call same-run steering a durable queue. A provider-neutral
+  `turn.queue` adapter remains the immediately following `T3M-B2.3b` slice.
+
+Proof: admission projection, renderer action, Home confirmation/refusal,
+same-run conversation dispatch, authoritative transcript/composer,
+accessibility, behavior contracts, mobile/package typechecks, and repository
+checks.
+
+Close rule: this closes exact active-run admission, steering, and composer Stop.
+It does not close B2.3 queue parity; `T3M-B2.3b` must connect a real
+provider-neutral queue-next transport and render its durable outcome.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b2-3a-20260717`
+- base: `6d73faee9ec885784531a36f7f3da7b85aa1db1c`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B2.3a` exact active-run admission, steering, and confirmed Stop
+- paths: the `T3M-B2.3a` owned paths above
+- verification: focused run-control/Home/conversation/renderer/accessibility
+  suites, behavior/Sol checks, package/mobile typechecks, and `pnpm run check`
+- claimed_at: `2026-07-17T22:07:36Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 109 focused run-control, mobile conversation, authoritative
+  Home, composer discovery/toolbar/attachments, accessibility, local-first,
+  Effect Native core/native renderer, and behavior-contract tests; Effect
+  Native core, native renderer, and mobile typechecks; `pnpm run check`;
+  `git diff --check`
+- authority note: running and waiting follow-ups bind to the exact confirmed
+  run; empty composer Stop first creates an exact-run confirmation and dispatch
+  remains pending until confirmed runtime replacement
+- close boundary: same-run steering and confirmed composer Stop are complete;
+  no durable queue-next claim is made, and provider-neutral `turn.queue`
+  transport remains the immediately following `T3M-B2.3b` slice
+- verified_at: `2026-07-17T22:13:41Z`

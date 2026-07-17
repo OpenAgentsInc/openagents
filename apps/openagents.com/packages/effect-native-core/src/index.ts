@@ -2625,6 +2625,12 @@ export interface ComposerView extends NodeBase {
    * surface busy (v29, #72).
    */
   readonly submitting?: boolean
+  /** When the document is empty, replaces the disabled Send action with Stop. */
+  readonly onStop?: IntentRef
+  /** Pending Stop admission; keeps the editor usable while suppressing repeats. */
+  readonly stopping?: boolean
+  /** Accessible consequence label for a non-empty submit action. */
+  readonly submitLabel?: string
   /** After dispatching `onSubmit`, the renderer clears the editor locally (v29, #72). */
   readonly clearOnSubmit?: boolean
   // Fires with the normalized plaintext value of the document.
@@ -4540,6 +4546,9 @@ export const ComposerSchema: Schema.Codec<ComposerView, ComposerView> = Schema.T
   autocomplete: ComposerAutocompleteSchema.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),
   submitting: Schema.Boolean.pipe(Schema.optionalKey),
+  onStop: IntentRefSchema.pipe(Schema.optionalKey),
+  stopping: Schema.Boolean.pipe(Schema.optionalKey),
+  submitLabel: Schema.String.pipe(Schema.optionalKey),
   clearOnSubmit: Schema.Boolean.pipe(Schema.optionalKey),
   onChange: IntentRefSchema.pipe(Schema.optionalKey),
   onSubmit: IntentRefSchema.pipe(Schema.optionalKey),

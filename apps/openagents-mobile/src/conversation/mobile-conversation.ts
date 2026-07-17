@@ -780,8 +780,13 @@ export const makeMobileConversationHost = (
       if (options.runtime === undefined) return { ok: true, thread: thread! }
       const turnRef = `turn.mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
       const active = (thread ?? baselineThread)?.timeline?.run
+      // A confirmed waiting turn is still the same mutable run. Falling
+      // through to startTurn here would create a concurrent run precisely when
+      // the provider is waiting for mobile input. A merely queued start stays
+      // blocked by Home until its first confirmed active state.
       const continuingActiveRun =
-        active !== null && active !== undefined && active.status === "running"
+        active !== null && active !== undefined &&
+        (active.status === "running" || active.status === "waiting_for_input")
       const previousSequence = Math.max(
         0,
         ...((thread ?? baselineThread)?.timeline?.events.map(event => event.sequence) ?? []),

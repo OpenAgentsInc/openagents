@@ -766,6 +766,95 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
   })
 
+  test("steers a confirmed waiting run instead of starting a concurrent turn", async () => {
+    const fixture = makeConversation()
+    const intents: Array<KhalaRuntimeControlIntent> = []
+    let settled = false
+    let startCalls = 0
+    const snapshot = () => ({
+      status: { phase: "live" as const, cursor: settled ? 15 : 14, pendingMutationCount: 0 },
+      run: {
+        runRef: "turn.mobile.waiting",
+        routeRef: "thread.synced.1",
+        runtime: "codex" as const,
+        backend: "pylon" as const,
+        status: settled ? "completed" as const : "waiting_for_input" as const,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        completedAt: settled ? now : null,
+        failedAt: null,
+        canceledAt: null,
+        version: settled ? 15 : 14,
+      },
+      events: settled
+        ? [{
+            eventRef: "event.mobile.waiting-complete",
+            runRef: "turn.mobile.waiting",
+            sequence: 1,
+            eventType: "turn.finished",
+            summary: "Completed after mobile input",
+            status: "completed" as const,
+            artifactRefs: [],
+            item: { kind: "terminal" as const, status: "completed" as const },
+            createdAt: now,
+            version: 15,
+          }]
+        : [],
+    })
+    const timeline: KhalaSyncAgentTimeline = {
+      status: () => snapshot().status,
+      open: () => Effect.void,
+      snapshot: () => Effect.succeed(snapshot()),
+      snapshotForThread: () => Effect.succeed(snapshot()),
+    }
+    const runtime: KhalaSyncRuntimeCommands = {
+      appendUserMessage: intent => Effect.sync(() => {
+        intents.push(intent)
+        settled = true
+        return MutationId.make(20)
+      }),
+      startTurn: () => Effect.sync(() => {
+        startCalls += 1
+        return MutationId.make(21)
+      }),
+      interruptTurn: () => Effect.succeed(MutationId.make(22)),
+      continueTurn: () => Effect.succeed(MutationId.make(23)),
+      retryTurn: () => Effect.succeed(MutationId.make(24)),
+      closeTurn: () => Effect.succeed(MutationId.make(25)),
+      outcome: input => Effect.succeed(settled
+        ? {
+            commandRef: input.intentId,
+            mutationId: 20,
+            runRef: "turn.mobile.waiting",
+            status: "settled" as const,
+            threadRef: input.threadRef,
+            updatedAt: now,
+            version: 15,
+          }
+        : null),
+    }
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      timeline,
+      runtime,
+      randomId: () => "waiting-followup",
+      pollAttempts: 1,
+      sleep: async () => undefined,
+    })
+
+    expect(await host.sendMessage({
+      threadRef: "thread.synced.1",
+      body: "Use the existing migration",
+    })).toMatchObject({ ok: true, thread: { timeline: { run: { runRef: "turn.mobile.waiting" } } } })
+    expect(startCalls).toBe(0)
+    expect(intents).toMatchObject([{
+      kind: "message.append",
+      threadId: "thread.synced.1",
+      turnId: "turn.mobile.waiting",
+    }])
+  })
+
   test("queues an exact mobile interaction decision and waits for confirmed resolution", async () => {
     const fixture = makeConversation()
     const decisions: RuntimeInteractionDecisionCommand[] = []

@@ -471,6 +471,18 @@ export const RuntimeTurnControlRequested = defineIntent(
     runRef: Schema.String,
   }),
 )
+export const RuntimeTurnStopConfirmationRequested = defineIntent(
+  "RuntimeTurnStopConfirmationRequested",
+  Schema.Struct({ runRef: Schema.String }),
+)
+export const RuntimeTurnStopConfirmationDismissed = defineIntent(
+  "RuntimeTurnStopConfirmationDismissed",
+  Schema.Struct({ runRef: Schema.String }),
+)
+export const RuntimeTurnStopConfirmed = defineIntent(
+  "RuntimeTurnStopConfirmed",
+  Schema.Struct({ runRef: Schema.String }),
+)
 export const AgentStackToggledIntent = defineIntent(AgentStackToggled, EmptyPayload)
 export const AgentRowSelectedIntent = defineIntent(
   AgentRowSelected,
@@ -549,6 +561,9 @@ export const homeIntentDefinitions = [
   RuntimeInteractionOptionToggled,
   RuntimeInteractionDecisionSubmitted,
   RuntimeTurnControlRequested,
+  RuntimeTurnStopConfirmationRequested,
+  RuntimeTurnStopConfirmationDismissed,
+  RuntimeTurnStopConfirmed,
   AgentStackToggledIntent,
   AgentRowSelectedIntent,
   WorkGroupToggledIntent,
@@ -1618,6 +1633,7 @@ const confirmedKhalaState = (
         },
     runtimeControlSubmittingAction: null,
     runtimeControlActionsAvailable,
+    runtimeStopConfirmationRunRef: null,
     agentGraph,
     agentGraphExpanded,
     selectedAgentRef,
@@ -1676,6 +1692,14 @@ const withConfirmedThread = (
           attachmentPreviewStates: state.khala.attachmentPreviewStates,
           attachmentRetryEpochs: state.khala.attachmentRetryEpochs,
           viewingAttachmentRef: state.khala.viewingAttachmentRef,
+          runtimeStopConfirmationRunRef:
+            nextKhala.runtimeTurn !== null &&
+              (nextKhala.runtimeTurn.status === "queued" ||
+                nextKhala.runtimeTurn.status === "running" ||
+                nextKhala.runtimeTurn.status === "waiting_for_input") &&
+              nextKhala.runtimeTurn.runRef === state.khala.runtimeStopConfirmationRunRef
+              ? state.khala.runtimeStopConfirmationRunRef
+              : null,
         }
       : {}),
   }
@@ -2155,6 +2179,7 @@ const makeSyncedConversationHandlers = (
       khala: {
         ...current.khala,
         runtimeControlSubmittingAction: payload.action,
+        runtimeStopConfirmationRunRef: null,
       },
     }))
     const result = yield* Effect.promise(() => host.controlTurn!({
@@ -2183,6 +2208,7 @@ const makeSyncedConversationHandlers = (
           khala: {
             ...failedConversationState(current, result.error).khala,
             runtimeControlSubmittingAction: null,
+            runtimeStopConfirmationRunRef: null,
           },
         })
   }),
@@ -2562,6 +2588,37 @@ export const makeHomeHandlers = (
         : undefined
       if (trigger === null || selected === undefined) return
       yield* draftChanged(`${before.khala.draft.slice(0, trigger.replaceFrom)}@${selected.pathRef} `)
+    }),
+    RuntimeTurnStopConfirmationRequested: payload =>
+      SubscriptionRef.update(state, current => {
+        const turn = current.khala.runtimeTurn
+        const active = turn?.status === "queued" || turn?.status === "running" ||
+          turn?.status === "waiting_for_input"
+        if (!active || turn?.runRef !== payload.runRef ||
+          !current.khala.runtimeControlActionsAvailable ||
+          current.khala.runtimeControlSubmittingAction !== null) return current
+        return {
+          ...current,
+          khala: { ...current.khala, runtimeStopConfirmationRunRef: payload.runRef },
+        }
+      }),
+    RuntimeTurnStopConfirmationDismissed: payload =>
+      SubscriptionRef.update(state, current =>
+        current.khala.runtimeStopConfirmationRunRef !== payload.runRef
+          ? current
+          : {
+              ...current,
+              khala: { ...current.khala, runtimeStopConfirmationRunRef: null },
+            }),
+    RuntimeTurnStopConfirmed: payload => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const turn = before.khala.runtimeTurn
+      const active = turn?.status === "queued" || turn?.status === "running" ||
+        turn?.status === "waiting_for_input"
+      if (!active || turn?.runRef !== payload.runRef ||
+        before.khala.runtimeStopConfirmationRunRef !== payload.runRef ||
+        !before.khala.runtimeControlActionsAvailable || synced === undefined) return
+      yield* synced.RuntimeTurnControlRequested({ action: "cancel", runRef: payload.runRef })
     }),
     SettingsPressed: () => SubscriptionRef.update(state, current => ({
       ...current,
@@ -2964,6 +3021,9 @@ export interface HomeProgramHandle {
       action: MobileRuntimeControlAction
       runRef: string
     }>) => void
+    readonly requestStopConfirmation: (runRef: string) => void
+    readonly dismissStopConfirmation: (runRef: string) => void
+    readonly confirmStop: (runRef: string) => void
     readonly toggleAgentStack: () => void
     readonly selectAgentRow: (agentRef: string) => void
     readonly toggleWorkGroup: (groupRef: string) => void
@@ -3102,6 +3162,18 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           controlTurn: input => fireRef(IntentRef(
             "RuntimeTurnControlRequested",
             StaticPayload(input),
+          )),
+          requestStopConfirmation: runRef => fireRef(IntentRef(
+            "RuntimeTurnStopConfirmationRequested",
+            StaticPayload({ runRef }),
+          )),
+          dismissStopConfirmation: runRef => fireRef(IntentRef(
+            "RuntimeTurnStopConfirmationDismissed",
+            StaticPayload({ runRef }),
+          )),
+          confirmStop: runRef => fireRef(IntentRef(
+            "RuntimeTurnStopConfirmed",
+            StaticPayload({ runRef }),
           )),
           toggleAgentStack: fire(AgentStackToggled),
           selectAgentRow: agentRef => fireRef(IntentRef(

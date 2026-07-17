@@ -5,8 +5,60 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.8",
+    version: "2026-07-17.9",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.active_run_admission_and_stop.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "The composer names queued, running, waiting, confirmation, and stop-pending state beside the transcript. Running or waiting text steers the exact current run; an empty composer action becomes Stop and requires explicit confirmation.",
+        authorityBoundary:
+          "Stop request, confirmation, and dispatch are bound to the exact current thread/run and confirmed runtime-control availability; stale or foreign confirmation cannot dispatch. Waiting-for-input is treated as the same steerable run and cannot fall through to a concurrent start. This contract does not rename same-run steering as durable queue-next; provider-neutral turn.queue transport remains T3M-B2.3b.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-composer-run-control.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b23a",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadComposer.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_composer_active_run_admission",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves composer-local active status, exact Stop confirmation/refusal, pending preservation, and confirmed terminal replacement.",
+          },
+          {
+            id: "mobile_waiting_run_exact_steer",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-conversation.test.ts",
+            description:
+              "Proves waiting-for-input follow-up appends to the exact current run and never dispatches startTurn.",
+          },
+          {
+            id: "effect_native_mobile_composer_stop_action",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts",
+            description:
+              "Proves empty Stop, non-empty exact submit, accessible consequences, and duplicate Stop suppression in the native renderer.",
+          },
+        ],
+        verification:
+          "Run-control, authoritative Home, mobile conversation, native renderer, accessibility, behavior-contract, package/mobile typechecks, and repository checks; durable queue-next remains T3M-B2.3b and physical-device evidence remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.repository_path_context.v1",
         state: "enforced",

@@ -34,6 +34,10 @@ import {
   renderMobileSlashCommandAutocomplete,
   type MobileComposerPathDiscoveryState,
 } from "./mobile-composer-discovery"
+import {
+  projectMobileComposerRunAdmission,
+  renderMobileComposerRunControl,
+} from "./mobile-composer-run-control"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   mobileAttachmentRef,
@@ -151,6 +155,7 @@ export interface KhalaState {
   readonly runtimeTurn: KhalaRuntimeTurn | null
   readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
   readonly runtimeControlActionsAvailable: boolean
+  readonly runtimeStopConfirmationRunRef: string | null
   /** Confirmed canonical live-agent hierarchy for the active thread, or null. */
   readonly agentGraph: LiveAgentGraphPresentation | null
   readonly agentGraphExpanded: boolean
@@ -183,6 +188,7 @@ export const initialKhalaState: KhalaState = {
   runtimeTurn: null,
   runtimeControlSubmittingAction: null,
   runtimeControlActionsAvailable: false,
+  runtimeStopConfirmationRunRef: null,
   agentGraph: null,
   agentGraphExpanded: false,
   selectedAgentRef: null,
@@ -293,6 +299,7 @@ const runtimeControlViews = (
 ): ReadonlyArray<View> => {
   const turn = state.runtimeTurn
   if (turn === null) return []
+  if (turn.status === "queued" || turn.status === "running" || turn.status === "waiting_for_input") return []
   const actions = runtimeControlActions(state)
   if (actions.length === 0) return []
   return [Stack(
@@ -654,6 +661,12 @@ export const renderKhalaSurface = (
     pendingAction: codingAttachmentPicking || codingAttachmentMutatingRef !== null ||
       state.runtimeControlSubmittingAction !== null,
   }) ?? renderMobilePathAutocomplete(state.draft, composerPathDiscovery)
+  const runAdmission = projectMobileComposerRunAdmission({
+    turn: state.runtimeTurn,
+    controlAvailable: state.runtimeControlActionsAvailable,
+    submittingAction: state.runtimeControlSubmittingAction,
+    stopConfirmationRunRef: state.runtimeStopConfirmationRunRef,
+  })
   return Stack(
     {
       key: "khala-surface",
@@ -737,6 +750,7 @@ export const renderKhalaSurface = (
           })]
         : []),
       ...runtimeControlViews(state, accessibility),
+      ...renderMobileComposerRunControl(state.runtimeTurn, runAdmission, accessibility),
       ...codingComposerContextViews(
         codingComposer,
         codingAttachmentStatus,
@@ -756,7 +770,7 @@ export const renderKhalaSurface = (
         key: "khala-composer",
         doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
         mode: "normal",
-        placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
+        placeholder: authority === "sync" ? runAdmission.placeholder : "Message Khala",
         ...(composerAutocomplete === undefined ? {} : { autocomplete: composerAutocomplete }),
         ...(codingComposer === null ? {} : {
           attachments: codingComposer.draft.doc.attachments.map(attachment => ({
@@ -767,6 +781,16 @@ export const renderKhalaSurface = (
           })),
         }),
         submitting: state.pending,
+        ...(runAdmission.active ? { submitLabel: runAdmission.submitLabel } : {}),
+        ...((runAdmission.stopAvailable || runAdmission.stopping) &&
+            !runAdmission.confirming && state.runtimeTurn !== null
+          ? {
+              onStop: IntentRef("RuntimeTurnStopConfirmationRequested", StaticPayload({
+                runRef: state.runtimeTurn.runRef,
+              })),
+              stopping: runAdmission.stopping,
+            }
+          : {}),
         clearOnSubmit: true,
         a11y: { label: "Coding message" },
         onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
