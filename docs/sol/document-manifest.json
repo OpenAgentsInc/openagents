@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "d2673f190a09a562c6763abd6749af60fc8beceb811003950c6b829566f927bc",
+  "sourceTreeSha256": "29cb4fc45d4c87bf22cf6c82c6bb5d4e58142fd97cc803440ff950e553428d24",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1776,7 +1776,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "232d32ac4505b0e478871abd00e9b3c1005040ef6d933bf8815bea3b66ef25de",
+      "sha256": "b54005141f393e9d34ac89e6b2c23f2943448789959715bb2d659db3497092d0",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1820,10 +1820,11 @@
         "docs/fastfollow/receipts/2026-07-17-ff-d1-33-desktop-thread-export-electron-host-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-34-canonical-accepted-event-search-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-35-desktop-canonical-event-search-artifact-source-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-36-desktop-canonical-export-receipt-catalog-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 40,
+      "inboundSourceCount": 41,
       "issueLinks": []
     },
     {

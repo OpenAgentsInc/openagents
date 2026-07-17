@@ -2887,6 +2887,17 @@ completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T23:37:07Z`
 
+### CLAIM-STATUS
+
+- implementation: added one owner-private Desktop catalog that schema-decodes and atomically persists only exact canonical owner-only export receipts, then reopens their bounded ref-only set for FF-D1-35 acquisition
+- fail-closed proof: malformed/non-canonical receipts, ref/digest mismatch, conflicting receipt/intent/idempotency/artifact identity, duplicate or corrupt persisted state, unknown/extra schema fields, forbidden raw fields, invalid UTF-8/JSON, oversize, capacity overflow, and invalid storage roots cannot change or expose catalog authority
+- bounded proof: the catalog holds at most 1,000 receipts and 1 MiB, exact replay does not rewrite, directory/file modes are owner-private where supported, atomic replacement leaves no path or bytes in results, and a real reopen feeds FF-D1-35 search without copying artifact content into the catalog
+- focused proof: catalog/acquisition/artifact-store/compiler/disclosure/authority tests 42/42 passed; Desktop and agent-runtime-schema typechecks passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13 plus typecheck/distribution, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec reproduced only the recorded environment-profile digest snapshot mismatch, 189/190; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-36-desktop-canonical-export-receipt-catalog-receipt.md`
+- residual: broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
