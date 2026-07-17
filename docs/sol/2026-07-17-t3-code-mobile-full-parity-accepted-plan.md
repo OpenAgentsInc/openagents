@@ -398,3 +398,14 @@ remain `T3M-F2`.
   removed and the focused local-first registry oracle is green.
 - close boundary: no attachment wire-schema widening or remote retention claim;
   physical zoom/VoiceOver/TalkBack evidence remains `T3M-F2`; `T3M-B1` is next
+
+### CLAIM-RELEASE
+
+- landed: `f337bbaf1bce8c40b9d22dfbe05c98f904856d66` on `main`
+- verification: post-rebase 113 focused transcript, interaction,
+  authoritative Home, accessibility, local-first registry, RN renderer,
+  behavior-contract, and Sol tests; Effect Native core, RN renderer, and
+  mobile typechecks; pre-rebase vendor guard and `pnpm run check`
+- residual: Epic A is complete; `T3M-B1` composer-local target/model/mode
+  toolbar and grouped picker is the next ordered packet; full mobile parity
+  remains open through `T3M-F2`
