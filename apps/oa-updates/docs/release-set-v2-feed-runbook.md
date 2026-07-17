@@ -40,8 +40,36 @@ Configure Cloud Run with:
 The deploy script uses `gcloud run deploy --update-env-vars` and
 `--update-secrets`, never their destructive `--set-*` forms. A Desktop-only
 invocation therefore preserves the existing mobile seed configuration, and a
-mobile-only invocation preserves the ReleaseSet bucket and pins. Its dry-run
-mode is covered by command-level tests in both directions.
+mobile-only invocation preserves the ReleaseSet bucket and pins.
+
+Image selection is additive at the layer level too, not just env vars. The
+script auto-selects between two build modes (`OA_UPDATES_DEPLOY_MODE=auto` by
+default; `full` and `incremental` are also selectable explicitly):
+
+- **full** (`--source .` against the ordinary `Dockerfile`) — used only when a
+  seed is actually being republished (`OA_SEED_DIST`/`OA_SEED_RUNTIME`, the
+  mobile Expo export, or `OA_DESKTOP_RELEASES_DIST`, the legacy Desktop v1
+  archive tree). `publish-ota.sh` always sets `OA_SEED_DIST`, so mobile
+  publication is unchanged and continues to bake a fresh export.
+- **incremental** (`Dockerfile.incremental`, built by Cloud Build against the
+  exact immutable digest of the currently ready Cloud Run revision) — used for
+  every other deploy: a bare server code push, a ReleaseSet v2 bucket/pin
+  config change, or staging a new v2 RC manifest under the git-tracked
+  `openagents-desktop-dist/` tree. This is the path that matters for this
+  feed: because the gitignored `dist/`, `desktop-dist/`, `pylon-dist/`, and
+  `desktop-ota/` seed directories are normally empty or stale in an ordinary
+  checkout, a `--source .` build in this case would silently blank whatever
+  mobile/Desktop-v1/Pylon bytes are already baked into the live image. The
+  incremental build never touches those layers; it only replaces the compiled
+  server and the small always-git-tracked Desktop v2 descriptor tree.
+
+The script refuses to run (rather than guess) when: the base image cannot be
+resolved to an immutable `sha256` digest, the built image cannot be resolved
+to an immutable digest, an unknown `OA_UPDATES_DEPLOY_MODE` value is given, or
+`OA_UPDATES_DEPLOY_MODE=incremental` is combined with a seed publish (that
+combination would silently drop the requested seed instead of shipping it).
+Both branches and every refusal are covered by command-level dry-run tests in
+`src/deploy-cloudrun.test.ts`.
 
 The service account needs object read/create/delete on the bounded
 `desktop/release-set-v2/` prefix. It does not need signing-key access.
