@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_07.thread_event_authority.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
@@ -64,6 +64,9 @@ The package's unscoped `test` command expanded to the workspace suite and
 observed an unrelated API Worker deploy-bundle contract failure. The packet's
 exact focused test and typecheck passed. All required repository gates recorded
 above passed before landing.
+
+The packet implementation landed on `main` as
+`5c80c4098e85c075883d880d5c41c1cc152000b7` with an exact remote tree match.
 
 ## Honest boundary and next packet
 
