@@ -74,7 +74,19 @@ describe("CUT-26 macOS artifact contract", () => {
     const ignore = config.packagerConfig?.ignore;
     expect(typeof ignore).toBe("function");
     expect(typeof ignore === "function" && ignore("/node_modules/effect/index.js")).toBe(true);
-    expect(config.makers).toHaveLength(2);
+    const makers = (config.makers ?? []) as ReadonlyArray<{
+      name: string;
+      platforms: ReadonlyArray<string>;
+    }>;
+    const darwinMakers = makers.filter((maker) => maker.platforms.includes("darwin"));
+    expect(darwinMakers).toHaveLength(2);
+    expect(darwinMakers.map((maker) => maker.name).toSorted()).toEqual(["dmg", "zip"]);
+    const linuxMakers = makers.filter((maker) => maker.platforms.includes("linux"));
+    expect(linuxMakers.map((maker) => maker.name).toSorted()).toEqual([
+      "appimage",
+      "deb",
+      "rpm",
+    ]);
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };

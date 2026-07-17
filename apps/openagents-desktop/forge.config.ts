@@ -1,5 +1,7 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerDeb } from "@electron-forge/maker-deb";
+import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -14,6 +16,7 @@ import {
   unsignedDevArtifactName,
 } from "./scripts/macos-gatekeeper.ts";
 import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts";
+import { MakerAppImage } from "./scripts/maker-appimage.ts";
 import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts";
 import {
   assertPackagedAsarAdmissible,
@@ -121,6 +124,35 @@ const stagedPathOr = (fallback: string, ...stagedSegments: ReadonlyArray<string>
     ? fallback
     : path.join(stagedTreePath(stagingWorkspaceEnv), ...stagedSegments);
 
+const activeDescriptor =
+  stagingWorkspaceEnv === undefined || stagingWorkspaceEnv === ""
+    ? undefined
+    : requireStagedBuildInputs().descriptor;
+const activeChannel = activeDescriptor?.channel ?? "stable";
+const activeProductIdentity = {
+  appId: activeChannel === "rc" ? "com.openagents.desktop.rc" : "com.openagents.desktop",
+  displayName: activeChannel === "rc" ? "OpenAgents RC" : "OpenAgents",
+  executableName:
+    activeDescriptor?.targetKey.startsWith("linux-") === true
+      ? activeChannel === "rc"
+        ? "openagents-rc"
+        : "openagents"
+      : activeChannel === "rc"
+        ? "OpenAgents RC"
+        : "OpenAgents",
+  linuxPackageName: activeChannel === "rc" ? "openagents-desktop-rc" : "openagents-desktop",
+  protocol: activeChannel === "rc" ? "openagents-rc" : "openagents",
+  startupWmClass: activeChannel === "rc" ? "OpenAgents-RC" : "OpenAgents",
+} as const;
+
+const releaseSetArtifactName = (
+  descriptor: DesktopTargetBuildDescriptor,
+  extension: string,
+): string => {
+  const normalizedExtension = extension.toLowerCase() === ".appimage" ? ".AppImage" : extension;
+  return `OpenAgents-${descriptor.version}-${descriptor.channel}-${descriptor.targetKey}${normalizedExtension}`;
+};
+
 const assertDescriptorMatchesMakerTarget = (
   descriptor: DesktopTargetBuildDescriptor,
   platform: string,
@@ -196,9 +228,9 @@ const isMacCodeSignablePath = (file: string): boolean =>
 
 const config: ForgeConfig = {
   packagerConfig: {
-    name: "OpenAgents",
-    executableName: "OpenAgents",
-    appBundleId: OPENAGENTS_DESKTOP_BUNDLE_ID,
+    name: activeProductIdentity.displayName,
+    executableName: activeProductIdentity.executableName,
+    appBundleId: activeProductIdentity.appId,
     appCategoryType: "public.app-category.developer-tools",
     extendInfo: {
       NSMicrophoneUsageDescription:
@@ -240,7 +272,7 @@ const config: ForgeConfig = {
       stagedPathOr("dist/builtin-skills", "dist", "builtin-skills"),
     ],
     ignore: () => true,
-    protocols: [{ name: "OpenAgents", schemes: [OPENAGENTS_DESKTOP_PROTOCOL] }],
+    protocols: [{ name: activeProductIdentity.displayName, schemes: [activeProductIdentity.protocol] }],
     osxSign:
       developerIdApplication === undefined
         ? undefined
@@ -348,7 +380,12 @@ const config: ForgeConfig = {
       for (const outputPath of packageResult.outputPaths) {
         const resourcesPath =
           packageResult.platform === "darwin"
-            ? path.join(outputPath, "OpenAgents.app", "Contents", "Resources")
+            ? path.join(
+                outputPath,
+                `${activeProductIdentity.displayName}.app`,
+                "Contents",
+                "Resources",
+              )
             : path.join(outputPath, "resources");
         const gate = await assertPackagedAsarAdmissible({
           descriptor,
@@ -379,10 +416,23 @@ const config: ForgeConfig = {
      * which renames every artifact `-UNSIGNED-DEV`.
      */
     postMake: async (_forgeConfig, makeResults) => {
-      if (process.platform !== "darwin") return makeResults;
       const { descriptor } = requireStagedBuildInputs();
       for (const result of makeResults) {
         assertDescriptorMatchesMakerTarget(descriptor, result.platform, result.arch);
+      }
+      if (process.platform !== "darwin") {
+        return makeResults.map((result) => ({
+          ...result,
+          artifacts: result.artifacts.map((artifact) =>
+            renameArtifact(
+              artifact,
+              path.join(
+                path.dirname(artifact),
+                releaseSetArtifactName(descriptor, path.extname(artifact)),
+              ),
+            ),
+          ),
+        }));
       }
       const signingReady =
         developerIdApplication !== undefined && notarizeCredentials !== undefined;
@@ -419,7 +469,7 @@ const config: ForgeConfig = {
           process.cwd(),
           "out",
           `OpenAgents-${result.platform}-${result.arch}`,
-          "OpenAgents.app",
+          `${activeProductIdentity.displayName}.app`,
         );
         for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {
           notarizeAndStapleDmg(artifact, appPath, notarizeCredentials);
@@ -443,7 +493,10 @@ const config: ForgeConfig = {
         artifacts: result.artifacts.map((artifact) =>
           renameArtifact(
             artifact,
-            canonicalArtifactPath(artifact, result.platform, result.arch, descriptor.version),
+            path.join(
+              path.dirname(artifact),
+              releaseSetArtifactName(descriptor, path.extname(artifact)),
+            ),
           ),
         ),
       }));
@@ -460,7 +513,7 @@ const config: ForgeConfig = {
               additionalDMGOptions: {
                 "code-sign": {
                   "signing-identity": developerIdApplication,
-                  identifier: OPENAGENTS_DESKTOP_BUNDLE_ID,
+                  identifier: activeProductIdentity.appId,
                 },
               },
             }),
@@ -468,6 +521,56 @@ const config: ForgeConfig = {
       ["darwin"],
     ),
     new MakerZIP({}, ["darwin"]),
+    new MakerAppImage(
+      () => {
+        const { descriptor } = requireStagedBuildInputs();
+        return {
+          artifactName: releaseSetArtifactName(descriptor, ".AppImage"),
+          appId: activeProductIdentity.appId,
+          executableName: activeProductIdentity.executableName,
+          productName: activeProductIdentity.displayName,
+          startupWmClass: activeProductIdentity.startupWmClass,
+        };
+      },
+      ["linux"],
+    ),
+    new MakerDeb(
+      () => ({
+        options: {
+          name: activeProductIdentity.linuxPackageName,
+          productName: activeProductIdentity.displayName,
+          genericName: "AI development environment",
+          description: "OpenAgents Effect Native desktop application",
+          productDescription: "OpenAgents Effect Native desktop application and local agent runtime.",
+          section: "devel",
+          priority: "optional",
+          maintainer: "OpenAgents, Inc.",
+          homepage: "https://openagents.com",
+          bin: activeProductIdentity.executableName,
+          icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
+          categories: ["Development"],
+        },
+      }),
+      ["linux"],
+    ),
+    new MakerRpm(
+      () => ({
+        options: {
+          name: activeProductIdentity.linuxPackageName,
+          productName: activeProductIdentity.displayName,
+          genericName: "AI development environment",
+          description: "OpenAgents Effect Native desktop application",
+          productDescription: "OpenAgents Effect Native desktop application and local agent runtime.",
+          license: "MIT",
+          group: "Development/Tools",
+          homepage: "https://openagents.com",
+          bin: activeProductIdentity.executableName,
+          icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
+          categories: ["Development"],
+        },
+      }),
+      ["linux"],
+    ),
   ],
   plugins: [
     new FusesPlugin({

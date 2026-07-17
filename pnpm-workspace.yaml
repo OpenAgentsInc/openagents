@@ -55,6 +55,9 @@ allowBuilds:
   "@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2": true
   nostr-effect@https://codeload.github.com/OpenAgentsInc/nostr-effect/tar.gz/2bb57870eeeb214ed80ca8a275292f5e4dd89863: false
   nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz: false
+  # app-builder-lib carries the Windows installer helper as an optional peer;
+  # Linux AppImage generation never executes its install script.
+  electron-winstaller: false
 
 overrides:
   "@effect/platform-browser": 4.0.0-beta.94
