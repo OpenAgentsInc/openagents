@@ -659,6 +659,15 @@ Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T14:21:36Z`
 
+### CLAIM-STATUS
+
+- implementation: added a deterministic owner-only canonical event bundle compiler over actual bounded JSON event data and exact accepted/superseded/reverted authority
+- fail-closed proof: broader audiences, other formats, non-export intents, malformed/non-JSON data, cross-thread events, duplicate identity/order, unresolved/conflicting authority, oversize artifacts, and invalid digests cannot produce an artifact
+- focused proof: all 64 agent-runtime-schema tests passed, including 19 export/disclosure/authority tests; package typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, and `pnpm run check` passed
+- publication correction: the claim commit's truncated Sol manifest transfer was caught by the deterministic gate and repaired on remote `main` at `6cfee8e382decc85529ef81a1b7423fc69ede955` before implementation publication
+- residual: artifact persistence/transport, Desktop command consumption and pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
