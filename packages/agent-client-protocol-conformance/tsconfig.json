@@ -3,6 +3,7 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "rootDir": "../..",
+    "resolveJsonModule": true,
     "types": ["node", "vite-plus-matchers"]
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts"]

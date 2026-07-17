@@ -6,6 +6,7 @@ export * from "./live.ts";
 export * from "./mcp.ts";
 export * from "./projection.ts";
 export * from "./release.ts";
+export * from "./release-evidence.ts";
 export * from "./live-release.ts";
 export * from "./report.ts";
 export * from "./transcript.ts";

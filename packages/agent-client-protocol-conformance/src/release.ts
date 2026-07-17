@@ -66,6 +66,8 @@ export const ACP_RELEASE_SCENARIO_IDS = [
   "support-bundle",
 ] as const;
 
+export const ACP_RELEASE_PROFILE_REVISIONS = Object.freeze({ grok: 1, cursor: 3 } as const);
+
 export type AcpReleaseEvidenceClass =
   | "live-peer"
   | "optional-live-peer"
@@ -267,13 +269,15 @@ export const validateAcpReleaseMatrix = (
     if (!(ACP_RELEASE_CLAIM_STATES as readonly unknown[]).includes(peer.claimState))
       errors.push(`${peerName}: invalid claim state`);
     const expectedProfile = peerName === "grok" ? "grok-cli" : "cursor-agent";
+    const expectedProfileRevision =
+      peerName === "grok" || peerName === "cursor"
+        ? ACP_RELEASE_PROFILE_REVISIONS[peerName]
+        : undefined;
     const profile = object(peer.profile);
     if (
       profile === undefined ||
       profile.id !== expectedProfile ||
-      typeof profile.revision !== "number" ||
-      !Number.isInteger(profile.revision) ||
-      profile.revision < 1
+      profile.revision !== expectedProfileRevision
     )
       errors.push(`${peerName}: exact trusted profile identity is required`);
     const binary = object(peer.binary);

@@ -135,13 +135,19 @@ production compatibility facade no longer uses the raw JSON-RPC fixture client.
 The #8897 claim validator is now implemented as a checked
 [machine-readable matrix](../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
 with a [human proof ledger](../qa/2026-07-16-acp10-release-proof/README.md).
-It independently derives an experimental verdict for both pinned peers because
-required live and cross-platform rows remain unresolved; it does not turn
-fixture coverage into supported language. Grok and Cursor are now registered
-main-owned provider lanes, and an isolated production Desktop build completed a
-real Grok Full Auto turn. A checked, opt-in production runner now reproduces a
-redacted two-peer candidate receipt without claim authority. #8897 remains open
-for the unobserved credential, extension, and platform proof;
+Its code-owned required rows now pass for both exact Darwin arm64 peers; all
+other platforms remain explicitly not tested and cannot inherit that claim. The
+checked matrix is compiled fail-closed into the narrow fixture, full-release,
+and feature evidence records consumed by trusted peer admission. Desktop passes
+those records to both the probe/admission decision and the matching runtime, so
+an exact version, executable digest, platform, freshness window, and Cursor
+installation-closure digest can project `supported`; stale, incomplete,
+revision-substituted, or binary-substituted evidence remains `experimental`.
+Grok and Cursor are registered main-owned provider lanes, and an isolated
+production Desktop build completed a real Grok Full Auto turn. A checked,
+opt-in production runner reproduces a redacted two-peer candidate receipt
+without claim authority. #8897 still requires a final current-revision rerun
+and closure receipt before its claim can close;
 packaged interruption/restart journeys for both pinned peers are now checked,
 and Grok now has live broker-only MCP custody evidence with a complete bounded
 post-shutdown scan of its exact session/configuration persistence surfaces.

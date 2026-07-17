@@ -331,6 +331,9 @@ importers:
       '@openagentsinc/agent-client-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-client-protocol
+      '@openagentsinc/agent-client-protocol-conformance':
+        specifier: workspace:*
+        version: link:../../packages/agent-client-protocol-conformance
       '@openagentsinc/agent-client-runtime-bridge':
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge

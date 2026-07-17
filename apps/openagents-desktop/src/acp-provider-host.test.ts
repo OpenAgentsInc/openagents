@@ -1,18 +1,25 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import {
-  createAcpProviderHost,
-  defaultGrokDesktopAuthOptions,
-} from "./acp-provider-host.ts";
+import { createAcpProviderHost, defaultGrokDesktopAuthOptions } from "./acp-provider-host.ts";
 
-const probe = (provider: "grok" | "cursor") =>
+const probe = (provider: "grok" | "cursor", overrides: Record<string, unknown> = {}) =>
   ({
     requestedExecutable: provider === "grok" ? "grok" : "agent",
     resolvedPath: provider === "grok" ? "/secret/bin/grok" : "/secret/cursor/cursor-agent",
     realPath: provider === "grok" ? "/secret/bin/grok" : "/secret/cursor/cursor-agent",
-    sha256: "a".repeat(64),
-    reportedVersion: provider === "grok" ? "0.2.101" : "2026.6.24",
+    sha256:
+      provider === "grok"
+        ? "8431538dbd99379240f558b48b779c651d668b06d793c87311ad532c4395a4e2"
+        : "b7babf47d8b1eee28ac27a74affa02a559bb38103a6e71fbb1f120805d51fedf",
+    ...(provider === "cursor"
+      ? {
+          closureSha256: "69d078daa4db8cbb4163ce2f010207553efb06d652c1e1ea421d739795532faa",
+        }
+      : {}),
+    reportedVersion:
+      provider === "grok" ? "grok 0.2.101 (5bc4b5dfadcf)" : "2026.06.24-00-45-58-9f61de7",
     platform: { os: "darwin", arch: "arm64" },
+    ...overrides,
   }) as any;
 
 const admission = (provider: "grok" | "cursor") =>
@@ -99,6 +106,39 @@ describe("main-owned ACP provider host", () => {
         XAI_API_KEY: "ambient-must-not-select-api-key",
       }),
     ).toEqual({ environment: { HOME: "/ordinary/home" }, apiKeyConfigured: false });
+  });
+
+  test("binds the complete checked release matrix into exact shipped peer admission", async () => {
+    const host = createAcpProviderHost({
+      cwd: async () => "/workspace",
+      now: () => new Date("2026-07-17T12:00:00.000Z"),
+      probeGrok: async () => probe("grok"),
+      probeCursor: async () => probe("cursor"),
+    });
+    const status = await host.initialize();
+    expect(status.providers.map((provider) => [provider.provider, provider.profileState])).toEqual([
+      ["grok", "supported"],
+      ["cursor", "supported"],
+    ]);
+    expect(
+      status.providers.every((provider) =>
+        provider.conformanceRef?.endsWith("release-matrix.json"),
+      ),
+    ).toBe(true);
+  });
+
+  test("keeps a substituted executable experimental even when the checked matrix is complete", async () => {
+    const host = createAcpProviderHost({
+      cwd: async () => "/workspace",
+      now: () => new Date("2026-07-17T12:00:00.000Z"),
+      probeGrok: async () => probe("grok", { sha256: "f".repeat(64) }),
+      probeCursor: async () => probe("cursor"),
+    });
+    const status = await host.initialize();
+    expect(status.providers.map((provider) => [provider.provider, provider.profileState])).toEqual([
+      ["grok", "experimental"],
+      ["cursor", "supported"],
+    ]);
   });
 
   test("drives distinct clean-machine probe, auth, and session flows without renderer authority", async () => {

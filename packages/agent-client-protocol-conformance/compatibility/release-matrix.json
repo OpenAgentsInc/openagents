@@ -471,7 +471,7 @@
     },
     {
       "peer": "cursor",
-      "profile": { "id": "cursor-agent", "revision": 2 },
+      "profile": { "id": "cursor-agent", "revision": 3 },
       "binary": {
         "command": ["agent", "acp"],
         "reportedVersion": "2026.06.24-00-45-58-9f61de7",

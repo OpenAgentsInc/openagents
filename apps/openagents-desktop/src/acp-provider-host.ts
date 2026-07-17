@@ -14,9 +14,11 @@ import {
   type GrokAcpPeerRuntime,
 } from "@openagentsinc/grok-harness";
 import type {
+  AcpConformanceEvidenceRecord,
   AcpExecutableProbe,
   AcpPeerAdmissionDecision,
 } from "@openagentsinc/agent-client-protocol/profiles";
+import { checkedAcpReleaseEvidence } from "@openagentsinc/agent-client-protocol-conformance";
 import type {
   AcpProjectionEvent,
   AcpLifecycleOutcome,
@@ -127,6 +129,18 @@ const receiptRef = (provider: AcpProviderId, index: number): string =>
 
 export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies) => {
   const now = dependencies.now ?? (() => new Date());
+  const releaseEvidence = (): Readonly<{
+    diagnostics: ReadonlyArray<string>;
+    peers: Readonly<Record<AcpProviderId, ReadonlyArray<AcpConformanceEvidenceRecord>>>;
+  }> => {
+    const compiled = checkedAcpReleaseEvidence({ now: now() });
+    return compiled._tag === "ReleaseEvidenceReady"
+      ? { diagnostics: [], peers: compiled.evidence }
+      : {
+          diagnostics: compiled.diagnostics,
+          peers: { grok: [], cursor: [] },
+        };
+  };
   const slots: Record<AcpProviderId, Slot> = {
     grok: { projection: initialProjection("grok"), receiptRefs: [], evidenceRefs: [] },
     cursor: { projection: initialProjection("cursor"), receiptRefs: [], evidenceRefs: [] },
@@ -136,18 +150,24 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
     maxEntries: 2_048,
     maxBytes: 16 * 1_048_576,
   });
-  const activeTurns = new Map<AcpProviderId, Readonly<{
-    turnRef: string;
-    sessionRef: string;
-    connectionRef: string;
-    processGeneration: number;
-    projector: AcpRuntimeProjector;
-    emit: (event: AcpProjectionEvent) => void;
-  }>>();
-  const interruptibleTurns = new Map<string, Readonly<{
-    provider: AcpProviderId;
-    sessionRef: string;
-  }>>();
+  const activeTurns = new Map<
+    AcpProviderId,
+    Readonly<{
+      turnRef: string;
+      sessionRef: string;
+      connectionRef: string;
+      processGeneration: number;
+      projector: AcpRuntimeProjector;
+      emit: (event: AcpProjectionEvent) => void;
+    }>
+  >();
+  const interruptibleTurns = new Map<
+    string,
+    Readonly<{
+      provider: AcpProviderId;
+      sessionRef: string;
+    }>
+  >();
 
   const projectRuntimeUpdate = async (
     provider: AcpProviderId,
@@ -155,9 +175,10 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
   ): Promise<void> => {
     const active = activeTurns.get(provider);
     if (active === undefined || record.sessionId !== active.sessionRef) return;
-    const update = typeof record.update === "object" && record.update !== null
-      ? record.update as Record<string, unknown>
-      : {};
+    const update =
+      typeof record.update === "object" && record.update !== null
+        ? (record.update as Record<string, unknown>)
+        : {};
     const envelope = createAcpRuntimeNativeEnvelope({
       profile: provider,
       protocolVersion: 1,
@@ -167,9 +188,8 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
       updateId: `${active.processGeneration}-${record.sequence}`,
       sessionId: record.sessionId,
       observedAt: now().toISOString(),
-      discriminant: typeof update.sessionUpdate === "string"
-        ? update.sessionUpdate
-        : "unknown_session_update",
+      discriminant:
+        typeof update.sessionUpdate === "string" ? update.sessionUpdate : "unknown_session_update",
       validatedPayload: update,
       validationStatus: record.disposition === "applied" ? "validated" : "decode-failure",
     });
@@ -274,6 +294,8 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
   const probe = async (provider: AcpProviderId): Promise<void> => {
     const slot = slots[provider];
     try {
+      const checkedEvidence = releaseEvidence();
+      const evidence = checkedEvidence.peers[provider];
       const candidatePath = alternatePaths[provider];
       const executable = await (provider === "grok"
         ? (
@@ -285,10 +307,14 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
             ((_candidate) => probeCursorAcpExecutable(process.env, _candidate))
           )(candidatePath));
       const admission = await (provider === "grok"
-        ? (dependencies.admitGrok ?? ((value) => admitGrokAcpPeer({ probe: value })))(executable)
-        : (dependencies.admitCursor ?? ((value) => admitCursorAcpPeer({ probe: value })))(
-            executable,
-          ));
+        ? (
+            dependencies.admitGrok ??
+            ((value) => admitGrokAcpPeer({ probe: value, evidence, now: now() }))
+          )(executable)
+        : (
+            dependencies.admitCursor ??
+            ((value) => admitCursorAcpPeer({ probe: value, evidence, now: now() }))
+          )(executable));
       slot.admission = admission;
       slot.projection = {
         ...slot.projection,
@@ -301,7 +327,10 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
         profileState: admission.supportState,
         probe: { state: "passed", code: null, observedAt: now().toISOString() },
         auth: { ...slot.projection.auth, state: "required" },
-        diagnosticCodes: admission.quarantinedCapabilities.slice(0, 32),
+        diagnosticCodes: [
+          ...admission.quarantinedCapabilities,
+          ...(checkedEvidence.diagnostics.length > 0 ? ["release_evidence_unavailable"] : []),
+        ].slice(0, 32),
         conformanceRef: admission.diagnostics.evidenceArtifactRefs.at(-1) ?? null,
       };
     } catch (error) {
@@ -323,6 +352,7 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
     if (slot.admission === undefined) await probe(provider);
     if (slot.admission === undefined) return undefined;
     const cwd = await dependencies.cwd();
+    const evidence = releaseEvidence().peers[provider];
     slot.projection = { ...slot.projection, auth: { ...slot.projection.auth, state: "pending" } };
     slot.runtime =
       provider === "grok"
@@ -332,6 +362,8 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
               createGrokAcpPeerRuntime({
                 cwd: root,
                 admission,
+                evidence,
+                now: now(),
                 onUpdate,
                 // Desktop ACP intentionally uses Grok's existing local login. An ambient
                 // shell API key is not an owner configuration decision and must not
@@ -345,6 +377,8 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
               createCursorAcpPeerRuntime({
                 cwd: root,
                 admission,
+                evidence,
+                now: now(),
                 onUpdate,
                 authorizeLogin: async () => {
                   onAuth("pending");
@@ -503,11 +537,19 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
   const driver = (provider: AcpProviderId): AcpProviderLaneDriver => ({
     runTurn: async (input) => {
       if (activeTurns.has(provider)) {
-        return { ok: false, reason: "session_failed", detail: "This ACP provider already has an active turn." };
+        return {
+          ok: false,
+          reason: "session_failed",
+          detail: "This ACP provider already has an active turn.",
+        };
       }
       const runtime = await ensureRuntime(provider);
       if (runtime === undefined) {
-        return { ok: false, reason: "session_failed", detail: "Provider authentication or startup failed." };
+        return {
+          ok: false,
+          reason: "session_failed",
+          detail: "Provider authentication or startup failed.",
+        };
       }
       let session = runtime.sessions().find((candidate) => candidate.threadId === input.threadRef);
       if (session === undefined) {
@@ -527,7 +569,11 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
       }
       const evidence = runtime.evidence();
       if (evidence === undefined) {
-        return { ok: false, reason: "session_failed", detail: "Provider runtime evidence is unavailable." };
+        return {
+          ok: false,
+          reason: "session_failed",
+          detail: "Provider runtime evidence is unavailable.",
+        };
       }
       const binding = bindAcpSession({
         profile: provider,
@@ -557,7 +603,9 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
       interruptibleTurns.set(input.turnRef, { provider, sessionRef: session.peerSessionId });
       emit(await projector.begin(now().toISOString()));
       try {
-        const outcome = await runtime.prompt(session.peerSessionId, [{ type: "text", text: input.message }]);
+        const outcome = await runtime.prompt(session.peerSessionId, [
+          { type: "text", text: input.message },
+        ]);
         const stopReason = outcome.ok ? outcome.value.stopReason : outcome.reason;
         const settlement = createAcpRuntimeNativeEnvelope({
           profile: provider,
@@ -580,11 +628,12 @@ export const createAcpProviderHost = (dependencies: AcpProviderHostDependencies)
         if (!outcome.ok) {
           return {
             ok: false,
-            reason: outcome.reason === "cancelled"
-              ? "interrupted"
-              : outcome.reason === "timed_out"
-                ? "timeout"
-                : "session_failed",
+            reason:
+              outcome.reason === "cancelled"
+                ? "interrupted"
+                : outcome.reason === "timed_out"
+                  ? "timeout"
+                  : "session_failed",
             detail: outcome.safeDetail,
           };
         }

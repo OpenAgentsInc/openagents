@@ -3,8 +3,9 @@
  * ACP-7 #8894). Launch pin: `agent acp`. Extension identity comes only from
  * the Cursor vendor-extension module — no Grok code is shared here.
  *
- * Version pins are deliberately conservative: the probe-verified build remains
- * experimental until #8897 installs the complete compatibility matrix.
+ * Version pins are deliberately conservative: only the exact probe-verified
+ * build qualified by #8897 can derive supported, and only with its complete
+ * digest/platform/freshness-bound compatibility matrix.
  */
 
 import { CURSOR_ACP_PROFILE } from "../extensions/cursor.ts";
@@ -16,7 +17,7 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
   wireVersion: 1,
   profileId: "cursor-agent",
   providerId: "cursor",
-  profileRevision: 2,
+  profileRevision: 3,
   display: {
     name: "Cursor Agent CLI",
     description:
@@ -27,11 +28,8 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
     auditRef: "docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md",
   },
   versions: {
-    supported: [],
-    // Diagnostic live pin from the official Cursor Agent CLI distribution on
-    // Darwin arm64. Full support remains gated by the #8897 compatibility
-    // matrix; unknown builds are not admitted by this profile.
-    experimental: [{ kind: "exact", version: "2026.6.24" }],
+    supported: [{ kind: "exact", version: "2026.6.24" }],
+    experimental: [],
     denied: [],
   },
   launch: {
@@ -62,9 +60,9 @@ export const CURSOR_TRUSTED_PEER_PROFILE = {
   ],
   deviations: [
     {
-      id: "capability-truth-pending-live-pin",
+      id: "conditional-extension-emission",
       description:
-        "Mode, model-discovery, and capability truth-values are pinned finally by the live matrix (#8894/#8897); until then every state above experimental is withheld.",
+        "The pinned release matrix observed model listing and create-plan live. Ask-question and todo handlers remain separately bounded and evidence-gated because the exact model did not emit those conditional calls during qualification.",
     },
   ],
   configuration: { modes: [], modelConfigOptionIds: [] },

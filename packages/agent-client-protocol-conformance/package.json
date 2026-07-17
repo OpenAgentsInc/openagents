@@ -14,7 +14,7 @@
     "live:cursor": "node --import tsx scripts/live-probe.ts cursor",
     "live:release": "node --import tsx scripts/live-release-suite.ts",
     "report": "node --import tsx scripts/run-conformance-report.ts",
-    "test": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts",
+    "test": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts packages/agent-client-protocol-conformance/src/release-evidence.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
