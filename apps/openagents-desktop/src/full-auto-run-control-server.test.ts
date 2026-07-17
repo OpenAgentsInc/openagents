@@ -5,6 +5,7 @@ import path from "node:path"
 
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { startFullAutoControlServer, type FullAutoControlServer } from "./full-auto-control-server.ts"
 
 const GRANTED_WORKSPACE = "/granted/full-auto-run/workspace"
@@ -30,6 +31,7 @@ const startHarness = async (): Promise<Harness> => {
   const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-run-control-"))
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
   const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+  const reportStore = openFullAutoRunReportStore(path.join(root, "reports.json"))
   const liveMap: Harness["liveMap"] = new Map()
   const interruptCalls: Array<string> = []
   let reconcileCallCount = 0
@@ -39,6 +41,7 @@ const startHarness = async (): Promise<Harness> => {
     capabilities: {
       registry,
       runRegistry,
+      reportStore,
       resolveWorkspaceRef: () => resolvedWorkspace,
       triggerReconciliation: async () => {
         reconcileCallCount += 1

@@ -6,6 +6,7 @@ import path from "node:path"
 import type { DesktopThread } from "./chat-contract.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { openProviderHandoffRegistry, type ProviderHandoffRegistry } from "./full-auto-provider-handoff.ts"
 import { makeProviderLaneRegistry } from "./provider-lane-registry.ts"
 import { startFullAutoControlServer, type FullAutoControlServer } from "./full-auto-control-server.ts"
@@ -85,6 +86,7 @@ const startHarness = async (): Promise<Harness> => {
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
   const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
   const providerHandoffRegistry = openProviderHandoffRegistry(path.join(root, "full-auto", "provider-handoffs.json"))
+  const reportStore = openFullAutoRunReportStore(path.join(root, "full-auto", "reports.json"))
   const providerLaneRegistry = makeProviderLaneRegistry({ file: path.join(root, "provider-lanes.json") })
   const notes: Array<Readonly<{ threadRef: string; text: string }>> = []
   const liveMap: Harness["liveMap"] = new Map()
@@ -95,6 +97,7 @@ const startHarness = async (): Promise<Harness> => {
     capabilities: {
       registry,
       runRegistry,
+      reportStore,
       resolveWorkspaceRef: () => GRANTED_WORKSPACE,
       triggerReconciliation: async () => {},
       liveState: threadRef => liveMap.get(threadRef) ?? null,

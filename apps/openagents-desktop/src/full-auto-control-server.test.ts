@@ -26,6 +26,7 @@ import {
 } from "./full-auto-control-server.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
 import { readFileSync } from "node:fs"
 import {
@@ -84,6 +85,7 @@ const startHarness = async (): Promise<Harness> => {
   const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-control-"))
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
   const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+  const reportStore = openFullAutoRunReportStore(path.join(root, "reports.json"))
   const notes: Array<Readonly<{ threadRef: string; text: string }>> = []
   const turns: Array<LocalTurnRecord> = []
   const createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>> = []
@@ -99,6 +101,7 @@ const startHarness = async (): Promise<Harness> => {
     capabilities: {
       registry,
       runRegistry,
+      reportStore,
       interruptLiveTurn: threadRef => {
         interruptCalls.push(threadRef)
         return true

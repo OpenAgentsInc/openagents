@@ -320,6 +320,7 @@ import {
   openFullAutoRunRegistry,
 } from "./full-auto-run-registry.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
 import {
   makeFullAutoRunProjectionPublisher,
@@ -1185,6 +1186,13 @@ const fullAutoRunRegistry = wrapFullAutoRunRegistryWithProjectionPublish(
  * every handoff for a run without conflating the two event kinds. */
 const providerHandoffRegistry = openProviderHandoffRegistry(
   path.join(app.getPath("userData"), "full-auto", "provider-handoffs.json"),
+)
+/** FA-RUN-04 (#8972): the bounded, durable private `FullAutoRunReport` store
+ * -- layered on top of `fullAutoRunRegistry`, `providerHandoffRegistry`, and
+ * `localTurnJournal` exactly the way this comment block already describes
+ * those three stores layering on top of each other. */
+const fullAutoRunReportStore = openFullAutoRunReportStore(
+  path.join(app.getPath("userData"), "full-auto", "run-reports.json"),
 )
 /** FA-AC-41: additive, idempotent migration from the legacy per-thread
  * `enabled: boolean` registry -- safe to call on every startup; a threadRef
@@ -4240,6 +4248,8 @@ if (isFullAutoControlEnabled(process.env)) {
       providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
       getThread: threadRef => threads().open(threadRef),
       providerHandoffRegistry,
+      // FA-RUN-04 (#8972): the bounded, durable private report store.
+      reportStore: fullAutoRunReportStore,
     },
     controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
     ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535

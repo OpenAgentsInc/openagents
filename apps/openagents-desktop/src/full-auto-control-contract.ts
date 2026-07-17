@@ -26,6 +26,7 @@ import {
   ProviderHandoffTransitionRecordSchema,
 } from "./full-auto-provider-handoff.ts"
 import { LocalTurnDispositionSchema, LocalTurnPhaseSchema } from "./local-turn-journal.ts"
+import { FullAutoRunReceiptSchema, FullAutoRunReportSchema } from "./full-auto-run-report.ts"
 
 /**
  * FA-H13 (#8886): the request/response contract for the Phase 1 local Full
@@ -220,6 +221,36 @@ export const FullAutoControlRunHandoffResponseSchema = Schema.Struct({
 })
 export type FullAutoControlRunHandoffResponse = typeof FullAutoControlRunHandoffResponseSchema.Type
 
+/**
+ * FA-RUN-04 (#8972): GET /v1/full-auto/runs/{runRef}/report -- the freshly
+ * synced, bounded, PRIVATE `FullAutoRunReport` aggregating lifecycle
+ * transitions (FA-RUN-01 #8969), liveness/stall observations (FA-RUN-03
+ * #8971), provider-handoff transitions (FA-HO-01 #8975), and turn outcomes
+ * for exactly this run. Same authenticated loopback trust tier as the rest
+ * of this surface -- the existing `FullAutoControlRunSchema` already returns
+ * raw objective/doneCondition text to any bearer holder, so this route adds
+ * no new category of exposure, only more history for the SAME caller.
+ */
+export const FullAutoControlRunReportResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  report: FullAutoRunReportSchema,
+})
+export type FullAutoControlRunReportResponse = typeof FullAutoControlRunReportResponseSchema.Type
+
+/**
+ * FA-RUN-04 (#8972): GET /v1/full-auto/runs/{runRef}/receipt -- the derived
+ * PUBLIC-SAFE `FullAutoRunReceipt`: identities, digests, dispositions,
+ * counts, and artifact refs only, provably redacted of objective/
+ * doneCondition/transcript/reason/path/account text (see the adversarial
+ * tests in full-auto-run-report.test.ts). Safe to attach to a public
+ * dogfood issue or export outside the loopback boundary.
+ */
+export const FullAutoControlRunReceiptResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  receipt: FullAutoRunReceiptSchema,
+})
+export type FullAutoControlRunReceiptResponse = typeof FullAutoControlRunReceiptResponseSchema.Type
+
 /** Coarse live state riding alongside the durable record (FA-H4 vocabulary). */
 export const FullAutoControlLiveSchema = Schema.Struct({
   state: CodexLocalFullAutoLiveStateSchema,
@@ -384,6 +415,10 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   // only from Stalled, and only when the freshly classified cause is
   // recoverable; a nonrecoverable cause refuses with `not_recoverable`.
   { method: "post", path: "/v1/full-auto/runs/{runRef}/retry-now", operationId: "retryFullAutoRunNow" },
+  // FA-RUN-04 (#8972): the bounded private aggregate report and its derived
+  // public-safe receipt projection.
+  { method: "get", path: "/v1/full-auto/runs/{runRef}/report", operationId: "getFullAutoRunReport" },
+  { method: "get", path: "/v1/full-auto/runs/{runRef}/receipt", operationId: "getFullAutoRunReceipt" },
 ] as const
 export type FullAutoControlRoute = (typeof FULL_AUTO_CONTROL_ROUTES)[number]
 

@@ -21,6 +21,12 @@ import {
   ProviderHandoffOmissionReasonSchema,
   ProviderHandoffRefusalReasonSchema,
 } from "./full-auto-provider-handoff.ts"
+import {
+  FULL_AUTO_RUN_RECEIPT_SCHEMA,
+  FULL_AUTO_RUN_REPORT_SCHEMA,
+  FullAutoRunReportVerificationSchema,
+  FullAutoRunReportVerifiedRefKindSchema,
+} from "./full-auto-run-report.ts"
 
 /**
  * FA-H13 (#8886): the hand-authored OpenAPI 3.1 document for the Phase 1
@@ -509,6 +515,57 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/runs/{runRef}/report": {
+      get: {
+        operationId: "getFullAutoRunReport",
+        summary: "FA-RUN-04 (#8972): the bounded, durable, PRIVATE FullAutoRunReport for one run.",
+        description:
+          "Sync-on-read: settles the run, folds the freshly settled liveness projection, a fresh " +
+          "turn-journal read, and a fresh provider-handoff-registry read into the report's bounded merge " +
+          "BEFORE responding, so the report reflects even organic (non-control-API) reconciliation " +
+          "activity that happened since the last control-API call touched this run. Aggregates lifecycle " +
+          "transitions (FA-RUN-01 #8969), liveness/stall observations and derived gaps/uninterrupted " +
+          "intervals (FA-RUN-03 #8971), provider-handoff transitions (FA-HO-01 #8975), and turn outcomes " +
+          "-- never raw transcript text (assistantText/assistantSegments are never copied in). Same " +
+          "authenticated loopback trust tier as the rest of this surface.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "The freshly synced private run report.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunReportResponse" } },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/{runRef}/receipt": {
+      get: {
+        operationId: "getFullAutoRunReceipt",
+        summary: "FA-RUN-04 (#8972): the derived PUBLIC-SAFE FullAutoRunReceipt for one run.",
+        description:
+          "Derived from the same freshly synced report as GET .../report, reduced to identities, " +
+          "digests (sha256 hex of objective/doneCondition/workspaceRef -- never the raw text/path), " +
+          "dispositions, counts, and bounded system-minted refs only. Structurally incapable of carrying " +
+          "free text: no title, objective, doneCondition, reason, or path field exists on this schema. " +
+          "Safe to attach to a public dogfood issue or export outside the loopback boundary.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "The derived public-safe receipt.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunReceiptResponse" } },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -917,6 +974,199 @@ export const fullAutoControlOpenApiDocument = {
             description: "Optional admitted ProviderLane ref; defaults to codex-local.",
           },
           turnCap: { type: "integer", minimum: 1, maximum: 1000, default: 20 },
+        },
+      },
+      FullAutoRunReportTurnEntry: {
+        type: "object",
+        required: ["turnRef", "lane", "phase", "disposition", "createdAt", "updatedAt", "outcomeSummary"],
+        additionalProperties: false,
+        properties: {
+          turnRef: { type: "string", minLength: 1, maxLength: 180 },
+          lane: { type: "string", minLength: 1, maxLength: 80 },
+          accountRef: { type: "string", minLength: 1, maxLength: 180 },
+          model: { type: "string", minLength: 1, maxLength: 180 },
+          phase: {
+            type: "string",
+            enum: [
+              "accepted", "dispatching", "attached", "streaming", "recovering",
+              "completed", "failed", "interrupted", "interrupted_by_restart",
+            ],
+          },
+          disposition: {
+            type: ["string", "null"],
+            enum: ["completed", "failed", "owner_interrupted", "resumed_after_restart", "interrupted_by_restart", null],
+          },
+          createdAt: { type: "string" },
+          updatedAt: { type: "string" },
+          retryOfTurnRef: { type: "string", minLength: 1, maxLength: 180 },
+          selectedPacketRef: { type: "string", minLength: 1, maxLength: 180 },
+          outcomeSummary: { type: "string", minLength: 1, maxLength: 120 },
+        },
+      },
+      FullAutoRunReportLivenessObservation: {
+        type: "object",
+        required: ["at", "projectedState", "cause", "recoveryAction", "sinceLastProgressMs"],
+        additionalProperties: false,
+        properties: {
+          at: { type: "string" },
+          projectedState: { $ref: "#/components/schemas/FullAutoRunState" },
+          cause: { type: ["string", "null"], enum: [...FullAutoStallCauseSchema.literals, null] },
+          recoveryAction: { $ref: "#/components/schemas/FullAutoRecoveryAction" },
+          sinceLastProgressMs: { type: "number", minimum: 0 },
+        },
+      },
+      FullAutoRunReportLivenessGap: {
+        type: "object",
+        required: ["enteredAt", "exitedAt", "durationMs", "cause"],
+        additionalProperties: false,
+        properties: {
+          enteredAt: { type: "string" },
+          exitedAt: { type: ["string", "null"] },
+          durationMs: { type: ["number", "null"], minimum: 0 },
+          cause: { type: ["string", "null"], enum: [...FullAutoStallCauseSchema.literals, null] },
+        },
+      },
+      FullAutoRunReportInterval: {
+        type: "object",
+        required: ["startedAt", "endedAt", "durationMs"],
+        additionalProperties: false,
+        properties: {
+          startedAt: { type: "string" },
+          endedAt: { type: ["string", "null"] },
+          durationMs: { type: ["number", "null"], minimum: 0 },
+        },
+      },
+      FullAutoRunReportVerifiedRef: {
+        type: "object",
+        required: ["ref", "kind", "verification"],
+        additionalProperties: false,
+        properties: {
+          ref: { type: "string", minLength: 1, maxLength: 200 },
+          kind: { type: "string", enum: [...FullAutoRunReportVerifiedRefKindSchema.literals] },
+          verification: { type: "string", enum: [...FullAutoRunReportVerificationSchema.literals] },
+          turnRef: { type: "string", minLength: 1, maxLength: 180 },
+        },
+      },
+      FullAutoRunReportUsage: {
+        type: "object",
+        required: ["totalTokensKnown", "totalTokens", "costUsdKnown", "costUsd"],
+        additionalProperties: false,
+        properties: {
+          totalTokensKnown: { type: "boolean" },
+          totalTokens: { type: ["integer", "null"], minimum: 0 },
+          costUsdKnown: { type: "boolean" },
+          costUsd: { type: ["number", "null"] },
+        },
+      },
+      FullAutoRunReport: {
+        type: "object",
+        required: [
+          "schema", "runRef", "title", "objectiveDigest", "doneConditionDigest", "objectiveRevisionCount",
+          "turnCap", "successfulAttempts", "failedAttempts", "state", "createdAt", "lifecycleTransitions",
+          "ownerActions", "providerTransitions", "livenessObservations", "livenessGaps",
+          "uninterruptedIntervals", "turns", "verifiedRefs", "progressDisposition", "usage",
+          "rawEvidenceRef", "reportRevision", "updatedAt",
+        ],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_RUN_REPORT_SCHEMA },
+          runRef: { type: "string", minLength: 1, maxLength: 180 },
+          threadRef: { type: "string", minLength: 1, maxLength: 180 },
+          title: { type: "string", minLength: 1, maxLength: 200 },
+          objectiveDigest: { type: "string", minLength: 64, maxLength: 64 },
+          doneConditionDigest: { type: "string", minLength: 64, maxLength: 64 },
+          objectiveRevisionCount: { type: "integer", minimum: 0 },
+          workspaceRef: { type: "string", minLength: 1, maxLength: 1024 },
+          providerProfile: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              lane: { type: "string", minLength: 1, maxLength: 80 },
+              accountRef: { type: "string", minLength: 1, maxLength: 80 },
+              model: { type: "string", minLength: 1, maxLength: 80 },
+              reasoningEffort: { type: "string", minLength: 1, maxLength: 40 },
+            },
+          },
+          turnCap: { type: "integer", minimum: 1, maximum: 1000 },
+          successfulAttempts: { type: "integer", minimum: 0 },
+          failedAttempts: { type: "integer", minimum: 0 },
+          state: { $ref: "#/components/schemas/FullAutoRunState" },
+          terminalReason: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_REASON_LIMIT },
+          createdAt: { type: "string" },
+          startedAt: { type: "string" },
+          endedAt: { type: "string" },
+          lifecycleTransitions: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunTransitionRecord" } },
+          ownerActions: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunTransitionRecord" } },
+          providerTransitions: { type: "array", items: { $ref: "#/components/schemas/ProviderHandoffTransitionRecord" } },
+          livenessObservations: {
+            type: "array",
+            items: { $ref: "#/components/schemas/FullAutoRunReportLivenessObservation" },
+          },
+          livenessGaps: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportLivenessGap" } },
+          uninterruptedIntervals: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportInterval" } },
+          turns: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportTurnEntry" } },
+          verifiedRefs: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportVerifiedRef" } },
+          progressDisposition: { type: "string", const: "unknown" },
+          usage: { $ref: "#/components/schemas/FullAutoRunReportUsage" },
+          rawEvidenceRef: { type: ["string", "null"], minLength: 1, maxLength: 200 },
+          reportRevision: { type: "integer", minimum: 0 },
+          updatedAt: { type: "string" },
+        },
+      },
+      FullAutoControlRunReportResponse: {
+        type: "object",
+        required: ["schema", "report"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          report: { $ref: "#/components/schemas/FullAutoRunReport" },
+        },
+      },
+      FullAutoRunReceipt: {
+        type: "object",
+        required: [
+          "schema", "runRef", "objectiveDigest", "doneConditionDigest", "workspaceRefDigest", "state",
+          "turnCap", "successfulAttempts", "failedAttempts", "providerIdentities", "providerTransitionCount",
+          "providerTransitionDispositions", "livenessGapCount", "recoveryActionsUsed", "verifiedRefCount",
+          "claimedRefCount", "progressDisposition", "usageKnown", "reportRevision", "createdAt",
+        ],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_RUN_RECEIPT_SCHEMA },
+          runRef: { type: "string", minLength: 1, maxLength: 180 },
+          threadRef: { type: "string", minLength: 1, maxLength: 180 },
+          objectiveDigest: { type: "string", minLength: 64, maxLength: 64 },
+          doneConditionDigest: { type: "string", minLength: 64, maxLength: 64 },
+          workspaceRefDigest: { type: ["string", "null"], minLength: 64, maxLength: 64 },
+          state: { $ref: "#/components/schemas/FullAutoRunState" },
+          startedAt: { type: "string" },
+          endedAt: { type: "string" },
+          turnCap: { type: "integer", minimum: 1, maximum: 1000 },
+          successfulAttempts: { type: "integer", minimum: 0 },
+          failedAttempts: { type: "integer", minimum: 0 },
+          providerIdentities: { type: "array", items: { type: "string", minLength: 1, maxLength: 80 } },
+          providerTransitionCount: { type: "integer", minimum: 0 },
+          providerTransitionDispositions: {
+            type: "array",
+            items: { type: "string", enum: [...ProviderHandoffDispositionSchema.literals] },
+          },
+          livenessGapCount: { type: "integer", minimum: 0 },
+          recoveryActionsUsed: { type: "array", items: { $ref: "#/components/schemas/FullAutoRecoveryAction" } },
+          verifiedRefCount: { type: "integer", minimum: 0 },
+          claimedRefCount: { type: "integer", minimum: 0 },
+          progressDisposition: { type: "string", const: "unknown" },
+          usageKnown: { type: "boolean" },
+          reportRevision: { type: "integer", minimum: 0 },
+          createdAt: { type: "string" },
+        },
+      },
+      FullAutoControlRunReceiptResponse: {
+        type: "object",
+        required: ["schema", "receipt"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          receipt: { $ref: "#/components/schemas/FullAutoRunReceipt" },
         },
       },
     },

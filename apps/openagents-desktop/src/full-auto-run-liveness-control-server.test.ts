@@ -11,6 +11,7 @@ import path from "node:path"
 import { FULL_AUTO_LIVENESS_DISPATCH_SLO_MS } from "./full-auto-liveness.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { startFullAutoControlServer, type FullAutoControlServer } from "./full-auto-control-server.ts"
 
 const GRANTED_WORKSPACE = "/granted/full-auto-liveness/workspace"
@@ -37,6 +38,7 @@ const startHarness = async (): Promise<Harness> => {
   const now = () => new Date(clockMs)
   const registry = openFullAutoRegistry(path.join(root, "registry.json"), now)
   const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"), now)
+  const reportStore = openFullAutoRunReportStore(path.join(root, "reports.json"), now)
   const liveMap: Harness["liveMap"] = new Map()
   let reconcileCallCount = 0
   let mintedThreadCount = 0
@@ -44,6 +46,7 @@ const startHarness = async (): Promise<Harness> => {
     capabilities: {
       registry,
       runRegistry,
+      reportStore,
       resolveWorkspaceRef: () => GRANTED_WORKSPACE,
       triggerReconciliation: async () => {
         reconcileCallCount += 1

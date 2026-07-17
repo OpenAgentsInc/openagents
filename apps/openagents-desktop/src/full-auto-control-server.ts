@@ -46,6 +46,7 @@ import {
   providerHandoffDispositionForEnvelope,
   type ProviderHandoffRegistry,
 } from "./full-auto-provider-handoff.ts"
+import { deriveFullAutoRunReceipt, type FullAutoRunReportStore } from "./full-auto-run-report.ts"
 
 /**
  * FA-H13 (#8886): the Phase 1 local Full Auto control server. A plain
@@ -178,6 +179,10 @@ export type FullAutoControlCapabilities = Readonly<{
    * independent of restart. Absent means the handoff route refuses cleanly
    * (never a silent, unreceipted switch). */
   providerHandoffRegistry?: ProviderHandoffRegistry
+  /** FA-RUN-04 (#8972): the bounded, durable private report store. Required
+   * -- every run-touching route below syncs it so the report and the derived
+   * public-safe receipt are never more than one settle pass stale. */
+  reportStore: FullAutoRunReportStore
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -279,6 +284,43 @@ const projectSettled = (
   now: () => Date,
 ): FullAutoControlRun => {
   const { run: settled, projection } = settleRun(capabilities, run, now)
+  return projectRun(settled, projection)
+}
+
+/**
+ * FA-RUN-04 (#8972): the single sync point every run-touching route calls
+ * AFTER settling -- feeds the SAME freshly settled run, the SAME liveness
+ * projection, a fresh turn-journal read for the bound thread, and a fresh
+ * handoff-registry read for this runRef into the report store's merge, so
+ * "every newly started run receives one report that updates atomically
+ * through all state transitions" holds for every control-API-driven
+ * transition. A GET on the report/receipt routes ALSO calls this first, so
+ * organic (non-control-API) reconciliation activity in between two control
+ * calls is folded in the next time anyone reads the report. Returns the
+ * settled run/projection pair so a mutation handler can sync the report AND
+ * project the ordinary run response from the exact same settle pass,
+ * without settling twice.
+ */
+const settleAndSyncReport = (
+  capabilities: FullAutoControlCapabilities,
+  run: FullAutoRun,
+  now: () => Date,
+): Readonly<{ run: FullAutoRun; projection: FullAutoLivenessProjection }> => {
+  const settled = settleRun(capabilities, run, now)
+  const turns = settled.run.threadRef === undefined ? [] : capabilities.listTurns(settled.run.threadRef)
+  const handoffs = capabilities.providerHandoffRegistry?.list({ runRef: settled.run.runRef }) ?? []
+  capabilities.reportStore.sync({ run: settled.run, turns, handoffs, livenessProjection: settled.projection })
+  return settled
+}
+
+/** Mutation-route helper: settle, sync the report, and project the ordinary
+ * `FullAutoControlRun` response in one call. */
+const settleSyncAndProject = (
+  capabilities: FullAutoControlCapabilities,
+  run: FullAutoRun,
+  now: () => Date,
+): FullAutoControlRun => {
+  const { run: settled, projection } = settleAndSyncReport(capabilities, run, now)
   return projectRun(settled, projection)
 }
 
@@ -583,11 +625,12 @@ export const startFullAutoControlServer = (
       )
       void capabilities.triggerReconciliation().catch(() => {})
       auditLog("runs/start", startedThreadRef, `ok runRef=${result.run.runRef}`)
-      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: settleSyncAndProject(capabilities, result.run, now) })
       return
     }
 
-    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop|handoff|retry-now))?$/.exec(url.pathname)
+    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop|handoff|retry-now|report|receipt))?$/
+      .exec(url.pathname)
     if (runMatch !== null) {
       const runRef = decodeFullAutoControlRunRef(decodeURIComponent(runMatch[1]!))
       if (runRef === null) {
@@ -611,6 +654,34 @@ export const startFullAutoControlServer = (
           serverInstanceId: instanceId,
           run: projectSettled(capabilities, run, now),
         })
+        return
+      }
+
+      // FA-RUN-04 (#8972): the private report and its derived public-safe
+      // receipt. Both sync-on-read (see settleAndSyncReport's doc comment)
+      // so a GET always reflects the latest settled/observed facts, even
+      // when nothing was mutated through this control API in between.
+      if (runAction === "report" || runAction === "receipt") {
+        if (method !== "get") {
+          sendError(response, 405, { error: "method_not_allowed", message: "Use GET." })
+          return
+        }
+        const run = capabilities.runRegistry.get(runRef)
+        if (run === null) {
+          sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+          return
+        }
+        const { run: settled } = settleAndSyncReport(capabilities, run, now)
+        const report = capabilities.reportStore.get(settled.runRef)
+        if (report === null) {
+          sendError(response, 404, { error: "not_found", message: "No Full Auto run report exists for that runRef." })
+          return
+        }
+        if (runAction === "report") {
+          sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, report })
+          return
+        }
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, receipt: deriveFullAutoRunReceipt(report, now) })
         return
       }
 
@@ -658,7 +729,7 @@ export const startFullAutoControlServer = (
           )
         }
         auditLog("runs/pause", run.threadRef ?? runRef, `ok state=${result.run.state}`)
-        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: settleSyncAndProject(capabilities, result.run, now) })
         return
       }
 
@@ -721,7 +792,7 @@ export const startFullAutoControlServer = (
         }
         void capabilities.triggerReconciliation().catch(() => {})
         auditLog("runs/resume", run.threadRef ?? runRef, "ok")
-        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: settleSyncAndProject(capabilities, result.run, now) })
         return
       }
 
@@ -765,7 +836,7 @@ export const startFullAutoControlServer = (
         }
         void capabilities.triggerReconciliation().catch(() => {})
         auditLog("runs/retry-now", settled.threadRef ?? runRef, "ok")
-        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: settleSyncAndProject(capabilities, result.run, now) })
         return
       }
 
@@ -832,6 +903,10 @@ export const startFullAutoControlServer = (
             refusalReason: switchResult.reason,
           })
           auditLog("runs/handoff", run.threadRef ?? runRef, `refused ${switchResult.reason}`)
+          // The refusal itself is a receipted fact (rollback, never a
+          // silent omission) -- fold it into the report even though the
+          // run's own lifecycle/profile is unchanged.
+          settleAndSyncReport(capabilities, run, now)
           sendError(response, 409, {
             error: "handoff_refused",
             message: switchResult.message,
@@ -876,7 +951,7 @@ export const startFullAutoControlServer = (
         sendJson(response, 200, {
           schema: FULL_AUTO_CONTROL_SCHEMA,
           ok: true,
-          run: projectSettled(capabilities, rebound, now),
+          run: settleSyncAndProject(capabilities, rebound, now),
           transition: transitionRecord,
         })
         return
@@ -912,7 +987,7 @@ export const startFullAutoControlServer = (
         )
       }
       auditLog("runs/stop", run.threadRef ?? runRef, "ok")
-      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectSettled(capabilities, result.run, now) })
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: settleSyncAndProject(capabilities, result.run, now) })
       return
     }
 

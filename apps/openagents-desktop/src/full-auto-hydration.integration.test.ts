@@ -9,6 +9,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { startFullAutoControlServer } from "./full-auto-control-server.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { openFullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import {
   activeFullAutoEnabled,
   desktopShellIntents,
@@ -31,10 +32,12 @@ describe("Full Auto control enable -> later renderer hydration (#8928)", () => {
     } as const
     const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
     const runRegistry = openFullAutoRunRegistry(path.join(root, "full-auto", "runs.json"))
+    const reportStore = openFullAutoRunReportStore(path.join(root, "full-auto", "reports.json"))
     const server = await startFullAutoControlServer({
       capabilities: {
         registry,
         runRegistry,
+        reportStore,
         resolveWorkspaceRef: () => workspaceRef,
         triggerReconciliation: async () => {},
         liveState: () => null,
