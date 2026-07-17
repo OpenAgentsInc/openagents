@@ -607,6 +607,26 @@ describe("DIST-03 staged-tree oracle", () => {
     );
   });
 
+  test("admits the target-correct Codex Linux bubblewrap sandbox helper", () => {
+    const files = [
+      ...cleanStagedTree("linux-x64"),
+      {
+        path: "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-resources/bwrap",
+        byteLength: 64,
+        executable: true,
+        header: elf("x64"),
+        sha256: digest("8"),
+      },
+    ];
+    expect(stagedTreeViolations(auditInput("linux-x64", files))).toEqual([]);
+    expect(stagedTreeViolations(auditInput("linux-arm64", files))).toContainEqual(
+      expect.objectContaining({
+        kind: "foreign_architecture_binary",
+        path: expect.stringContaining("codex-resources/bwrap"),
+      }),
+    );
+  });
+
   test("script executables are admitted only inside dist/ or a required runtime package", () => {
     const script = {
       byteLength: 32,

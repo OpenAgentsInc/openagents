@@ -5,6 +5,7 @@ import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { signAsync, type SignOptions } from "@electron/osx-sign";
 import { cp, mkdir, readdir, rm } from "node:fs/promises";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import path from "node:path";
@@ -226,6 +227,28 @@ const isMacCodeSignablePath = (file: string): boolean =>
   /\.(?:app|framework|dylib|node)$/u.test(file) ||
   macCodeSignableBasenames.has(path.basename(file));
 
+const macSignOptions = (appPath: string): SignOptions => {
+  if (developerIdApplication === undefined) {
+    throw new Error("macOS signing identity is absent");
+  }
+  return {
+    app: appPath,
+    identity: developerIdApplication,
+    platform: "darwin",
+    ignore: (file) =>
+      file.includes("/Electron Framework.framework/Versions/Current/") ||
+      !isMacCodeSignablePath(file),
+    optionsForFile: () => ({
+      entitlements: stagedPathOr(
+        "build/entitlements.mac.plist",
+        "build",
+        "entitlements.mac.plist",
+      ),
+      hardenedRuntime: true,
+    }),
+  };
+};
+
 const config: ForgeConfig = {
   packagerConfig: {
     name: activeProductIdentity.displayName,
@@ -273,27 +296,6 @@ const config: ForgeConfig = {
     ],
     ignore: () => true,
     protocols: [{ name: activeProductIdentity.displayName, schemes: [activeProductIdentity.protocol] }],
-    osxSign:
-      developerIdApplication === undefined
-        ? undefined
-        : {
-            identity: developerIdApplication,
-            // Electron Framework/Versions/Current is a symlink to A. Walking and
-            // signing both views races the same resource tree and eventually asks
-            // codesign to reopen a path already rewritten through the other view.
-            ignore: (file) =>
-              file.includes("/Electron Framework.framework/Versions/Current/") ||
-              !isMacCodeSignablePath(file),
-            optionsForFile: () => ({
-              entitlements: stagedPathOr(
-                "build/entitlements.mac.plist",
-                "build",
-                "entitlements.mac.plist",
-              ),
-              hardenedRuntime: true,
-            }),
-          },
-    osxNotarize: notarizeCredentials,
   },
   hooks: {
     /**
@@ -403,6 +405,32 @@ const config: ForgeConfig = {
       }
     },
     /**
+     * Electron Packager normally signs before Forge's postPackage hook, which
+     * changes Mach-O bytes before the staged-ledger oracle can compare them.
+     * Keep packaging unsigned through postPackage, then sign the verified app
+     * here before any DMG/ZIP maker consumes it.
+     */
+    preMake: async () => {
+      const { descriptor } = requireStagedBuildInputs();
+      if (!descriptor.targetKey.startsWith("darwin-")) return;
+      const signingReady =
+        developerIdApplication !== undefined && notarizeCredentials !== undefined;
+      if (!signingReady) {
+        if (allowUnsignedDev) return;
+        throw new Error(
+          "make REFUSED before makers: Developer ID identity and/or notary credentials are absent",
+        );
+      }
+      const appPath = path.join(
+        process.cwd(),
+        "out",
+        `${activeProductIdentity.displayName}-${descriptor.targetKey}`,
+        `${activeProductIdentity.displayName}.app`,
+      );
+      await signAsync(macSignOptions(appPath));
+      process.stderr.write(`[forge] signed verified app before makers: ${appPath}\n`);
+    },
+    /**
      * Gatekeeper release gate (#8786) — mechanized from two 2026-07-13
      * incidents: T3 Code's Gatekeeper-dead unsigned DMG around a notarized
      * app (docs/teardowns/2026-07-13-t3-code-teardown.md, night addendum)
@@ -468,7 +496,7 @@ const config: ForgeConfig = {
         const appPath = path.join(
           process.cwd(),
           "out",
-          `OpenAgents-${result.platform}-${result.arch}`,
+          `${activeProductIdentity.displayName}-${result.platform}-${result.arch}`,
           `${activeProductIdentity.displayName}.app`,
         );
         for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {

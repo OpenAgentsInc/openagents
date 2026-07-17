@@ -449,6 +449,9 @@ importers:
       '@electron/fuses':
         specifier: 2.1.3
         version: 2.1.3
+      '@electron/osx-sign':
+        specifier: 1.3.3
+        version: 1.3.3
       '@openagentsinc/sqlite-runtime':
         specifier: workspace:*
         version: link:../../packages/sqlite-runtime
