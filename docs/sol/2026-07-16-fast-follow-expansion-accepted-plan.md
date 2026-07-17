@@ -1783,6 +1783,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T19:02:45Z`
 
+### CLAIM-STATUS
+
+- implementation: added a pure exact-receipt audience authorization adapter with bounded owner, workspace, administrator, and group facts
+- privacy/authority proof: decisions are ref-only and bound to one applied receipt/thread/version; authorization performs no membership lookup, content access, publication, transport, export, network, provider, filesystem, or credential effect
+- focused proof: all 15 audience-authorization/disclosure tests passed and the full Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage still awaits the separately owned committed seed update for the mobile-component teardown
+- residual: real authority lookup and publication/transport, actual `main.ts` call-site composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
