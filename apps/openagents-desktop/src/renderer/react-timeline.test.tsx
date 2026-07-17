@@ -10,8 +10,11 @@ import {
   ReactTimeline,
   SafeReactMarkdown,
   formatReactTimelineTimestamp,
+  deriveReactTimelineTurns,
+  deriveAssistantMetaKeys,
   projectLocalTimelineRecords,
   projectReactTimelineRecords,
+  shouldCollapseUserMessage,
   type ReactTimelineRecord,
 } from "./react-timeline.tsx"
 
@@ -302,6 +305,86 @@ describe("React typed timeline projection", () => {
     root.unmount()
   })
 
+  test("collapses only long user messages and exposes an in-bubble keyboard toggle", async () => {
+    expect(shouldCollapseUserMessage("short prompt")).toBe(false)
+    expect(shouldCollapseUserMessage(Array.from({ length: 9 }, (_, index) => `line ${index}`).join("\n"))).toBe(true)
+    expect(shouldCollapseUserMessage("x".repeat(601))).toBe(true)
+
+    const { container } = installDom()
+    const root = createRoot(container)
+    const user = {
+      ...record("long-prompt", 0),
+      kind: "user_message" as const,
+      label: "You",
+      body: Array.from({ length: 9 }, (_, index) => `line ${index}`).join("\n"),
+    }
+    root.render(<ReactTimeline sessionKey="thread-long-user" records={[user]}
+      loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const body = container.querySelector<HTMLElement>('[data-user-message-collapsible="true"]')
+    const toggle = container.querySelector<HTMLButtonElement>(".oa-react-user-message-toggle")
+    expect(body?.dataset.userMessageCollapsed).toBe("true")
+    expect(toggle?.textContent).toBe("Show full message")
+    toggle?.click()
+    await settle()
+    expect(body?.dataset.userMessageCollapsed).toBe("false")
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle?.textContent).toBe("Show less")
+    root.unmount()
+  })
+
+  test("renders T3-style assistant copy, timestamp, and details metadata only when settled", async () => {
+    const { window, container } = installDom()
+    const copied: string[] = []
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => { copied.push(value) } },
+    })
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-assistant-actions" records={[{
+      ...record("settled-answer", 0),
+      body: "A settled answer.",
+      timestamp: "2026-07-17T11:32:00.000Z",
+      status: "completed",
+    }]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    const actions = container.querySelector<HTMLElement>('[data-slot="assistant-message-actions"]')
+    expect(actions?.textContent).toContain("Details")
+    expect(actions?.textContent).toMatch(/\d{1,2}:\d{2}/u)
+    actions?.querySelector<HTMLButtonElement>('[aria-label="Copy message"]')?.click()
+    await settle()
+    expect(copied).toEqual(["A settled answer."])
+
+    root.render(<ReactTimeline sessionKey="thread-assistant-actions" records={[{
+      ...record("settled-answer", 0), body: "Streaming…", status: "running",
+    }]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+    expect(container.querySelector('[aria-label="Copy message"]')).toBeNull()
+    root.unmount()
+  })
+
+  test("shows assistant metadata only on the terminal assistant chunk in each user turn", async () => {
+    const user = (key: string, sequence: number): ReactTimelineRecord => ({
+      ...record(key, sequence), kind: "user_message", label: "You",
+    })
+    const records = [
+      user("user-1", 0), record("commentary-1", 1), record("answer-1", 2),
+      user("user-2", 3), record("commentary-2", 4), record("answer-2", 5),
+    ]
+    expect([...deriveAssistantMetaKeys(records)]).toEqual(["answer-1", "answer-2"])
+
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-assistant-segments" records={records}
+      loadedItemCount={records.length} offset={0} totalItems={records.length} loadingEdge={null} report={report} />)
+    await settle()
+    expect(container.querySelector('[data-timeline-key="commentary-1"] [data-slot="assistant-message-actions"]')).toBeNull()
+    expect(container.querySelector('[data-timeline-key="answer-1"] [data-slot="assistant-message-actions"]')).not.toBeNull()
+    expect(container.querySelector('[data-timeline-key="commentary-2"] [data-slot="assistant-message-actions"]')).toBeNull()
+    expect(container.querySelector('[data-timeline-key="answer-2"] [data-slot="assistant-message-actions"]')).not.toBeNull()
+    root.unmount()
+  })
+
   test("composes the shadcn scroller accessibility and stable turn-anchor contract", async () => {
     const { container } = installDom()
     const root = createRoot(container)
@@ -324,6 +407,32 @@ describe("React typed timeline projection", () => {
     expect(prompt?.classList.contains("min-w-0")).toBe(true)
     expect(container.querySelector('[data-icon-name="ArrowDown"]')).not.toBeNull()
     expect(container.querySelector('[aria-label="Jump to latest"]')).not.toBeNull()
+    root.unmount()
+  })
+
+  test("derives one navigable minimap stop per user turn with assistant context", async () => {
+    const firstUser = { ...record("prompt-1", 0), kind: "user_message" as const, label: "You", body: "First prompt" }
+    const secondUser = { ...record("prompt-2", 2), kind: "user_message" as const, label: "You", body: "Second prompt" }
+    expect(deriveReactTimelineTurns([
+      firstUser, { ...record("answer-1", 1), body: "First answer" }, secondUser, { ...record("answer-2", 3), body: "Second answer" },
+    ])).toEqual([
+      { id: "prompt-1", userPreview: "First prompt", assistantPreview: "First answer" },
+      { id: "prompt-2", userPreview: "Second prompt", assistantPreview: "Second answer" },
+    ])
+
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-minimap" records={[firstUser, record("answer-1", 1), secondUser, record("answer-2", 3)]}
+      loadedItemCount={4} offset={0} totalItems={4} loadingEdge={null} report={report} />)
+    await settle()
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.oa-react-timeline-minimap button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0]?.getAttribute("aria-label")).toContain("First prompt")
+    const target = container.querySelector<HTMLElement>('[data-message-id="prompt-2"]')
+    let selected = false
+    if (target !== null) target.scrollIntoView = () => { selected = true }
+    buttons[1]?.click()
+    expect(selected).toBe(true)
     root.unmount()
   })
 })
@@ -375,11 +484,23 @@ describe("React timeline scroll contract", () => {
     const summaries = [...container.querySelectorAll(".oa-react-work-group-summary")].map(node => node.textContent)
     expect(summaries).toEqual(["Worked2 activities", "+1 previous1 activity"])
     const settledToggle = container.querySelector<HTMLButtonElement>('.oa-react-work-group-summary')
+    const settledGroup = settledToggle?.closest<HTMLElement>(".oa-react-work-group") ?? null
+    const viewport = container.querySelector<HTMLElement>('[data-slot="message-scroller-viewport"]')
+    if (settledGroup !== null && viewport !== null) {
+      Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 100 })
+      Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 400 })
+      viewport.scrollTop = 50
+      settledGroup.getBoundingClientRect = () => {
+        const expanded = settledToggle?.getAttribute("aria-expanded") === "true"
+        return { top: 0, bottom: expanded ? 180 : 100, height: expanded ? 180 : 100 } as DOMRect
+      }
+    }
     expect(settledToggle?.getAttribute("aria-expanded")).toBe("false")
     expect(container.querySelector('[data-timeline-key="done-a"]')).toBeNull()
     settledToggle?.click()
     await settle()
     expect(settledToggle?.getAttribute("aria-expanded")).toBe("true")
+    expect(viewport?.scrollTop).toBe(130)
     expect(container.querySelector('[data-timeline-key="done-a"]')).not.toBeNull()
     expect(container.querySelector('[data-icon-name="ChevronRight"]')?.getAttribute("data-expanded")).toBe("true")
     settledToggle?.click()

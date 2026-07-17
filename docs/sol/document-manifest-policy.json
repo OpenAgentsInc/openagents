@@ -9,6 +9,12 @@
       "disposition": "retain-active-authority",
       "dispatch": false
     },
+    "docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md": {
+      "class": "authority",
+      "owner": "Sol T3 Code UI full harvest",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md": {
       "class": "contract",
       "owner": "OpenAgents Desktop Full Auto / issue #8928",

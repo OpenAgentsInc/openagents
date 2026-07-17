@@ -824,6 +824,59 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   gap: 0;
 }
 
+.oa-react-timeline-minimap {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: var(--en-spacing-2);
+  display: none;
+  width: 18px;
+  max-height: calc(100% - 8rem);
+  transform: translateY(-50%);
+}
+
+.oa-react-timeline-minimap ol {
+  display: flex;
+  min-height: 24px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-react-timeline-minimap button {
+  display: grid;
+  width: 18px;
+  height: 10px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+}
+
+.oa-react-timeline-minimap button > span {
+  width: 10px;
+  height: 2px;
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-borderStrong);
+  transition: width var(--en-motion-fast) var(--en-ease-basic), background var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-timeline-minimap button:hover > span,
+.oa-react-timeline-minimap button:focus-visible > span {
+  width: 16px;
+  background: var(--en-color-accent);
+}
+
+@media (pointer: fine) {
+  .oa-react-timeline-minimap {
+    display: block;
+  }
+}
+
 .oa-react-timeline-item {
   position: relative;
   width: min(720px, 100%);
@@ -870,6 +923,42 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-surfaceRaised);
 }
 
+.oa-react-user-message-body[data-user-message-collapsed="true"] {
+  max-height: 11rem;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.75rem), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.75rem), transparent);
+}
+
+.oa-react-user-message-toggle {
+  height: 24px;
+  margin: var(--en-spacing-1) 0 calc(var(--en-spacing-1) * -1) calc(var(--en-spacing-1) * -1);
+  padding: 0 var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
+
+.oa-react-assistant-message-body {
+  min-width: 0;
+}
+
+.oa-react-assistant-message-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  margin-top: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-timeline-item[data-tone="assistant"]:hover .oa-react-assistant-message-actions,
+.oa-react-timeline-item[data-tone="assistant"]:focus-within .oa-react-assistant-message-actions {
+  opacity: 1;
+}
+
 .oa-react-user-message-actions {
   display: flex;
   align-items: center;
@@ -887,6 +976,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-user-message-row:hover .oa-react-user-message-actions,
 .oa-react-user-message-row:focus-within .oa-react-user-message-actions {
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-user-message-actions,
+  .oa-react-assistant-message-actions {
+    transition: none;
+  }
 }
 
 .oa-react-work-entry, .oa-react-work-group, .oa-react-plan, .oa-react-notice { width: min(720px, 100%); margin: 0 auto var(--en-spacing-2); }

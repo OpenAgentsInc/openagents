@@ -21,7 +21,7 @@ import {
   type DesktopAgentStatus,
   type WorkbenchDispatchItem,
 } from "@openagentsinc/ui/desktop-workbench"
-import type { ReactElement, ReactNode } from "react"
+import type { ReactElement, ReactNode, RefObject } from "react"
 import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
 import { CheckIcon, ChevronRight, CopyIcon, Folder, FolderPen } from "lucide-react"
 
@@ -92,6 +92,8 @@ export type ReactTimelineRecord = Readonly<{
   resultRef: string | null
   resultBody: string | null
   resultStatus: string | null
+  /** Terminal assistant response in its user-turn segment; commentary stays visually quiet. */
+  showAssistantMeta?: boolean
   /**
    * Typed item payload (#8859) when the source note/history row carried one.
    * Wave-2 card lanes render this; the string label/body stay authoritative
@@ -451,6 +453,39 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
 }
 
 const MESSAGE_COPY_FEEDBACK_MS = 1000
+const MAX_COLLAPSED_USER_MESSAGE_LINES = 8
+const MAX_COLLAPSED_USER_MESSAGE_LENGTH = 600
+
+/** T3 parity rule: long prompts stay scannable without hiding ordinary messages. */
+export const shouldCollapseUserMessage = (text: string): boolean => {
+  if (text.trim() === "") return false
+  return text.length > MAX_COLLAPSED_USER_MESSAGE_LENGTH || text.split("\n").length > MAX_COLLAPSED_USER_MESSAGE_LINES
+}
+
+/**
+ * Expanding transcript details above a reader's viewport must not move the
+ * content they were reading. At the live edge the message-scroller remains
+ * the sole follow authority; away from it we keep the toggled row's bottom
+ * at the same visual position, matching T3's work-fold behavior.
+ */
+const togglePreservingReaderPosition = (
+  row: HTMLElement | null,
+  update: () => void,
+): void => {
+  const viewport = row?.closest<HTMLElement>('[data-slot="message-scroller-viewport"]') ?? null
+  if (row === null || viewport === null) {
+    update()
+    return
+  }
+  const wasAtEnd = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1
+  const bottomBefore = row.getBoundingClientRect().bottom
+  update()
+  if (wasAtEnd) return
+  row.ownerDocument.defaultView?.setTimeout(() => {
+    const delta = row.getBoundingClientRect().bottom - bottomBefore
+    if (Number.isFinite(delta) && Math.abs(delta) >= 0.5) viewport.scrollTop += delta
+  }, 0)
+}
 
 const MessageCopyButton = memo(({ text }: Readonly<{ text: string }>): ReactElement => {
   const [isCopied, setIsCopied] = useState(false)
@@ -497,7 +532,12 @@ const UserTimelineRow = ({ record, report }: Readonly<{
   report: IntentReporter
 }>): ReactElement => {
   const timestamp = formatReactTimelineTimestamp(record.timestamp)
+  const [expanded, setExpanded] = useState(false)
+  const rowRef = useRef<HTMLElement>(null)
+  const collapsible = shouldCollapseUserMessage(record.body)
+  const collapsed = collapsible && !expanded
   return <article
+  ref={rowRef}
   aria-label={`${record.label}. Item ${record.sequence + 1}`}
   className="oa-react-timeline-item oa-react-user-message-row"
   data-kind={record.kind}
@@ -506,7 +546,21 @@ const UserTimelineRow = ({ record, report }: Readonly<{
   role="listitem"
 >
   <div data-slot="user-message-bubble" className="oa-react-user-message-bubble">
-    <SafeReactMarkdown value={record.body} />
+    <div
+      className="oa-react-user-message-body"
+      data-user-message-collapsible={collapsible ? "true" : "false"}
+      data-user-message-collapsed={collapsed ? "true" : "false"}
+    >
+      <SafeReactMarkdown value={record.body} />
+    </div>
+    {collapsible ? <Button
+      className="oa-react-user-message-toggle"
+      type="button"
+      variant="ghost"
+      size="xs"
+      aria-expanded={expanded}
+      onClick={() => togglePreservingReaderPosition(rowRef.current, () => setExpanded(value => !value))}
+    >{expanded ? "Show less" : "Show full message"}</Button> : null}
   </div>
   <div data-slot="user-message-actions" className="oa-react-user-message-actions">
     <div className="flex shrink-0 items-center gap-2">
@@ -648,12 +702,25 @@ export const TimelineItem = ({ record, report }: {
 
   if (isUserRecord(record)) return <UserTimelineRow record={record} report={report} />
 
+  const timestamp = formatReactTimelineTimestamp(record.timestamp)
+  const streaming = record.status === "running" || record.status === "in_progress"
   return <DesktopTimelineMessage itemKey={record.key} kind={record.kind} label={record.label} sequence={record.sequence} tone="assistant">
-    <SafeReactMarkdown value={record.body} />
-    {record.kind === "local_message" || record.kind === "question" ? null
-      : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
-          onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}
-          aria-label={`Show details for ${record.label}, item ${record.sequence + 1}`}>Details</Button>}
+    <div className="oa-react-assistant-message-body"><SafeReactMarkdown value={record.body} /></div>
+    {record.showAssistantMeta === true ? <div className="oa-react-assistant-message-actions" data-slot="assistant-message-actions">
+      {!streaming && record.body.trim() !== "" ? <MessageCopyButton text={record.body} /> : null}
+      {timestamp.short === "" || streaming ? null : <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+            {timestamp.short}
+          </TooltipTrigger>
+          <TooltipContent>{timestamp.tooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>}
+      {record.kind === "local_message" || record.kind === "question" ? null
+        : <Button className="oa-react-item-details" type="button" variant="ghost" size="xs"
+            onClick={() => dispatch(report, "HistoryItemSelected", record.itemRef)}
+            aria-label={`Show details for ${record.label}, item ${record.sequence + 1}`}>Details</Button>}
+    </div> : null}
   </DesktopTimelineMessage>
 }
 
@@ -678,6 +745,7 @@ const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecor
   left.kind === right.kind && left.label === right.label && left.body === right.body &&
   left.timestamp === right.timestamp && left.status === right.status && left.redacted === right.redacted &&
   left.resultRef === right.resultRef && left.resultBody === right.resultBody && left.resultStatus === right.resultStatus &&
+  left.showAssistantMeta === right.showAssistantMeta &&
   // Scalar signature comparison — content changes flip it without
   // stringifying multi-kilobyte diffs on every memo check (#8859).
   workbenchItemSignature(left.item) === workbenchItemSignature(right.item) &&
@@ -708,6 +776,85 @@ type TimelineProps = Readonly<{
   report: IntentReporter
 }>
 
+export type ReactTimelineTurn = Readonly<{
+  id: string
+  userPreview: string
+  assistantPreview: string | null
+}>
+
+const minimapPreview = (value: string): string => {
+  const compacted = value.replaceAll(/\s+/gu, " ").trim()
+  return compacted.length <= 72 ? compacted : `${compacted.slice(0, 69)}…`
+}
+
+/** One minimap stop per authored user turn, with the terminal answer as context. */
+export const deriveReactTimelineTurns = (
+  records: ReadonlyArray<ReactTimelineRecord>,
+): ReadonlyArray<ReactTimelineTurn> => {
+  const turns: ReactTimelineTurn[] = []
+  let active: ReactTimelineTurn | null = null
+  for (const record of records) {
+    if (isUserRecord(record)) {
+      active = { id: record.key, userPreview: minimapPreview(record.body) || "User message", assistantPreview: null }
+      turns.push(active)
+      continue
+    }
+    if (active !== null && isMessageRecord(record) && !isUserRecord(record) && record.body.trim() !== "") {
+      active = { ...active, assistantPreview: minimapPreview(record.body) }
+      turns[turns.length - 1] = active
+    }
+  }
+  return turns
+}
+
+/** T3 shows metadata only on the final assistant chunk before the next user turn. */
+export const deriveAssistantMetaKeys = (
+  records: ReadonlyArray<ReactTimelineRecord>,
+): ReadonlySet<string> => {
+  const result = new Set<string>()
+  let latestAssistantKey: string | null = null
+  for (const record of records) {
+    if (isUserRecord(record)) {
+      if (latestAssistantKey !== null) result.add(latestAssistantKey)
+      latestAssistantKey = null
+      continue
+    }
+    if (isMessageRecord(record)) latestAssistantKey = record.key
+  }
+  if (latestAssistantKey !== null) result.add(latestAssistantKey)
+  return result
+}
+
+const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent }: {
+  readonly turns: ReadonlyArray<ReactTimelineTurn>
+  readonly viewportRef: RefObject<HTMLDivElement | null>
+  readonly releaseReaderIntent: () => void
+}): ReactElement | null => {
+  if (turns.length < 2) return null
+  const select = (turn: ReactTimelineTurn): void => {
+    const viewport = viewportRef.current
+    if (viewport === null) return
+    const target = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')]
+      .find(element => element.dataset.messageId === turn.id)
+    if (target === undefined) return
+    releaseReaderIntent()
+    const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+    target.scrollIntoView?.({ block: "start", behavior: reducedMotion ? "auto" : "smooth" })
+  }
+  return <nav className="oa-react-timeline-minimap" aria-label="Conversation turns">
+    <ol>
+      {turns.map((turn, index) => <li key={turn.id}>
+        <button
+          type="button"
+          aria-label={`Jump to turn ${index + 1}: ${turn.userPreview}`}
+          title={`${turn.userPreview}${turn.assistantPreview === null ? "" : `\n${turn.assistantPreview}`}`}
+          onClick={() => select(turn)}
+        ><span aria-hidden="true" /></button>
+      </li>)}
+    </ol>
+  </nav>
+}
+
 const WorkGroupDisclosure = ({ groupKey, folded, visible, running, report }: {
   readonly groupKey: string
   readonly folded: ReadonlyArray<ReactTimelineRecord>
@@ -716,14 +863,15 @@ const WorkGroupDisclosure = ({ groupKey, folded, visible, running, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const [expanded, setExpanded] = useState(false)
+  const groupRef = useRef<HTMLDivElement>(null)
   const activityLabel = `${folded.length} ${folded.length === 1 ? "activity" : "activities"}`
-  return <div className="oa-react-work-group" role="listitem" data-work-group={groupKey}>
+  return <div ref={groupRef} className="oa-react-work-group" role="listitem" data-work-group={groupKey}>
     <button
       className="oa-react-work-group-summary"
       type="button"
       aria-expanded={expanded}
       aria-controls={`${groupKey}:details`}
-      onClick={() => setExpanded(value => !value)}
+      onClick={() => togglePreservingReaderPosition(groupRef.current, () => setExpanded(value => !value))}
     >
       <ChevronRight aria-hidden="true" data-icon-name="ChevronRight" data-expanded={expanded ? "true" : "false"} />
       <strong>{running ? `+${folded.length} previous` : "Worked"}</strong>
@@ -741,11 +889,15 @@ const TimelineRecords = ({ records, report }: {
   readonly report: IntentReporter
 }): ReactElement => {
   const output: Array<ReactElement> = []
+  const assistantMetaKeys = deriveAssistantMetaKeys(records)
+  const presented = (record: ReactTimelineRecord): ReactTimelineRecord => isMessageRecord(record) && !isUserRecord(record)
+    ? { ...record, showAssistantMeta: assistantMetaKeys.has(record.key) }
+    : record
   for (let index = 0; index < records.length;) {
     const record = records[index]!
     if (!isFoldableWorkRecord(record)) {
       output.push(<MessageScrollerItem key={record.key} messageId={record.key} scrollAnchor={isUserRecord(record)}>
-        <MemoTimelineItemBoundary record={record} report={report} />
+        <MemoTimelineItemBoundary record={presented(record)} report={report} />
       </MessageScrollerItem>)
       index += 1
       continue
@@ -754,7 +906,7 @@ const TimelineRecords = ({ records, report }: {
     while (index < records.length && isFoldableWorkRecord(records[index]!)) group.push(records[index++]!)
     if (group.length === 1) {
       output.push(<MessageScrollerItem key={group[0]!.key} messageId={group[0]!.key}>
-        <MemoTimelineItemBoundary record={group[0]!} report={report} />
+        <MemoTimelineItemBoundary record={presented(group[0]!)} report={report} />
       </MessageScrollerItem>)
       continue
     }
@@ -773,6 +925,7 @@ const TimelineRecords = ({ records, report }: {
 
 const TimelineScroller = (props: TimelineProps): ReactElement => {
   const viewportRef = useRef<HTMLDivElement>(null)
+  const turns = useMemo(() => deriveReactTimelineTurns(props.records), [props.records])
   const requestedEdge = useRef<"top" | "bottom" | null>(null)
   const previousLoadingEdge = useRef(props.loadingEdge)
   useEffect(() => {
@@ -823,6 +976,7 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
       </MessageScrollerContent>
     </MessageScrollerViewport>
     <MessageScrollerButton className="oa-react-new-activity" behavior="auto" aria-label="Jump to latest" title="Jump to latest" />
+    <TimelineMinimap turns={turns} viewportRef={viewportRef} releaseReaderIntent={releaseReaderIntent} />
   </MessageScroller>
 }
 

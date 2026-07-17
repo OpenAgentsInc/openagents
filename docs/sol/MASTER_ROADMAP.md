@@ -3,9 +3,9 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-17
-- Revision: 117
+- Revision: 118
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: owner-approved FULL HARVEST of the Amp Fast Follow program; #8777 remains independently claimable
+- Current queue: owner-approved T3 Code UI full harvest alongside the admitted Amp Fast Follow program; #8777 remains independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -53,7 +53,7 @@ Every material capability identified by the Amp gap analysis is approved;
 none is optional or policy-blocked. Day 1 thread fabric is first; later packets
 continue adapters, supersession, visibility/export, routing, review, placement,
 remote control, generated clients, and signed plugins until the port is
-complete. Work packets sequence implementation and proof, not scope.
+complete. Work packets sequence implementation and proof, not scope. The owner also approved the complete pinned T3 Code UI inventory through this [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md); T3UI-01/02 make transcript messages, typed rows, folds, scrolling, virtualization, anchoring, and navigation solid before composer, shell, panels, settings, remote/mobile, and installed proof.
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 

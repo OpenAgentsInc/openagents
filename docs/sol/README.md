@@ -43,6 +43,9 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`2026-07-16-fast-follow-expansion-accepted-plan.md`](./2026-07-16-fast-follow-expansion-accepted-plan.md)
   — owner admission, ordered five-day program, packet ledger, and explicit
   non-authority boundary.
+- [`2026-07-17-t3-code-ui-full-harvest-accepted-plan.md`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md)
+  — owner admission and bounded packet ledger for the complete T3 Code UI
+  harvest into the mounted OpenAgents Desktop React workbench.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
   tripwires, and review points.
 - [`receipts/README.md`](./receipts/README.md) — indexed proof snapshots, rungs,
