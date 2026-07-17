@@ -13,6 +13,7 @@ import {
   makeSerialTaskQueue,
   reconcileFullAutoThreads,
 } from "../src/full-auto-reconcile.ts"
+import { makeThreadStore } from "../src/thread-store.ts"
 
 /**
  * Full Auto (#8853) restart-survival proof, following the exact "Runtime A
@@ -608,4 +609,186 @@ describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
       reasoningEffort: null,
     })
   })
+})
+
+/**
+ * FA-RUN-02 (#8970): replays the 2026-07-17 overnight thread-eviction
+ * incident against the REAL mutable thread-store cache (thread-store.ts),
+ * not a registry-only fixture. Every other test in this file drives
+ * `reconcileFullAutoThreads` against a plain in-memory `dispatch` stub, which
+ * is exactly the shape the issue calls insufficient -- the actual defect
+ * lived in the thread store's bounded-cache eviction policy, fixed by
+ * `8cb900bbf9` (`compareDesktopThreadsByCreatedAt` -> a last-access compare),
+ * not in the registry or the reconcile decision function.
+ *
+ * `makeIncidentDispatch` below mirrors the EXACT fail-closed check production
+ * takes in provider-lane.ts's `dispatchTurn` (`store.open(threadRef) ===
+ * null` -> the literal `"That conversation no longer exists."` string, which
+ * flows unmodified into `FullAutoDispatchResult.reason` via main.ts's
+ * `dispatch: async ({ threadRef, turnRef, message, profile }) => { ... return
+ * result.ok ? { ok: true } : { ok: false, reason: result.error ?? ... } }`
+ * wiring) -- so a regression here exercises the identical failure shape the
+ * owner saw, not a synthetic stand-in for it.
+ *
+ * Composition proof (verified against this exact test file): reverting
+ * thread-store.ts's `write()` to `8cb900bbf9`'s parent (sort by
+ * `compareDesktopThreadsByCreatedAt` instead of by last access) makes both
+ * tests below fail with the identical `"That conversation no longer
+ * exists."` reason the incident produced, before the continuation that
+ * should have succeeded. Restoring current `main`'s thread-store.ts makes
+ * them pass again. See the FA-RUN-02 closeout comment on #8970 for the exact
+ * revert/re-verify commands used to confirm this.
+ */
+describe("Full Auto composed multi-chat thread-store pressure (FA-RUN-02 #8970)", () => {
+  /** Real Date.now() resolution is 1ms; a handful of synchronous store
+   * writes in the same test can otherwise tie on `updatedAt`/`createdAt` and
+   * fall back to a random UUID tiebreak, making the scenario's ordering
+   * (and therefore the regression) flaky. A tiny real delay keeps every
+   * mutation's timestamp strictly increasing. */
+  const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 2))
+
+  const makeIncidentDispatch = (store: ReturnType<typeof makeThreadStore>) =>
+    async ({ threadRef, turnRef }: { threadRef: string; turnRef: string }) => {
+      if (store.open(threadRef) === null) {
+        return { ok: false, reason: "That conversation no longer exists." }
+      }
+      store.append(threadRef, {
+        key: `${turnRef}-assistant`,
+        role: "assistant",
+        text: "Autonomous packet complete.",
+        timestamp: "00:00",
+      })
+      return { ok: true }
+    }
+
+  test(
+    "an older-created Full Auto thread survives six other top-level chats opened across three continuation cycles, and every continuation dispatches exactly once (this is the exact overnight composition: the thread is oldest-created, other chats are newer, and the cache is bounded to 5)",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-thread-pressure-"))
+      try {
+        const threadsFile = path.join(root, "threads.json")
+        const registryFile = path.join(root, "full-auto", "registry.json")
+        const store = makeThreadStore(threadsFile)
+        const registry = openFullAutoRegistry(registryFile)
+        const dispatch = makeIncidentDispatch(store)
+
+        // The owner's overnight "Hello" thread: created first, so it is the
+        // OLDEST-created thread in the mutable cache for the rest of the run
+        // -- exactly the incident shape ("the older-created but still-active
+        // Full Auto thread").
+        const fullAutoThread = store.newThread("Hello")
+        registry.set(fullAutoThread.id, true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "codex-local" } })
+        await tick()
+
+        // Cycle 1: the first autonomous packet dispatches and completes,
+        // exactly as it did at 12:12 AM in the incident.
+        expect(await reconcile(registry, { dispatch })).toEqual([fullAutoThread.id])
+        await tick()
+
+        // Ordinary multi-chat pressure between continuations: two OTHER
+        // top-level chats get created before the next continuation runs.
+        store.newThread("Other chat 1")
+        await tick()
+        store.newThread("Other chat 2")
+        await tick()
+
+        // Cycle 2: the next continuation dispatches and completes, touching
+        // (and re-freshening) the Full Auto thread again -- this re-touch is
+        // exactly what the incident's stalled run never got to do.
+        expect(await reconcile(registry, { dispatch })).toEqual([fullAutoThread.id])
+        await tick()
+
+        // Four more other chats before cycle 3 attempts -- six distinct
+        // OTHER chats will exist by the time it dispatches, more than the
+        // five-slot bounded cache can hold alongside the Full Auto thread.
+        for (const label of ["Other chat 3", "Other chat 4", "Other chat 5", "Other chat 6"]) {
+          store.newThread(label)
+          await tick()
+        }
+
+        // The mutable cache is bounded to 5, and 7 threads now exist (Full
+        // Auto + 6 others), so real eviction pressure has been exceeded --
+        // not just simulated.
+        expect(store.list().length).toBe(5)
+        // The fix's contract: because the Full Auto thread was touched again
+        // at the start of cycle 2, it still ranks inside the 5
+        // most-recently-touched threads even after six total other chats
+        // have been created since it was created.
+        expect(store.open(fullAutoThread.id)).not.toBeNull()
+
+        // Cycle 3: the continuation the incident lost is accepted exactly
+        // once, with no "conversation no longer exists" failure and no
+        // silently dormant enabled record.
+        expect(await reconcile(registry, { dispatch })).toEqual([fullAutoThread.id])
+        expect(registry.record(fullAutoThread.id)?.continuationCount).toBe(3)
+        expect(registry.record(fullAutoThread.id)?.blockedReason ?? null).toBe(null)
+        expect(registry.record(fullAutoThread.id)?.pendingTurnRef ?? null).toBe(null)
+        expect(registry.get(fullAutoThread.id)).toBe(true)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test(
+    "restart across the pressure boundary: Runtime B reopens the same on-disk thread store and registry mid-pressure and resumes the run's thread exactly once, racing a turn-completion trigger against a startup trigger the way main.ts's two call sites can",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-thread-pressure-restart-"))
+      try {
+        const threadsFile = path.join(root, "threads.json")
+        const registryFile = path.join(root, "full-auto", "registry.json")
+
+        // Runtime A: the same shape as the single-process replay above,
+        // through cycle 2 and four of the six other-chat touches, then it
+        // quits -- the remaining pressure and the next continuation happen
+        // after restart, on a fresh process reopening the same durable files.
+        const storeA = makeThreadStore(threadsFile)
+        const registryA = openFullAutoRegistry(registryFile)
+        const dispatchA = makeIncidentDispatch(storeA)
+        const fullAutoThread = storeA.newThread("Hello")
+        registryA.set(fullAutoThread.id, true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "codex-local" } })
+        await tick()
+        expect(await reconcile(registryA, { dispatch: dispatchA })).toEqual([fullAutoThread.id])
+        await tick()
+        storeA.newThread("Other chat 1")
+        await tick()
+        storeA.newThread("Other chat 2")
+        await tick()
+        expect(await reconcile(registryA, { dispatch: dispatchA })).toEqual([fullAutoThread.id])
+        await tick()
+        storeA.newThread("Other chat 3")
+        await tick()
+        storeA.newThread("Other chat 4")
+        await tick()
+
+        // Runtime B: a fresh process reopening the same on-disk thread store
+        // and registry files. It applies the last two other-chat touches
+        // (crossing the eviction boundary AFTER restart) and then races two
+        // reconciliation triggers -- exactly like a turn-completion callback
+        // and the startup pass could in production -- to prove the
+        // restart-crossing continuation is still exactly-once.
+        const storeB = makeThreadStore(threadsFile)
+        const registryB = openFullAutoRegistry(registryFile)
+        const dispatchB = makeIncidentDispatch(storeB)
+        storeB.newThread("Other chat 5")
+        await tick()
+        storeB.newThread("Other chat 6")
+        await tick()
+
+        expect(storeB.list().length).toBe(5)
+        expect(storeB.open(fullAutoThread.id)).not.toBeNull()
+
+        const [first, second] = await Promise.all([
+          reconcile(registryB, { dispatch: dispatchB, clearStaleLeases: true }),
+          reconcile(registryB, { dispatch: dispatchB }),
+        ])
+        expect([...first, ...second]).toEqual([fullAutoThread.id])
+        expect(registryB.record(fullAutoThread.id)?.continuationCount).toBe(3)
+        expect(registryB.record(fullAutoThread.id)?.pendingTurnRef ?? null).toBe(null)
+        expect(registryB.get(fullAutoThread.id)).toBe(true)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
 })
