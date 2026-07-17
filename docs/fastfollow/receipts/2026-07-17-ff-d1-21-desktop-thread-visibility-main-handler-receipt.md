@@ -3,12 +3,13 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_21.desktop_thread_visibility_main_handler.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "b6852266992055da79f7f00386e3a891ab449105"
 claim_revision: "f50376c32b457571f09de41c62b2af24bbf6f3f4"
+implementation_revision: "6f186971d996fc7606a22bdda30eb0bab2ce853e"
 proof_rung: "desktop_thread_visibility_main_handler_seam"
 observed_at: "2026-07-17T18:37:57Z"
 ---
@@ -24,6 +25,10 @@ receipts and releases, Fast Follow revision 3, the accepted plan, relevant
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed unchanged on `origin/main` at
+`6f186971d996fc7606a22bdda30eb0bab2ce853e`. This documentation-only release
+annotation records that remote fact; it does not extend the implemented scope.
 
 No open issue, worktree, or claim owns the two new visibility-handler paths.
 Active work continues to own Desktop `main.ts` and broad renderer surfaces, so
