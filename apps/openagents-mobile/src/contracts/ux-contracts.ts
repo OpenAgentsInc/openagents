@@ -5,8 +5,37 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.13",
+    version: "2026-07-17.14",
     contracts: [
+      {
+        contractId: "openagents_mobile.workspace_native_input.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile native workspace input",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "Native workspace rows use a thresholded horizontal PanResponder driver for declared full-swipe actions while retaining press actions, and the app host maps a closed hardware-key set to new-task, navigation, detail, and dismiss commands.",
+        authorityBoundary:
+          "Pan gestures dispatch only an exact declared action on the matching side after horizontal-axis and distance checks, then settle. Keyboard input requires Command/Control except Escape; unknown keys do nothing. Layout/focus commands never change transcript authority, and physical-device focus traversal remains a release receipt rather than a simulated claim.",
+        evidenceRefs: [
+          "apps/openagents.com/packages/effect-native-render-rn/src/index.ts",
+          "apps/openagents-mobile/src/screens/mobile-workspace-keyboard.ts",
+          "apps/openagents-mobile/src/screens/home-screen.tsx",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-c22b",
+        ],
+        oracles: [{
+          id: "mobile_native_gesture_and_keyboard",
+          kind: "bun-test",
+          mode: "e2e",
+          ref: "apps/openagents-mobile/tests/mobile-workspace-keyboard.test.ts",
+          description: "Proves the closed keyboard map and authority-preserving layout dispatch; the paired RN renderer suite proves exact swipe threshold/axis/side resolution.",
+        }],
+        verification:
+          "Keyboard/workspace, RN renderer, authoritative Home, accessibility, behavior-contract, mobile/RN typechecks, and repository checks; physical keyboard and screen-reader receipts remain T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.workspace_row_actions.v1",
         state: "enforced",

@@ -7,6 +7,7 @@ import {
   IntentRef,
   Markdown,
   Stack,
+  SwipeableListItem,
   Text,
   Transcript,
   UnknownIntentError,
@@ -19,6 +20,7 @@ import { Deferred, FiberSet } from "effect"
 import {
   createEffectNativeSurface,
   makeReactNativeRenderer,
+  resolveNativeFullSwipeAction,
   renderReactNativeView,
   type ReactElementLike,
   type ExpoUiSwiftUiRuntime,
@@ -57,6 +59,21 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("React Native renderer host boundaries", () => {
+  test("full-swipe resolution is horizontal, thresholded, declared, and reversible-only by app policy", () => {
+    const view = SwipeableListItem({
+      key: "swipe-row",
+      child: Text({ key: "body", content: "Task", variant: "body" }),
+      leadingActions: [{ id: "pin", label: "Pin" }],
+      trailingActions: [{ id: "archive", label: "Archive" }, { id: "delete", label: "Delete", destructive: true }],
+      fullSwipeActionId: "archive",
+      onAction: IntentRef("RowAction", ComponentValueBinding()),
+    })
+    expect(resolveNativeFullSwipeAction(view, -120, 4)).toBe("archive")
+    expect(resolveNativeFullSwipeAction(view, -80, 0)).toBeNull()
+    expect(resolveNativeFullSwipeAction(view, -120, 140)).toBeNull()
+    expect(resolveNativeFullSwipeAction({ ...view, fullSwipeActionId: "foreign" }, -120, 0)).toBeNull()
+    expect(resolveNativeFullSwipeAction(view, 120, 0)).toBeNull()
+  })
   test("renders selectable Markdown and opens only safe external links through the native host", async () => {
     const opened: Array<string> = []
     const element = renderReactNativeView(

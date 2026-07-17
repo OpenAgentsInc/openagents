@@ -87,6 +87,7 @@ import {
   type MobileWorkspaceFocusTarget,
   type MobileWorkspaceLayoutMode,
 } from "./mobile-adaptive-workspace"
+import type { MobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
 
 import {
   AgentRowSelected,
@@ -366,6 +367,10 @@ export const WorkspaceViewportWidthChanged = defineIntent(
   "WorkspaceViewportWidthChanged",
   Schema.Number,
 )
+export const WorkspaceKeyboardCommandReceived = defineIntent(
+  "WorkspaceKeyboardCommandReceived",
+  Schema.Literals(["new_task", "navigation", "detail", "dismiss"]),
+)
 export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
 export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
 export const OpenAgentsSignInPressed = defineIntent("OpenAgentsSignInPressed", EmptyPayload)
@@ -597,6 +602,7 @@ export const homeIntentDefinitions = [
   DrawerToggled,
   WorkspaceSidebarResized,
   WorkspaceViewportWidthChanged,
+  WorkspaceKeyboardCommandReceived,
   NewChatPressed,
   SettingsPressed,
   OpenAgentsSignInPressed,
@@ -2791,6 +2797,43 @@ export const makeHomeHandlers = (
           workspaceFocusTarget: "transcript" as const,
         }
       }),
+    WorkspaceKeyboardCommandReceived: (command: MobileWorkspaceKeyboardCommand) => {
+      if (command === "new_task") {
+        return synced?.NewChatPressed() ?? SubscriptionRef.update(state, current => ({
+          ...initialHomeState,
+          accessibility: current.accessibility,
+          workspaceLayoutMode: current.workspaceLayoutMode,
+          workspaceSidebarWidth: current.workspaceSidebarWidth,
+        }))
+      }
+      return SubscriptionRef.update(state, current => {
+        if (command === "navigation") return {
+          ...current,
+          drawerOpen: current.workspaceLayoutMode === "compact" ? true : false,
+          workspaceSidebarCollapsed: false,
+          workspaceFocusTarget: "navigation" as const,
+        }
+        if (command === "detail") return {
+          ...current,
+          drawerOpen: false,
+          workspaceFocusTarget: "transcript" as const,
+        }
+        if (current.threadLifecycle.pendingAction !== null) return current
+        return {
+          ...current,
+          drawerOpen: false,
+          workspaceFocusTarget: "transcript" as const,
+          threadLifecycle: {
+            ...current.threadLifecycle,
+            actionThreadRef: null,
+            editingThreadRef: null,
+            renameDraft: "",
+            deleteConfirmThreadRef: null,
+            notice: null,
+          },
+        }
+      })
+    },
     WorkspaceSearchChanged: (search: string) => SubscriptionRef.update(state, current => ({
       ...current,
       workspaceSearch: search.slice(0, MOBILE_WORKSPACE_MAX_SEARCH),
@@ -3456,6 +3499,7 @@ export interface HomeProgramHandle {
   }
   readonly workspace: {
     readonly setWidth: (width: number) => void
+    readonly dispatchKeyboardCommand: (command: MobileWorkspaceKeyboardCommand) => void
   }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
@@ -3665,6 +3709,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           setWidth: width => fireRef(IntentRef(
             "WorkspaceViewportWidthChanged",
             StaticPayload(width),
+          )),
+          dispatchKeyboardCommand: command => fireRef(IntentRef(
+            "WorkspaceKeyboardCommandReceived",
+            StaticPayload(command),
           )),
         },
         controller: {

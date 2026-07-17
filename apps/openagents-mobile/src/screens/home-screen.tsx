@@ -29,6 +29,7 @@ import type { MobileConversationSelection } from "../conversation/mobile-convers
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
+import { mobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
 import {
   buildHomeProgram,
   normalizeMobileAccessibilityProfile,
@@ -151,7 +152,19 @@ export const HomeScreen = ({
   }, [program, pendingAttentionTarget, onAttentionTargetConsumed])
 
   return (
-    <RNView style={{ flex: 1, backgroundColor: khalaTheme.color.background }}>
+    <RNView
+      style={{ flex: 1, backgroundColor: khalaTheme.color.background }}
+      {...({
+        onKeyDown: (event: Readonly<{ nativeEvent?: Readonly<{
+          key?: string
+          metaKey?: boolean
+          ctrlKey?: boolean
+        }> }>) => {
+          const command = mobileWorkspaceKeyboardCommand(event.nativeEvent ?? {})
+          if (command !== null) program.workspace.dispatchKeyboardCommand(command)
+        },
+      } as Record<string, unknown>)}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}

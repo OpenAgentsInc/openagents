@@ -1096,3 +1096,25 @@ gesture driver plus hardware keyboard commands and host focus application remain
   row-action grammar are complete; genuine native gesture/keyboard/focus host
   behavior remains `T3M-C2.2b`, and full parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:43:45Z`
+
+## Active packet — T3M-C2.2b
+
+Outcome: close the remaining navigation host boundary with a real native pan
+driver for typed row actions and a bounded hardware-key command adapter, while
+keeping host-applied accessibility focus evidence honest.
+
+Required behavior: horizontal pan must win only after an axis/threshold check,
+dispatch at most the declared reversible full-swipe action, and always settle;
+press actions remain available to switch/assistive users. Hardware commands are
+closed and layout-aware (new task, navigation, detail, dismiss); unknown or
+unmodified keys do nothing. Focus announcements/targets never select authority.
+
+### CLAIM
+
+- packet: `T3M-C2.2b`
+- base: `89d63e4ab9977975ba0a6fdf369e0f279c22da09`
+- claimed_at: `2026-07-17T22:44:52Z`
+- scope: RN PanResponder full-swipe driver with accessible fallback, typed
+  hardware-key parsing/dispatch, layout-aware dismissal/focus target, tests,
+  behavior contract, and Sol receipt
+- exclusions: physical keyboard/VoiceOver/TalkBack receipts (`T3M-F2`)

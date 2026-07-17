@@ -182,6 +182,11 @@ export interface ReactNativeRuntime {
   readonly SectionList: unknown
   readonly Image: unknown
   readonly Modal: unknown
+  readonly PanResponder?: {
+    readonly create: (handlers: Record<string, (...args: ReadonlyArray<unknown>) => unknown>) => Readonly<{
+      panHandlers: Record<string, unknown>
+    }>
+  }
   readonly Linking?: {
     readonly openURL: (url: string) => Promise<unknown>
   }
@@ -6029,7 +6034,7 @@ const renderMobileSurfaceShell = (
 }
 
 
-const renderSwipeableListItem = (
+const renderSwipeableListItemFallback = (
   view: SwipeableListItemView,
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
@@ -6084,6 +6089,79 @@ const renderSwipeableListItem = (
     ...actionButtons("trailing", view.trailingActions ?? [])
   )
 }
+
+export const resolveNativeFullSwipeAction = (
+  view: SwipeableListItemView,
+  dx: number,
+  dy: number
+): string | null => {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) < 96 || Math.abs(dx) <= Math.abs(dy)) return null
+  const id = view.fullSwipeActionId
+  if (id === undefined) return null
+  const actions = dx < 0 ? view.trailingActions ?? [] : view.leadingActions ?? []
+  return actions.some(action => action.id === id) ? id : null
+}
+
+interface NativeSwipeComponentProps {
+  readonly view: SwipeableListItemView
+  readonly dependencies: ReactNativeDependencies
+  readonly report: IntentReporter
+  readonly options: ReactNativeRenderOptions
+}
+
+const nativeSwipeComponentCache = new WeakMap<object, unknown>()
+
+const nativeSwipeComponent = (dependencies: ReactNativeDependencies): unknown => {
+  const existing = nativeSwipeComponentCache.get(dependencies.React as object)
+  if (existing !== undefined) return existing
+  const Component = (props: NativeSwipeComponentProps): ReactElementLike => {
+    const useState = props.dependencies.React.useState!
+    const [offset, setOffset] = useState(0)
+    const [responder] = useState(() => props.dependencies.ReactNative.PanResponder!.create({
+      onMoveShouldSetPanResponder: (_event: unknown, gesture: unknown) => {
+        const value = gesture as Readonly<{ dx?: number; dy?: number }>
+        const dx = value.dx ?? 0
+        const dy = value.dy ?? 0
+        return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)
+      },
+      onPanResponderMove: (_event: unknown, gesture: unknown) => {
+        const dx = (gesture as Readonly<{ dx?: number }>).dx ?? 0
+        setOffset(Math.max(-128, Math.min(128, dx)))
+      },
+      onPanResponderRelease: (_event: unknown, gesture: unknown) => {
+        const value = gesture as Readonly<{ dx?: number; dy?: number }>
+        const action = resolveNativeFullSwipeAction(props.view, value.dx ?? 0, value.dy ?? 0)
+        setOffset(0)
+        if (action !== null) runReportedIntent(props.report, props.view.onAction, action)
+      },
+      onPanResponderTerminate: () => setOffset(0),
+    }))
+    return props.dependencies.React.createElement(
+      props.dependencies.ReactNative.View,
+      {
+        ...responder.panHandlers,
+        testID: "en-native-swipe-driver",
+        style: { transform: [{ translateX: offset }] },
+      },
+      renderSwipeableListItemFallback(props.view, props.dependencies, props.report, props.options),
+    )
+  }
+  nativeSwipeComponentCache.set(dependencies.React as object, Component)
+  return Component
+}
+
+const renderSwipeableListItem = (
+  view: SwipeableListItemView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike =>
+  dependencies.ReactNative.PanResponder === undefined || dependencies.React.useState === undefined
+    ? renderSwipeableListItemFallback(view, dependencies, report, options)
+    : dependencies.React.createElement(
+        nativeSwipeComponent(dependencies),
+        { view, dependencies, report, options },
+      )
 
 const renderPager = (
   view: PagerView,
