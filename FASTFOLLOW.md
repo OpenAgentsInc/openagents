@@ -8,7 +8,7 @@ lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-17T04:40:49Z"
+updated_at: "2026-07-17T19:30:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -398,6 +398,7 @@ or weaken an invariant.
       "docs/teardowns/2026-07-16-t3-code-opencode-electron-build-update-analysis.md",
       "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md",
       "docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md",
+      "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
       "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md"
     ],
     "lessons": [
@@ -561,6 +562,49 @@ or weaken an invariant.
         "kind": "security",
         "summary": "Test local, sync, model, and telemetry disclosures independently through a closed schema.",
         "stance": "adapt"
+      }
+    ]
+  },
+  {
+    "id": "sybil.local_studio",
+    "title": "Local Studio",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/sybil-solutions/local-studio",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-17-local-studio-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "local_inference_lifecycle",
+        "kind": "architecture",
+        "summary": "Model local inference as an exact hardware, runtime, model-artifact, launch, health, capacity, usage, and cleanup lifecycle rather than a provider string.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "accelerator_resource_truth",
+        "kind": "reliability",
+        "summary": "Make accelerator inventory, workload attachment, resource leases, conflicts, and release-after-observed-stop explicit.",
+        "stance": "adapt"
+      },
+      {
+        "id": "controller_workbench_split",
+        "kind": "architecture",
+        "summary": "Keep model control, agent execution, desktop host capabilities, and workbench projection as separate authorities joined by generated authenticated protocols.",
+        "stance": "adapt"
+      },
+      {
+        "id": "ambient_local_authority",
+        "kind": "security",
+        "summary": "Reject ambient loopback or same-user access, host execution, and remote-code convenience as substitutes for scoped authority and containment.",
+        "stance": "reject"
+      },
+      {
+        "id": "behavioral_release_evidence",
+        "kind": "evaluation",
+        "summary": "Require executable behavioral and fault evidence for privileged local-agent and model-runtime release claims, not static checks alone.",
+        "stance": "adapt_with_stronger_boundaries"
       }
     ]
   },
