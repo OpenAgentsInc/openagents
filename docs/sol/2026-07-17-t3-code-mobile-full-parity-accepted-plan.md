@@ -138,3 +138,12 @@ mobile parity remains open through `T3M-F2`.
 - type proof: OpenAgents mobile TypeScript passed
 - repository gate: `pnpm run check` passed
 - residual: `T3M-A2` through `T3M-F2`; this is not a full-parity claim
+
+### CLAIM-RELEASE
+
+- landed: `72a841ea4ef7ce5f1b4289d3b5a2b1a29e11063d` on `main`
+- verification: post-rebase mobile typecheck; 76 focused mobile, renderer,
+  accessibility, and behavior-contract tests; `pnpm run check`; pre-push fast
+  policy, generated-contract, retired-surface, and Cloud-authority checks
+- residual: `T3M-A2` grouped runtime work is the next ordered packet; full
+  mobile parity remains open through `T3M-F2`
