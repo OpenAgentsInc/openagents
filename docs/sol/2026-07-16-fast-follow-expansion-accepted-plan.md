@@ -746,6 +746,12 @@ later packets.
 - baseline collisions: the current Desktop package typecheck fails only in pre-existing lifecycle-schema consumers under active work; targeted AssuranceSpec is 189/190 with an unrelated environment-digest snapshot drift; neither boundary was changed or weakened
 - residual: IPC/command wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `8e99d168395efcbba030c2ea132295fd208dc949` on `main`
+- remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
+- residual: IPC/command wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
