@@ -43,6 +43,12 @@ export type MobileConversationMutationResult =
   | Readonly<{ ok: true; thread: MobileConversationThread }>
   | Readonly<{ ok: false; error: string }>
 
+export type MobileThreadLifecycleAction = "archive" | "delete" | "rename" | "restore"
+
+export type MobileThreadLifecycleResult =
+  | Readonly<{ ok: true; thread: MobileConversationThreadSummary }>
+  | Readonly<{ ok: false; error: string }>
+
 export const runtimeOutcomeIsConfirmed = (input: Readonly<{
   activeRunRef: string | null
   activeRunStatus: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled" | null
@@ -75,8 +81,14 @@ export type MobileRuntimeControlAction =
 
 export type MobileConversationHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<MobileConversationThreadSummary>>
+  listArchivedThreads?: () => Promise<ReadonlyArray<MobileConversationThreadSummary>>
   newThread: () => Promise<MobileConversationMutationResult>
   openThread: (threadRef: string) => Promise<MobileConversationThread | null>
+  updateThread?: (input: Readonly<{
+    action: MobileThreadLifecycleAction
+    threadRef: string
+    title?: string
+  }>) => Promise<MobileThreadLifecycleResult>
   watchThread?: (
     threadRef: string,
     onUpdate: (thread: MobileConversationThread) => void,
@@ -157,10 +169,16 @@ export const makeMobileConversationHost = (
   const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const pollAttempts = options.pollAttempts ?? 30
   let subscriptionSequence = 0
+  const allThreadStatuses = ["active", "archived", "deleted"] as const
 
   const listThreads = async (): Promise<ReadonlyArray<MobileConversationThreadSummary>> =>
     options.conversation.personalStatus().phase === "live"
       ? run(options.conversation.listConfirmedThreads())
+      : []
+
+  const listAllThreads = async (): Promise<ReadonlyArray<MobileConversationThreadSummary>> =>
+    options.conversation.personalStatus().phase === "live"
+      ? run(options.conversation.listConfirmedThreads({ statuses: allThreadStatuses }))
       : []
 
   const threadFromSnapshot = (
@@ -254,6 +272,51 @@ export const makeMobileConversationHost = (
       threadRef,
       ...(requiredMessageRef === undefined ? {} : { requiredMessageRef }),
     })
+
+  const waitForThreadMetadata = async (input: Readonly<{
+    baselineVersion: number
+    threadRef: string
+    title: string
+    status: MobileConversationThreadSummary["status"]
+  }>): Promise<MobileConversationThreadSummary | null> => {
+    const readAccepted = async (): Promise<MobileConversationThreadSummary | null> => {
+      try {
+        const thread = (await listAllThreads()).find(item => item.threadRef === input.threadRef)
+        return thread !== undefined &&
+            thread.version > input.baselineVersion &&
+            thread.status === input.status &&
+            thread.title === input.title
+          ? thread
+          : null
+      } catch {
+        return null
+      }
+    }
+    const initial = await readAccepted()
+    if (initial !== null) return initial
+
+    let settle!: (thread: MobileConversationThreadSummary | null) => void
+    let settled = false
+    const result = new Promise<MobileConversationThreadSummary | null>(resolve => {
+      settle = thread => {
+        if (settled) return
+        settled = true
+        resolve(thread)
+      }
+    })
+    const unsubscribe = options.conversation.subscribeThread(input.threadRef, async change => {
+      if (change.kind !== "content") return
+      const thread = await readAccepted()
+      if (thread !== null) settle(thread)
+    })
+    const afterSubscribe = await readAccepted()
+    if (afterSubscribe !== null) settle(afterSubscribe)
+    const deadline = sleep(Math.max(1, pollAttempts) * 100).then(() => null)
+    const resolved = await Promise.race([result, deadline])
+    settled = true
+    unsubscribe()
+    return resolved
+  }
 
   const confirmedRuntimeOutcome = async (input: Readonly<{
     intentId: string
@@ -583,7 +646,64 @@ export const makeMobileConversationHost = (
 
   return {
     listThreads,
+    listArchivedThreads: async () => options.conversation.personalStatus().phase === "live"
+      ? run(options.conversation.listConfirmedThreads({ statuses: ["archived"] }))
+      : [],
     openThread: confirmedThread,
+    updateThread: async input => {
+      let baseline: MobileConversationThreadSummary | undefined
+      try {
+        baseline = (await listAllThreads()).find(thread => thread.threadRef === input.threadRef)
+      } catch {
+        return { ok: false, error: "Authoritative conversation Sync is unavailable." }
+      }
+      if (baseline === undefined || baseline.status === "deleted") {
+        return { ok: false, error: "This confirmed chat is no longer available." }
+      }
+      const title = input.action === "rename" ? input.title?.trim() ?? "" : baseline.title
+      if (input.action === "rename" && title === "") {
+        return { ok: false, error: "A chat title is required." }
+      }
+      const status = input.action === "archive"
+        ? "archived" as const
+        : input.action === "restore"
+          ? "active" as const
+          : input.action === "delete"
+            ? "deleted" as const
+            : baseline.status
+      if ((input.action === "archive" && baseline.status !== "active") ||
+          (input.action === "restore" && baseline.status !== "archived")) {
+        return { ok: false, error: "This chat changed on another device." }
+      }
+      try {
+        if (input.action === "rename") {
+          await run(options.conversation.renameThread({
+            expectedStatus: baseline.status,
+            expectedUpdatedAt: baseline.updatedAt,
+            threadId: baseline.threadRef,
+            title,
+          }))
+        } else {
+          await run(options.conversation.setThreadStatus({
+            expectedStatus: baseline.status,
+            expectedUpdatedAt: baseline.updatedAt,
+            status,
+            threadId: baseline.threadRef,
+          }))
+        }
+      } catch {
+        return { ok: false, error: "Authoritative conversation Sync is unavailable." }
+      }
+      const confirmed = await waitForThreadMetadata({
+        baselineVersion: baseline.version,
+        status,
+        threadRef: baseline.threadRef,
+        title,
+      })
+      return confirmed === null
+        ? { ok: false, error: "Chat update is still pending or conflicted." }
+        : { ok: true, thread: confirmed }
+    },
     watchThread: async (threadRef, onUpdate) => {
       // Opening a dedicated thread scope can briefly move that scope through
       // catch-up even though the personal catalog already confirmed the row.

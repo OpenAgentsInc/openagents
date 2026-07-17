@@ -98,6 +98,8 @@ const harness = (initialStatus = status("live", 4)) => {
     listConfirmedMessages: () => Effect.succeed(messages),
     createThread: () => Effect.die("unused"),
     appendMessage: () => Effect.die("unused"),
+    renameThread: () => Effect.die("unused"),
+    setThreadStatus: () => Effect.die("unused"),
   }
   const agentTimeline: KhalaSyncAgentTimeline = {
     status: () => currentTimeline?.status ?? currentStatus,

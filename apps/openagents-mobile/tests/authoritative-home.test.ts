@@ -32,6 +32,7 @@ const now = "2026-07-10T20:15:00.000Z"
 const initialThread: MobileConversationThread = {
   threadRef: "thread.synced.1",
   title: "Synced",
+  status: "active",
   messageCount: 1,
   lastMessageAt: now,
   updatedAt: now,

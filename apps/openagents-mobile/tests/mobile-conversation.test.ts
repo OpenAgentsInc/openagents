@@ -23,6 +23,7 @@ const now = "2026-07-10T20:15:00.000Z"
 
 const makeConversation = (input: Readonly<{
   appendConfirmed?: boolean
+  lifecycleConfirmed?: boolean
 }> = {}): Readonly<{
   conversation: KhalaSyncConversation
   threads: Map<string, ConfirmedChatThread>
@@ -35,6 +36,7 @@ const makeConversation = (input: Readonly<{
     {
       threadRef: "thread.synced.1",
       title: "Synced",
+      status: "active",
       messageCount: 1,
       lastMessageAt: now,
       updatedAt: now,
@@ -65,7 +67,8 @@ const makeConversation = (input: Readonly<{
   const conversation: KhalaSyncConversation = {
     personalStatus: () => live,
     threadStatus: () => live,
-    listConfirmedThreads: () => Effect.succeed([...threads.values()]),
+    listConfirmedThreads: options => Effect.succeed([...threads.values()].filter(thread =>
+      (options?.statuses ?? ["active"]).includes(thread.status))),
     openThread: () => Effect.succeed(undefined),
     closeThread: () => Effect.succeed(undefined),
     subscribeThread: (_threadRef, listener) => {
@@ -78,6 +81,7 @@ const makeConversation = (input: Readonly<{
       threads.set(args.threadId, {
         threadRef: args.threadId,
         title: args.title,
+        status: "active",
         messageCount: 0,
         lastMessageAt: null,
         updatedAt: now,
@@ -117,6 +121,34 @@ const makeConversation = (input: Readonly<{
         notify(args.threadId)
       }
       return 2 as MutationId
+    }),
+    renameThread: args => Effect.sync(() => {
+      const thread = threads.get(args.threadId)!
+      commands.push({ id: "rename", threadRef: args.threadId })
+      if (input.lifecycleConfirmed !== false) {
+        threads.set(args.threadId, {
+          ...thread,
+          title: args.title.trim(),
+          updatedAt: "2026-07-10T20:16:00.000Z",
+          version: thread.version + 1,
+        })
+        notify(args.threadId)
+      }
+      return 3 as MutationId
+    }),
+    setThreadStatus: args => Effect.sync(() => {
+      const thread = threads.get(args.threadId)!
+      commands.push({ id: args.status, threadRef: args.threadId })
+      if (input.lifecycleConfirmed !== false) {
+        threads.set(args.threadId, {
+          ...thread,
+          status: args.status,
+          updatedAt: "2026-07-10T20:17:00.000Z",
+          version: thread.version + 1,
+        })
+        notify(args.threadId)
+      }
+      return 4 as MutationId
     }),
   }
   const confirmMessage = (threadRef: string, messageRef: string, body: string): void => {
@@ -227,6 +259,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     fixture.threads.set("thread.synced.2", {
       threadRef: "thread.synced.2",
       title: "Restored coding session",
+      status: "active",
       messageCount: 1,
       lastMessageAt: now,
       updatedAt: now,
@@ -324,6 +357,38 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     const result = await host.sendMessage({ threadRef: "thread.synced.1", body: "Pending" })
     expect(result).toEqual({ ok: false, error: "Message is still pending reconciliation." })
     expect(sleeps).toBe(1)
+  })
+
+  test("reconciles rename, archive, restore, and delete from newer personal-scope post-images", async () => {
+    const fixture = makeConversation()
+    const host = makeMobileConversationHost({ conversation: fixture.conversation })
+
+    expect(await host.updateThread?.({
+      action: "rename",
+      threadRef: "thread.synced.1",
+      title: "  Mobile controller  ",
+    })).toMatchObject({ ok: true, thread: { title: "Mobile controller", status: "active", version: 4 } })
+    expect(await host.updateThread?.({ action: "archive", threadRef: "thread.synced.1" }))
+      .toMatchObject({ ok: true, thread: { status: "archived", version: 5 } })
+    expect(await host.listThreads()).toEqual([])
+    expect(await host.listArchivedThreads?.()).toMatchObject([{ status: "archived" }])
+    expect(await host.updateThread?.({ action: "restore", threadRef: "thread.synced.1" }))
+      .toMatchObject({ ok: true, thread: { status: "active", version: 6 } })
+    expect(await host.updateThread?.({ action: "delete", threadRef: "thread.synced.1" }))
+      .toMatchObject({ ok: true, thread: { status: "deleted", version: 7 } })
+    expect(await host.updateThread?.({ action: "restore", threadRef: "thread.synced.1" }))
+      .toEqual({ ok: false, error: "This confirmed chat is no longer available." })
+  })
+
+  test("never reports an overlay-only lifecycle mutation as confirmed", async () => {
+    const fixture = makeConversation({ lifecycleConfirmed: false })
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      pollAttempts: 1,
+      sleep: async () => undefined,
+    })
+    expect(await host.updateThread?.({ action: "archive", threadRef: "thread.synced.1" }))
+      .toEqual({ ok: false, error: "Chat update is still pending or conflicted." })
   })
 
   test("queues the paired runtime intent when an offline append is not yet confirmed", async () => {

@@ -130,6 +130,7 @@ describe("contract openagents_mobile.controller_shell.v1", () => {
     const thread: MobileConversationThread = {
       threadRef: "thread.attention.1",
       title: "Approval",
+      status: "active",
       messageCount: 0,
       lastMessageAt: null,
       updatedAt: "2026-07-17T12:00:00.000Z",

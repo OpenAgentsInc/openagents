@@ -1135,6 +1135,7 @@ const withConfirmedThread = (
     {
       threadRef: thread.threadRef,
       title: thread.title,
+      status: thread.status,
       messageCount: thread.messageCount,
       lastMessageAt: thread.lastMessageAt,
       updatedAt: thread.updatedAt,

@@ -49,6 +49,7 @@ const directory: MobileCodingDirectory = {
 const thread: MobileConversationThread = {
   threadRef: target.threadRef,
   title: "Controller session",
+  status: "active",
   lastMessageAt: null,
   messageCount: 0,
   version: 1,

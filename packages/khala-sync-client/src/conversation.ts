@@ -12,6 +12,8 @@ import type {
   ChatAppendMessageArgs,
   ChatClientMutators,
   ChatCreateThreadArgs,
+  ChatRenameThreadArgs,
+  ChatSetThreadStatusArgs,
 } from "./chat.js"
 import type { OverlayError } from "./overlay.js"
 import type { KhalaSyncSession, ScopeSyncState } from "./session.js"
@@ -34,6 +36,7 @@ const ConfirmedVersionSchema = Schema.Number.check(
 export const ConfirmedChatThreadSchema = Schema.Struct({
   threadRef: ConfirmedRefSchema,
   title: Schema.String.check(Schema.isMaxLength(160)),
+  status: Schema.Literals(["active", "archived", "deleted"]),
   messageCount: ConfirmedVersionSchema,
   lastMessageAt: Schema.NullOr(ConfirmedTimestampSchema),
   createdAt: Schema.optionalKey(ConfirmedTimestampSchema),
@@ -70,7 +73,9 @@ export type KhalaSyncConversationStatus =
 export type KhalaSyncConversation = Readonly<{
   personalStatus: () => KhalaSyncConversationStatus
   threadStatus: (threadRef: string) => KhalaSyncConversationStatus
-  listConfirmedThreads: () => Effect.Effect<
+  listConfirmedThreads: (options?: Readonly<{
+    statuses?: ReadonlyArray<ConfirmedChatThread["status"]>
+  }>) => Effect.Effect<
     ReadonlyArray<ConfirmedChatThread>,
     KhalaSyncClientStoreError
   >
@@ -86,6 +91,8 @@ export type KhalaSyncConversation = Readonly<{
   >
   createThread: (args: ChatCreateThreadArgs) => Effect.Effect<MutationId, OverlayError>
   appendMessage: (args: ChatAppendMessageArgs) => Effect.Effect<MutationId, OverlayError>
+  renameThread: (args: ChatRenameThreadArgs) => Effect.Effect<MutationId, OverlayError>
+  setThreadStatus: (args: ChatSetThreadStatusArgs) => Effect.Effect<MutationId, OverlayError>
 }>
 
 export type KhalaSyncConversationChange = Readonly<{
@@ -114,6 +121,7 @@ const decodeThreads = (
       threads.push({
         threadRef: thread.threadId,
         title: thread.title,
+        status: thread.status,
         messageCount: thread.messageCount,
         lastMessageAt: thread.lastMessageAt,
         createdAt: thread.createdAt,
@@ -178,9 +186,12 @@ export const createKhalaSyncConversation = (input: Readonly<{
   return {
     personalStatus: () => status(personal),
     threadStatus: threadRef => status(threadScope(threadRef)),
-    listConfirmedThreads: () => Effect.map(
+    listConfirmedThreads: (options = {}) => Effect.map(
       input.store.readEntities(personal, CHAT_THREAD_ENTITY_TYPE),
-      rows => decodeThreads(input.ownerUserId, rows),
+      rows => {
+        const statuses = new Set(options.statuses ?? ["active"])
+        return decodeThreads(input.ownerUserId, rows).filter(thread => statuses.has(thread.status))
+      },
     ),
     openThread: threadRef => Effect.suspend(() => {
       const references = threadReferences.get(threadRef) ?? 0
@@ -223,5 +234,7 @@ export const createKhalaSyncConversation = (input: Readonly<{
     ),
     createThread: args => input.session.mutate(input.mutators.createThread, args),
     appendMessage: args => input.session.mutate(input.mutators.appendMessage, args),
+    renameThread: args => input.session.mutate(input.mutators.renameThread, args),
+    setThreadStatus: args => input.session.mutate(input.mutators.setThreadStatus, args),
   }
 }

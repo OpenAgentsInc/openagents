@@ -245,6 +245,7 @@ describe("shared canonical chat client", () => {
       expect(threads).toEqual([{
         threadRef: THREAD,
         title: "Confirmed thread",
+        status: "active",
         messageCount: 1,
         lastMessageAt: NOW,
         createdAt: NOW,

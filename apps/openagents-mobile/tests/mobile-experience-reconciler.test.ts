@@ -34,6 +34,7 @@ const makePhaseControlledConversation = (): Readonly<{
   const thread: ConfirmedChatThread = {
     threadRef: "thread.synced.1",
     title: "Synced",
+    status: "active",
     messageCount: 1,
     lastMessageAt: now,
     updatedAt: now,
@@ -57,6 +58,8 @@ const makePhaseControlledConversation = (): Readonly<{
     subscribeThread: () => () => undefined,
     createThread: () => Effect.succeed(1 as never),
     appendMessage: () => Effect.succeed(2 as never),
+    renameThread: () => Effect.succeed(3 as never),
+    setThreadStatus: () => Effect.succeed(4 as never),
   }
   return { conversation, phase: () => phase, setPhase: next => { phase = next } }
 }

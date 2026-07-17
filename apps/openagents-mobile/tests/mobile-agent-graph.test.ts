@@ -82,6 +82,7 @@ const threadWith = (
 ): MobileConversationThread => ({
   threadRef: "thread.synced.graph",
   title: "Supervised",
+  status: "active",
   messageCount: 1,
   lastMessageAt: now,
   updatedAt: now,
