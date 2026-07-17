@@ -61,6 +61,7 @@ import {
   type ComposerSubmitOutcome,
 } from "../composer-admission.ts"
 import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
+import type { DesktopRuntimeControlOutcomeRecord } from "../runtime-control-outcome-contract.ts"
 import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
 import {
   contextGroupSummary,
@@ -1424,6 +1425,8 @@ export type ChatHost = Readonly<{
     thread?: DesktopThread
     error?: string
   }>>
+  /** Persist a schema-checked ref-only control outcome before delivery state is consumed. */
+  recordControlOutcome?: (record: DesktopRuntimeControlOutcomeRecord) => Promise<boolean>
   sendMessage: (input: Readonly<{
     id: string
     message: string
@@ -2037,7 +2040,9 @@ export const makeDesktopShellHandlers = (
           })
         }
       })
-      if (steered.delivery.status !== "applied") {
+      const steeredRecorded = chat.recordControlOutcome === undefined ||
+        (yield* Effect.promise(() => chat.recordControlOutcome!({ threadRef: submissionThreadRef, outcome: steered }).catch(() => false)))
+      if (!steeredRecorded || steered.delivery.status !== "applied") {
         yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
           ? { ...next, composerIntentIdentity: identity }
           : next)
@@ -2098,7 +2103,9 @@ export const makeDesktopShellHandlers = (
         })
       }
     })
-    if (queued.delivery.status !== "queued") {
+    const queuedRecorded = chat.recordControlOutcome === undefined ||
+      (yield* Effect.promise(() => chat.recordControlOutcome!({ threadRef: submissionThreadRef, outcome: queued }).catch(() => false)))
+    if (!queuedRecorded || queued.delivery.status !== "queued") {
       yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
         ? { ...next, composerIntentIdentity: identity }
         : next)
@@ -2770,7 +2777,10 @@ export const makeDesktopShellHandlers = (
         yield* Effect.promise(async () => {
           const threadRef = current.activeThreadId ?? undefined
           if (chat.interruptActiveControl !== undefined) {
-            await chat.interruptActiveControl(threadRef)
+            const outcome = await chat.interruptActiveControl(threadRef)
+            if (outcome !== null && threadRef !== undefined) {
+              await chat.recordControlOutcome?.({ threadRef, outcome })
+            }
           } else {
             await chat.interruptActive?.(threadRef)
           }

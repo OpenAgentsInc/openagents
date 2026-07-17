@@ -172,6 +172,11 @@ import {
   type DesktopRuntimeGatewayEvent,
 } from "./runtime-gateway-contract.ts"
 import {
+  DesktopRuntimeControlOutcomeRecordChannel,
+  decodeDesktopRuntimeControlOutcomeRecord,
+  decodeDesktopRuntimeControlOutcomeRecordResult,
+} from "./runtime-control-outcome-contract.ts"
+import {
   FableLocalAnswerQuestionChannel,
   FableLocalAvailabilityChannel,
   FableLocalEventChannel,
@@ -359,6 +364,15 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     }
     ipcRenderer.on(DesktopRuntimeGatewayEventChannel, handler)
     return () => ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)
+  },
+  controlOutcomes: {
+    record: async (value: unknown) => {
+      const request = decodeDesktopRuntimeControlOutcomeRecord(value)
+      if (request === null) return { status: "rejected", reason: "invalid_request" }
+      return decodeDesktopRuntimeControlOutcomeRecordResult(
+        await ipcRenderer.invoke(DesktopRuntimeControlOutcomeRecordChannel, request),
+      ) ?? { status: "rejected", reason: "persistence_failed" }
+    },
   },
   /** The sole renderer mutation: one schema-checked Fleet brief. */
   stageFleet: (value: unknown) => {

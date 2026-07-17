@@ -87,6 +87,10 @@ import {
 } from "../desktop-preferences-contract.ts"
 import { preferencesRootAttributes, themeForPreferences } from "../desktop-preferences-effects.ts"
 import { makeConvergingDesktopChatHost, selectDesktopChatHostSelection } from "./runtime-conversation.ts"
+import {
+  decodeDesktopRuntimeControlOutcomeRecordResult,
+  type DesktopRuntimeControlOutcomeRecord,
+} from "../runtime-control-outcome-contract.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 import {
   makeLocalHarnessChatHost,
@@ -148,6 +152,9 @@ type DesktopBridge = Readonly<{
   platform: string
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
+  controlOutcomes?: Readonly<{
+    record?: (value: DesktopRuntimeControlOutcomeRecord) => Promise<unknown>
+  }>
   stageFleet?: (value: unknown) => Promise<unknown>
   listThreads?: () => Promise<unknown>
   localTurnRecovery?: Readonly<{
@@ -831,11 +838,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // lifetime routing decision: verified Sync may still be catching up. The
     // converging facade re-admits each operation with one authoritative query
     // and pins existing thread refs to their creating host (CUT-10).
-    const chat = makeConvergingDesktopChatHost({
+    const convergingChat = makeConvergingDesktopChatHost({
       request: bridge?.runtimeRequest,
       subscribe: bridge?.runtimeSubscribe,
       local: localHarnessChat,
     })
+    const chat = {
+      ...convergingChat,
+      recordControlOutcome: async (record: DesktopRuntimeControlOutcomeRecord): Promise<boolean> => {
+        const result = decodeDesktopRuntimeControlOutcomeRecordResult(
+          await bridge?.controlOutcomes?.record?.(record),
+        )
+        return result !== null && result.status !== "rejected"
+      },
+    }
     const runtimeInteractionHost = typeof bridge?.runtimeRequest === "function"
       ? makeDesktopRuntimeInteractionHost({
           request: bridge.runtimeRequest,

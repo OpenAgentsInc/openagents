@@ -8,6 +8,7 @@ import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-n
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { DesktopThread } from "../chat-contract.ts"
+import { makeComposerInterruptOutcome } from "../composer-admission.ts"
 
 import {
   activeFullAutoEnabled,
@@ -1489,6 +1490,8 @@ describe("composer image input (capability I1)", () => {
       Effect.gen(function* () {
         const queueAttempts: Array<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string; control?: { readonly kind: string; readonly intentRef: string; readonly messageRef?: string } }> = []
         let queueResult: { ok: boolean; queued: boolean } = { ok: false, queued: false }
+        let persistenceAccepted = true
+        const recorded: string[] = []
         const chatHost = {
           listThreads: async () => [testThread],
           newThread: async () => null,
@@ -1497,6 +1500,10 @@ describe("composer image input (capability I1)", () => {
           queueFollowup: async (input: { threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string }) => {
             queueAttempts.push(input)
             return queueResult
+          },
+          recordControlOutcome: async ({ outcome }: { outcome: { intentRef: string } }) => {
+            recorded.push(outcome.intentRef)
+            return persistenceAccepted
           },
         }
         const state = yield* SubscriptionRef.make({ ...baseState, pending: true, input: "keep me" })
@@ -1519,11 +1526,21 @@ describe("composer image input (capability I1)", () => {
         })])
         expect((yield* SubscriptionRef.get(state)).input).toBe("keep me")
 
-        // Accepted enqueue: the composer stays cleared for the next thought.
+        // A transport acknowledgement that cannot be durably recorded is not
+        // consumed as success: the exact retry identity and draft stay live.
         queueResult = { ok: true, queued: true }
+        persistenceAccepted = false
         yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
         expect(queueAttempts).toHaveLength(2)
         expect(queueAttempts[1]).toEqual(queueAttempts[0])
+        expect((yield* SubscriptionRef.get(state)).input).toBe("keep me")
+
+        // Once main durably admits the same acknowledgement, the composer
+        // consumes the queued state and clears for the next thought.
+        persistenceAccepted = true
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload(null))))
+        expect(queueAttempts).toHaveLength(3)
+        expect(recorded).toHaveLength(3)
         expect((yield* SubscriptionRef.get(state)).input).toBe("")
       }),
     )
@@ -2585,12 +2602,35 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     await Effect.runPromise(
       Effect.gen(function* () {
         const interruptedThreads: Array<string | undefined> = []
+        const events: string[] = []
         const chatHost = {
           listThreads: async () => [],
           newThread: async () => null,
           openThread: async () => null,
           sendMessage: async () => ({ ok: false, error: "unused in this test" }),
-          interruptActiveControl: async (threadRef?: string) => { interruptedThreads.push(threadRef); return null },
+          interruptActiveControl: async (threadRef?: string) => {
+            interruptedThreads.push(threadRef)
+            events.push("interrupt")
+            return makeComposerInterruptOutcome({
+              control: {
+                schema: "openagents.runtime_control_intent.v2",
+                intentRef: "intent.desktop.stop",
+                idempotencyKey: "idem.desktop.stop",
+                threadRef: threadRef!,
+                targetGeneration: { state: "unknown", reason: "not_observed" },
+                orderingKey: `thread.${threadRef}`,
+                createdAt: "2026-07-17T12:00:00Z",
+                expiresAt: "2026-07-17T12:01:00Z",
+                origin: { surface: "desktop", lane: "owner_local" },
+                kind: "turn.interrupt",
+                turnRef: "turn.desktop.stop",
+              },
+              observedAt: "2026-07-17T12:00:01Z",
+              admission: { status: "accepted", acceptedAt: "2026-07-17T12:00:01Z" },
+              delivery: { status: "pending" },
+            })
+          },
+          recordControlOutcome: async () => { events.push("record"); return true },
         }
         // Idle: the Stop control is not even rendered, but a stray dispatch must
         // still no-op (the handler is guarded on pending).
@@ -2610,6 +2650,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         }
         yield* registry.dispatch(resolveIntentRef(stop.onPress, null))
         expect(interruptedThreads).toEqual([testThread.id])
+        expect(events).toEqual(["interrupt", "record"])
       }),
     )
   })

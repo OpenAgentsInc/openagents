@@ -292,6 +292,11 @@ import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeDesktopCodexUsageReporter } from "./desktop-codex-usage-reporter.ts"
 import { openDesktopCodexUsageOutbox } from "./desktop-codex-usage-outbox.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { openDesktopRuntimeControlOutcomeStore } from "./runtime-control-outcome-store.ts"
+import {
+  DesktopRuntimeControlOutcomeRecordChannel,
+  decodeDesktopRuntimeControlOutcomeRecord,
+} from "./runtime-control-outcome-contract.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import {
@@ -1086,6 +1091,15 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 })
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+const runtimeControlOutcomes = openDesktopRuntimeControlOutcomeStore(
+  path.join(app.getPath("userData"), "runtime-control-outcomes", "ledger.json"),
+)
+ipcMain.handle(DesktopRuntimeControlOutcomeRecordChannel, (_event, value: unknown) => {
+  const request = decodeDesktopRuntimeControlOutcomeRecord(value)
+  return request === null
+    ? { status: "rejected", reason: "invalid_request" }
+    : runtimeControlOutcomes.record(request)
+})
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),
 )
