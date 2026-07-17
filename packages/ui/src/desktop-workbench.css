@@ -279,14 +279,17 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-sidebar-meter {
   flex: 0 0 auto;
   min-width: 0;
-  padding-top: var(--en-spacing-2);
-  border-top: 1px solid var(--en-color-borderSubtle);
+  padding-top: 0;
   overflow: hidden;
 }
 
-.oa-react-sidebar-meter + .oa-react-sidebar-footer {
-  padding-top: 0;
-  border-top: 0;
+.oa-react-sidebar-divider {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 1px;
+  margin: var(--en-spacing-2) 0 0;
+  border: 0;
+  background: var(--en-color-borderSubtle);
 }
 
 /* Status tick (design spec §5.7): a solid rectangle, never a dot. */

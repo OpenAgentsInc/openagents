@@ -418,7 +418,7 @@ describe("React workbench shell", () => {
     expect(rows.find(row => row.id === "local-1")?.working).toBe(true)
   })
 
-  test("projects the sidebar meter shape, nesting token fields under usage (T11 #8868)", () => {
+  test("projects only rate limits into the sidebar footer", () => {
     const state = initialDesktopShellState("electron/darwin", "18:04")
     expect(projectSidebarMeter(state)).toBeUndefined()
 
@@ -432,17 +432,15 @@ describe("React workbench shell", () => {
       },
     })
     expect(withMeter).toEqual({
-      usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 },
       rateLimits: [{ label: "primary", usedPercent: 12 }],
     })
 
-    // No rate limits observed yet: the key is absent, not an empty array.
+    // Token counts and context usage do not earn a footer on their own.
     const tokensOnly = projectSidebarMeter({ ...state, meter: { totalTokens: 42 } })
-    expect(tokensOnly).toEqual({ usage: { totalTokens: 42 } })
-    expect(tokensOnly).not.toHaveProperty("rateLimits")
+    expect(tokensOnly).toBeUndefined()
   })
 
-  test("mounts the live token meter in the fixed rail footer above Settings", async () => {
+  test("mounts rate limits below Settings with an explicit divider", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={{
@@ -461,9 +459,32 @@ describe("React workbench shell", () => {
     expect(sidebarMeter).not.toBeNull()
     expect(settings).not.toBeNull()
     if (sidebarMeter === null || settings === null) throw new Error("sidebar meter and Settings must both render")
-    expect(sidebarMeter.textContent).toContain("120 TOKENS")
+    expect(sidebarMeter.textContent).not.toContain("120 TOKENS")
+    expect(sidebarMeter.textContent).not.toContain("INPUT")
+    expect(sidebarMeter.textContent).not.toContain("OUTPUT")
     expect(sidebarMeter.textContent).toContain("PRIMARY")
-    expect(sidebarMeter.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(settings.compareDocumentPosition(sidebarMeter) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    const divider = container.querySelector(".oa-react-sidebar-divider")
+    expect(divider).not.toBeNull()
+    if (divider === null) throw new Error("sidebar divider must render")
+    expect(settings.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(divider.compareDocumentPosition(sidebarMeter) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
+  test("settings replaces recent chats with section navigation and a Back footer", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={{
+      ...fixtureState(),
+      workspace: "settings",
+    }} report={() => Effect.void} />)
+
+    expect(container.querySelector('[aria-label="Recent sessions"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Search sessions"]')).toBeNull()
+    expect(container.querySelector('[data-sidebar-destination-id="settings-general"]')?.textContent).toContain("General")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-codex"]')?.textContent).toContain("Codex CLI")
+    expect(container.querySelector('[data-sidebar-destination-id="settings-account"]')?.textContent).toContain("Account")
+    expect(container.querySelector('[data-sidebar-destination-id="shell-settings-toggle"]')?.textContent).toContain("Back")
   })
 
   test("renders exactly one active background across destinations and conversation rows", async () => {
@@ -588,7 +609,7 @@ describe("React workbench shell", () => {
     })
   })
 
-  test("keeps conversation paging while workspace management stays out of the sidebar", async () => {
+  test("keeps the sidebar bounded to recent chats while workspace management stays out", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -631,14 +652,8 @@ describe("React workbench shell", () => {
     }
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={state} report={report} />)
-    const click = async (label: string): Promise<void> => {
-      const button = [...container.querySelectorAll("button")].find(value => value.textContent === label)
-      expect(button, label).toBeDefined()
-      await interact(() => button?.click())
-    }
-    await click("Load more sessions")
-    expect(received).toEqual([{ name: "HistoryCatalogMoreRequested", payload: null }])
-    for (const removedLabel of ["Load more workspaces", "Archive", "Recover", "Delete", "Confirm delete"]) {
+    expect(received).toEqual([])
+    for (const removedLabel of ["Load more sessions", "Load more workspaces", "Archive", "Recover", "Delete", "Confirm delete"]) {
       expect([...container.querySelectorAll("button")].some(value => value.textContent === removedLabel)).toBe(false)
     }
   })

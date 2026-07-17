@@ -37,6 +37,7 @@ import {
   DesktopSidebarExpand,
   DesktopWorkbench,
   type DesktopConversationHeaderMeter,
+  type DesktopRailDestination,
   type DesktopRailIcon,
 } from "@openagentsinc/ui/desktop-workbench"
 import {
@@ -163,20 +164,14 @@ const selectedLifecycle = (state: DesktopShellState): string => {
 }
 
 /**
- * Projects the active thread's live context/usage meter (T11 #8868) onto the
- * shared `ContextMeter` mount's prop shape. `DesktopShellState.meter` carries
- * flat token fields + `rateLimits`; the shared component nests the token
- * fields under `usage`. Returns `undefined` (not an empty object) when no
- * meter has been observed yet, so the sidebar renders nothing extra rather
- * than an honest-but-premature "NO DATA" row before any turn has streamed.
+ * Projects only the active thread's provider rate-limit windows into the rail
+ * footer. Per-turn token and context counts remain runtime data but are not
+ * sidebar chrome. No observed windows means no footer rather than invented
+ * usage state.
  */
 export const projectSidebarMeter = (state: DesktopShellState): DesktopConversationHeaderMeter | undefined => {
-  if (state.meter === null) return undefined
-  const { rateLimits, ...usage } = state.meter
-  return {
-    usage,
-    ...(rateLimits === undefined ? {} : { rateLimits }),
-  }
+  const rateLimits = state.meter?.rateLimits
+  return rateLimits === undefined || rateLimits.length === 0 ? undefined : { rateLimits }
 }
 
 export const ConversationHeader = ({ state }: {
@@ -213,8 +208,14 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
   )
   const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
   const settingsDestination = destinations.find(destination => destination.id === "shell-settings-toggle")
+  const [selectedSettingsSectionId, setSelectedSettingsSectionId] = useState("settings-general")
+  const settingsSections: ReadonlyArray<DesktopRailDestination> = state.workspace !== "settings" ? [] : [
+    { id: "settings-general", label: "General", icon: "general", selected: selectedSettingsSectionId === "settings-general", current: selectedSettingsSectionId === "settings-general" ? "page" : undefined },
+    { id: "settings-codex", label: "Codex CLI", icon: "settings", selected: selectedSettingsSectionId === "settings-codex", current: selectedSettingsSectionId === "settings-codex" ? "page" : undefined },
+    ...(state.settings.localCodexUsageControlAvailable ? [{ id: "settings-privacy", label: "Privacy", icon: "privacy" as const, selected: selectedSettingsSectionId === "settings-privacy", current: selectedSettingsSectionId === "settings-privacy" ? "page" as const : undefined }] : []),
+    { id: "settings-account", label: "Account", icon: "account", selected: selectedSettingsSectionId === "settings-account", current: selectedSettingsSectionId === "settings-account" ? "page" : undefined },
+  ]
   const meter = projectSidebarMeter(state)
-  const shown = state.history.visibleRootCount
   const searchOpen = state.presentation.sessionSearchOpen
   const [renameTarget, setRenameTarget] = useState<ReactSessionRow | null>(null)
   const [renameTitle, setRenameTitle] = useState("")
@@ -284,8 +285,8 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     backLabel={state.navigation.backTitle === null ? "Back" : `Back to ${state.navigation.backTitle}`}
     canGoBack={state.navigation.canGoBack}
     canGoForward={state.navigation.canGoForward}
-    canLoadMore={state.history.searchQuery.trim() === "" && shown < state.history.catalog.roots.length}
-    destinations={primaryDestinations.map(destination => ({
+    canLoadMore={false}
+    destinations={state.workspace === "settings" ? settingsSections : primaryDestinations.map(destination => ({
       accessibilityLabel: destination.accessibilityLabel,
       current: destination.accessibilityCurrent,
       icon: sharedRailIcon(destination.icon),
@@ -295,7 +296,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       selected: destination.selected,
     }))}
     forwardLabel={state.navigation.forwardTitle === null ? "Forward" : `Forward to ${state.navigation.forwardTitle}`}
-    footer={meter === undefined ? undefined : <div aria-label="Session token usage" className="oa-react-sidebar-meter">
+    footer={meter === undefined ? undefined : <div aria-label="Rate limits" className="oa-react-sidebar-meter">
       <ContextMeter
         {...(meter.usage === undefined ? {} : { usage: meter.usage })}
         {...(meter.rateLimits === undefined ? {} : { rateLimits: meter.rateLimits })}
@@ -305,6 +306,21 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
     onCollapse={onCollapse}
     onDestinationSelect={selected => {
+      if (selected.id.startsWith("settings-")) {
+        setSelectedSettingsSectionId(selected.id)
+        const targetId = selected.id === "settings-codex"
+          ? "react-runtime-maintenance-title"
+          : selected.id === "settings-privacy"
+            ? "react-local-usage-title"
+            : selected.id === "settings-account"
+              ? "react-provider-accounts-title"
+              : "react-settings-title"
+        document.getElementById(targetId)?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "start",
+        })
+        return
+      }
       const destination = destinations.find(candidate => candidate.id === selected.id)
       if (destination === undefined) return
       dispatch(report, destination.intent.name, destination.intent.payload)
@@ -349,12 +365,12 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
     }))}
     settingsDestination={settingsDestination === undefined ? undefined : {
       accessibilityLabel: settingsDestination.accessibilityLabel,
-      current: settingsDestination.accessibilityCurrent,
-      icon: sharedRailIcon(settingsDestination.icon),
+      current: state.workspace === "settings" ? undefined : settingsDestination.accessibilityCurrent,
+      icon: state.workspace === "settings" ? "back" : sharedRailIcon(settingsDestination.icon),
       id: settingsDestination.id,
       indicator: settingsDestination.indicator?.kind ?? null,
-      label: settingsDestination.label,
-      selected: settingsDestination.selected,
+      label: state.workspace === "settings" ? "Back" : settingsDestination.label,
+      selected: state.workspace === "settings" ? false : settingsDestination.selected,
     }}
     stageLabel={DESKTOP_STAGE_LABEL}
   />
@@ -487,7 +503,7 @@ export const WorkbenchShell = ({ state, report }: {
   const workspaceSurface = state.workspace === "settings"
       ? <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
           <StaticKhalaDecoration view={settingsFrame} placement="settings-frame" />
-          <header className="oa-react-settings-header">
+          <header className="oa-react-settings-header" id="react-settings-title">
             <StaticKhalaDecoration view={settingsHeaderAccent} placement="settings-header" />
             <div><p>OpenAgents</p><h1>Settings</h1></div>
             <Button type="button" variant="outline" onClick={() => dispatch(report, "DesktopHarnessMaintenanceRefreshRequested")}>Refresh</Button>

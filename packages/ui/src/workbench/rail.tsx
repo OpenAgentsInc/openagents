@@ -7,13 +7,16 @@ import {
   PanelLeft,
   Search,
   Settings,
+  Settings2,
   SquarePen,
+  UserRound,
+  ShieldCheck,
   X,
   type LucideIcon,
 } from "lucide-react"
 import { Fragment, forwardRef, type KeyboardEvent, type ReactElement, type ReactNode } from "react"
 
-export type DesktopRailIcon = "chat" | "home" | "new-session" | "settings"
+export type DesktopRailIcon = "account" | "back" | "chat" | "general" | "home" | "new-session" | "privacy" | "settings"
 
 export type DesktopRailDestination = Readonly<{
   id: string
@@ -34,16 +37,24 @@ export type DesktopRailSession = Readonly<{
 }>
 
 const railIcons: Readonly<Record<DesktopRailIcon, LucideIcon>> = {
+  account: UserRound,
+  back: ChevronLeft,
   chat: MessageCircle,
+  general: Settings2,
   home: House,
   "new-session": SquarePen,
+  privacy: ShieldCheck,
   settings: Settings,
 }
 
 const railIconNames: Readonly<Record<DesktopRailIcon, string>> = {
+  account: "UserRound",
+  back: "ChevronLeft",
   chat: "Chats",
+  general: "Settings2",
   home: "Home",
   "new-session": "ChatCompose",
+  privacy: "ShieldCheck",
   settings: "Settings",
 }
 
@@ -148,7 +159,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         <strong>OpenAgents</strong>
         {stageLabel === undefined ? null : <span className="oa-react-rail-stage" data-app-stage={stageLabel.toLocaleLowerCase()}>{stageLabel}</span>}
       </div>
-      <button
+      {settingsDestination?.icon === "back" ? null : <button
         aria-expanded={searchOpen}
         aria-label={searchOpen ? "Close session search" : "Search sessions"}
         className="oa-react-icon-button oa-react-search-trigger"
@@ -157,9 +168,9 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         type="button"
       >
         {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" data-icon-name="Search" />}
-      </button>
+      </button>}
     </div>
-    {searchOpen ? <label className="oa-react-search">
+    {settingsDestination?.icon !== "back" && searchOpen ? <label className="oa-react-search">
       <span className="oa-react-sr-only">Search sessions</span>
       <input
         autoFocus
@@ -175,8 +186,8 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
       />
     </label> : null}
     <nav aria-label="Primary" className="oa-react-primary-nav">{destinations.map(renderDestination)}</nav>
-    <p className="oa-react-section-label">Recent</p>
-    <div className="oa-react-session-scroll">
+    {settingsDestination?.icon === "back" ? null : <p className="oa-react-section-label">Recent</p>}
+    {settingsDestination?.icon === "back" ? <div aria-hidden="true" className="oa-react-session-scroll" /> : <div className="oa-react-session-scroll">
       <nav aria-label="Recent sessions" className="oa-react-session-list">
         {!hydrated && sessions.length === 0
           ? <p role="status">Scanning sessions…</p>
@@ -207,11 +218,12 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
             })}
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>
-    </div>
-    {footer}
+    </div>}
     {settingsDestination === undefined ? null : <nav aria-label="Settings" className="oa-react-sidebar-footer">
       {renderDestination(settingsDestination)}
     </nav>}
+    {footer === undefined ? null : <hr className="oa-react-sidebar-divider" />}
+    {footer}
   </aside>
 })
 DesktopSessionRail.displayName = "DesktopSessionRail"

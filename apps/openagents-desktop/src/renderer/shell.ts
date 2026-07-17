@@ -1056,6 +1056,25 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   }
 }
 
+/**
+ * Apply a fresh projection for the already-selected chat without treating the
+ * projection as navigation. Streaming, hydration, and settlement may finish
+ * while the owner is in Settings; those background updates must never pull the
+ * chat workspace back to the front.
+ */
+export const withActiveChatProjected = (
+  state: DesktopShellState,
+  thread: DesktopThread,
+): DesktopShellState => {
+  const projected = withChatSelected(state, thread)
+  return {
+    ...projected,
+    workspace: state.workspace,
+    commandPaletteOpen: state.commandPaletteOpen,
+    fleetDeskOpen: state.fleetDeskOpen,
+  }
+}
+
 /** Toggle-style message inspector selection ("" or same key deselects). */
 export const withMessageSelected = (
   state: DesktopShellState,
@@ -1623,7 +1642,7 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
     const completedThread = result.thread.id === state.activeThreadId && state.agentGraph !== null
       ? { ...result.thread, agentGraph: state.agentGraph }
       : result.thread
-    const selected = withChatSelected(state, completedThread)
+    const selected = withActiveChatProjected(state, completedThread)
     return {
       ...selected,
       pending: false,
@@ -2217,7 +2236,7 @@ export const makeDesktopShellHandlers = (
       if (thread.id !== submissionThreadId || next.activeThreadId !== submissionThreadId) return
       await Effect.runPromise(SubscriptionRef.set(
         state,
-        { ...withChatSelected(next, thread), pending: true },
+        { ...withActiveChatProjected(next, thread), pending: true },
       ))
     })
     const result = yield* Effect.promise(() => chat.sendMessage({
@@ -2328,7 +2347,7 @@ export const makeDesktopShellHandlers = (
       const hydrated = yield* Effect.promise(() => chat.hydrateThread!(threadRef))
       if (hydrated !== null) {
         yield* SubscriptionRef.update(state, current =>
-          current.activeThreadId === threadRef ? withChatSelected(current, hydrated) : current)
+          current.activeThreadId === threadRef ? withActiveChatProjected(current, hydrated) : current)
       }
     }
     return true

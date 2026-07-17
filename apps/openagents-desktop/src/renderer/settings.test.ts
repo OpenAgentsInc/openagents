@@ -38,6 +38,8 @@ import {
   desktopShellView,
   initialDesktopShellState,
   makeDesktopShellHandlers,
+  withActiveChatProjected,
+  withTurnResult,
   type DesktopShellState,
 } from "./shell.ts"
 
@@ -346,6 +348,38 @@ describe("settingsView (state -> component tree)", () => {
     // the chat surface is swapped out, not stacked under
     expect(nodeByKey(settings, "shell-input")).toBeUndefined()
     expect(nodeByKey(settings, "shell-transcript")).toBeUndefined()
+  })
+
+  test("live chat projection and settlement cannot evict an open Settings workspace", () => {
+    const thread = {
+      id: "active-chat",
+      title: "Active chat",
+      updatedAt: "2026-07-17T12:00:00.000Z",
+      notes: [],
+    }
+    const openSettings: DesktopShellState = {
+      ...baseState,
+      workspace: "settings",
+      activeThreadId: thread.id,
+      threads: [thread],
+      pending: true,
+      pendingByThread: { [thread.id]: true },
+    }
+
+    const streamed = withActiveChatProjected(openSettings, {
+      ...thread,
+      notes: [{ key: "assistant-stream", role: "assistant", text: "Working…", timestamp: "12:01" }],
+    })
+    expect(streamed.workspace).toBe("settings")
+    expect(nodeByKey(desktopShellView(streamed), "settings-screen")).toBeDefined()
+    expect(nodeByKey(desktopShellView(streamed), "shell-transcript")).toBeUndefined()
+
+    const settled = withTurnResult(streamed, {
+      ok: true,
+      thread: { ...thread, notes: [{ key: "assistant-final", role: "assistant", text: "Done", timestamp: "12:02" }] },
+    }, "12:02")
+    expect(settled.workspace).toBe("settings")
+    expect(nodeByKey(desktopShellView(settled), "settings-screen")).toBeDefined()
   })
 })
 
