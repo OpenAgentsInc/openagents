@@ -2,13 +2,13 @@
   "format": "openagents-acp-release-matrix-v1",
   "protocol": "Agent Client Protocol",
   "protocolExclusions": ["Agent Communication Protocol", "A2A"],
-  "recordedAt": "2026-07-16T15:34:21Z",
+  "recordedAt": "2026-07-17T12:16:40Z",
   "freshnessDays": 30,
   "openAgents": {
-    "revision": "63cc0d073417d04bfa3146f7b92da1f385f9f420",
-    "desktopIntegrationRevision": "df03cf2ef76dda8f203083e7c22a02cd519b1a05",
-    "build": "live peer evidence source worktree; Desktop host reconciled separately with fixture evidence",
-    "protocolPackageRevision": "workspace@63cc0d073417d04bfa3146f7b92da1f385f9f420",
+    "revision": "6a26feb82244247b1d591c26aa5ff614b00b8b50",
+    "desktopIntegrationRevision": "6a26feb82244247b1d591c26aa5ff614b00b8b50",
+    "build": "source-built Desktop admission integration plus retained packaged Desktop journeys; packaging refresh excluded from the current work order",
+    "protocolPackageRevision": "workspace@6a26feb82244247b1d591c26aa5ff614b00b8b50",
     "schemaRelease": "schema-v1.19.0",
     "schemaSha256": "92c1dfcda10dd47e99127500a3763da2b471f9ac61e12b9bf0430c32cf953796"
   },
@@ -59,7 +59,7 @@
           "sessionCapabilities"
         ]
       },
-      "claimState": "experimental",
+      "claimState": "supported",
       "releaseEligible": true,
       "scenarios": [
         {
@@ -67,7 +67,8 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json"
+            "packages/agent-client-protocol-conformance/compatibility/live/grok-0.2.101-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-grok-current-2026-07-17-darwin-arm64.json"
           ],
           "safeDetail": "Exact installed version and executable digest passed."
         },
@@ -493,7 +494,7 @@
         ],
         "advertisedSessionCapabilityKeys": ["list"]
       },
-      "claimState": "experimental",
+      "claimState": "supported",
       "releaseEligible": true,
       "scenarios": [
         {
@@ -501,7 +502,8 @@
           "requiredForSupported": true,
           "result": "live-pass",
           "evidenceRefs": [
-            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json"
+            "packages/agent-client-protocol-conformance/compatibility/live/cursor-2026.06.24-darwin-arm64.json",
+            "packages/agent-client-protocol-conformance/compatibility/live/release-run-cursor-current-2026-07-17-darwin-arm64.json"
           ],
           "safeDetail": "Exact installed version, launcher digest, and installation closure passed."
         },

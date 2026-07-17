@@ -844,7 +844,7 @@ describe("MCP custody, durable evidence, and deterministic faults", () => {
     const matrix = JSON.parse(
       readFileSync(resolve(import.meta.dirname, "../compatibility/release-matrix.json"), "utf8"),
     ) as Record<string, unknown>;
-    expect(validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-16T16:00:00.000Z") })).toEqual(
+    expect(validateAcpReleaseMatrix(matrix, { now: new Date("2026-07-17T13:00:00.000Z") })).toEqual(
       { valid: true, errors: [] },
     );
 

@@ -111,7 +111,7 @@ describe("main-owned ACP provider host", () => {
   test("binds the complete checked release matrix into exact shipped peer admission", async () => {
     const host = createAcpProviderHost({
       cwd: async () => "/workspace",
-      now: () => new Date("2026-07-17T12:00:00.000Z"),
+      now: () => new Date("2026-07-17T13:00:00.000Z"),
       probeGrok: async () => probe("grok"),
       probeCursor: async () => probe("cursor"),
     });
@@ -130,7 +130,7 @@ describe("main-owned ACP provider host", () => {
   test("keeps a substituted executable experimental even when the checked matrix is complete", async () => {
     const host = createAcpProviderHost({
       cwd: async () => "/workspace",
-      now: () => new Date("2026-07-17T12:00:00.000Z"),
+      now: () => new Date("2026-07-17T13:00:00.000Z"),
       probeGrok: async () => probe("grok", { sha256: "f".repeat(64) }),
       probeCursor: async () => probe("cursor"),
     });

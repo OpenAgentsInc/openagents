@@ -58,8 +58,9 @@ class are code-owned: required live peer and packaged Desktop rows require live
 proof, optional peer alternatives do not gate the default path, and only
 explicitly hermetic production-transport rows may be satisfied by executed
 fixture proof. Matrix flags cannot self-exempt a provider, and one
-provider can never mask the other. The current checked verdict is
-`experimental` for both peers.
+provider can never mask the other. The current checked verdict is `supported`
+for the exact pinned Grok 0.2.101 and Cursor 2026.06.24 Darwin arm64 identities
+only. Other versions and platforms remain experimental or not tested.
 
 Live probes are inert unless explicitly armed and never run in ordinary CI:
 

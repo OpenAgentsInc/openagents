@@ -2,16 +2,17 @@
 
 Date: 2026-07-16
 Issue: [#8897](https://github.com/OpenAgentsInc/openagents/issues/8897)
-Live peer evidence revision: `63cc0d073417d04bfa3146f7b92da1f385f9f420`
-Release-candidate integration revision: `df03cf2ef76dda8f203083e7c22a02cd519b1a05`
+Live peer and shipped-admission integration revision: `6a26feb82244247b1d591c26aa5ff614b00b8b50`
 Protocol: **Agent Client Protocol**, not Agent Communication Protocol and not A2A
 
 ## Verdict
 
-Grok and Cursor now satisfy every code-owned required scenario on the tested
-Darwin arm64 platform. Both remain `experimental` until the checked release
-evidence is bound into the shipped admission path; eligibility is not itself a
-product support claim.
+Grok and Cursor satisfy every code-owned required scenario on the tested Darwin
+arm64 platform. The checked release evidence is now compiled fail-closed into
+the shipped main-owned Desktop admission and runtime path, so only the exact
+pinned identities project `supported`. Substituted binaries, stale/incomplete
+evidence, Grok 0.2.102, and every untested platform remain experimental or not
+tested.
 
 The checked machine ledger is
 [`release-matrix.json`](../../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json).
@@ -34,8 +35,8 @@ a partial live probe therefore remains experimental.
 
 | Peer         | Exact live identity                                                                            | Basic live result | Code-owned requirements unresolved | Claim        |
 | ------------ | ---------------------------------------------------------------------------------------------- | ----------------: | ---------------------------------: | ------------ |
-| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    30 live passes |                                  0 | experimental |
-| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    29 live passes |                                  0 | experimental |
+| Grok CLI     | `0.2.101`, executable SHA-256 `8431538d…4e2`                                                   |    30 live passes |                                  0 | supported |
+| Cursor Agent | `2026.06.24-00-45-58-9f61de7`, launcher SHA-256 `b7babf47…edf`, closure SHA-256 `69d078da…faa` |    29 live passes |                                  0 | supported |
 
 Only Darwin arm64 / macOS 26.4 / Node 24.13.1 was tested. Darwin x64, Linux
 arm64, and Linux x64 are explicitly `not-tested`; profile declaration is not a
@@ -243,13 +244,18 @@ Provider-specific gaps:
   drivers, and its sanitized closed support bundle is live-proven for both
   peers.
 
-The ACP-10 validator now publishes the proof, derives the claim independently
-for each peer, and fails closed. Its current verdict is a release denial for
-general support—not an implied promotion. The issue remains open because the
-remaining Desktop/provider failure journeys, credential-dependent auth states,
-unobserved permission/extension cases, and claimed-platform executions are not
-complete. Future evidence can change one peer at a time from `experimental`
-only by satisfying every code-owned evidence class on each claimed platform.
+The ACP-10 validator publishes the proof, derives the claim independently for
+each peer, and fails closed. The shipped host consumes only the compiler output
+of that complete matrix and passes the same evidence into runtime feature
+gates. Current-revision candidate runs are retained in
+`release-run-grok-current-2026-07-17-darwin-arm64.json` and
+`release-run-cursor-current-2026-07-17-darwin-arm64.json`; they re-prove exact
+identity, auth, sessions, real turns, cancellation, permissions, and the
+provider-specific observed capability subset without inventing conditional
+extension emissions. Packaging was explicitly excluded from the 2026-07-17
+work order, so the already-checked packaged journeys remain the packaging
+evidence. Future evidence can promote another version or platform only by
+satisfying every code-owned evidence class for that exact identity.
 
 ## Verification commands
 

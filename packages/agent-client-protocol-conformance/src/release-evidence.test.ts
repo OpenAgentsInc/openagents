@@ -4,7 +4,7 @@ import checkedReleaseMatrix from "../compatibility/release-matrix.json" with { t
 
 import { compileAcpReleaseEvidence } from "./release-evidence.ts";
 
-const NOW = new Date("2026-07-17T12:00:00.000Z");
+const NOW = new Date("2026-07-17T13:00:00.000Z");
 
 describe("checked ACP release evidence compiler", () => {
   test("compiles the complete checked matrix into peer admission and feature evidence", () => {

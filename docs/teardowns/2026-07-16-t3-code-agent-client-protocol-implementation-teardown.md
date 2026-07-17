@@ -145,9 +145,10 @@ installation-closure digest can project `supported`; stale, incomplete,
 revision-substituted, or binary-substituted evidence remains `experimental`.
 Grok and Cursor are registered main-owned provider lanes, and an isolated
 production Desktop build completed a real Grok Full Auto turn. A checked,
-opt-in production runner reproduces a redacted two-peer candidate receipt
-without claim authority. #8897 still requires a final current-revision rerun
-and closure receipt before its claim can close;
+opt-in production runner reproduces redacted candidate receipts without claim
+authority. Current-revision Grok and Cursor runs now re-prove the exact pinned
+identities and core live journeys; the checked matrix remains the separate
+claim authority, and #8897 is complete for Darwin arm64;
 packaged interruption/restart journeys for both pinned peers are now checked,
 and Grok now has live broker-only MCP custody evidence with a complete bounded
 post-shutdown scan of its exact session/configuration persistence surfaces.
@@ -907,7 +908,8 @@ exit, and performs bounded generation-safe recovery. Grok real-binary
 admission is implemented by #8893. Cursor's separate `agent acp` composer,
 `cursor_login` negotiation, modes/configuration surface, and four directional
 extension gates are implemented by #8894. The #8897 matrix now owns final
-release claims and currently denies a general supported claim for both peers.
+release claims and admits only the exact pinned Darwin arm64 identities; other
+binaries and platforms remain withheld.
 #8895 adds the main-owned provider control host, shared main/preload/renderer
 contract, Desktop Settings state/actions, validated alternate executable path,
 canonical free-form question path, and refs-only support artifact. The host
@@ -944,8 +946,9 @@ provenance. The parameterized model-picker `_meta` flag, reverse authority, and
 all Cursor extensions require fresh evidence bound to the admitted version and
 digest. The checked #8897 matrix now qualifies the exact Darwin arm64 build,
 including live model/create-plan behavior and bounded production handlers for
-conditional question/todo calls. Product admission remains experimental until
-that complete matrix evidence is wired into the shipped host.
+conditional question/todo calls. Product admission is supported only when that
+complete matrix compiles and matches the probed binary, platform, freshness,
+and installation closure in the shipped host.
 Initialize-only and incomplete prompt probes remain diagnostic and cannot mint
 their own feature evidence.
 
