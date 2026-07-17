@@ -21,6 +21,7 @@
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
     "effect": "catalog:",
     "expo": "57.0.2",
     "expo-auth-session": "~57.0.1",

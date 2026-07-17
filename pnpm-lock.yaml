@@ -500,6 +500,9 @@ importers:
       '@openagentsinc/khala-sync-client':
         specifier: workspace:*
         version: link:../../packages/khala-sync-client
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../../packages/portable-session-contract
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
