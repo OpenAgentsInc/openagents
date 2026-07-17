@@ -274,10 +274,10 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(catalogCalls).toBe(3)
   })
 
-  test("merges hosted and local chats by activity instead of source", async () => {
+  test("merges hosted and local chats by creation date instead of activity or source", async () => {
     const localThreads: DesktopThread[] = [
-      { id: "thread.local.newest", title: "Newest local", updatedAt: "2026-07-12T18:22:45.258Z", notes: [] },
-      { id: "thread.local.oldest", title: "Oldest local", updatedAt: "2026-07-12T16:00:00.000Z", notes: [] },
+      { id: "thread.local.active", title: "Active older local", createdAt: "2026-07-12T15:00:00.000Z", updatedAt: "2026-07-12T18:22:45.258Z", notes: [] },
+      { id: "thread.local.oldest", title: "Oldest local", createdAt: "2026-07-12T14:00:00.000Z", updatedAt: "2026-07-12T16:00:00.000Z", notes: [] },
     ]
     const local: ChatHost = {
       listThreads: async () => localThreads,
@@ -296,6 +296,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
           title: "Hosted middle",
           messageCount: 0,
           lastMessageAt: "2026-07-12T17:00:00.000Z",
+          createdAt: "2026-07-12T16:00:00.000Z",
           updatedAt: "2026-07-12T17:00:00.000Z",
           version: 1,
         }],
@@ -303,8 +304,8 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     })
 
     expect((await host.listThreads()).map(thread => thread.id)).toEqual([
-      "thread.local.newest",
       "thread.hosted.middle",
+      "thread.local.active",
       "thread.local.oldest",
     ])
   })

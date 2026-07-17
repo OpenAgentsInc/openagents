@@ -79,6 +79,10 @@ describe("Codex app-server thread lifecycle", () => {
     expect((await lifecycle.pageItems("thread-1")).map(item => item.id)).toEqual(["item-1", "item-2"])
     const catalog = await lifecycle.runHistory({ kind: "history_catalog", sessionsRoot: "/unused" }) as { roots: Array<{ threadRef: string }>; agents: unknown[] }
     expect(catalog.roots.map(root => root.threadRef)).toEqual(["thread-1"])
+    expect(fake.requests.find(request => request.method === "thread/list")?.params).toMatchObject({
+      sortKey: "created_at",
+      sortDirection: "desc",
+    })
     const page = await lifecycle.runHistory({ kind: "history_page", sessionsRoot: "/unused", threadRef: "thread-1", offset: 0, limit: 1 }) as { items: unknown[]; totalItems: number; hasNext: boolean }
     expect(page).toMatchObject({ totalItems: 2, hasNext: true })
     expect(page.items).toHaveLength(1)

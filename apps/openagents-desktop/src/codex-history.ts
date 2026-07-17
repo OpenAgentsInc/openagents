@@ -382,7 +382,7 @@ export const buildCodexHistoryGraph = (sessionsRoot: string): CodexHistoryGraph 
 
 export const readCodexHistoryCatalog = (sessionsRoot: string, graph = buildCodexHistoryGraph(sessionsRoot)): CodexHistoryCatalog => {
   const { agents } = graph
-  return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)), agents }
+  return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a,b) => b.createdAt.localeCompare(a.createdAt) || a.threadRef.localeCompare(b.threadRef)), agents }
 }
 
 const contentText = (value: unknown): string => Array.isArray(value) ? value.map(part => { const row = object(part); return row === null ? "" : safeText(row.text ?? row.value ?? row.content) }).filter(Boolean).join("\n") : safeText(value)

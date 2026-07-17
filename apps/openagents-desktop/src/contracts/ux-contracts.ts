@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.5",
+    version: "2026-07-16.6",
     contracts: [
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
@@ -178,6 +178,49 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop preferences, shared destination projection, compatibility shell, focused React workbench DOM, contract-validation, and built React Electron smoke/reload suites enforce the completed #8826 projection and presentation-state boundary.",
+      },
+      {
+        contractId: "openagents_desktop.sidebar.chat_created_order.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "conversation sidebar ordering",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "openagents, left sidebar sorts chats by last message so they bounce around. no, sort instead by created date.",
+        authorityBoundary:
+          "The merged local, confirmed Sync, and Codex-history session rail orders conversations by creation time, newest-created first, with the stable thread ref as the deterministic tie-break. Message arrival, streaming activity, title changes, and other updatedAt changes may refresh row metadata but may never move an existing row. Newly persisted local chats and forks record one immutable createdAt alongside updatedAt; legacy local rows adopt their previously persisted timestamp once and retain it through later writes. Confirmed Sync carries the source thread creation timestamp additively. This changes presentation and bounded local retention order only; it does not change transcript order, active selection, history search authority, Sync confirmation, runtime routing, or persistence ownership.",
+        evidenceRefs: [
+          "packages/khala-sync-client/src/conversation.ts",
+          "apps/openagents-desktop/src/chat-contract.ts",
+          "apps/openagents-desktop/src/codex-thread-lifecycle.ts",
+          "apps/openagents-desktop/src/codex-history.ts",
+          "apps/openagents-desktop/src/merged-history.ts",
+          "apps/openagents-desktop/src/thread-store.ts",
+          "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
+        ],
+        oracles: [
+          {
+            id: "sidebar_chat_order.created_at_is_stable_across_activity",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "Projects merged local and history rows whose creation and activity orders disagree, then proves newer-created stays first after the older chat receives a later update timestamp.",
+          },
+          {
+            id: "sidebar_chat_order.local_created_at_persistence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/thread-store.test.ts",
+            description:
+              "Proves new and forked local chats persist immutable creation timestamps and a legacy row adopts its prior persisted timestamp before later activity updates.",
+          },
+        ],
+        verification:
+          "Desktop typecheck plus focused thread-store, runtime-conversation, React sidebar projection, behavior-contract validation, and repository check suites.",
       },
       {
         contractId: "openagents_desktop.navigation.authoritative_history.v1",

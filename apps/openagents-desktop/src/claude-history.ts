@@ -303,7 +303,7 @@ const childIndex = (graph: ClaudeHistoryGraph): ReadonlyMap<string, string[]> =>
 export const readClaudeHistoryCatalog = (projectsRoot: string, graph = buildClaudeHistoryGraph(projectsRoot)): CodexHistoryCatalog => {
   const children = childIndex(graph)
   const agents = graph.nodes.map(node => toAgent(node, graph, children))
-  return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), agents }
+  return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.threadRef.localeCompare(b.threadRef)), agents }
 }
 
 /** Orphan/topology-gap accounting for the loss-accounting oracle. */

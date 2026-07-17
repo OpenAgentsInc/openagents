@@ -202,6 +202,7 @@ describe("shared canonical chat client", () => {
         title: "Confirmed thread",
         messageCount: 1,
         lastMessageAt: NOW,
+        createdAt: NOW,
         updatedAt: NOW,
         version: 1,
       }])

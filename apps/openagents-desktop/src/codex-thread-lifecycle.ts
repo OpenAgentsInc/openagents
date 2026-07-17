@@ -207,7 +207,7 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
   const rememberThreads = (threads: ReadonlyArray<CodexLifecycleThread>) => publish({ threads: [...new Map([...state.threads, ...threads].map(thread => [thread.id, thread])).values()] })
   const list = async (params: unknown = {}): Promise<ReadonlyArray<CodexLifecycleThread>> => {
     assertOpen()
-    const rows = await paged("thread/list", { sortKey: "updated_at", sortDirection: "desc", ...(object(params) ?? {}) }, "threads")
+    const rows = await paged("thread/list", { sortKey: "created_at", sortDirection: "desc", ...(object(params) ?? {}) }, "threads")
     const threads = rows.flatMap(raw => projectThread(raw) ?? [])
     rememberThreads(threads)
     return threads

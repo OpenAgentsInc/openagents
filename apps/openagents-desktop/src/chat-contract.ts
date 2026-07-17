@@ -3,12 +3,13 @@ import type { LiveAgentGraphPresentation } from "./agent-graph-presentation.ts"
 import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
 
 /**
- * Canonical conversation ordering: newest activity first across every host.
- * ISO timestamps compare lexically, while the id tie-break keeps projections
- * deterministic when two sources report the same update instant.
+ * Canonical conversation ordering: newest-created first across every host.
+ * Legacy projections without a creation timestamp fall back to the timestamp
+ * they already carry, while the id tie-break keeps the order deterministic.
  */
-export const compareDesktopThreadsByRecency = (left: DesktopThread, right: DesktopThread): number =>
-  right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
+export const compareDesktopThreadsByCreatedAt = (left: DesktopThread, right: DesktopThread): number =>
+  (right.createdAt ?? right.updatedAt).localeCompare(left.createdAt ?? left.updatedAt) ||
+  left.id.localeCompare(right.id)
 
 export const DesktopThreadsChannel = "openagents-desktop/threads" as const
 export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const

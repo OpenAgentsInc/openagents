@@ -94,12 +94,12 @@ const interact = async (interaction: () => void): Promise<void> => {
   })
 }
 
-const historyRoot = (threadRef: string, title: string, updatedAt: string) => ({
+const historyRoot = (threadRef: string, title: string, updatedAt: string, createdAt = updatedAt) => ({
   threadRef,
   parentThreadRef: null,
   title,
   status: "completed" as const,
-  createdAt: updatedAt,
+  createdAt,
   updatedAt,
   depth: 0,
   descendantCount: 0,
@@ -350,6 +350,46 @@ describe("React workbench shell", () => {
     }, new Date("2026-07-14T12:01:00.000Z"))
     expect(hinted.map(row => row.meta)).toEqual(["⌘1", "⌘2"])
     expect(hinted.map(row => row.id)).toEqual(rows.map(row => row.id))
+  })
+
+  test("keeps chats in created-date order when an older chat receives new messages", () => {
+    const base = fixtureState()
+    const olderCreated = {
+      id: "local-older-created",
+      title: "Older created chat",
+      createdAt: "2026-07-14T09:00:00.000Z",
+      updatedAt: "2026-07-14T12:30:00.000Z",
+      notes: [],
+    }
+    const state = {
+      ...base,
+      threads: [olderCreated],
+      activeThreadId: olderCreated.id,
+      history: {
+        ...base.history,
+        catalog: {
+          roots: [historyRoot(
+            "history-newer-created",
+            "Newer created chat",
+            "2026-07-14T11:30:00.000Z",
+            "2026-07-14T10:00:00.000Z",
+          )],
+          agents: [],
+        },
+      },
+    }
+
+    expect(projectReactSessionRows(state).map(row => row.id)).toEqual([
+      "history-newer-created",
+      "local-older-created",
+    ])
+    expect(projectReactSessionRows({
+      ...state,
+      threads: [{ ...olderCreated, updatedAt: "2026-07-14T13:30:00.000Z" }],
+    }).map(row => row.id)).toEqual([
+      "history-newer-created",
+      "local-older-created",
+    ])
   })
 
   test("replaces a working chat timestamp with the shared loading icon", async () => {

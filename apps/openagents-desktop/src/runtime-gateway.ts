@@ -43,6 +43,7 @@ export type DesktopRuntimeConversation = Readonly<{
       title: string
       messageCount: number
       lastMessageAt: string | null
+      createdAt?: string
       updatedAt: string
       version: number
     }>>

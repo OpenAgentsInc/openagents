@@ -48,7 +48,7 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import { compareDesktopThreadsByRecency, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
+import { compareDesktopThreadsByCreatedAt, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
 import { isCodexModel, type ClaudeModel, type CodexModel, type CodexReasoningEffort, type LocalModel } from "../fable-local-contract.ts"
 import {
   composerActionPresentation,
@@ -1565,7 +1565,7 @@ const unavailableCommandBindingHost: CommandBindingHost = {
 }
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
-  const orderedThreads = [...threads].sort(compareDesktopThreadsByRecency)
+  const orderedThreads = [...threads].sort(compareDesktopThreadsByCreatedAt)
   const active = state.activeThreadId === null ? orderedThreads[0] : orderedThreads.find((thread) => thread.id === state.activeThreadId)
   return active === undefined
     ? { ...state, threads: orderedThreads.slice(0, 5) }
@@ -1592,7 +1592,7 @@ export const withThreadCatalog = (
   state: DesktopShellState,
   threads: ReadonlyArray<DesktopThread>,
 ): DesktopShellState => state.activeThreadId === null
-  ? { ...state, threads: [...threads].sort(compareDesktopThreadsByRecency).slice(0, 5) }
+  ? { ...state, threads: [...threads].sort(compareDesktopThreadsByCreatedAt).slice(0, 5) }
   : withThreads(state, threads)
 
 export const withLiveAgentGraph = (

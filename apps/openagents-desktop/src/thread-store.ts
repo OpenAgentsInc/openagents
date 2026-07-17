@@ -4,7 +4,13 @@ import { randomUUID } from "node:crypto"
 import { titleChatThreadFromMessage } from "@openagentsinc/khala-sync"
 import { Schema } from "@effect-native/core/effect"
 
-import { decode, DesktopThreadSchema, type DesktopMessage, type DesktopThread } from "./chat-contract.ts"
+import {
+  compareDesktopThreadsByCreatedAt,
+  decode,
+  DesktopThreadSchema,
+  type DesktopMessage,
+  type DesktopThread,
+} from "./chat-contract.ts"
 
 const maxThreads = 5
 const maxNotes = 80
@@ -15,11 +21,13 @@ export const makeThreadStore = (file: string) => {
     try {
       const value = JSON.parse(readFileSync(file, "utf8")) as { threads?: unknown }
       const decoded = decode(Schema.Array(DesktopThreadSchema), value.threads) as ReadonlyArray<DesktopThread> | null
-      return decoded?.slice(0, maxThreads) ?? []
+      return decoded?.map(thread => thread.createdAt === undefined
+        ? { ...thread, createdAt: thread.updatedAt }
+        : thread).slice(0, maxThreads) ?? []
     } catch { return [] }
   }
   const write = (threads: DesktopThread[]): DesktopThread[] => {
-    const bounded = [...threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, maxThreads)
+    const bounded = [...threads].sort(compareDesktopThreadsByCreatedAt).slice(0, maxThreads)
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     if (process.platform !== "win32") chmodSync(path.dirname(file), 0o700)
     const temporary = `${file}.tmp`
@@ -35,12 +43,17 @@ export const makeThreadStore = (file: string) => {
      * bounded recent set. Callers own identity/continuity verification; this
      * store only persists the supplied local thread id and bounded notes. */
     restoreThread: (thread: DesktopThread): DesktopThread => {
-      const restored = { ...thread, notes: thread.notes.slice(-maxNotes) }
+      const restored = {
+        ...thread,
+        createdAt: thread.createdAt ?? thread.updatedAt,
+        notes: thread.notes.slice(-maxNotes),
+      }
       write([restored, ...read().filter(candidate => candidate.id !== restored.id)])
       return restored
     },
     newThread: (title?: string): DesktopThread => {
-      const thread: DesktopThread = { id: randomUUID(), title: title ?? "New chat", updatedAt: new Date().toISOString(), notes: [] }
+      const createdAt = new Date().toISOString()
+      const thread: DesktopThread = { id: randomUUID(), title: title ?? "New chat", createdAt, updatedAt: createdAt, notes: [] }
       write([thread, ...read()])
       return thread
     },
@@ -50,10 +63,12 @@ export const makeThreadStore = (file: string) => {
     forkThread: (seed: ReadonlyArray<DesktopMessage>): DesktopThread => {
       const notes = seed.slice(-maxNotes).map(note => ({ ...note }))
       const firstUser = notes.find(note => note.role === "user")?.text ?? "Forked conversation"
+      const createdAt = new Date().toISOString()
       const thread: DesktopThread = {
         id: randomUUID(),
         title: `Fork · ${titleFor(firstUser)}`.slice(0, 55),
-        updatedAt: new Date().toISOString(),
+        createdAt,
+        updatedAt: createdAt,
         notes,
       }
       write([thread, ...read()])

@@ -1,4 +1,4 @@
-import { compareDesktopThreadsByRecency, type DesktopThread } from "../chat-contract.ts"
+import { compareDesktopThreadsByCreatedAt, type DesktopThread } from "../chat-contract.ts"
 import {
   newestLiveAgentGraph,
   projectLiveAgentGraphPresentation,
@@ -39,10 +39,12 @@ const timestamp = (value: string): string => {
 const threadSummary = (thread: Readonly<{
   threadRef: string
   title: string
+  createdAt?: string
   updatedAt: string
 }>): DesktopThread => ({
   id: thread.threadRef,
   title: thread.title,
+  ...(thread.createdAt === undefined ? {} : { createdAt: thread.createdAt }),
   updatedAt: thread.updatedAt,
   notes: [],
 })
@@ -482,7 +484,7 @@ export const makeRuntimeConversationChatHost = (
     listThreads: async () => {
       const result = await catalog()
       return result.kind === "conversation_catalog" && result.status.phase === "live"
-        ? result.threads.map(threadSummary)
+        ? result.threads.map(threadSummary).sort(compareDesktopThreadsByCreatedAt)
         : []
     },
     newThread: async () => {
@@ -716,7 +718,7 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       for (const thread of local) threadModes.set(thread.id, "local")
       const localRefs = new Set(local.map(thread => thread.id))
       return [...local, ...hosted.filter(thread => !localRefs.has(thread.id))]
-        .sort(compareDesktopThreadsByRecency)
+        .sort(compareDesktopThreadsByCreatedAt)
     },
     newThread: async laneRef => {
       // New Chat is local-first navigation. It must never wait behind live

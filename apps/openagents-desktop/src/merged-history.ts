@@ -29,7 +29,7 @@ export const readMergedHistoryCatalog = (codexRoot: string, claudeRoot: string |
   const codex = built.codex === null ? emptyCatalog : readCodexHistoryCatalog(codexRoot, built.codex)
   const claude = built.claude === null || claudeRoot === null ? emptyCatalog : readClaudeHistoryCatalog(claudeRoot, built.claude)
   return {
-    roots: [...codex.roots, ...claude.roots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 10_000),
+    roots: [...codex.roots, ...claude.roots].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.threadRef.localeCompare(b.threadRef)).slice(0, 10_000),
     agents: [...codex.agents, ...claude.agents].slice(0, 10_000),
   }
 }
@@ -47,9 +47,9 @@ const CONTENT_ITEM_CAP = 300
 
 /**
  * Build the bounded content-index documents once (a rebuildable cache). Titles
- * cover EVERY root; content is projected only for the most-recent
- * `CONTENT_SESSION_BUDGET` roots (bounded pages) so first search never blocks
- * on the whole archive.
+ * cover EVERY root; content is projected only for the most-recently active
+ * `CONTENT_SESSION_BUDGET` roots (bounded pages) so sidebar presentation order
+ * cannot change search-index coverage or make first search block on the archive.
  */
 export const buildHistorySearchDocuments = (
   codexRoot: string,
@@ -58,13 +58,16 @@ export const buildHistorySearchDocuments = (
 ): Readonly<{ documents: ReadonlyArray<HistorySearchDocument>; indexedSessions: number; truncated: boolean }> => {
   const catalog = readMergedHistoryCatalog(codexRoot, claudeRoot, graphs)
   const roots = catalog.roots
-  const contentBudget = roots.slice(0, CONTENT_SESSION_BUDGET)
+  const contentBudgetRefs = new Set([...roots]
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.threadRef.localeCompare(right.threadRef))
+    .slice(0, CONTENT_SESSION_BUDGET)
+    .map(root => root.threadRef))
   // Codex file/cwd lookups for the bounded HEAD read (#8788/#8789: indexing
   // content through the whole-file page reader crashed or crawled on multi-GB
   // rollouts) and the searchable workspace label.
   const codexEntries = new Map((graphs.codex?.entries ?? []).map(entry => [entry.id, entry]))
-  const documents = roots.map((root, index) => {
-    const indexed = index < contentBudget.length
+  const documents = roots.map(root => {
+    const indexed = contentBudgetRefs.has(root.threadRef)
     const codexEntry = root.source === "codex" ? codexEntries.get(root.threadRef) : undefined
     const rawItems = !indexed
       ? []
@@ -77,7 +80,7 @@ export const buildHistorySearchDocuments = (
     const cwd = codexEntry?.cwd ?? null
     return { threadRef: root.threadRef, rootThreadRef: root.threadRef, source: root.source, title: root.title, updatedAt: root.updatedAt, workspaceLabel: cwd === null ? null : path.basename(cwd), items }
   })
-  return { documents, indexedSessions: contentBudget.length, truncated: roots.length > contentBudget.length }
+  return { documents, indexedSessions: contentBudgetRefs.size, truncated: roots.length > contentBudgetRefs.size }
 }
 
 export const searchMergedHistory = (

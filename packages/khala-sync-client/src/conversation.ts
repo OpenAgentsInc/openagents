@@ -36,6 +36,7 @@ export const ConfirmedChatThreadSchema = Schema.Struct({
   title: Schema.String.check(Schema.isMaxLength(160)),
   messageCount: ConfirmedVersionSchema,
   lastMessageAt: Schema.NullOr(ConfirmedTimestampSchema),
+  createdAt: Schema.optionalKey(ConfirmedTimestampSchema),
   updatedAt: ConfirmedTimestampSchema,
   version: ConfirmedVersionSchema,
 })
@@ -115,6 +116,7 @@ const decodeThreads = (
         title: thread.title,
         messageCount: thread.messageCount,
         lastMessageAt: thread.lastMessageAt,
+        createdAt: thread.createdAt,
         updatedAt: thread.updatedAt,
         version: Number(row.version),
       })
@@ -123,8 +125,8 @@ const decodeThreads = (
     }
   }
   return threads.sort((left, right) =>
-    right.updatedAt.localeCompare(left.updatedAt) ||
-    right.threadRef.localeCompare(left.threadRef))
+    (right.createdAt ?? right.updatedAt).localeCompare(left.createdAt ?? left.updatedAt) ||
+    left.threadRef.localeCompare(right.threadRef))
 }
 
 const decodeMessages = (

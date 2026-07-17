@@ -1619,9 +1619,9 @@ describe("composer image input (capability I1)", () => {
 })
 
 describe("pure transitions", () => {
-  test("thread hydration defensively keeps the newest conversation first", () => {
-    const newest = { id: "newest", title: "Newest", updatedAt: "2026-07-12T18:22:45.258Z", notes: [] } as const
-    const oldest = { id: "oldest", title: "Oldest", updatedAt: "2026-07-12T16:00:00.000Z", notes: [] } as const
+  test("thread hydration defensively keeps the newest-created conversation first", () => {
+    const newest = { id: "newest", title: "Newest", createdAt: "2026-07-12T18:00:00.000Z", updatedAt: "2026-07-12T18:10:00.000Z", notes: [] } as const
+    const oldest = { id: "oldest", title: "Oldest", createdAt: "2026-07-12T16:00:00.000Z", updatedAt: "2026-07-12T19:00:00.000Z", notes: [] } as const
 
     const next = withThreads({ ...baseState, activeThreadId: null }, [oldest, newest])
 

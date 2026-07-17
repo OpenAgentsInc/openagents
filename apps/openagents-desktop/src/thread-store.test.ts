@@ -1,10 +1,41 @@
 import { describe, expect, test } from "vite-plus/test"
-import { mkdtempSync, rmSync, statSync } from "node:fs"
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { makeThreadStore } from "./thread-store.ts"
 
 describe("H2 local thread fork persistence", () => {
+  test("persists immutable creation time and migrates a legacy row before later activity", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-created-order-"))
+    const file = path.join(root, "threads.json")
+    try {
+      const legacyUpdatedAt = "2026-07-16T20:00:00.000Z"
+      writeFileSync(file, JSON.stringify({
+        version: 1,
+        threads: [{ id: "legacy", title: "Legacy", updatedAt: legacyUpdatedAt, notes: [] }],
+      }))
+      const store = makeThreadStore(file)
+      expect(store.list()[0]?.createdAt).toBe(legacyUpdatedAt)
+
+      const updated = store.append("legacy", {
+        key: "message-1",
+        role: "user",
+        text: "New activity",
+        timestamp: "15:30",
+      })
+      expect(updated?.createdAt).toBe(legacyUpdatedAt)
+      expect(updated?.updatedAt).not.toBe(legacyUpdatedAt)
+      expect(makeThreadStore(file).open("legacy")?.createdAt).toBe(legacyUpdatedAt)
+
+      const created = store.newThread()
+      const forked = store.forkThread([{ key: "seed", role: "user", text: "Seed", timestamp: "15:31" }])
+      expect(created.createdAt).toBe(created.updatedAt)
+      expect(forked.createdAt).toBe(forked.updatedAt)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("restores a verified historical thread under its Desktop-local id", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-restore-"))
     try {

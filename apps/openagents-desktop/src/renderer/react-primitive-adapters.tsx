@@ -67,6 +67,7 @@ import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 export type ReactSessionRow = Readonly<{
   id: string
   title: string
+  createdAt: string
   updatedAt: string
   meta: string
   working: boolean
@@ -89,6 +90,7 @@ export const projectReactSessionRows = (
     .map((thread): ReactSessionRow => ({
       id: thread.id,
       title: thread.title || "Untitled session",
+      createdAt: thread.createdAt ?? thread.updatedAt,
       updatedAt: thread.updatedAt,
       meta: formatRelativeTimestamp(thread.updatedAt, now),
       working: state.pendingByThread[thread.id] === true || state.fullAutoLiveByThread[thread.id]?.state === "turn_running",
@@ -100,6 +102,7 @@ export const projectReactSessionRows = (
     ? state.history.catalog.roots.slice(0, state.history.visibleRootCount).filter(row => row.source === "codex").map((row): ReactSessionRow => ({
       id: row.threadRef,
       title: row.title || "Untitled session",
+      createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       meta: formatRelativeTimestamp(row.updatedAt, now),
       working: false,
@@ -110,6 +113,7 @@ export const projectReactSessionRows = (
     : state.history.searchResults.filter(row => row.source === "codex").map((row): ReactSessionRow => ({
       id: row.threadRef,
       title: row.title || "Untitled session",
+      createdAt: state.history.catalog.roots.find(root => root.threadRef === row.threadRef)?.createdAt ?? row.updatedAt,
       updatedAt: row.updatedAt,
       meta: formatRelativeTimestamp(row.updatedAt, now),
       working: false,
@@ -119,7 +123,7 @@ export const projectReactSessionRows = (
     }))
   const seen = new Set<string>()
   const rows = [...local, ...history]
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id))
     .filter(row => seen.has(row.id) ? false : (seen.add(row.id), true))
   return rows.map((row, index) => ({
     ...row,
