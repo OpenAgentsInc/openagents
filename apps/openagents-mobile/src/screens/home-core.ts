@@ -10,6 +10,7 @@ import {
   makeIntentRegistry,
   makeViewProgramFromState,
   resolveIntentRef,
+  SegmentedControl,
   Spacer,
   Stack,
   StaticPayload,
@@ -29,6 +30,11 @@ import type {
   MobileCodingDirectory,
   MobileCodingTarget,
 } from "../coding/mobile-coding-navigation"
+import {
+  projectMobileControllerDirectory,
+  type MobileControllerDirectory,
+  type MobileControllerSession,
+} from "../coding/mobile-controller-directory"
 import {
   mobileCodingComposerText,
   type MobileCodingAttachmentUpdateResult,
@@ -94,6 +100,7 @@ export interface HomeState {
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
   readonly codingDirectory: MobileCodingDirectory | null
+  readonly controllerDestination: MobileControllerDestination
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
@@ -116,6 +123,8 @@ export type MobileSyncPhase =
   | "unconfigured"
   | "unavailable"
   | "stale"
+
+export type MobileControllerDestination = "recent" | "repositories" | "attention"
 
 export interface SyncStatusCopy {
   readonly title: string
@@ -214,6 +223,7 @@ export const initialHomeState: HomeState = {
   conversationThreads: [],
   activeThreadRef: null,
   codingDirectory: null,
+  controllerDestination: "recent",
   codingComposer: null,
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
@@ -248,6 +258,10 @@ export const CodingSessionSelected = defineIntent(
     sessionRef: Schema.String,
     threadRef: Schema.String,
   }),
+)
+export const ControllerDestinationSelected = defineIntent(
+  "ControllerDestinationSelected",
+  Schema.Literals(["recent", "repositories", "attention"]),
 )
 export const CodingComposerAttachmentsRequested = defineIntent(
   "CodingComposerAttachmentsRequested",
@@ -296,6 +310,7 @@ export const homeIntentDefinitions = [
   SurfaceModeSelected,
   ConversationThreadSelected,
   CodingSessionSelected,
+  ControllerDestinationSelected,
   CodingComposerAttachmentsRequested,
   CodingExecutionTargetSelected,
   RuntimeInteractionOptionToggled,
@@ -360,6 +375,7 @@ export const renderContentView = (state: HomeState): View =>
             variant: "body",
             color: "textMuted",
           }),
+          ...renderMobileControllerShell(state),
           ...(mobileAccountControl(state.syncPhase) === "none"
             ? []
             : mobileAccountControl(state.syncPhase) === "sign_out"
@@ -379,6 +395,89 @@ export const renderContentView = (state: HomeState): View =>
                 })]),
         ],
   )
+
+const controllerSessionLabel = (session: MobileControllerSession): string => {
+  const state = codingSessionStateLabel(session.state)
+  const target = session.targetReadiness === "ready"
+    ? "Target ready"
+    : session.targetReadiness === "recovery_required"
+      ? "Recovery required"
+      : session.targetReadiness === "provider_unavailable"
+        ? "Provider unavailable"
+        : "Runtime unavailable"
+  return `${session.repositoryName} · ${state}\n${target}`
+}
+
+const controllerSessionButton = (
+  session: MobileControllerSession,
+  accessibility: MobileAccessibilityProfile,
+): View => Button({
+  key: `controller-session-${session.sessionRef}`,
+  label: controllerSessionLabel(session),
+  variant: session.attention === "needs_recovery" ? "secondary" : "ghost",
+  onPress: IntentRef("CodingSessionSelected", StaticPayload({
+    repositoryRef: session.repositoryRef,
+    sessionRef: session.sessionRef,
+    threadRef: session.threadRef,
+  })),
+  a11y: { label: `${controllerSessionLabel(session)}, open session` },
+  style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+})
+
+const controllerDestinationRows = (
+  directory: MobileControllerDirectory,
+  destination: MobileControllerDestination,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
+  if (destination === "repositories") {
+    return directory.repositories.flatMap(repository => [
+      Text({
+        key: `controller-repository-${repository.repositoryRef}`,
+        content: `${repository.displayName} · ${repository.sessions.length} ${repository.sessions.length === 1 ? "session" : "sessions"}`,
+        variant: "heading",
+        color: "textPrimary",
+      }),
+      ...repository.sessions.map(session => controllerSessionButton(session, accessibility)),
+    ])
+  }
+  const sessions = destination === "attention" ? directory.attention : directory.recent
+  if (sessions.length > 0) return sessions.map(session => controllerSessionButton(session, accessibility))
+  return [Text({
+    key: `controller-${destination}-empty`,
+    content: destination === "attention"
+      ? "No sessions need attention."
+      : "No confirmed coding sessions yet.",
+    variant: "body",
+    color: "textMuted",
+  })]
+}
+
+export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<View> => {
+  if (state.codingDirectory === null) return []
+  const directory = projectMobileControllerDirectory(state.codingDirectory)
+  if (directory.authority !== "confirmed") return codingOfflineCacheAccountingRows(state)
+  return [
+    Text({
+      key: "controller-summary",
+      content: `${directory.summary.repositoryCount} ${directory.summary.repositoryCount === 1 ? "repository" : "repositories"} · ${directory.summary.sessionCount} ${directory.summary.sessionCount === 1 ? "session" : "sessions"} · ${directory.summary.attentionCount} need attention`,
+      variant: "caption",
+      color: "textMuted",
+    }),
+    SegmentedControl({
+      key: "controller-destinations",
+      value: state.controllerDestination,
+      options: [
+        { id: "recent", label: "Recent" },
+        { id: "repositories", label: "Repositories" },
+        { id: "attention", label: "Attention" },
+      ],
+      onChange: IntentRef("ControllerDestinationSelected", ComponentValueBinding()),
+      a11y: { label: "Mobile controller destination" },
+      style: { width: "full" },
+    }),
+    ...controllerDestinationRows(directory, state.controllerDestination, state.accessibility),
+  ]
+}
 
 /**
  * The complete application-owned mobile home tree. React Native owns only the
@@ -1227,6 +1326,10 @@ export const makeHomeHandlers = (
       ? Effect.void
       : Effect.promise(options.sessionActions.signOut),
     SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
+    ControllerDestinationSelected: (destination) => SubscriptionRef.update(state, current => ({
+      ...current,
+      controllerDestination: destination,
+    })),
     [AgentStackToggled]: () => SubscriptionRef.update(state, current => ({
       ...current,
       khala: {
@@ -1335,6 +1438,9 @@ export interface HomeProgramHandle {
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
   }
+  readonly controller: {
+    readonly selectDestination: (destination: MobileControllerDestination) => void
+  }
   readonly accessibility: {
     readonly setProfile: (profile: MobileAccessibilityProfile) => void
   }
@@ -1435,6 +1541,12 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                   }
                 : { ...current, syncPhase: phase }))
           },
+        },
+        controller: {
+          selectDestination: destination => fireText(
+            IntentRef("ControllerDestinationSelected", ComponentValueBinding()),
+            destination,
+          ),
         },
         accessibility: {
           setProfile: profile => {
