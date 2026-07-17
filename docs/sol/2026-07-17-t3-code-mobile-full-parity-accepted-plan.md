@@ -147,3 +147,73 @@ mobile parity remains open through `T3M-F2`.
   policy, generated-contract, retired-surface, and Cloud-authority checks
 - residual: `T3M-A2` grouped runtime work is the next ordered packet; full
   mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-A2
+
+Outcome: replace diagnostic runtime-event transcript rows with one compact,
+causal work-log grammar that stays readable while a turn runs and after it
+settles.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-work-log.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-work-log.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: mobile transcript entry projection, Effect Native intent
+registry, mobile behavior-contract registry, and Sol manifest. This packet
+does not alter runtime-event wire schemas, Sync authority, or execution
+control.
+
+Required behavior:
+
+- confirmed reasoning, connection, tool, non-interactive plan, usage,
+  reconnect, stale, interruption, terminal, and error events group by exact
+  run into a bounded work log rather than competing as generic system messages;
+- the group names running/success/failure/canceled state, elapsed time when
+  derivable, and causal runtime/backend identity without displaying raw refs;
+- the collapsed state keeps the latest five useful items and names the exact
+  hidden remainder; typed disclosure reveals all bounded items;
+- rows carry stable status icons/labels, concise detail, selectable full detail,
+  and independent typed disclosure without changing runtime authority;
+- assistant text and interaction cards retain their causal transcript order,
+  and malformed timestamps/details degrade truthfully without invented time;
+- accessibility exposes group/item status and expanded state with minimum
+  mobile targets; disclosure remains local view state.
+
+Proof: focused projection, Effect Native intent, authoritative Home,
+accessibility, behavior-contract, mobile typecheck, and repository-required
+`pnpm run check`.
+
+Close rule: this closes grouped runtime work only. Decision-card visual parity
+remains `T3M-A3`; attachment and scroll/history parity remains `T3M-A4`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-a2-20260717`
+- base: `4ef8dc7858aad3e07c81d4c2707257ecb28c5076`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-A2` grouped runtime work log and typed disclosure
+- paths: the `T3M-A2` owned paths above
+- hot files: mobile transcript projection, Home intent registry, behavior registry, and Sol manifest
+- hot contracts: confirmed runtime-event presentation and Effect Native disclosure intents
+- verification: focused packet suites, mobile typecheck, behavior/Sol checks, and `pnpm run check`
+- claimed_at: `2026-07-17T21:03:24Z`
+
+### CLAIM-STATUS
+
+- implementation: confirmed runtime activity now compacts into one exact-run
+  work group with causal runtime/backend identity, truthful running/settled
+  summary, derivable elapsed time, five-row collapsed density, exact bounded
+  remainder accounting, and typed group/item disclosure with selectable copyable
+  detail; generic runtime diagnostic messages are removed
+- focused proof: 60 tests passed across work-log projection/disclosure,
+  authoritative Home, accessibility, and behavior contracts
+- type proof: OpenAgents mobile TypeScript passed
+- repository gate: `pnpm run check` passed
+- residual: `T3M-A3` decision-card parity through `T3M-F2`; this is not a
+  full-parity claim

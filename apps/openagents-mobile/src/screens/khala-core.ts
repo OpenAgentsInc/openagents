@@ -25,6 +25,10 @@ import {
   type LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
 import { mobileAssistantContentViews } from "./mobile-transcript-content"
+import {
+  renderMobileWorkLog,
+  type MobileWorkGroup,
+} from "./mobile-work-log"
 
 export type MobileTextScale = "normal" | "large" | "extra_large"
 
@@ -66,7 +70,7 @@ export const mobileInteractiveStyle = (accessibility: MobileAccessibilityProfile
  * endpoint. It deliberately has no named-persona relationship, FleetRun, account, or
  * backing-model claim. The server owns routing and returns an honest failure.
  */
-export type KhalaRole = "user" | "assistant" | "system"
+export type KhalaRole = "user" | "assistant" | "system" | "tool"
 
 export interface KhalaEntry {
   readonly key: string
@@ -77,6 +81,7 @@ export interface KhalaEntry {
   readonly version?: number
   readonly attachments?: ReadonlyArray<ChatMessageImageAttachment>
   readonly interaction?: KhalaInteraction
+  readonly work?: MobileWorkGroup
 }
 
 export type KhalaInteractionStatus = "pending" | "resolved" | "expired" | "revoked"
@@ -113,6 +118,8 @@ export interface KhalaState {
   readonly interactionSelections: Readonly<Record<string, Readonly<Record<string, ReadonlyArray<string>>>>>
   readonly interactionSubmittingRef: string | null
   readonly interactionActionsAvailable: boolean
+  readonly expandedWorkGroups: Readonly<Record<string, boolean>>
+  readonly expandedWorkItems: Readonly<Record<string, boolean>>
   readonly runtimeTurn: KhalaRuntimeTurn | null
   readonly runtimeControlSubmittingAction: MobileRuntimeControlAction | null
   readonly runtimeControlActionsAvailable: boolean
@@ -136,6 +143,8 @@ export const initialKhalaState: KhalaState = {
   interactionSelections: {},
   interactionSubmittingRef: null,
   interactionActionsAvailable: false,
+  expandedWorkGroups: {},
+  expandedWorkItems: {},
   runtimeTurn: null,
   runtimeControlSubmittingAction: null,
   runtimeControlActionsAvailable: false,
@@ -155,6 +164,8 @@ export const KhalaDraftChanged = "KhalaDraftChanged"
 export const KhalaTurnSubmitted = "KhalaTurnSubmitted"
 export const AgentStackToggled = "AgentStackToggled"
 export const AgentRowSelected = "AgentRowSelected"
+export const WorkGroupToggled = "WorkGroupToggled"
+export const WorkItemToggled = "WorkItemToggled"
 
 /** Mobile renders at most this many hierarchy rows and names the remainder. */
 export const MOBILE_AGENT_GRAPH_MAX_ROWS = 40
@@ -175,6 +186,14 @@ const interactionBody = (
   entry: KhalaEntry,
   accessibility: MobileAccessibilityProfile,
 ): ReadonlyArray<View> => {
+  if (entry.work !== undefined) {
+    return [renderMobileWorkLog(
+      entry.work,
+      state.expandedWorkGroups[entry.work.groupRef] === true,
+      state.expandedWorkItems,
+      accessibility,
+    )]
+  }
   const interaction = entry.interaction
   if (interaction === undefined) {
     const textViews = entry.role === "assistant" && entry.status === "done"

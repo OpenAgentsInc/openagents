@@ -692,7 +692,15 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       activeThread: running,
     } })
 
-    expect(program.initialState.khala.entries.at(-1)).toMatchObject({ text: "shell · called" })
+    expect(program.initialState.khala.entries.at(-1)).toMatchObject({
+      role: "tool",
+      text: "Working · 0s",
+      work: {
+        identityLabel: "Codex · Pylon",
+        status: "running",
+        items: [{ summary: "shell", detail: "Running", status: "running" }],
+      },
+    })
     expect(program.initialState.khala.pending).toBe(false)
     expect(chromeProps(program.initialState).sending).toBe(false)
   })

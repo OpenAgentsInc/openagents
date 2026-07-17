@@ -75,10 +75,13 @@ import {
   mobileInteractiveStyle,
   normalizeMobileAccessibilityProfile,
   renderKhalaSurface,
+  WorkGroupToggled,
+  WorkItemToggled,
   type KhalaState,
   type KhalaTurnClient,
   type MobileAccessibilityProfile,
 } from "./khala-core"
+import { projectMobileWorkGroup } from "./mobile-work-log"
 
 export {
   defaultMobileAccessibilityProfile,
@@ -403,6 +406,14 @@ export const AgentRowSelectedIntent = defineIntent(
   AgentRowSelected,
   Schema.Struct({ agentRef: Schema.String }),
 )
+export const WorkGroupToggledIntent = defineIntent(
+  WorkGroupToggled,
+  Schema.Struct({ groupRef: Schema.String }),
+)
+export const WorkItemToggledIntent = defineIntent(
+  WorkItemToggled,
+  Schema.Struct({ itemRef: Schema.String }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -433,6 +444,8 @@ export const homeIntentDefinitions = [
   RuntimeTurnControlRequested,
   AgentStackToggledIntent,
   AgentRowSelectedIntent,
+  WorkGroupToggledIntent,
+  WorkItemToggledIntent,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -1353,6 +1366,8 @@ const confirmedKhalaState = (
   previousGraphView: Readonly<{
     agentGraphExpanded: boolean
     selectedAgentRef: string | null
+    expandedWorkGroups: Readonly<Record<string, boolean>>
+    expandedWorkItems: Readonly<Record<string, boolean>>
   }> | null = null,
 ): KhalaState => {
   const confirmedGraph = newestLiveAgentGraph(thread?.graphs ?? [])
@@ -1370,6 +1385,10 @@ const confirmedKhalaState = (
       previousGraphView === null || previousGraphView.selectedAgentRef === null
     ? null
     : resolveLiveAgentGraphSelection(agentGraph, previousGraphView.selectedAgentRef)
+  const workGroup = projectMobileWorkGroup(
+    thread?.timeline?.run ?? null,
+    thread?.timeline?.events ?? [],
+  )
   const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
     const item = event.item
     if (item == null) return []
@@ -1377,12 +1396,11 @@ const confirmedKhalaState = (
       case "text":
         return [{ key: event.eventRef, role: "assistant" as const, text: item.text, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "reasoning":
-        return [{ key: event.eventRef, role: "system" as const, text: `Reasoning · ${item.text}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "connected":
-        return [{ key: event.eventRef, role: "system" as const, text: `Connected · ${item.lane}`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "tool":
-        return [{ key: event.eventRef, role: "system" as const, text: `${item.toolName} · ${item.status}`, status: item.status === "failed" ? "failed" as const : "done" as const, createdAt: event.createdAt, version: event.version }]
+        return []
       case "plan":
+        if (item.interactionRef === undefined) return []
         return [{
           key: event.eventRef, role: "system" as const, text: `Plan · ${item.status}`,
           status: "done" as const, createdAt: event.createdAt, version: event.version,
@@ -1392,15 +1410,13 @@ const confirmedKhalaState = (
             : { interaction: { kind: "plan_review" as const, interactionRef: item.interactionRef, turnRef: event.runRef, status: item.status, title: "Review plan", prompt: item.prompt, questions: [], ...(item.decisionRef === undefined ? {} : { decisionRef: item.decisionRef }) } }),
         }]
       case "usage":
-        return [{ key: event.eventRef, role: "system" as const, text: `Usage · ${item.totalTokens ?? 0} tokens`, status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "terminal":
-        return [{ key: event.eventRef, role: "system" as const, text: `Turn ${item.status}`, status: item.status === "failed" ? "failed" as const : "done" as const, createdAt: event.createdAt, version: event.version }]
       case "interrupted":
-        return [{ key: event.eventRef, role: "system" as const, text: "Turn interrupted", status: "done" as const, createdAt: event.createdAt, version: event.version }]
       case "heartbeat":
       case "reconnect":
       case "stale":
-        return [{ key: event.eventRef, role: "system" as const, text: item.detail, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+      case "error":
+        return []
       case "approval":
         return [{
           key: event.eventRef, role: "system" as const, text: `Approval · ${item.status}`,
@@ -1418,8 +1434,6 @@ const confirmedKhalaState = (
             ? { interaction: { kind: "provider_question" as const, interactionRef: item.questionRef, turnRef: event.runRef, status: item.status, title: item.title ?? "Question", prompt: item.prompt, questions: item.questions ?? [], ...(item.decisionRef === undefined ? {} : { decisionRef: item.decisionRef }) } }
             : {}),
         }]
-      case "error":
-        return [{ key: event.eventRef, role: "system" as const, text: item.messageSafe, status: "failed" as const, createdAt: event.createdAt, version: event.version }]
     }
   })
   const messageEntries = (thread?.messages ?? []).map(message => ({
@@ -1433,7 +1447,19 @@ const confirmedKhalaState = (
   }))
   return {
     draft: "",
-    entries: [...messageEntries, ...runtimeEntries].sort((left, right) =>
+    entries: [
+      ...messageEntries,
+      ...runtimeEntries,
+      ...(workGroup === null ? [] : [{
+        key: workGroup.groupRef,
+        role: "tool" as const,
+        text: workGroup.summary,
+        status: workGroup.status === "failure" ? "failed" as const : "done" as const,
+        createdAt: workGroup.createdAt,
+        version: thread?.timeline?.run?.version,
+        work: workGroup,
+      }]),
+    ].sort((left, right) =>
       (left.createdAt ?? "").localeCompare(right.createdAt ?? "")),
     // A confirmed running turn is observable state, not an in-flight mobile
     // mutation. Keep the composer available so a second device can safely
@@ -1443,6 +1469,8 @@ const confirmedKhalaState = (
     interactionSelections: {},
     interactionSubmittingRef: null,
     interactionActionsAvailable,
+    expandedWorkGroups: previousGraphView?.expandedWorkGroups ?? {},
+    expandedWorkItems: previousGraphView?.expandedWorkItems ?? {},
     runtimeTurn: thread?.timeline?.run === null || thread?.timeline?.run === undefined
       ? null
       : {
@@ -1495,6 +1523,8 @@ const withConfirmedThread = (
         ? {
             agentGraphExpanded: state.khala.agentGraphExpanded,
             selectedAgentRef: state.khala.selectedAgentRef,
+            expandedWorkGroups: state.khala.expandedWorkGroups,
+            expandedWorkItems: state.khala.expandedWorkItems,
           }
         : null,
     ),
@@ -2303,6 +2333,35 @@ export const makeHomeHandlers = (
             : resolveLiveAgentGraphSelection(current.khala.agentGraph, payload.agentRef),
         },
       })),
+    [WorkGroupToggled]: (payload: Readonly<{ groupRef: string }>) =>
+      SubscriptionRef.update(state, current => {
+        const exists = current.khala.entries.some(entry => entry.work?.groupRef === payload.groupRef)
+        return !exists ? current : {
+          ...current,
+          khala: {
+            ...current.khala,
+            expandedWorkGroups: {
+              ...current.khala.expandedWorkGroups,
+              [payload.groupRef]: current.khala.expandedWorkGroups[payload.groupRef] !== true,
+            },
+          },
+        }
+      }),
+    [WorkItemToggled]: (payload: Readonly<{ itemRef: string }>) =>
+      SubscriptionRef.update(state, current => {
+        const exists = current.khala.entries.some(entry =>
+          entry.work?.items.some(item => item.itemRef === payload.itemRef) === true)
+        return !exists ? current : {
+          ...current,
+          khala: {
+            ...current.khala,
+            expandedWorkItems: {
+              ...current.khala.expandedWorkItems,
+              [payload.itemRef]: current.khala.expandedWorkItems[payload.itemRef] !== true,
+            },
+          },
+        }
+      }),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
     ConversationThreadRenameStarted: synced?.ConversationThreadRenameStarted ?? (() => Effect.void),
     ConversationThreadRenameChanged: synced?.ConversationThreadRenameChanged ?? (() => Effect.void),
@@ -2397,6 +2456,8 @@ export interface HomeProgramHandle {
     }>) => void
     readonly toggleAgentStack: () => void
     readonly selectAgentRow: (agentRef: string) => void
+    readonly toggleWorkGroup: (groupRef: string) => void
+    readonly toggleWorkItem: (itemRef: string) => void
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
@@ -2520,6 +2581,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           selectAgentRow: agentRef => fireRef(IntentRef(
             AgentRowSelected,
             StaticPayload({ agentRef }),
+          )),
+          toggleWorkGroup: groupRef => fireRef(IntentRef(
+            WorkGroupToggled,
+            StaticPayload({ groupRef }),
+          )),
+          toggleWorkItem: itemRef => fireRef(IntentRef(
+            WorkItemToggled,
+            StaticPayload({ itemRef }),
           )),
         },
         sync: {

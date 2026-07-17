@@ -5,8 +5,55 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.1",
+    version: "2026-07-17.2",
     contracts: [
+      {
+        contractId: "openagents_mobile.transcript.grouped_runtime_work.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding transcript",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Confirmed runtime activity in the mobile transcript is one compact causal work log: it groups the exact run's reasoning, connection, tools, plan steps, usage, failures, and terminal state; names running or settled status, derivable elapsed time, and runtime identity; keeps the latest five useful rows when collapsed; names bounded omissions; and reveals full selectable detail only through typed local disclosure.",
+        authorityBoundary:
+          "The work log is a presentation of the already-confirmed exact-thread agent timeline. Group and row disclosure are device-local Effect Native state and cannot issue runtime, tool, plan, navigation, or movement actions. Runtime-event schemas, ordering authority, private thread scope, and consequential controls remain unchanged; elapsed time is omitted when confirmed timestamps cannot prove it.",
+        seam: {
+          client: "apps/openagents-mobile/src/screens/mobile-work-log.ts",
+          server: "packages/khala-sync-client/src/agent-timeline.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-a2",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/thread-work-log.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_grouped_runtime_work_log",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-work-log.test.ts",
+            description:
+              "Proves event compaction, causal identity, running/settled state, elapsed time, exact collapsed and safety-bound counts, typed group/item disclosure, selectable detail, and removal of generic tool rows.",
+          },
+          {
+            id: "mobile_grouped_runtime_work_authoritative_home",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves a confirmed running timeline enters the transcript as one work group while the safe follow-up composer remains available.",
+          },
+        ],
+        verification:
+          "Mobile work-log, authoritative Home, accessibility, behavior-contract, typecheck, and repository checks; physical screen-reader evidence remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.t3_code_full_mobile_parity.v1",
         state: "pending",
