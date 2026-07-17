@@ -169,12 +169,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   authority. The authored capacity profile cannot dispatch workers; concurrent
   allocation requires a separately admitted claim-aware FullAutoRunPolicy or
   FleetRun.
+- When a spec defines `initial_program`, selection follows its exact directive
+  order and default evidence stage until each directive is terminal or
+  blocked. A referenced strategy essay remains evidence and sequencing input;
+  it cannot reopen a roadmap lane or satisfy the separately required
+  implementation admission.
 - Blueprint, Khala, semantic planners, StudyPackets, and DSPy/GEPA-class
   optimizers may propose typed research or module candidates. None may
   self-admit, self-verify, self-promote, dispatch, merge, release, spend,
   settle, or change a public claim.
-- The format-0.1 seed's stable graph, five-slot capacity examples, authority
-  boundary, and complete `docs/teardowns/` coverage are enforced by
+- The format-0.1 seed's stable graph, ordered Amp/Fable initial program,
+  five-slot capacity examples, authority boundary, and complete
+  `docs/teardowns/` coverage are enforced by
   `scripts/check-fast-follow.test.ts`. A later breaking validation change must
   bump the format and freeze a conformance corpus.
 

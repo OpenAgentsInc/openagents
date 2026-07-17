@@ -34,7 +34,8 @@ Outcome:
   Full Auto, FleetRun, and Blueprint;
 - add the authored format, canonical JSON projection schema, ProductSpec,
   OpenAgents seed, skill, AGENTS/invariant rules, and validation check;
-- cover every current teardown; and
+- cover every current teardown while binding the Fable essay's five Amp
+  composition milestones as the exact ordered initial program; and
 - document an honest current-Desktop overnight bootstrap.
 
 Acceptance: FF-AC-13 through FF-AC-15.
@@ -360,8 +361,10 @@ real OpenAgents authority.
 First manual run:
 
 - three ordinary issue/backlog Full Auto sessions;
-- one research session scoped to one directive and research artifact paths;
-- one implementation session scoped to one already admitted candidate;
+- one research session scoped to the first non-terminal directive in the
+  ordered Amp initial program and its research artifact paths;
+- one implementation session scoped to one already admitted candidate from
+  that program;
 - isolated claims/worktrees for every mutating session; and
 - retained stop, failure, token, candidate, test, and closeout evidence.
 

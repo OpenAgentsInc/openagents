@@ -213,6 +213,41 @@
         "implementation": { "type": "integer", "minimum": 0 }
       }
     },
+    "initialProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy_ref",
+        "directive_order",
+        "default_stage",
+        "advance_when",
+        "on_exhaustion",
+        "implementation_admission"
+      ],
+      "properties": {
+        "strategy_ref": { "$ref": "#/$defs/path" },
+        "directive_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "default_stage": {
+          "enum": [
+            "research",
+            "gap_analysis",
+            "candidate_proposal",
+            "implementation",
+            "verification"
+          ]
+        },
+        "advance_when": { "const": "current_directive_terminal_or_blocked" },
+        "on_exhaustion": { "enum": ["stop", "return_to_catalog"] },
+        "implementation_admission": {
+          "const": "separate_target_authority_required"
+        }
+      }
+    },
     "workGeneration": {
       "type": "object",
       "additionalProperties": false,
@@ -225,6 +260,7 @@
       ],
       "properties": {
         "activation": { "enum": ["manual", "backlog_fallback", "continuous"] },
+        "initial_program": { "$ref": "#/$defs/initialProgram" },
         "allowed_stages": {
           "type": "array",
           "minItems": 1,

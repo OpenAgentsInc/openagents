@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Fast Follow Learning and Work Generation"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-16T00:00:00Z"
 updated_at: "2026-07-16T00:00:00Z"
@@ -71,6 +71,7 @@ in:
   - a separately admitted FullAutoRunPolicy or FleetRun capacity profile supporting delivery, Fast Follow research, and admitted Fast Follow implementation lanes
   - one research lane that may write only configured study, gap, candidate, receipt, and teardown artifacts; and one implementation lane that consumes only admitted target-local work
   - an OpenAgents seed covering every current `docs/teardowns/` document and the owner's five-slot 3/1/1 capacity example
+  - an ordered OpenAgents initial program binding `docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md` to its five composition milestones before broader catalog selection
   - Khala/Blueprint-compatible study and outcome artifacts that a future DSPy/GEPA-class optimizer may consume only as proposal evidence
 out:
   - FastFollowSpec replacing AGENTS.md, INVARIANTS.md, ProductSpec, AssuranceSpec, roadmap, issue, work-packet, claim, test, review, release, owner, or product-promise authority
@@ -107,6 +108,12 @@ allocate three ordinary delivery workers, one research worker, and one admitted
 implementation worker; the owner can stop, steer, and inspect each. If the
 ordinary backlog empties, the run policy may reallocate capacity without
 inventing work. `no_material_delta` is a successful honest closeout.
+
+An optional initial program can bind a target strategy artifact to an exact
+ordered directive subset and default evidence stage. OpenAgents dogfoods this
+by selecting the Fable essay's Day 1 through Day 5 Amp composition directives
+before the broader teardown catalog, without reading that essay as
+implementation admission.
 
 The format-0.1 bootstrap works before the native UI: repository `AGENTS.md` and
 the bundled workspace skill direct existing per-session Full Auto to the seed
@@ -189,13 +196,16 @@ a claim-aware supervisor, not in the authored learning document.
   shows source/target freshness and cache provenance; and retains working stop,
   steer, and bounded-cost controls.
 - **FF-AC-13:** The committed OpenAgents seed validates and references every
-  non-README Markdown document in `docs/teardowns/`, including cross-target and
-  OpenAgents-synthesis documents, with no dangling lesson or directive ref.
+  non-README Markdown document in `docs/teardowns/`, binds
+  `docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md`, and selects five
+  ordered initial directives matching its thread-fabric, routing/specialist,
+  review/reader, placement/remote, and developer/plugin milestones, with no
+  dangling lesson or directive ref.
 - **FF-AC-14:** On current main, an owner can turn on the existing Full Auto
-  toggle and explicitly run the seed's research, admitted implementation, or
-  backlog-fallback method through repository instructions and the Fast Follow
-  skill; docs state the 20-continuation cap and do not claim native portfolio
-  scheduling.
+  toggle and explicitly run the seed's ordered Amp initial program, admitted
+  implementation, or backlog-fallback method through repository instructions
+  and the Fast Follow skill; docs state the 20-continuation cap and do not claim
+  native portfolio scheduling.
 - **FF-AC-15:** Format validation, reference validation, teardown coverage,
   authority boundaries, and the two five-slot capacity profiles have committed
   automated checks. Any future breaking validation change bumps the format and

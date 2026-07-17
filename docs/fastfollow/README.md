@@ -30,7 +30,9 @@ is no implicit merge in format 0.1.
 1. [`FAST_FOLLOW_SPEC.md`](FAST_FOLLOW_SPEC.md) — normative format, lifecycle,
    artifacts, work program, sharing boundary, and Full Auto composition.
 2. [`../../FASTFOLLOW.md`](../../FASTFOLLOW.md) — the first OpenAgents
-   FastFollowSpec, seeded from every document in `docs/teardowns/`.
+   FastFollowSpec, whose ordered initial program follows
+   [`Amp in a Few Days`](../fable/2026-07-16-amp-in-a-few-days-on-openagents.md)
+   before returning to the complete `docs/teardowns/` catalog.
 3. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
    — product intent and acceptance criteria for the native system.
 4. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
@@ -42,7 +44,7 @@ The workspace skill at
 [`../../.agents/skills/fast-follow/SKILL.md`](../../.agents/skills/fast-follow/SKILL.md)
 provides the agent operating method. `pnpm run test:fast-follow` validates the
 OpenAgents seed's stable references, source/directive graph, capacity profiles,
-and complete teardown coverage.
+ordered Amp program, Fable strategy binding, and complete teardown coverage.
 
 ## What works in the current checkout
 
@@ -67,8 +69,10 @@ owner can use Fast Follow tonight without a new binary:
 3. Send one of these initial instructions:
 
    ```text
-   Run the Fast Follow research lane from FASTFOLLOW.md. Produce one
-   evidence-grounded study or gap artifact per turn; do not edit product code.
+   Run the ordered initial_program from FASTFOLLOW.md at its default
+   gap_analysis stage. Work on the first non-terminal Amp day directive,
+   produce one evidence-grounded gap or candidate artifact per turn, and do
+   not edit product code.
    ```
 
    ```text
@@ -83,12 +87,13 @@ owner can use Fast Follow tonight without a new binary:
    ```
 
 For the five-worker shape in the owner brief, use three issue/backlog sessions,
-one Fast Follow research session, and one admitted Fast Follow implementation
-session. Each session gets its own Full Auto toggle and isolated claim/worktree
-when it mutates. This is a manual allocation bootstrap. Current Desktop Full
-Auto serializes its own continuations and is not yet a five-worker fleet
-scheduler; the native portfolio policy and concurrent supervisor are specified
-but remain implementation work.
+one ordered Amp-program research session, and one implementation session scoped
+to a separately admitted candidate from that program. Each session gets its own
+Full Auto toggle and isolated claim/worktree when it mutates. This is a manual
+allocation bootstrap. Current Desktop Full Auto serializes its own
+continuations and is not yet a five-worker fleet scheduler; the native
+portfolio policy and concurrent supervisor are specified but remain
+implementation work.
 
 ## The four artifact layers
 

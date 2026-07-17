@@ -77,10 +77,12 @@ load-bearing decision only in competitive analysis.
 The repository's [`FASTFOLLOW.md`](../../FASTFOLLOW.md) turns this complete
 catalog into typed learning intent: stable sources and lessons, many-to-many
 target directives, bounded research and candidate work, and separately
-admitted implementation. The normative format and current Full Auto bootstrap
-live in [`docs/fastfollow/`](../fastfollow/README.md). Fast Follow preserves the
-same evidence/authority boundary; it does not make teardown prose executable
-policy.
+admitted implementation. Its current ordered initial program follows
+[`Amp in a Few Days`](../fable/2026-07-16-amp-in-a-few-days-on-openagents.md)
+before returning to the broader catalog. The normative format and current Full
+Auto bootstrap live in [`docs/fastfollow/`](../fastfollow/README.md). Fast
+Follow preserves the same evidence/authority boundary; it does not make
+teardown or Fable prose executable policy.
 
 ## Derived product pathways
 

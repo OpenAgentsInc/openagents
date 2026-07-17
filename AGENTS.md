@@ -67,6 +67,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   research/implementation boundaries. The format and authority model live in
   `docs/fastfollow/`; the working method lives in
   `.agents/skills/fast-follow/SKILL.md`.
+- Its current `initial_program` is the ordered five-day composition from
+  `docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md`: thread fabric,
+  disclosed routing/specialists, review/thread reader, placement/remote
+  control, then generated clients/signed plugins. Follow that order before the
+  broader teardown catalog. The Fable essay remains strategic evidence, not
+  dispatch or product-expansion authority.
 - FastFollowSpec is a candidate-work source, never implementation or product
   authority. Current `AGENTS.md`, `INVARIANTS.md`, ProductSpec, AssuranceSpec,
   Sol roadmap, live issue/claim state, tests, receipts, and owner gates keep

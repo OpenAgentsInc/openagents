@@ -1,8 +1,8 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 1
-title: "OpenAgents Product and Agent-Runtime Fast Follow"
+fast_follow_revision: 2
+title: "OpenAgents Amp Thread-Fabric Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
@@ -15,16 +15,22 @@ updated_at: "2026-07-16T00:00:00Z"
 
 ## Objective
 
-Continuously learn from the strongest adjacent coding agents, workrooms,
-runtime protocols, orchestration systems, capability platforms, and release
-systems while preserving OpenAgents' stricter Effect, authority, privacy,
-receipt, portability, and verification contracts.
+Execute the composition program described in
+`docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md`: make OpenAgents'
+existing substrate legible as a durable, searchable, steerable, placeable
+thread fabric, then close the bounded surface gaps in the essay's five-day
+order while preserving OpenAgents' stricter Effect, authority, privacy,
+receipt, portability, containment, and verification contracts.
 
-This spec turns the existing teardown library into stable source lessons and
-many-to-many learning directives. It does not instruct OpenAgents to clone a
-competitor, chase surface parity, or weaken an invariant. The target outcome
-is a better OpenAgents system whose adaptations are explicit, target-native,
-testable, and evidence-backed.
+The essay is strategic evidence, not dispatch authority. This admitted
+learning intent authorizes research, gap analysis, and candidate production;
+product-code implementation still requires an ordinary admitted issue,
+accepted plan, or work packet. The broader teardown library remains the later
+research well, but the initial program is deliberately narrow: Day 1 thread
+fabric surfaces, Day 2 routing and specialists, Day 3 review and thread
+reader, Day 4 placement and remote control, then Day 5 generated clients and
+signed extensions. It does not instruct OpenAgents to clone Amp, claim parity,
+or weaken an invariant.
 
 ## Target
 
@@ -576,6 +582,67 @@ testable, and evidence-backed.
         "stance": "adapt"
       }
     ]
+  },
+  {
+    "id": "openagents.amp_fable",
+    "title": "Amp in a Few Days on OpenAgents",
+    "role": "local_synthesis",
+    "access": "public_source",
+    "canonical_ref": "repo://docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md"
+    ],
+    "lessons": [
+      {
+        "id": "thread_fabric_thesis",
+        "kind": "architecture",
+        "summary": "Treat the durable, searchable, remotely controllable thread as the canonical work object and Desktop as its strongest client, with composition rather than reinvention as the primary delta.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "day1_thread_fabric",
+        "kind": "product_ux",
+        "summary": "First expose historical thread search, stable event navigation, explicit visibility/share/export, and visible queue, steer, and stop semantics over durable admission.",
+        "stance": "adapt"
+      },
+      {
+        "id": "day2_routing_specialists",
+        "kind": "architecture",
+        "summary": "Then add disclosed routing modes, exact per-call provider/model/policy receipts, and a receipted Consult specialist from a different model family.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "day3_review_reader",
+        "kind": "evaluation",
+        "summary": "Then compile repository check manifests into AssuranceSpec fan-out and add a bounded read-only thread reader that cites accepted events and supersession state.",
+        "stance": "adapt"
+      },
+      {
+        "id": "day4_placement_remote",
+        "kind": "protocol",
+        "summary": "Then expose local, enrolled, and managed placement plus live Desktop-to-mobile continuation with matching refs, versions, cursor, epochs, and exactly-once admitted commands.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "day5_developer_surface",
+        "kind": "extension",
+        "summary": "Then generate the TypeScript client and headless transport from the public protocol and ship the first signed, hash-pinned, capability-declared tool-and-command plugin slice.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "trust_first_boundary",
+        "kind": "security",
+        "summary": "Preserve local-first truth, exact receipts, fail-closed containment, signed releases, full child history, migration-safe deletion, pixel proof, and explicit proof rungs rather than copying Amp's deferred trust.",
+        "stance": "adapt"
+      },
+      {
+        "id": "authorization_boundary",
+        "kind": "security",
+        "summary": "Treat the Fable essay as decision input only: research and candidate work may proceed, but closed product-expansion lanes remain closed until separately reopened by target authority.",
+        "stance": "adapt"
+      }
+    ]
   }
 ]
 ```
@@ -584,6 +651,207 @@ testable, and evidence-backed.
 
 ```fastfollow-directives
 [
+  {
+    "id": "amp.day1_thread_fabric_surfaces",
+    "title": "Day 1 — durable thread fabric surfaces",
+    "priority": 500,
+    "source_refs": [
+      "openagents.amp_fable#thread_fabric_thesis",
+      "openagents.amp_fable#day1_thread_fabric",
+      "openagents.amp_fable#trust_first_boundary",
+      "openagents.amp_fable#authorization_boundary",
+      "amp.code#thread_as_product",
+      "openai.codex#thread_turn_item",
+      "openagents.synthesis#target_native_adaptation"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "packages/agent-runtime-schema",
+      "packages/world-client"
+    ],
+    "desired_outcome": "Search any historical OpenAgents session and land on the original accepted event with supersession state; expose explicit share/export visibility; and make Queue, Steer, and Stop visible typed commands with durable admission acknowledgements.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "candidate_issue",
+      "product_spec_delta",
+      "assurance_delta",
+      "implementation"
+    ],
+    "constraints": [
+      "The thread index is a projection over canonical accepted events, never a replacement transcript authority.",
+      "Tool calls remain attempts until their outcomes are observed; compaction summaries never become evidence.",
+      "Visibility uses explicit states and receipts; never use unlisted as a privacy guarantee.",
+      "Research and candidate work do not reopen the closed product-expansion lane.",
+      "Desktop completion requires rendered pixel evidence, not only typechecks or unit tests."
+    ],
+    "acceptance_refs": [
+      "FF-AC-04",
+      "FF-AC-06",
+      "FF-AC-12"
+    ]
+  },
+  {
+    "id": "amp.day2_routing_and_specialists",
+    "title": "Day 2 — disclosed routing modes and specialists",
+    "priority": 490,
+    "source_refs": [
+      "openagents.amp_fable#day2_routing_specialists",
+      "openagents.amp_fable#trust_first_boundary",
+      "openagents.amp_fable#authorization_boundary",
+      "amp.code#specialist_composition",
+      "cursor.cursor#usage_model_truth",
+      "pingdotgg.t3code#provider_neutral_cqrs"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "apps/pylon",
+      "packages/pylon-core"
+    ],
+    "desired_outcome": "Expose four owner-reviewed routing modes and one Consult action that deliberately uses a different model family, while every call discloses and receipts the exact provider, model, prompt/catalog generation, retention class, usage, and cost.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "candidate_issue",
+      "product_spec_delta",
+      "assurance_delta",
+      "implementation"
+    ],
+    "constraints": [
+      "Friendly mode names never hide or overwrite execution facts.",
+      "Specialist output is labeled advice and grants no target authority.",
+      "Routing uses typed provider policy and semantic selection, never ad hoc keyword matching.",
+      "A compaction audit must prove summaries remain projections over retained evidence.",
+      "Research and candidate work do not reopen the closed product-expansion lane."
+    ],
+    "acceptance_refs": [
+      "FF-AC-04",
+      "FF-AC-05",
+      "FF-AC-12"
+    ]
+  },
+  {
+    "id": "amp.day3_review_and_thread_reader",
+    "title": "Day 3 — Assurance review fan-out and bounded thread reader",
+    "priority": 480,
+    "source_refs": [
+      "openagents.amp_fable#day3_review_reader",
+      "openagents.amp_fable#trust_first_boundary",
+      "openagents.amp_fable#authorization_boundary",
+      "amp.code#specialist_composition",
+      "openai.codex#lossless_native_plane",
+      "openagents.synthesis#complete_graph_causal_ui"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "packages/assurance-spec",
+      "packages/agent-runtime-schema",
+      "packages/probe"
+    ],
+    "desired_outcome": "Compile a repository Markdown check manifest into bounded AssuranceSpec child work and render mapped, executable, observed, and accepted separately; let a read-only thread agent answer what was tried and superseded using exact event citations.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "candidate_issue",
+      "product_spec_delta",
+      "assurance_delta",
+      "implementation"
+    ],
+    "constraints": [
+      "The reader has no shell, publish, spend, mutation, acceptance, or release authority.",
+      "Check prose compiles into AssuranceSpec input; it does not bypass proof-design review or self-accept.",
+      "Mapped, executable, observed, accepted, and excepted remain separate axes.",
+      "The whole navigable child graph and independent transcripts remain available.",
+      "Research and candidate work do not reopen the closed product-expansion lane."
+    ],
+    "acceptance_refs": [
+      "FF-AC-05",
+      "FF-AC-06",
+      "FF-AC-11"
+    ]
+  },
+  {
+    "id": "amp.day4_placement_and_remote_control",
+    "title": "Day 4 — receipted placement and live remote control",
+    "priority": 470,
+    "source_refs": [
+      "openagents.amp_fable#day4_placement_remote",
+      "openagents.amp_fable#trust_first_boundary",
+      "openagents.amp_fable#authorization_boundary",
+      "amp.code#thread_as_product",
+      "openclaw.crabbox#lease_state_machine",
+      "openchamber#mobile_attention",
+      "pingdotgg.t3code#dpop_environment_access"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "apps/openagents-mobile",
+      "apps/pylon",
+      "packages/pylon-core",
+      "packages/world-client"
+    ],
+    "desired_outcome": "Expose This Mac, an explicitly enrolled machine, and a managed Agent Computer through one claim-aware target picker, then prove one streamed session can be steered from mobile through a network gap with matching refs, versions, cursor, epochs, and no duplicate or orphaned work.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "candidate_issue",
+      "product_spec_delta",
+      "assurance_delta",
+      "implementation"
+    ],
+    "constraints": [
+      "Changing placement is a typed admitted command against one claim registry; never silently retarget.",
+      "The phone holds no Desktop token and Sync does not become canonical transcript authority.",
+      "Lease ownership, fencing, replay, writeback, verification, reclaim, and failure receipts survive restart and network loss.",
+      "A simulated transport does not satisfy the live cross-device demonstration debt.",
+      "Research and candidate work do not reopen closed runner, managed placement, or mobile-continuation lanes."
+    ],
+    "acceptance_refs": [
+      "FF-AC-04",
+      "FF-AC-06",
+      "FF-AC-08"
+    ]
+  },
+  {
+    "id": "amp.day5_developer_and_plugin_surface",
+    "title": "Day 5 — generated developer client and signed plugin slice",
+    "priority": 460,
+    "source_refs": [
+      "openagents.amp_fable#day5_developer_surface",
+      "openagents.amp_fable#trust_first_boundary",
+      "openagents.amp_fable#authorization_boundary",
+      "amp.code#broad_extension_grammar",
+      "factory.droid#one_engine_many_clients",
+      "factory.droid#extension_supply_chain",
+      "openai.chatgpt_desktop#plugin_skill_app_layers"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "apps/pylon",
+      "packages/agent-client-protocol"
+    ],
+    "desired_outcome": "Generate a TypeScript client and headless transport from the public Effect Schema request processor, optionally project compatible stream JSON, and install one publisher-signed, content-hashed, capability-declared tool-and-command plugin with install and run receipts.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "candidate_issue",
+      "product_spec_delta",
+      "assurance_delta",
+      "implementation"
+    ],
+    "constraints": [
+      "The generated client and UI share one request processor and one canonical protocol.",
+      "Plugin capabilities are non-amplifying, isolated, generation-owned, revocable, and visible before activation.",
+      "Reject same-origin checksum authority, moving dependencies, privilege bundles, and start-before-activation behavior.",
+      "Full plugin UI and agent extensions remain beyond the five-day slice until capability-isolation proof is admitted.",
+      "Research and candidate work do not reopen the closed developer-surface or plugin lane."
+    ],
+    "acceptance_refs": [
+      "FF-AC-04",
+      "FF-AC-06",
+      "FF-AC-09"
+    ]
+  },
   {
     "id": "runtime_protocol_provider_lanes",
     "title": "One engine contract with lossless provider lanes",
@@ -919,6 +1187,20 @@ testable, and evidence-backed.
 ```fastfollow-work-generation
 {
   "activation": "continuous",
+  "initial_program": {
+    "strategy_ref": "docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md",
+    "directive_order": [
+      "amp.day1_thread_fabric_surfaces",
+      "amp.day2_routing_and_specialists",
+      "amp.day3_review_and_thread_reader",
+      "amp.day4_placement_and_remote_control",
+      "amp.day5_developer_and_plugin_surface"
+    ],
+    "default_stage": "gap_analysis",
+    "advance_when": "current_directive_terminal_or_blocked",
+    "on_exhaustion": "return_to_catalog",
+    "implementation_admission": "separate_target_authority_required"
+  },
   "allowed_stages": [
     "research",
     "gap_analysis",

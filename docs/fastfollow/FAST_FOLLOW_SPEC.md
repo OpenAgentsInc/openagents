@@ -192,6 +192,10 @@ gates; Fast Follow does not create a weaker proof lane.
 The work policy names:
 
 - activation (`manual`, `backlog_fallback`, or `continuous`);
+- an optional `initial_program` binding one repository-relative strategy
+  artifact to an ordered subset of directives, a default evidence stage,
+  deterministic advance/exhaustion behavior, and separate implementation
+  admission;
 - higher-authority precedence;
 - exactly one concrete unit per Full Auto continuation;
 - dedupe-key inputs and supersession behavior;
@@ -202,6 +206,14 @@ Capacity profiles express portfolio intent, not execution authority. A native
 scheduler must bind a profile into a separately admitted `FullAutoRunPolicy` or
 FleetRun, claim work, and preserve provider/workspace/lease policy. An authored
 FastFollowSpec cannot start five workers by itself.
+
+When `initial_program` is present, work selection begins with its first
+non-terminal directive at `default_stage`. It advances only when the current
+directive has a durable terminal or blocked disposition. `return_to_catalog`
+then exposes remaining directives through ordinary priority selection; `stop`
+ends that work source. The strategy artifact is evidence and sequencing input,
+not implementation admission. Format 0.1 fixes
+`implementation_admission` to `separate_target_authority_required`.
 
 ## 5. Deterministic program
 

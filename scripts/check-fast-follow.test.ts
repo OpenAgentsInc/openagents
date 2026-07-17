@@ -58,8 +58,18 @@ type Capacity = Readonly<{
   implementation: number;
 }>;
 
+type InitialProgram = Readonly<{
+  strategy_ref: string;
+  directive_order: ReadonlyArray<string>;
+  default_stage: string;
+  advance_when: string;
+  on_exhaustion: string;
+  implementation_admission: string;
+}>;
+
 type WorkGeneration = Readonly<{
   activation: string;
+  initial_program: InitialProgram;
   allowed_stages: ReadonlyArray<string>;
   selection_policy: Readonly<{
     higher_authority_precedence: boolean;
@@ -130,7 +140,7 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
 
     expect(schema.$id).toBe("https://openagents.com/schemas/fast-follow-spec-projection-0.1.json");
     expect(projection.format_version).toBe("0.1");
-    expect(projection.revision).toBe(1);
+    expect(projection.revision).toBe(2);
     expect(projection.lifecycle_state).toBe("admitted");
     expect(Object.keys(projection).toSorted()).toEqual([...(schema.required ?? [])].toSorted());
   });
@@ -154,20 +164,49 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
     }
   });
 
-  test("covers every teardown document and every referenced repository path exists", () => {
+  test("covers every teardown document, binds the Amp Fable, and resolves every evidence path", () => {
     const teardownRoot = path.join(repoRoot, "docs/teardowns");
     const expected = readdirSync(teardownRoot)
       .filter((name) => name.endsWith(".md") && name !== "README.md")
       .map((name) => `docs/teardowns/${name}`)
       .toSorted();
-    const referenced = [...new Set(sources.flatMap((item) => item.teardown_refs))].toSorted();
+    const allEvidenceRefs = [...new Set(sources.flatMap((item) => item.teardown_refs))].toSorted();
+    const referencedTeardowns = allEvidenceRefs
+      .filter((relativePath) => relativePath.startsWith("docs/teardowns/"))
+      .toSorted();
 
-    expect(referenced).toEqual(expected);
-    for (const relativePath of referenced) {
-      expect(relativePath.startsWith("docs/teardowns/")).toBe(true);
+    expect(referencedTeardowns).toEqual(expected);
+    expect(allEvidenceRefs).toContain("docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md");
+    for (const relativePath of allEvidenceRefs) {
+      expect(relativePath.startsWith("docs/")).toBe(true);
       expect(relativePath.includes(".."), relativePath).toBe(false);
       expect(existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(true);
     }
+  });
+
+  test("starts with the Fable essay's ordered five-day Amp composition program", () => {
+    const initialDirectiveIds = [
+      "amp.day1_thread_fabric_surfaces",
+      "amp.day2_routing_and_specialists",
+      "amp.day3_review_and_thread_reader",
+      "amp.day4_placement_and_remote_control",
+      "amp.day5_developer_and_plugin_surface",
+    ];
+
+    expect(workGeneration.initial_program).toEqual({
+      strategy_ref: "docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md",
+      directive_order: initialDirectiveIds,
+      default_stage: "gap_analysis",
+      advance_when: "current_directive_terminal_or_blocked",
+      on_exhaustion: "return_to_catalog",
+      implementation_admission: "separate_target_authority_required",
+    });
+    expect(
+      directives.slice(0, initialDirectiveIds.length).map((directive) => directive.id),
+    ).toEqual(initialDirectiveIds);
+    expect(sources.find((item) => item.id === "openagents.amp_fable")?.canonical_ref).toBe(
+      "repo://docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md",
+    );
   });
 
   test("pins the owner's five-slot profiles without granting dispatch authority", () => {

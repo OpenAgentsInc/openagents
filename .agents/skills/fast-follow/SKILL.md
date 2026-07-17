@@ -22,6 +22,12 @@ verification, release, spend, deployment, or public-claim authority.
 5. Read current ProductSpec, AssuranceSpec, roadmap, issue, claim, and receipt
    authorities relevant to the target scope.
 
+If `work_generation.initial_program` exists, bind its exact strategy artifact
+and select the first directive in `directive_order` without a durable terminal
+or blocked disposition. Use its `default_stage`. Advance only under its
+declared transition and exhaustion policy; do not silently substitute a
+higher-priority catalog directive.
+
 If the spec is missing, malformed, unsupported, escaped, stale, or internally
 inconsistent, report a typed blocker. Do not reconstruct policy from nearby
 prose, filenames, teardown advice, or an older run.
@@ -140,6 +146,8 @@ artifact and stop or re-plan under ordinary authority.
 Full Auto is the continuation mechanism, not Fast Follow authority.
 
 - Honor higher-authority actionable work and the selected capacity/run policy.
+- Honor `initial_program` order and its default evidence stage when present;
+  the referenced strategy document remains evidence, not dispatch authority.
 - On a research lane, remain inside configured research write paths.
 - On an implementation lane, consume only admitted and unclaimed candidates.
 - Complete one concrete unit per continuation.
