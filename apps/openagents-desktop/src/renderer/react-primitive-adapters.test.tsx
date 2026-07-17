@@ -515,11 +515,15 @@ describe("React workbench shell", () => {
     await interact(() => {
       ;(container.querySelector('[data-session-row][data-selected="true"]') as HTMLButtonElement).click()
     })
+    await interact(() => {
+      container.querySelector<HTMLButtonElement>('[data-en-key="sidebar-thread-history-1"]')?.click()
+    })
     expect(received).toEqual(expect.arrayContaining([
       { name: "DesktopSessionSearchDisclosureChanged", payload: true },
       { name: "DesktopNewChat", payload: null },
       { name: "HistorySearchChanged", payload: "earlier" },
       { name: "DesktopChatSelected", payload: "local-1" },
+      { name: "HistoryConversationSelected", payload: "history-1" },
     ]))
   })
 

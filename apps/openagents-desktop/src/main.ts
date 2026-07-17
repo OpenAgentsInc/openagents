@@ -294,7 +294,12 @@ import { openDesktopCodexUsageOutbox } from "./desktop-codex-usage-outbox.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
-import { localThreadRefForProviderSession, reconcileLocalTurns } from "./local-turn-recovery.ts"
+import {
+  filterLocallyOwnedCodexHistoryCatalog,
+  filterLocallyOwnedCodexHistorySearch,
+  localThreadRefForProviderSession,
+  reconcileLocalTurns,
+} from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { applyFullAutoComposerToggle, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
@@ -1257,7 +1262,26 @@ const authoritativeCodexHistoryHost: import("./codex-history-host.ts").CodexHist
   run: request => {
     if (smokeMode) return codexHistoryHost.run(request)
     const authority = codexLifecycleAuthority
-    if (authority !== null) return authority().then(lifecycle => lifecycle.runHistory(request)).catch(error => {
+    if (authority !== null) return authority().then(async lifecycle => {
+      const result = await lifecycle.runHistory(request)
+      if (result === null) return null
+      const localThreadRefs = new Set(threads().list().map(thread => thread.id))
+      if (request.kind === "history_catalog") {
+        return filterLocallyOwnedCodexHistoryCatalog(
+          result as import("./codex-history-contract.ts").CodexHistoryCatalog,
+          localTurnJournal.list(),
+          localThreadRefs,
+        )
+      }
+      if (request.kind === "history_search") {
+        return filterLocallyOwnedCodexHistorySearch(
+          result as import("./codex-history-contract.ts").CodexHistorySearchResponse,
+          localTurnJournal.list(),
+          localThreadRefs,
+        )
+      }
+      return result
+    }).catch(error => {
       console.error("[openagents-desktop] app-server history unavailable", error instanceof Error ? error.name : "unknown")
       return process.env.OPENAGENTS_DESKTOP_CODEX_ROLLOUT_FALLBACK === "1"
         ? (console.warn("[openagents-desktop] using labeled Codex rollout migration fallback"), codexHistoryHost.run(request))

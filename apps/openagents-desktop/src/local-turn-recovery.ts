@@ -1,5 +1,6 @@
 import type { CodexLocalRuntime } from "./codex-local-runtime.ts"
 import type { DesktopThread } from "./chat-contract.ts"
+import type { CodexHistoryCatalog, CodexHistorySearchResponse } from "./codex-history-contract.ts"
 import type { CodexModel } from "./fable-local-contract.ts"
 import type { LocalTurnJournal, LocalTurnKey, LocalTurnRecord } from "./local-turn-journal.ts"
 import type { makeThreadStore } from "./thread-store.ts"
@@ -19,6 +20,45 @@ export const localThreadRefForProviderSession = (
     record.lane === "codex-local" && record.providerSessionRef === providerSessionRef)
   return [...matches].sort((left, right) =>
     right.updatedAt.localeCompare(left.updatedAt) || right.turnRef.localeCompare(left.turnRef))[0]?.threadRef ?? null
+}
+
+/**
+ * Provider sessions already represented by a currently retained Desktop-local
+ * thread are one conversation identity, not a second history conversation.
+ * Keep the mapping in main: neither provider refs nor the private turn journal
+ * need to enter renderer state merely to deduplicate the sidebar.
+ */
+export const providerSessionRefsForLocalThreads = (
+  records: ReadonlyArray<LocalTurnRecord>,
+  localThreadRefs: ReadonlySet<string>,
+): ReadonlySet<string> => new Set(records.flatMap(record =>
+  record.lane === "codex-local" &&
+  record.providerSessionRef !== null &&
+  localThreadRefs.has(record.threadRef)
+    ? [record.providerSessionRef]
+    : [],
+))
+
+export const filterLocallyOwnedCodexHistoryCatalog = (
+  catalog: CodexHistoryCatalog,
+  records: ReadonlyArray<LocalTurnRecord>,
+  localThreadRefs: ReadonlySet<string>,
+): CodexHistoryCatalog => {
+  const locallyOwnedProviderRefs = providerSessionRefsForLocalThreads(records, localThreadRefs)
+  return locallyOwnedProviderRefs.size === 0
+    ? catalog
+    : { ...catalog, roots: catalog.roots.filter(root => !locallyOwnedProviderRefs.has(root.threadRef)) }
+}
+
+export const filterLocallyOwnedCodexHistorySearch = (
+  response: CodexHistorySearchResponse,
+  records: ReadonlyArray<LocalTurnRecord>,
+  localThreadRefs: ReadonlySet<string>,
+): CodexHistorySearchResponse => {
+  const locallyOwnedProviderRefs = providerSessionRefsForLocalThreads(records, localThreadRefs)
+  return locallyOwnedProviderRefs.size === 0
+    ? response
+    : { ...response, results: response.results.filter(result => !locallyOwnedProviderRefs.has(result.rootThreadRef)) }
 }
 
 const isRecoverableCodexModel = (model: string | null): model is CodexModel =>
