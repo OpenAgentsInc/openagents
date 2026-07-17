@@ -12,6 +12,7 @@ import type {
   KhalaSyncConversationChange,
   KhalaSyncConversationStatus,
 } from "./conversation.js"
+import { MAX_CONFIRMED_CHAT_MESSAGES } from "./conversation.js"
 import type { KhalaSyncLiveAgentGraph } from "./live-agent-graph.js"
 import {
   KhalaConversationLiveEnvelopeSchema,
@@ -212,6 +213,29 @@ describe("cursor-aware live conversation subscription", () => {
     expect(updates[0]!.snapshot?.graphs[0]?.updatedAt).toBe(
       "2026-07-11T00:00:09.000Z",
     )
+    await subscription.close()
+  })
+
+  test("retains the newest complete bounded message window", async () => {
+    const h = harness()
+    h.change({
+      status: status("live", 600),
+      messages: Array.from({ length: MAX_CONFIRMED_CHAT_MESSAGES + 2 }, (_, index) =>
+        message(`message.${String(index).padStart(3, "0")}`, index + 1)),
+    })
+    const updates: Array<KhalaConversationLiveUpdate> = []
+    const subscription = await openKhalaConversationLive({
+      conversation: h.conversation,
+      timeline: h.timeline,
+      subscriptionRef: "subscription.retained-window",
+      generation: 1,
+      threadRef,
+    }, update => { updates.push(update) })
+    await subscription.settled()
+
+    expect(updates[0]?.snapshot?.messages).toHaveLength(MAX_CONFIRMED_CHAT_MESSAGES)
+    expect(updates[0]?.snapshot?.messages[0]?.messageRef).toBe("message.002")
+    expect(updates[0]?.snapshot?.messages.at(-1)?.messageRef).toBe("message.501")
     await subscription.close()
   })
 

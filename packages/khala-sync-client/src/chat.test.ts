@@ -161,6 +161,13 @@ describe("shared canonical chat client", () => {
         updatedAt: NOW,
       })
       const message = decodeChatMessageEntity({
+        attachments: [{
+          dataBase64: "AQID",
+          mediaType: "image/png",
+          name: "confirmed.png",
+          sha256: "a".repeat(64),
+          sizeBytes: 3,
+        }],
         messageId: "message.confirmed.1",
         threadId: THREAD,
         authorUserId: OWNER,
@@ -253,6 +260,13 @@ describe("shared canonical chat client", () => {
         version: 1,
       }])
       expect(messages).toEqual([{
+        attachments: [{
+          dataBase64: "AQID",
+          mediaType: "image/png",
+          name: "confirmed.png",
+          sha256: "a".repeat(64),
+          sizeBytes: 3,
+        }],
         messageRef: "message.confirmed.1",
         threadRef: THREAD,
         body: "Confirmed body",
@@ -260,6 +274,8 @@ describe("shared canonical chat client", () => {
         updatedAt: NOW,
         version: 2,
       }])
+      expect(Effect.runSync(store.readEntities(personalScope(OWNER))))
+        .not.toContainEqual(expect.objectContaining({ postImageJson: expect.stringContaining("AQID") }))
       expect(JSON.stringify({ threads, messages })).not.toContain(OWNER)
       expect(conversation.personalStatus()).toEqual({
         phase: "live",

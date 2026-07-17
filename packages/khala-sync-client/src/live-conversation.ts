@@ -4,6 +4,7 @@ import {
   ConfirmedChatMessageSchema,
   ConfirmedChatThreadSchema,
   KhalaSyncConversationStatusSchema,
+  MAX_CONFIRMED_CHAT_MESSAGES,
   type KhalaSyncConversation,
   type KhalaSyncConversationStatus,
 } from "./conversation.js"
@@ -78,7 +79,7 @@ export const KhalaConversationLiveSnapshotSchema = Schema.Struct({
   status: KhalaSyncConversationStatusSchema,
   thread: Schema.NullOr(ConfirmedChatThreadSchema),
   messages: Schema.Array(ConfirmedChatMessageSchema).check(
-    Schema.isMaxLength(500),
+    Schema.isMaxLength(MAX_CONFIRMED_CHAT_MESSAGES),
   ),
   timeline: Schema.NullOr(KhalaConversationLiveTimelineSnapshotSchema),
   graphs: ConfirmedLiveAgentGraphsSchema,
@@ -212,7 +213,7 @@ export const openKhalaConversationLive = async (
     return {
       status,
       thread: threads.find(thread => thread.threadRef === options.threadRef) ?? null,
-      messages: messages.slice(-500),
+      messages: messages.slice(-MAX_CONFIRMED_CHAT_MESSAGES),
       timeline,
       graphs: agentGraph?.graphs ?? [],
     }

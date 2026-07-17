@@ -1,6 +1,7 @@
 import {
   CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
+  ChatMessageImageAttachment,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   personalScope,
@@ -33,6 +34,10 @@ const ConfirmedVersionSchema = Schema.Number.check(
   Schema.isGreaterThanOrEqualTo(0),
 )
 
+/** Complete retained mobile transcript window; older history requires a
+ * separately-authorized pagination contract rather than silent unbounded reads. */
+export const MAX_CONFIRMED_CHAT_MESSAGES = 500
+
 export const ConfirmedChatThreadSchema = Schema.Struct({
   threadRef: ConfirmedRefSchema,
   title: Schema.String.check(Schema.isMaxLength(160)),
@@ -49,6 +54,9 @@ export const ConfirmedChatMessageSchema = Schema.Struct({
   messageRef: ConfirmedRefSchema,
   threadRef: ConfirmedRefSchema,
   body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(20_000)),
+  attachments: Schema.optional(Schema.Array(ChatMessageImageAttachment).check(
+    Schema.isMaxLength(4),
+  )),
   createdAt: ConfirmedTimestampSchema,
   updatedAt: ConfirmedTimestampSchema,
   version: ConfirmedVersionSchema,
@@ -150,6 +158,7 @@ const decodeMessages = (
       const message = decodeChatMessageEntity(JSON.parse(row.postImageJson) as unknown)
       if (message.threadId !== threadRef || message.deletedAt !== null) continue
       messages.push({
+        ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
         messageRef: message.messageId,
         threadRef: message.threadId,
         body: message.body,
@@ -164,6 +173,7 @@ const decodeMessages = (
   return messages.sort((left, right) =>
     left.createdAt.localeCompare(right.createdAt) ||
     left.messageRef.localeCompare(right.messageRef))
+    .slice(-MAX_CONFIRMED_CHAT_MESSAGES)
 }
 
 export const createKhalaSyncConversation = (input: Readonly<{
