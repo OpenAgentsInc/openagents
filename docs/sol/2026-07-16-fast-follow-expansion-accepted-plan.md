@@ -989,6 +989,12 @@ evidence, and Day 1 completion remain later packets.
 - baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10 through FF-D1-12; the known AssuranceSpec environment-digest snapshot drift remains outside this packet
 - residual: main-process handler registration, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- landed: `8fd449fa49e02989d0157fd91e3df6af3ce9d67b` on `main`
+- remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
+- residual: main-process handler registration, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
