@@ -395,7 +395,8 @@ or weaken an invariant.
       "docs/teardowns/2026-07-15-codex-app-server-client-support-analysis.md",
       "docs/teardowns/2026-07-15-t3-code-openagents-desktop-full-gap-analysis.md",
       "docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md",
-      "docs/teardowns/2026-07-16-t3-code-opencode-electron-build-update-analysis.md"
+      "docs/teardowns/2026-07-16-t3-code-opencode-electron-build-update-analysis.md",
+      "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md"
     ],
     "lessons": [
       {
