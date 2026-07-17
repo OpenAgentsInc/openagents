@@ -1382,6 +1382,15 @@ completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T17:31:05Z`
 
+### CLAIM-STATUS
+
+- implementation: added an Effect acquisition resource that atomically composes the fixed write/create handler registrations and exposes only one idempotent close
+- privacy/authority proof: registration failures are typed only by bounded stage; native details stay contained; create failure rolls back write; cleanup remains reverse-order and non-projecting
+- focused proof: all 26 composition/handler tests passed; isolated strict compilation and the full Desktop package typecheck passed
+- authority proof: behavior contracts 36/36 and focused ProductSpec 104/104 passed; Fast Follow, Sol, and repository checks are recorded in the packet receipt
+- baseline collision: the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
+- residual: actual `main.ts` call-site composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
