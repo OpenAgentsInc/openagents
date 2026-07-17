@@ -1,0 +1,32 @@
+{
+  "name": "@openagentsinc/fast-follow-spec",
+  "version": "0.1.0",
+  "private": false,
+  "bin": {
+    "fast-follow-spec": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "fixtures",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run packages/fast-follow-spec/test/fast-follow-spec.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:distribution": "node --import tsx scripts/verify-distribution.ts"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

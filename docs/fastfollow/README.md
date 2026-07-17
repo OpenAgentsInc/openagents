@@ -47,6 +47,10 @@ The workspace skill at
 provides the agent operating method. `pnpm run test:fast-follow` validates the
 OpenAgents seed's stable references, source/directive graph, capacity profiles,
 ordered Amp program, Fable strategy binding, and complete teardown coverage.
+The `@openagentsinc/fast-follow-spec` package now owns the normative parser,
+serializer, discovery rules, diagnostics, CLI, and dual identities. Run
+`pnpm run check:fast-follow-spec` for its frozen conformance corpus, root-seed
+validation, typecheck, and clean distribution check.
 
 ## What works in the current checkout
 

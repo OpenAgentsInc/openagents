@@ -1513,6 +1513,16 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/fast-follow-spec:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/forge-protocol:
     dependencies:
       effect:

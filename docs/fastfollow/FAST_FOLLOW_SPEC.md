@@ -416,3 +416,12 @@ The future `@openagentsinc/fast-follow-spec` package should provide:
 Diagnostic codes are API. A change that makes a previously valid document
 invalid must bump `fast_follow_spec_format_version`, freeze the prior corpus,
 and seed the next corpus. A run result never changes the authored spec.
+
+Format 0.1 freezes these parser and discovery diagnostics:
+`missing_frontmatter`, `invalid_frontmatter`, `unsupported_version`,
+`missing_block`, `duplicate_block`, `block_order`, `unknown_block`,
+`invalid_json`, `schema_error`, `path_escape`, `duplicate_id`,
+`dangling_reference`, `discovery_missing`, and `discovery_escape`. Unknown
+frontmatter or typed-block fields remain preserved and intent-bound even when
+a consumer does not interpret them; provenance timestamps are the only fields
+excluded from the versioned canonical intent digest.
