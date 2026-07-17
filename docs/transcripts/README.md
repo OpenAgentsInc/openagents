@@ -1,6 +1,6 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`252`
+This directory contains machine-generated transcripts for episodes `001`-`254`
 of the OpenAgents video corpus, plus occasional clearly marked future-episode
 drafts. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
@@ -27,6 +27,13 @@ Episode [`252`](252.md) extends that ProductSpec-native workroom into
 verified, Observer compiles reviewed obligations into immutable manifests, and
 real QA tools execute them into exact receipts tied back to ProductSpec
 evidence.
+
+Episodes [`253`](253.md)-[`254`](254.md) clear the runway for the Desktop alpha.
+The runtime moves from Bun to vendor-neutral Node with pnpm and Vite Plus, then
+the host cuts over his own work to OpenAgents Desktop and bug-bashes it from
+inside itself: fixing typography while exposing queue replay loops, shared
+composer state, follow-up image failures, restart ambiguity, and the need for a
+trustworthy Full Auto harness.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -60,6 +67,12 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
   know; Observer compiles reviewed obligations; and real QA adapters execute
   them against browser, terminal, and native-window surfaces to emit exact
   Assurance Receipts.
+- Episodes [`253`](253.md)-[`254`](254.md): OpenAgents removes Bun from its
+  production trust path in favor of Node, pnpm, and Vite Plus, then dogfoods the
+  resulting Desktop alpha as the sole coding workroom. The first on-camera
+  self-hosted commit lands while the bash uncovers restart-sensitive queue
+  loops, cross-chat composer leakage, attachment failures, and unclear binary
+  state that must be hardened before release.
 
 ## Complete Episode Index
 
@@ -351,7 +364,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-252 - OAPN, Khala, the OpenAgents Desktop MVP, and Assurance
+### 214-254 - OAPN, Khala, and the OpenAgents Desktop alpha
 
 | Episode | Summary |
 | --- | --- |
@@ -394,6 +407,8 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`250` Ready the Fleet](250.md) | Builds the Desktop Fleet overview, harness-selectable Fable/Codex chat, usage/readiness projections, delegated Codex children, and streaming traces, then turns failures such as invented commands and mislabeled effective models into a demand for typed intents, receipts, and executable owner journeys. |
 | [`251` Desktop MVP Spec](251.md) | Declares the first deployable OpenAgents shape: a Codex-only, local-first Desktop workroom inspired by OpenChamber, with ProductSpec as the native intent and execution unit, visible subagents and evidence, one MVP epic, explicit success metrics, and a clicky power-user UI before broader providers or voice. |
 | [`252` OpenAgents Assurance](252.md) | Extends the ProductSpec evidence loop into a proof-design stack for agent-built software. A coordinated **QA Swarm** drives real browser, terminal, and native-window surfaces and turns discoveries into committed, re-runnable tests with honest CONFIRMED/REFUTED verdicts, videos, accounting, and shareable run views. Introduces **AssuranceSpec** as the framework-neutral record of verification intent and **Observer** as the product that reviews that design, compiles admitted obligations into immutable manifests, and runs them through real QA adapters. Preserves the authority boundary: ProductSpec defines intent and indexes evidence; the workroom executes accepted plans; AssuranceSpec commits how to know; Observer compiles obligations; QA tools execute and emit exact Assurance Receipts. |
+| [`253` Goodbye Bun](253.md) | Removes Bun from the OpenAgents production trust and failure path after contrasting Anthropic ownership with vendor-neutral Node governance. The repo completes its Node, pnpm, and Vite Plus cutover, informed by Effect-heavy OpenCode and T3 Code references, while the episode frames portable, inspectable, plural infrastructure as both an engineering and competitive requirement. |
+| [`254` Bug Bash](254.md) | Cuts the host's own development workflow over from Claude Code and Codex Desktop to the near-alpha OpenAgents Desktop app, then uses the app to improve itself. The first on-camera self-hosted commit fixes user-state typography, while live dogfooding exposes queued-message replay loops, per-chat composer-state leaks, follow-up image attachment failures, restart/binary ambiguity, and the release-critical gap between a promising Full Auto harness and dependable operation. |
 
 ## Major Themes
 
@@ -481,7 +496,7 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 **OpenAgents Desktop, subagents, Fleet, ProductSpec, and Assurance:**
 [`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
-[`251`](251.md) -> [`252`](252.md).
+[`251`](251.md) -> [`252`](252.md) -> [`254`](254.md).
 
 ## Maintenance Notes
 
