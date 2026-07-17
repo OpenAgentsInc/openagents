@@ -105,6 +105,13 @@ describe("ChatMessageEntity image attachments (CUT-16)", () => {
 })
 
 describe("ChatThreadEntity.repoBinding (MM-B2, #8472)", () => {
+  test("round-trips active, archived, and deleted lifecycle states", () => {
+    for (const status of ["active", "archived", "deleted"] as const) {
+      expect(encodeChatThreadEntity(decodeChatThreadEntity({ ...baseThreadJson, status })).status)
+        .toBe(status)
+    }
+  })
+
   test("decodes a legacy row with no repoBinding key at all (backward compatibility)", () => {
     const thread = decodeChatThreadEntity(baseThreadJson)
     expect(thread.repoBinding).toBeUndefined()

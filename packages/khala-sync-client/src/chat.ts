@@ -19,6 +19,7 @@ import type { ClientMutator } from "./overlay.js"
 export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
 export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
 export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
+export const CHAT_SET_THREAD_STATUS_MUTATOR_NAME = "chat.setThreadStatus"
 
 export type ChatCreateThreadArgs = Readonly<{
   threadId: string
@@ -35,6 +36,15 @@ export type ChatAppendMessageArgs = Readonly<{
 export type ChatRenameThreadArgs = Readonly<{
   threadId: string
   title: string
+  expectedStatus?: ChatThreadEntity["status"]
+  expectedUpdatedAt?: string
+}>
+
+export type ChatSetThreadStatusArgs = Readonly<{
+  threadId: string
+  expectedStatus: ChatThreadEntity["status"]
+  expectedUpdatedAt: string
+  status: ChatThreadEntity["status"]
 }>
 
 export type ChatClientMutatorOptions = Readonly<{
@@ -46,6 +56,7 @@ export type ChatClientMutators = Readonly<{
   appendMessage: ClientMutator<ChatAppendMessageArgs>
   createThread: ClientMutator<ChatCreateThreadArgs>
   renameThread: ClientMutator<ChatRenameThreadArgs>
+  setThreadStatus: ClientMutator<ChatSetThreadStatusArgs>
 }>
 
 const defaultNowIso = (): string => new Date().toISOString()
@@ -66,7 +77,10 @@ export const compareChatThreadsForSidebar = (
 
 export const chatThreadsForSidebar = (
   threads: Iterable<ChatThreadEntity>,
-  options: { readonly searchTerm?: string | null } = {},
+  options: {
+    readonly searchTerm?: string | null
+    readonly statuses?: ReadonlyArray<ChatThreadEntity["status"]>
+  } = {},
 ): Array<ChatThreadEntity> => {
   const byThreadId = new Map<string, ChatThreadEntity>()
   for (const thread of threads) {
@@ -76,7 +90,9 @@ export const chatThreadsForSidebar = (
     }
   }
   const searchTerm = options.searchTerm?.trim().toLowerCase() ?? ""
+  const statuses = new Set(options.statuses ?? ["active"])
   return [...byThreadId.values()]
+    .filter(thread => statuses.has(thread.status))
     .filter(thread => searchTerm === "" ||
       thread.title.toLowerCase().includes(searchTerm) ||
       thread.threadId.toLowerCase().includes(searchTerm))
@@ -147,14 +163,17 @@ export const chatRenameThreadClientMutator = (
   options: ChatClientMutatorOptions,
 ): ClientMutator<ChatRenameThreadArgs> => ({
   apply: (args, view) => {
+    if (normalizeChatTitle(args.title) === "") return []
     const currentJson = view.get(
       personalScope(options.ownerUserId),
       CHAT_THREAD_ENTITY_TYPE,
       args.threadId,
     )
-    const current = currentJson === undefined
-      ? baselineChatThread(args, options)
-      : decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    if (currentJson === undefined) return []
+    const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    if (current.status === "deleted" ||
+        (args.expectedStatus !== undefined && current.status !== args.expectedStatus) ||
+        (args.expectedUpdatedAt !== undefined && current.updatedAt !== args.expectedUpdatedAt)) return []
     return threadEffects(decodeChatThreadEntity({
       ...current,
       title: normalizeChatTitle(args.title),
@@ -162,6 +181,35 @@ export const chatRenameThreadClientMutator = (
     }))
   },
   name: MutatorName.make(CHAT_RENAME_THREAD_MUTATOR_NAME),
+})
+
+const legalStatusTransition = (
+  from: ChatThreadEntity["status"],
+  to: ChatThreadEntity["status"],
+): boolean => (from === "active" && (to === "archived" || to === "deleted")) ||
+  (from === "archived" && (to === "active" || to === "deleted"))
+
+export const chatSetThreadStatusClientMutator = (
+  options: ChatClientMutatorOptions,
+): ClientMutator<ChatSetThreadStatusArgs> => ({
+  apply: (args, view) => {
+    const currentJson = view.get(
+      personalScope(options.ownerUserId),
+      CHAT_THREAD_ENTITY_TYPE,
+      args.threadId,
+    )
+    if (currentJson === undefined) return []
+    const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    if (current.status !== args.expectedStatus ||
+        current.updatedAt !== args.expectedUpdatedAt ||
+        !legalStatusTransition(current.status, args.status)) return []
+    return threadEffects(decodeChatThreadEntity({
+      ...current,
+      status: args.status,
+      updatedAt: (options.now ?? defaultNowIso)(),
+    }))
+  },
+  name: MutatorName.make(CHAT_SET_THREAD_STATUS_MUTATOR_NAME),
 })
 
 export const chatAppendMessageClientMutator = (
@@ -173,6 +221,7 @@ export const chatAppendMessageClientMutator = (
       view.get(threadScope(args.threadId), CHAT_THREAD_ENTITY_TYPE, args.threadId)
     if (currentJson === undefined) return []
     const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    if (current.status !== "active") return []
     const now = (options.now ?? defaultNowIso)()
     const message = decodeChatMessageEntity({
       ...(args.attachments === undefined ? {} : { attachments: args.attachments }),
@@ -210,4 +259,5 @@ export const createChatClientMutators = (
   appendMessage: chatAppendMessageClientMutator(options),
   createThread: chatCreateThreadClientMutator(options),
   renameThread: chatRenameThreadClientMutator(options),
+  setThreadStatus: chatSetThreadStatusClientMutator(options),
 })

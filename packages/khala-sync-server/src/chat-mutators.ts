@@ -38,12 +38,15 @@ import { defineMutator } from "./push-engine.js"
 export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
 export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
 export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
+export const CHAT_SET_THREAD_STATUS_MUTATOR_NAME = "chat.setThreadStatus"
 export const CHAT_BIND_THREAD_REPO_MUTATOR_NAME = "chat.bindThreadRepo"
 export const CHAT_PIN_CODEX_CONTINUITY_MUTATOR_NAME = "chat.pinCodexContinuity"
 
 export const CHAT_SCOPE_REJECTION = "unauthorized_scope"
 export const CHAT_THREAD_EXISTS_REJECTION = "thread_exists"
 export const CHAT_THREAD_NOT_FOUND_REJECTION = "thread_not_found"
+export const CHAT_THREAD_STATE_CONFLICT_REJECTION = "thread_state_conflict"
+export const CHAT_TITLE_INVALID_REJECTION = "title_invalid"
 export const CHAT_MESSAGE_EXISTS_REJECTION = "message_exists"
 
 const ChatRefField = S.String.check(
@@ -75,8 +78,18 @@ type AppendMessageArgs = typeof AppendMessageArgs.Type
 const RenameThreadArgs = S.Struct({
   threadId: ChatRefField,
   title: ChatTitleField,
+  expectedStatus: S.optional(S.Literals(["active", "archived", "deleted"])),
+  expectedUpdatedAt: S.optional(S.String.check(S.isMaxLength(64))),
 })
 type RenameThreadArgs = typeof RenameThreadArgs.Type
+
+const SetThreadStatusArgs = S.Struct({
+  threadId: ChatRefField,
+  expectedStatus: S.Literals(["active", "archived", "deleted"]),
+  expectedUpdatedAt: S.String.check(S.isMaxLength(64)),
+  status: S.Literals(["active", "archived", "deleted"]),
+})
+type SetThreadStatusArgs = typeof SetThreadStatusArgs.Type
 
 const BindThreadRepoArgs = S.Struct({
   threadId: ChatRefField,
@@ -104,6 +117,11 @@ export const decodeChatRenameThreadArgs = (
   argsJson: string,
 ): RenameThreadArgs =>
   S.decodeUnknownSync(RenameThreadArgs)(JSON.parse(argsJson) as unknown)
+
+export const decodeChatSetThreadStatusArgs = (
+  argsJson: string,
+): SetThreadStatusArgs =>
+  S.decodeUnknownSync(SetThreadStatusArgs)(JSON.parse(argsJson) as unknown)
 
 export const decodeChatBindThreadRepoArgs = (
   argsJson: string,
@@ -294,6 +312,13 @@ const rejectForeignScope = (ctx: MutatorContext): MutationResult =>
     "this chat thread scope belongs to a different user",
   )
 
+const rejectThreadState = (ctx: MutatorContext): MutationResult =>
+  reject(ctx, CHAT_THREAD_STATE_CONFLICT_REJECTION, "this chat thread state changed")
+
+const legalStatusTransition = (from: string, to: string): boolean =>
+  (from === "active" && (to === "archived" || to === "deleted")) ||
+  (from === "archived" && (to === "active" || to === "deleted"))
+
 const ensureThreadScopeOwner = async (
   ctx: MutatorContext,
   threadId: string,
@@ -409,6 +434,7 @@ export const chatAppendMessageMutator: MutatorDefinition =
         )
       }
       if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+      if (thread.status !== "active") return rejectThreadState(ctx)
 
       const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
       if (ownerRejection !== null) return ownerRejection
@@ -478,6 +504,10 @@ export const chatRenameThreadMutator: MutatorDefinition =
   defineMutator<RenameThreadArgs>({
     decodeArgs: decodeChatRenameThreadArgs,
     execute: async (args, ctx) => {
+      const title = normalizeTitle(args.title)
+      if (title === "") {
+        return reject(ctx, CHAT_TITLE_INVALID_REJECTION, "a chat thread title is required")
+      }
       const thread = await readThreadForUpdate(ctx, args.threadId)
       if (thread === null) {
         return reject(
@@ -487,6 +517,11 @@ export const chatRenameThreadMutator: MutatorDefinition =
         )
       }
       if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+      if (thread.status === "deleted" ||
+          (args.expectedStatus !== undefined && thread.status !== args.expectedStatus) ||
+          (args.expectedUpdatedAt !== undefined && thread.updated_at !== args.expectedUpdatedAt)) {
+        return rejectThreadState(ctx)
+      }
 
       const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
       if (ownerRejection !== null) return ownerRejection
@@ -494,7 +529,7 @@ export const chatRenameThreadMutator: MutatorDefinition =
       const nowIso = await transactionNowIso(ctx)
       const updatedThreads: Array<ChatThreadRow> = await ctx.writer.sql`
         UPDATE khala_sync_chat_threads
-        SET title = ${normalizeTitle(args.title)},
+        SET title = ${title},
             updated_at = ${nowIso}
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
@@ -518,12 +553,46 @@ export const chatRenameThreadMutator: MutatorDefinition =
     name: MutatorName.make(CHAT_RENAME_THREAD_MUTATOR_NAME),
   })
 
+export const chatSetThreadStatusMutator: MutatorDefinition =
+  defineMutator<SetThreadStatusArgs>({
+    decodeArgs: decodeChatSetThreadStatusArgs,
+    execute: async (args, ctx) => {
+      const thread = await readThreadForUpdate(ctx, args.threadId)
+      if (thread === null) {
+        return reject(ctx, CHAT_THREAD_NOT_FOUND_REJECTION, "this chat thread does not exist")
+      }
+      if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+      const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
+      if (ownerRejection !== null) return ownerRejection
+      if (thread.status !== args.expectedStatus ||
+          thread.updated_at !== args.expectedUpdatedAt ||
+          !legalStatusTransition(thread.status, args.status)) return rejectThreadState(ctx)
+      const nowIso = await transactionNowIso(ctx)
+      const updatedThreads: Array<ChatThreadRow> = await ctx.writer.sql`
+        UPDATE khala_sync_chat_threads
+        SET status = ${args.status}, updated_at = ${nowIso}
+        WHERE thread_id = ${args.threadId}
+        RETURNING thread_id, owner_user_id, title, status, message_count,
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
+      `
+      const updated = updatedThreads[0]
+      if (updated === undefined) throw new Error("chat thread disappeared during lifecycle update")
+      await appendThreadEntityChanges(ctx, threadEntityFromRow(updated))
+      return new MutationResult({ mutationId: ctx.mutationId, status: "applied" })
+    },
+    name: MutatorName.make(CHAT_SET_THREAD_STATUS_MUTATOR_NAME),
+  })
+
 /** Server side of MM-B2 (#8472)'s mobile repo picker. The mobile client has
  * applied this optimistically on-device since #8472 landed; this mutator is
  * what makes the binding durable server-side so it survives across
  * devices/sessions and reaches the org-cloud executor (#8473+). `repo: null`
  * explicitly clears a binding (distinct from a thread that was never bound,
- * which reads the same way — see `repoBindingFromRow`). */
+ * and from an archived or deleted thread). */
 export const chatBindThreadRepoMutator: MutatorDefinition =
   defineMutator<BindThreadRepoArgs>({
     decodeArgs: decodeChatBindThreadRepoArgs,
@@ -537,6 +606,7 @@ export const chatBindThreadRepoMutator: MutatorDefinition =
         )
       }
       if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+      if (thread.status !== "active") return rejectThreadState(ctx)
 
       const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
       if (ownerRejection !== null) return ownerRejection
@@ -588,6 +658,7 @@ export const chatPinCodexContinuityMutator: MutatorDefinition =
         )
       }
       if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+      if (thread.status !== "active") return rejectThreadState(ctx)
 
       const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
       if (ownerRejection !== null) return ownerRejection
@@ -627,6 +698,7 @@ export const chatMutators: ReadonlyArray<MutatorDefinition> = [
   chatCreateThreadMutator,
   chatAppendMessageMutator,
   chatRenameThreadMutator,
+  chatSetThreadStatusMutator,
   chatBindThreadRepoMutator,
   chatPinCodexContinuityMutator,
 ]

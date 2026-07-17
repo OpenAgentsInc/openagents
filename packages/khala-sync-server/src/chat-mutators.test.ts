@@ -22,8 +22,10 @@ import {
   CHAT_CREATE_THREAD_MUTATOR_NAME,
   CHAT_MESSAGE_EXISTS_REJECTION,
   CHAT_RENAME_THREAD_MUTATOR_NAME,
+  CHAT_SET_THREAD_STATUS_MUTATOR_NAME,
   CHAT_SCOPE_REJECTION,
   CHAT_THREAD_NOT_FOUND_REJECTION,
+  CHAT_THREAD_STATE_CONFLICT_REJECTION,
   chatMutators,
 } from "./chat-mutators.js"
 import { logPage } from "./read-service.js"
@@ -90,6 +92,7 @@ describe.skipIf(!hasLocalPostgres())(
         databaseUrl: pg.urlFor("khala_sync_chat"),
       })
       expect(result.applied).toContain("0018_owner_private_chat.sql")
+      expect(result.applied).toContain("0072_chat_thread_lifecycle.sql")
       sql = SQL({ url: pg.urlFor("khala_sync_chat"), max: 10 })
     })
 
@@ -193,6 +196,109 @@ describe.skipIf(!hasLocalPostgres())(
       expect(threadRows[0]!.title).toBe("Renamed thread")
       expect(Number(threadRows[0]!.message_count)).toBe(1)
       expect(threadRows[0]!.last_message_at).not.toBeNull()
+    })
+
+    test("archives, restores, and tombstones with exact state reconciliation", async () => {
+      const client = freshClient()
+      const threadId = "chat-thread.lifecycle.1"
+      const create = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+          threadId,
+          title: "Lifecycle",
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(create.results[0]?.status).toBe("applied")
+
+      const state = async (): Promise<{ status: string; updated_at: string }> => {
+        const rows: Array<{ status: string; updated_at: string }> = await sql`
+          SELECT status, updated_at FROM khala_sync_chat_threads
+          WHERE thread_id = ${threadId}
+        `
+        return rows[0]!
+      }
+      const initial = await state()
+      const archive = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(2, CHAT_SET_THREAD_STATUS_MUTATOR_NAME, {
+          expectedStatus: "active",
+          expectedUpdatedAt: initial.updated_at,
+          status: "archived",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(archive.results[0]?.status).toBe("applied")
+      const archived = await state()
+      expect(archived.status).toBe("archived")
+
+      const append = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(3, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+          body: "must remain immutable while archived",
+          messageId: "chat-message.lifecycle.blocked",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(append.results[0]).toMatchObject({
+        errorCode: CHAT_THREAD_STATE_CONFLICT_REJECTION,
+        status: "rejected",
+      })
+
+      const staleDelete = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(4, CHAT_SET_THREAD_STATUS_MUTATOR_NAME, {
+          expectedStatus: "active",
+          expectedUpdatedAt: initial.updated_at,
+          status: "deleted",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(staleDelete.results[0]?.errorCode).toBe(CHAT_THREAD_STATE_CONFLICT_REJECTION)
+      expect((await state()).status).toBe("archived")
+
+      const restore = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(5, CHAT_SET_THREAD_STATUS_MUTATOR_NAME, {
+          expectedStatus: "archived",
+          expectedUpdatedAt: archived.updated_at,
+          status: "active",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(restore.results[0]?.status).toBe("applied")
+      const restored = await state()
+      const deletion = await executePush({
+        registry,
+        request: pushRequest(client, [envelope(6, CHAT_SET_THREAD_STATUS_MUTATOR_NAME, {
+          expectedStatus: "active",
+          expectedUpdatedAt: restored.updated_at,
+          status: "deleted",
+          threadId,
+        })]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(deletion.results[0]?.status).toBe("applied")
+      expect((await state()).status).toBe("deleted")
+
+      const ownerLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 20,
+        scope: personalScope(client.userId),
+      })
+      expect(JSON.stringify(ownerLog.entries)).not.toContain("must remain immutable")
+      expect(ownerLog.entries.some(entry => entry.postImageJson?.includes('"status":"deleted"') === true))
+        .toBe(true)
     })
 
     test("append verifies image bytes before writing any message or changelog", async () => {

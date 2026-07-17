@@ -164,7 +164,7 @@ export class ChatThreadEntity extends S.Class<ChatThreadEntity>(
   threadId: ChatPublicRef,
   ownerUserId: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
   title: ChatTitle,
-  status: S.Literal("active"),
+  status: S.Literals(["active", "archived", "deleted"]),
   messageCount: S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0)),
   lastMessageAt: S.NullOr(ChatIsoTimestamp),
   createdAt: ChatIsoTimestamp,

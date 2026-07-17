@@ -15,6 +15,7 @@ import {
 import { describe, expect, test } from "vite-plus/test"
 import { Effect } from "effect"
 import {
+  chatThreadsForSidebar,
   createChatClientMutators,
 } from "./chat.js"
 import { createKhalaSyncConversation } from "./conversation.js"
@@ -95,6 +96,50 @@ describe("shared canonical chat client", () => {
       expect(JSON.parse(renamed.list("chat_thread")[0]!.postImageJson)).toMatchObject({
         title: "Owner title",
       })
+    } finally {
+      Effect.runSync(store.close())
+    }
+  })
+
+  test("admits only exact active/archive/delete transitions and excludes tombstones from the sidebar", () => {
+    const store = openKhalaSyncStore(":memory:")
+    try {
+      let now = NOW
+      const mutators = createChatClientMutators({ ownerUserId: OWNER, now: () => now })
+      const overlay = Effect.runSync(createOverlay(store, Object.values(mutators)))
+      Effect.runSync(overlay.mutate(mutators.createThread, { threadId: THREAD, title: "Lifecycle" }))
+      now = "2026-07-10T20:01:00.000Z"
+      Effect.runSync(overlay.mutate(mutators.setThreadStatus, {
+        threadId: THREAD,
+        expectedStatus: "active",
+        expectedUpdatedAt: NOW,
+        status: "archived",
+      }))
+      const archived = JSON.parse(Effect.runSync(overlay.read(personalScope(OWNER)))
+        .list("chat_thread")[0]!.postImageJson)
+      expect(archived.status).toBe("archived")
+
+      now = "2026-07-10T20:02:00.000Z"
+      Effect.runSync(overlay.mutate(mutators.setThreadStatus, {
+        threadId: THREAD,
+        expectedStatus: "active",
+        expectedUpdatedAt: NOW,
+        status: "deleted",
+      }))
+      expect(JSON.parse(Effect.runSync(overlay.read(personalScope(OWNER)))
+        .list("chat_thread")[0]!.postImageJson).status).toBe("archived")
+
+      Effect.runSync(overlay.mutate(mutators.setThreadStatus, {
+        threadId: THREAD,
+        expectedStatus: "archived",
+        expectedUpdatedAt: "2026-07-10T20:01:00.000Z",
+        status: "deleted",
+      }))
+      const deleted = decodeChatThreadEntity(JSON.parse(Effect.runSync(overlay.read(personalScope(OWNER)))
+        .list("chat_thread")[0]!.postImageJson))
+      expect(deleted.status).toBe("deleted")
+      expect(chatThreadsForSidebar([deleted])).toEqual([])
+      expect(chatThreadsForSidebar([deleted], { statuses: ["deleted"] })).toEqual([deleted])
     } finally {
       Effect.runSync(store.close())
     }
