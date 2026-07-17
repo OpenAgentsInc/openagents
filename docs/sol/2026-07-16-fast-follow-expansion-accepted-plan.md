@@ -1240,6 +1240,69 @@ evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T16:47:00Z`
 - residual: actual `main.ts` composition, renderer create-then-write command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-17 — Desktop canonical-export create-then-write workflow
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-16. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only, renderer-safe Effect workflow that composes the
+already-landed sandboxed create and write methods while leaving Electron
+composition and pixels untouched.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-workflow.ts`
+- `apps/openagents-desktop/src/thread-export-workflow.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-17-desktop-thread-export-workflow-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-15's exact owner-only creation request/result, FF-D1-12's
+bounded write request/result, create-before-write ordering, artifact identity,
+and renderer-safe outcome projection. Existing `main.ts`, preload, renderer,
+history, shell, Sync, provider, file transport, and disclosure-audience
+contracts remain unchanged.
+
+Required behavior:
+
+- malformed or broader creation input fails before either host operation;
+- creation rejection stops the workflow without invoking write, and thrown or
+  malformed creation outcomes collapse to bounded `command_unavailable`;
+- stored or unchanged creation passes only the decoded canonical receipt into
+  write, never caller-selected events, paths, bytes, filesystem, process, or
+  provider authority;
+- cancellation and bounded write rejection remain distinct, while thrown or
+  malformed write outcomes collapse to `transport_unavailable`;
+- a purported written outcome must match the created receipt's exact artifact
+  ref and digest or fail closed; and
+- the workflow result exposes no receipt, event payload, authority relation,
+  path, bytes, native error, broader disclosure, deployment, release, or
+  acceptance claim.
+
+Proof: focused workflow/create/write tests; isolated TypeScript compile; Fast
+Follow, behavior-contract, ProductSpec, Sol, and repository-required checks.
+Known current-main Desktop lifecycle typecheck and AssuranceSpec
+environment-digest snapshot failures remain baseline collisions unless
+separately resolved on `main`.
+
+Close rule: this packet closes only the tested renderer-safe create-then-write
+workflow. Actual `main.ts` composition, renderer command/pixels, broader
+disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion
+remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-17-20260717`
+- base: `600fcb58e653878b35de1fe505590c5e572c9daf`
+- worktree/branch: `openagents-ff-d1-17` / detached `origin/main`
+- scope: renderer-safe owner-only canonical-export create-then-write Effect workflow
+- paths: the FF-D1-17 owned implementation paths above
+- hot files: new Desktop workflow/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact create-before-write ordering, receipt-only delegation, artifact identity binding, and bounded renderer-safe results
+- dependencies: FF-D1-16 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T17:02:41Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
