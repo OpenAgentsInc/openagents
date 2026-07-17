@@ -1626,6 +1626,15 @@ completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T18:33:54Z`
 
+### CLAIM-STATUS
+
+- implementation: added the fixed-channel trusted-sender visibility handler seam with host-owned receipt metadata and exact request/result decoding
+- privacy/authority proof: only a decoded ref-only intent plus host-supplied receipt reference and observation time reach policy application; no raw content, path, native error, publication, membership, administrator, transport, process, or provider authority escapes
+- focused proof: all 24 handler/bridge/store/disclosure tests passed and the full Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage still awaits the separately owned committed seed update for the mobile-component teardown
+- residual: actual `main.ts` composition, renderer command/pixels, audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
