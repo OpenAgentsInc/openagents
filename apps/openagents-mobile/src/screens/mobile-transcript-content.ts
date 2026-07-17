@@ -164,9 +164,10 @@ const transcriptSegments = (source: string): ReadonlyArray<TranscriptSegment> =>
   return segments.slice(0, MAX_BLOCKS)
 }
 
-export const mobileAssistantContentViews = (
+export const mobileRichContentViews = (
   key: string,
   source: string,
+  copyAccessibilityLabel: string,
 ): ReadonlyArray<View> => {
   const bounded = boundedSource(source)
   const content = transcriptSegments(bounded).flatMap((segment, index): ReadonlyArray<View> => {
@@ -209,9 +210,14 @@ export const mobileAssistantContentViews = (
     CopyButton({
       key: `${key}-copy-message`,
       content: bounded,
-      accessibilityLabel: "Copy assistant message",
+      accessibilityLabel: copyAccessibilityLabel,
       size: "sm",
       variant: "ghost",
     }),
   ]
 }
+
+export const mobileAssistantContentViews = (
+  key: string,
+  source: string,
+): ReadonlyArray<View> => mobileRichContentViews(key, source, "Copy assistant message")

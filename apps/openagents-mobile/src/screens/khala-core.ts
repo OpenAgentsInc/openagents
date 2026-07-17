@@ -25,6 +25,7 @@ import {
   type LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
 import { mobileAssistantContentViews } from "./mobile-transcript-content"
+import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   renderMobileWorkLog,
   type MobileWorkGroup,
@@ -172,15 +173,6 @@ export const MOBILE_AGENT_GRAPH_MAX_ROWS = 40
 export const KHALA_TURN_FAILED_TEXT =
   "Khala could not respond just now. Check your connection and send that again."
 
-const interactionStatusLabel = (status: KhalaInteractionStatus): string => {
-  switch (status) {
-    case "pending": return "Needs your response"
-    case "resolved": return "Resolved"
-    case "expired": return "Expired"
-    case "revoked": return "Access revoked"
-  }
-}
-
 const interactionBody = (
   state: KhalaState,
   entry: KhalaEntry,
@@ -223,82 +215,12 @@ const interactionBody = (
     ])]
   }
   const submitting = state.interactionSubmittingRef === interaction.interactionRef
-  const actionable = interaction.status === "pending" &&
-    state.interactionActionsAvailable && !submitting
   const selections = state.interactionSelections[interaction.interactionRef] ?? {}
-  const questionViews = interaction.kind !== "provider_question" ? [] : interaction.questions.flatMap(question => [
-    Text({
-      key: `${entry.key}-${question.questionRef}-prompt`,
-      content: question.displayText,
-      variant: "body",
-      color: "textPrimary",
-    }),
-    ...question.options.flatMap(option => [
-      Button({
-        key: `${entry.key}-${question.questionRef}-${option.optionRef}`,
-        label: option.label,
-        variant: selections[question.questionRef]?.includes(option.optionRef)
-          ? "secondary"
-          : "ghost",
-        disabled: !actionable,
-        onPress: IntentRef("RuntimeInteractionOptionToggled", StaticPayload({
-          interactionRef: interaction.interactionRef,
-          questionRef: question.questionRef,
-          optionRef: option.optionRef,
-          multiSelect: question.multiSelect,
-        })),
-        style: { width: "full", ...mobileInteractiveStyle(accessibility) },
-      }),
-      ...(option.description === undefined ? [] : [Text({
-        key: `${entry.key}-${question.questionRef}-${option.optionRef}-description`,
-        content: option.description,
-        variant: "caption",
-        color: "textMuted",
-      })]),
-    ]),
-  ])
-  const everyQuestionAnswered = interaction.questions.every(question =>
-    (selections[question.questionRef]?.length ?? 0) > 0)
-  const actionViews = interaction.status !== "pending" ? []
-    : interaction.kind === "provider_question"
-      ? [Button({
-          key: `${entry.key}-submit-answers`,
-          label: submitting ? "Submitting…" : "Submit answers",
-          variant: "primary",
-          disabled: !actionable || !everyQuestionAnswered,
-          onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({
-            interactionRef: interaction.interactionRef,
-            turnRef: interaction.turnRef,
-            kind: interaction.kind,
-          })),
-          style: mobileInteractiveStyle(accessibility),
-        })]
-      : interaction.kind === "tool_approval"
-        ? [
-            Button({
-              key: `${entry.key}-approve`, label: submitting ? "Submitting…" : "Approve",
-              variant: "primary", disabled: !actionable,
-              onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "approve" })),
-              style: mobileInteractiveStyle(accessibility),
-            }),
-            Button({
-              key: `${entry.key}-deny`, label: "Deny", variant: "secondary", disabled: !actionable,
-              onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "deny" })),
-              style: mobileInteractiveStyle(accessibility),
-            }),
-          ]
-        : [
-            Button({ key: `${entry.key}-accept`, label: submitting ? "Submitting…" : "Accept plan", variant: "primary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "accept" })), style: mobileInteractiveStyle(accessibility) }),
-            Button({ key: `${entry.key}-changes`, label: "Request changes", variant: "secondary", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "request_changes" })), style: mobileInteractiveStyle(accessibility) }),
-            Button({ key: `${entry.key}-replan`, label: "Replan", variant: "ghost", disabled: !actionable, onPress: IntentRef("RuntimeInteractionDecisionSubmitted", StaticPayload({ interactionRef: interaction.interactionRef, turnRef: interaction.turnRef, kind: interaction.kind, outcome: "replan" })), style: mobileInteractiveStyle(accessibility) }),
-          ]
-  return [
-    Text({ key: `${entry.key}-title`, content: interaction.title, variant: "heading", color: "textPrimary" }),
-    Text({ key: `${entry.key}-status`, content: interactionStatusLabel(interaction.status), variant: "caption", color: interaction.status === "expired" || interaction.status === "revoked" ? "warning" : "textMuted" }),
-    Text({ key: `${entry.key}-prompt`, content: interaction.prompt, variant: "body", color: "textPrimary" }),
-    ...questionViews,
-    ...actionViews,
-  ]
+  return [renderMobileInteractionCard(entry.key, interaction, {
+    selections,
+    submitting,
+    actionsAvailable: state.interactionActionsAvailable,
+  }, accessibility)]
 }
 
 const runtimeControlLabel = (

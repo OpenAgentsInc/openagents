@@ -777,21 +777,21 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       ...selection(host), threads: [pending], activeThread: pending,
     } })
     const initial = JSON.stringify(renderContentView(program.initialState))
-    expect(initial).toContain("Needs your response")
+    expect(initial).toContain("Input needed")
     expect(initial).toContain("Fast focused suite")
-    expect(initial).toContain('"label":"Submit answers","variant":"primary","disabled":true')
+    expect(initial).toContain('"label":"Submit answers","variant":"primary","loading":false,"block":true,"disabled":true')
 
     program.khala.toggleInteractionOption({ interactionRef: "interaction.mobile.question", questionRef: "question.tests", optionRef: "option.unit", multiSelect: true })
     program.khala.toggleInteractionOption({ interactionRef: "interaction.mobile.question", questionRef: "question.target", optionRef: "option.mobile", multiSelect: false })
     await Effect.runPromise(settle)
     const selected = await Effect.runPromise(lastState(program))
-    expect(JSON.stringify(renderContentView(selected))).toContain('"label":"Submit answers","variant":"primary","disabled":false')
+    expect(JSON.stringify(renderContentView(selected))).toContain('"label":"Submit answers","variant":"primary","loading":false,"block":true,"disabled":false')
 
     program.khala.submitInteractionDecision({ interactionRef: "interaction.mobile.question", turnRef: "turn.mobile.question", kind: "provider_question" })
     await Effect.runPromise(settle)
     const submitting = await Effect.runPromise(lastState(program))
     expect(submitting.khala.interactionSubmittingRef).toBe("interaction.mobile.question")
-    expect(JSON.stringify(renderContentView(submitting))).toContain("Submitting…")
+    expect(JSON.stringify(renderContentView(submitting))).toContain("Submitting answers…")
     expect(decisions).toMatchObject([{ decision: { kind: "provider_question", answers: [
       { questionRef: "question.tests", optionRefs: ["option.unit"] },
       { questionRef: "question.target", optionRefs: ["option.mobile"] },
@@ -801,7 +801,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     await Effect.runPromise(settle)
     const confirmed = await Effect.runPromise(lastState(program))
     const confirmedView = JSON.stringify(renderContentView(confirmed))
-    expect(confirmedView).toContain("Resolved")
+    expect(confirmedView).toContain("Decision confirmed")
     expect(confirmedView).not.toContain("Submit answers")
   })
 

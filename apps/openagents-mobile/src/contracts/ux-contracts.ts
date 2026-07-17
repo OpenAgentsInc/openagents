@@ -5,8 +5,52 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.2",
+    version: "2026-07-17.3",
     contracts: [
+      {
+        contractId: "openagents_mobile.transcript.runtime_interaction_cards.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile transcript interactions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Provider questions, tool approvals, and plan reviews appear inline as distinct compact transcript cards with clear pending, submitting, resolved, expired, and revoked states; exact request-scoped actions; accessible touch targets; selected-answer and validation feedback; and bounded rich plan rendering.",
+        authorityBoundary:
+          "The cards present confirmed exact-thread interaction authority and dispatch the existing typed decision intents only. Tool permission is request-scoped allow-once or deny; no session grant is invented. Questions support only the choices provided by authority, and free text is absent unless a future authority schema explicitly permits it. Terminal cards are read-only.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-interaction-card.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-a3",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/PendingApprovalCard.tsx",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/PendingUserInputCard.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_runtime_interaction_card_matrix",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-interaction-card.test.ts",
+            description:
+              "Proves request-scoped approval, question modes/descriptions/selections/validation/submission, plan Markdown and exact outcomes, 44pt targets, and read-only terminal states.",
+          },
+          {
+            id: "mobile_runtime_interaction_card_authority",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves inline cards retain confirmed-only decision settlement and exact answer transport through the Home program.",
+          },
+        ],
+        verification:
+          "Interaction-card and authoritative Home tests, accessibility oracle, mobile typecheck, behavior-contract checks, and repository checks; physical screen-reader evidence remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.transcript.grouped_runtime_work.v1",
         state: "enforced",

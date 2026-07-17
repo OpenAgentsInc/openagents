@@ -226,3 +226,74 @@ remains `T3M-A3`; attachment and scroll/history parity remains `T3M-A4`.
   check`
 - residual: `T3M-A3` compact approval/input/plan cards is the next ordered
   packet; full mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-A3
+
+Outcome: give each authoritative runtime interaction a compact, readable,
+kind-specific transcript card without changing decision authority.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-interaction-card.ts`
+- `apps/openagents-mobile/src/screens/mobile-transcript-content.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/tests/mobile-interaction-card.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: runtime-interaction presentation, existing typed decision
+intents, mobile behavior-contract registry, and Sol manifest. This packet does
+not version the runtime-interaction schema or add a new decision outcome.
+
+Required behavior:
+
+- tool approval, provider input, and plan review use distinct compact card
+  hierarchy, status tone, disclosure copy, and action emphasis;
+- approvals summarize the bounded requested operation, state that allowance is
+  request-scoped, and distinguish allow-once from deny without inventing a
+  session-wide grant;
+- provider questions group prompts, distinguish single from multiple choice,
+  show option descriptions, selected state, validation, and submitting state;
+  free text appears only when future authority explicitly allows it;
+- plans render as readable bounded Markdown with anchored accept,
+  request-changes, and replan actions;
+- pending, submitting, resolved, expired, and revoked states are complete;
+  terminal states are read-only and show a confirmed audit summary without
+  displaying raw refs;
+- all actions retain exact interaction/thread/turn/kind/idempotency authority,
+  minimum touch targets, labels, and disabled/loading semantics.
+
+Proof: focused interaction-card state matrix, existing authoritative decision
+journeys, accessibility, behavior contracts, mobile typecheck, and
+repository-required `pnpm run check`.
+
+Close rule: this closes interaction-card presentation only. Attachments,
+viewer, streaming, and scroll/history parity remain `T3M-A4`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-a3-20260717`
+- base: `f80b770d815154d33c6bf09649671e653ae3b293`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-A3` compact authoritative approval/input/plan cards
+- paths: the `T3M-A3` owned paths above
+- hot files: interaction renderer, behavior registry, and Sol manifest
+- hot contracts: existing runtime-interaction decision intent and terminal-state presentation
+- verification: focused packet suites, mobile typecheck, behavior/Sol checks, and `pnpm run check`
+- claimed_at: `2026-07-17T21:11:39Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete; ready to commit and land
+- completed_at: `2026-07-17T21:15:38Z`
+- delivered: kind-specific compact provider-question, request-scoped tool
+  approval, and plan-review cards; bounded plan Markdown and native copy;
+  complete selected/validation/submitting and terminal state presentation;
+  accessible 44pt minimum actions; no invented session grant or free-text
+  authority
+- verification: mobile typecheck passed; 63 focused interaction-card,
+  authoritative Home, accessibility, and behavior-contract tests passed;
+  `pnpm run check` passed
+- close boundary: presentation only; exact confirmed decision settlement and
+  runtime schemas remain unchanged; `T3M-A4` remains next
