@@ -36,6 +36,15 @@ const FABLE_LOCAL_LANE = {
   profileRef: "fable-local",
 }
 
+const UNAUTHENTICATED_LANE = {
+  ...CODEX_LOCAL_LANE,
+  laneRef: "fable-local-unauthenticated",
+  provider: "fable",
+  profileRef: "fable-local-unauthenticated",
+  authentication: "missing" as const,
+  capabilities: { ...CODEX_LOCAL_LANE.capabilities, laneRef: "fable-local-unauthenticated", provider: "fable" },
+}
+
 const UNADMITTED_PEER_LANE = {
   laneRef: "acp:cursor-agent",
   provider: "cursor",
@@ -98,7 +107,7 @@ const startHarness = async (): Promise<Harness> => {
         return threadRef
       },
       isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
-      listLanes: async () => [CODEX_LOCAL_LANE, FABLE_LOCAL_LANE, UNADMITTED_PEER_LANE],
+      listLanes: async () => [CODEX_LOCAL_LANE, FABLE_LOCAL_LANE, UNADMITTED_PEER_LANE, UNAUTHENTICATED_LANE],
       providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
       getThread: threadRef => threads.get(threadRef) ?? null,
       providerHandoffRegistry,
@@ -155,7 +164,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
     }
   })
 
-  test("target admission refusal (unadmitted peer) leaves the run's lane/profile unchanged and records no receipt", async () => {
+  test("target admission refusal (unadmitted peer) leaves the run's lane/profile unchanged and durably receipts the refusal", async () => {
     const harness = await startHarness()
     try {
       const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
@@ -172,13 +181,21 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       const status = await harness.request("GET", `/v1/full-auto/runs/${runRef}`)
       expect(status.body.run.state).toBe("paused")
       expect(status.body.run.lane).toBe("codex-local")
-      expect(harness.providerHandoffRegistry.list({ runRef })).toEqual([])
+      // FA-AC-59: a refusal is a durable record too, not just an HTTP
+      // response -- the owner-visible history never silently omits a
+      // rejected switch attempt, even though nothing else changed.
+      const receipts = harness.providerHandoffRegistry.list({ runRef })
+      expect(receipts).toHaveLength(1)
+      expect(receipts[0]!.disposition).toBe("refused")
+      expect(receipts[0]!.refusalReason).toBe("unadmitted_peer")
+      expect(receipts[0]!.from).toBe("codex-local")
+      expect(receipts[0]!.to).toBe("acp:cursor-agent")
     } finally {
       await harness.dispose()
     }
   })
 
-  test("handoff to an unknown lane is refused typed unknown_lane, run untouched", async () => {
+  test("handoff to an unknown lane is refused typed unknown_lane, run untouched, refusal receipted", async () => {
     const harness = await startHarness()
     try {
       const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
@@ -192,6 +209,76 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       expect(handoff.body.handoffRefusalReason).toBe("unknown_lane")
       const status = await harness.request("GET", `/v1/full-auto/runs/${runRef}`)
       expect(status.body.run.lane).toBe("codex-local")
+      expect(harness.providerHandoffRegistry.list({ runRef })[0]!.disposition).toBe("refused")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("missing_auth refusal (provider loss: lane configured but not authenticated) leaves the run untouched", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+
+      const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "fable-local-unauthenticated" },
+      })
+      expect(handoff.status).toBe(409)
+      expect(handoff.body.handoffRefusalReason).toBe("missing_auth")
+      const status = await harness.request("GET", `/v1/full-auto/runs/${runRef}`)
+      expect(status.body.run.lane).toBe("codex-local")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("the reverse direction (fable-local -> codex-local) uses the exact same handoff contract", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: { ...START_BODY, lane: "fable-local" } })
+      const runRef = started.body.run.runRef
+      expect(started.body.run.lane).toBe("fable-local")
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+
+      const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "codex-local" },
+      })
+      expect(handoff.status).toBe(200)
+      expect(handoff.body.transition.from).toBe("fable-local")
+      expect(handoff.body.transition.to).toBe("codex-local")
+      expect(handoff.body.run.lane).toBe("codex-local")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("privacy: the handoff response and receipt never carry secret-shaped thread content -- only host-owned bounded text", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      const threadRef = started.body.run.threadRef
+      harness.threads.set(threadRef, {
+        id: threadRef,
+        title: "Handoff run",
+        updatedAt: new Date().toISOString(),
+        notes: [
+          { key: "n1", role: "user", text: "Please continue the work.", timestamp: new Date().toISOString() },
+          { key: "n2", role: "assistant", text: "SECRET_PROVIDER_SESSION_TOKEN_MUST_NEVER_LEAK", timestamp: new Date().toISOString() },
+        ],
+      })
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+      const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "fable-local" },
+      })
+      expect(handoff.status).toBe(200)
+      // The receipt is compact (from/to/actor/time/reason/disposition) --
+      // it never carries raw envelope/transcript content.
+      expect(JSON.stringify(handoff.body.transition)).not.toContain("SECRET_PROVIDER_SESSION_TOKEN_MUST_NEVER_LEAK")
+      const receipts = harness.providerHandoffRegistry.list({ runRef })
+      expect(JSON.stringify(receipts)).not.toContain("SECRET_PROVIDER_SESSION_TOKEN_MUST_NEVER_LEAK")
     } finally {
       await harness.dispose()
     }

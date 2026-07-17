@@ -737,6 +737,24 @@ export const startFullAutoControlServer = (
           requiredCapabilities: ["fullAuto"],
         })
         if (!switchResult.ok) {
+          // FA-AC-59/FA-AC-58: a typed refusal is a durable record, not only
+          // an HTTP response -- the run's lane/profile stays exactly as it
+          // was (rollback), but the refusal itself is receipted so the
+          // owner-visible history never silently omits a rejected switch
+          // attempt.
+          const refusedAt = (input.now ?? (() => new Date()))().toISOString()
+          capabilities.providerHandoffRegistry.record({
+            runRef: run.runRef,
+            ...(run.threadRef === undefined ? {} : { threadRef: run.threadRef }),
+            from: sourceLaneRef,
+            to: targetLaneRef,
+            actor: "control_api",
+            at: refusedAt,
+            reason,
+            disposition: "refused",
+            truncated: false,
+            refusalReason: switchResult.reason,
+          })
           auditLog("runs/handoff", run.threadRef ?? runRef, `refused ${switchResult.reason}`)
           sendError(response, 409, {
             error: "handoff_refused",
