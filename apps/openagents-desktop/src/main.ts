@@ -314,6 +314,7 @@ import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./fu
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
+import { migrateLegacyFullAutoRegistry, openFullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -1138,6 +1139,32 @@ const localTurnJournal = openLocalTurnJournal(
 const fullAutoRegistry = openFullAutoRegistry(
   path.join(app.getPath("userData"), "full-auto", "registry.json"),
 )
+/** FA-RUN-01 (#8969): the durable FullAutoRun objective/lifecycle store,
+ * layered on top of the unchanged `fullAutoRegistry` above. */
+const fullAutoRunRegistry = openFullAutoRunRegistry(
+  path.join(app.getPath("userData"), "full-auto", "runs.json"),
+)
+/** FA-AC-41: additive, idempotent migration from the legacy per-thread
+ * `enabled: boolean` registry -- safe to call on every startup; a threadRef
+ * already migrated (or a run already active) is a no-op, never a duplicate. */
+{
+  const migrationOutcome = migrateLegacyFullAutoRegistry({
+    legacyRecords: fullAutoRegistry.list(),
+    runRegistry: fullAutoRunRegistry,
+  })
+  if (
+    migrationOutcome.migrated.length > 0
+    || migrationOutcome.preservedAsDraft.length > 0
+  ) {
+    // Never log objective/doneCondition text here -- runRef/threadRef/count
+    // only, per the objective privacy boundary.
+    console.log(
+      `[openagents-desktop full-auto] legacy registry migration: migrated=${migrationOutcome.migrated.length} ` +
+      `preservedAsDraft=${migrationOutcome.preservedAsDraft.length} skippedDisabled=${migrationOutcome.skippedDisabled.length} ` +
+      `skippedAlreadyMigrated=${migrationOutcome.skippedAlreadyMigrated.length}`,
+    )
+  }
+}
 const providerLaneRegistry = makeProviderLaneRegistry({
   file: path.join(app.getPath("userData"), "provider-lanes", "registry.json"),
 })
@@ -4003,6 +4030,8 @@ if (isFullAutoControlEnabled(process.env)) {
   void startFullAutoControlServer({
     capabilities: {
       registry: fullAutoRegistry,
+      // FA-RUN-01 (#8969): the durable run objective/lifecycle store.
+      runRegistry: fullAutoRunRegistry,
       resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
       // continue-now is a new TRIGGER into the same promise-chain mutex --
       // the exact function every other Full Auto trigger point calls.
@@ -4010,6 +4039,15 @@ if (isFullAutoControlEnabled(process.env)) {
       liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
       listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
       appendSystemNote: appendFullAutoSystemNote,
+      // FA-AC-44 Pause: the exact same live-state-resolved three-way
+      // interrupt chain CodexLocalFullAutoInterruptChannel already uses.
+      interruptLiveTurn: threadRef => {
+        const live = fullAutoLiveState.get(threadRef)
+        if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return false
+        return codexLocal.interrupt(live.turnRef) ||
+          grokAcpDriver.interrupt(live.turnRef) ||
+          cursorAcpDriver.interrupt(live.turnRef)
+      },
       // start bootstrap: main mints the thread in its own store -- callers
       // never name a ref -- so the reconcile dispatcher finds a real thread
       // and the first continuation opens a brand-new provider conversation.

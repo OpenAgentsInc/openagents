@@ -25,6 +25,7 @@ import {
   type FullAutoControlServer,
 } from "./full-auto-control-server.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
+import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
 import { readFileSync } from "node:fs"
 import {
@@ -63,10 +64,12 @@ const makeTurn = (input: Readonly<{
 type Harness = Readonly<{
   root: string
   registry: ReturnType<typeof openFullAutoRegistry>
+  runRegistry: FullAutoRunRegistry
   notes: Array<Readonly<{ threadRef: string; text: string }>>
   turns: Array<LocalTurnRecord>
   liveMap: Map<string, Readonly<{ state: "idle" | "turn_running" | "turn_completed" | "turn_failed" | "cap_reached" | "blocked"; turnRef: string | null; detail?: string }>>
   reconcileCalls: () => number
+  interruptCalls: Array<string>
   createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>>
   server: FullAutoControlServer
   request: (
@@ -80,10 +83,12 @@ type Harness = Readonly<{
 const startHarness = async (): Promise<Harness> => {
   const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-control-"))
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
+  const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
   const notes: Array<Readonly<{ threadRef: string; text: string }>> = []
   const turns: Array<LocalTurnRecord> = []
   const createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>> = []
   const liveMap: Harness["liveMap"] = new Map()
+  const interruptCalls: Array<string> = []
   let reconcileCallCount = 0
   // The continue-now spy IS the injected trigger -- the server must invoke
   // this exact function (main passes runFullAutoReconciliation the same way).
@@ -93,6 +98,11 @@ const startHarness = async (): Promise<Harness> => {
   const server = await startFullAutoControlServer({
     capabilities: {
       registry,
+      runRegistry,
+      interruptLiveTurn: threadRef => {
+        interruptCalls.push(threadRef)
+        return true
+      },
       resolveWorkspaceRef: () => GRANTED_WORKSPACE,
       triggerReconciliation,
       liveState: threadRef => liveMap.get(threadRef) ?? null,
@@ -142,10 +152,12 @@ const startHarness = async (): Promise<Harness> => {
   return {
     root,
     registry,
+    runRegistry,
     notes,
     turns,
     liveMap,
     reconcileCalls: () => reconcileCallCount,
+    interruptCalls,
     createdThreads,
     server,
     request,

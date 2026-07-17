@@ -111,6 +111,24 @@ export const controlOperations = (connection: ControlConnection) => ({
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/continue-now`),
   turns: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}/turns`),
+  // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface.
+  runsList: () => call(connection, "GET", "/v1/full-auto/runs"),
+  runsStart: (input: Readonly<{
+    workspaceRef: string
+    title: string
+    objective: string
+    doneCondition: string
+    lane?: string
+    turnCap?: number
+  }>) => call(connection, "POST", "/v1/full-auto/runs/start", input),
+  runStatus: (runRef: string) =>
+    call(connection, "GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}`),
+  runPause: (runRef: string) =>
+    call(connection, "POST", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/pause`),
+  runResume: (runRef: string) =>
+    call(connection, "POST", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/resume`),
+  runStop: (runRef: string) =>
+    call(connection, "POST", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/stop`),
 })
 
 export type VerifiedControlProcessIdentity = Readonly<{

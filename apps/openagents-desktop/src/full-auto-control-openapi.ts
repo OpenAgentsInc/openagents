@@ -2,6 +2,14 @@ import {
   FULL_AUTO_CONTROL_SCHEMA,
   FULL_AUTO_CONTROL_TURNS_LIMIT,
 } from "./full-auto-control-contract.ts"
+import {
+  FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
+  FULL_AUTO_RUN_OBJECTIVE_LIMIT,
+  FULL_AUTO_RUN_REASON_LIMIT,
+  FULL_AUTO_RUN_TITLE_LIMIT,
+  FullAutoRunActorSchema,
+  FullAutoRunStateSchema,
+} from "./full-auto-run-registry.ts"
 
 /**
  * FA-H13 (#8886): the hand-authored OpenAPI 3.1 document for the Phase 1
@@ -26,7 +34,32 @@ const threadRefParameter = {
   schema: { type: "string", minLength: 1, maxLength: 120 },
 } as const
 
+const runRefParameter = {
+  name: "runRef",
+  in: "path",
+  required: true,
+  description: "The stable FullAutoRun ref, independent of any threadRef it is bound to.",
+  schema: { type: "string", minLength: 1, maxLength: 180 },
+} as const
+
 const errorResponseSchema = { $ref: "#/components/schemas/FullAutoControlError" } as const
+
+const runResponseSchema = { $ref: "#/components/schemas/FullAutoControlRunStatusResponse" } as const
+
+const activeRunConflictResponse = {
+  description: "A Full Auto run is already active for this Desktop profile (FA-AC-39); nothing was started.",
+  content: { "application/json": { schema: errorResponseSchema } },
+} as const
+
+const illegalTransitionResponse = {
+  description: "The requested lifecycle transition is not legal from the run's current state (FA-AC-43).",
+  content: { "application/json": { schema: errorResponseSchema } },
+} as const
+
+const runNotFoundResponse = {
+  description: "No Full Auto run exists for that runRef.",
+  content: { "application/json": { schema: errorResponseSchema } },
+} as const
 
 const unauthorizedResponse = {
   description: "Missing, malformed, or wrong bearer credential.",
@@ -272,6 +305,127 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/runs": {
+      get: {
+        operationId: "listFullAutoRuns",
+        summary: "List every durable FullAutoRun (FA-RUN-01 #8969).",
+        description:
+          "The run-level lifecycle surface, distinct from the thread-level /v1/full-auto routes above. " +
+          "Each run is settled against current thread-level truth (Pausing -> Paused once its turn " +
+          "resolves; cap/failure/orphan disposition sync) before being projected.",
+        responses: {
+          "200": {
+            description: "All runs with their settled current lifecycle state.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunListResponse" } },
+            },
+          },
+          "401": unauthorizedResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/start": {
+      post: {
+        operationId: "startFullAutoRun",
+        summary: "Start a new FullAutoRun: title, objective, and done condition are required (FA-AC-38).",
+        description:
+          "Enforces the v1 one-active-run-per-profile concurrency policy (FA-AC-39): refused with 409 " +
+          "active_run_conflict naming the existing active runRef when one already exists, before minting " +
+          "anything. On success mints a new thread, binds the resolved workspace, creates the run in the " +
+          "Running state, appends a distinctly-attributed system note, and schedules the shared serialized " +
+          "reconcile pass.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunStartRequest" } },
+          },
+        },
+        responses: {
+          "200": {
+            description: "The run was created and started.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunMutationResponse" } },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "409": activeRunConflictResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/{runRef}": {
+      get: {
+        operationId: "getFullAutoRunStatus",
+        summary: "One run's settled current state.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": { description: "The settled run projection.", content: { "application/json": { schema: runResponseSchema } } },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/{runRef}/pause": {
+      post: {
+        operationId: "pauseFullAutoRun",
+        summary: "Pause a run (FA-AC-44).",
+        description:
+          "With an active provider turn, transitions to Pausing immediately (new dispatch is prevented " +
+          "right away) and the caller observes Paused once GET status shows the turn resolved. With no " +
+          "turn in flight, transitions directly to Paused.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "Pausing or Paused, depending on whether a turn was active.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunMutationResponse" } } },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+          "409": illegalTransitionResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/{runRef}/resume": {
+      post: {
+        operationId: "resumeFullAutoRun",
+        summary: "Resume a paused run (FA-AC-44). Legal ONLY from Paused.",
+        description:
+          "Revalidates workspace and provider-lane admission before dispatching, then re-enables the " +
+          "thread-level record through the exact same exactly-once dispatch path every other Full Auto " +
+          "trigger already uses. A workspace mismatch is a refusal (409) that leaves the run exactly " +
+          "Paused, never a redirect or a silent state change.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "Running again; the shared reconcile pass was scheduled.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunMutationResponse" } } },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+          "409": illegalTransitionResponse,
+        },
+      },
+    },
+    "/v1/full-auto/runs/{runRef}/stop": {
+      post: {
+        operationId: "stopFullAutoRun",
+        summary: "Stop a run (FA-AC-45). Terminal; legal from any non-terminal state; never resumed.",
+        parameters: [runRefParameter],
+        responses: {
+          "200": {
+            description: "Stopped.",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/FullAutoControlRunMutationResponse" } } },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": runNotFoundResponse,
+          "409": illegalTransitionResponse,
+        },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -485,11 +639,122 @@ export const fullAutoControlOpenApiDocument = {
               "invalid_request",
               "workspace_mismatch",
               "lane_not_eligible",
+              "active_run_conflict",
+              "illegal_transition",
             ],
           },
           message: { type: "string", minLength: 1, maxLength: 600 },
           expectedWorkspaceRef: { type: "string", minLength: 1, maxLength: 1024 },
           resolvedWorkspaceRef: { type: "string", minLength: 1, maxLength: 1024 },
+          activeRunRef: { type: "string", minLength: 1, maxLength: 180 },
+          fromState: { $ref: "#/components/schemas/FullAutoRunState" },
+          toState: { $ref: "#/components/schemas/FullAutoRunState" },
+        },
+      },
+      FullAutoRunState: {
+        type: "string",
+        enum: [...FullAutoRunStateSchema.literals],
+      },
+      FullAutoRunTransitionRecord: {
+        type: "object",
+        required: ["from", "to", "actor", "at", "reason"],
+        additionalProperties: false,
+        properties: {
+          from: { $ref: "#/components/schemas/FullAutoRunState" },
+          to: { $ref: "#/components/schemas/FullAutoRunState" },
+          actor: { type: "string", enum: [...FullAutoRunActorSchema.literals] },
+          at: { type: "string" },
+          reason: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_REASON_LIMIT },
+          correlationRef: { type: "string", minLength: 1, maxLength: 180 },
+        },
+      },
+      FullAutoControlRun: {
+        type: "object",
+        required: [
+          "runRef", "threadRef", "title", "objective", "objectiveSource", "doneCondition",
+          "workspaceRef", "lane", "turnCap", "successfulAttempts", "failedAttempts", "state",
+          "stateRevision", "terminalReason", "predecessorRunRef", "migratedFrom", "createdAt",
+          "startedAt", "lastProgressAt", "pausedAt", "stoppedAt", "completedAt", "transitions",
+        ],
+        additionalProperties: false,
+        properties: {
+          runRef: { type: "string", minLength: 1, maxLength: 180 },
+          threadRef: { type: ["string", "null"], minLength: 1, maxLength: 120 },
+          title: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_TITLE_LIMIT },
+          objective: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_OBJECTIVE_LIMIT },
+          objectiveSource: { type: "string", enum: ["user", "control_caller", "legacy_migration"] },
+          doneCondition: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_DONE_CONDITION_LIMIT },
+          workspaceRef: { type: ["string", "null"], minLength: 1, maxLength: 1024 },
+          lane: { type: ["string", "null"], minLength: 1, maxLength: 80 },
+          turnCap: { type: "integer", minimum: 1, maximum: 1000 },
+          successfulAttempts: { type: "integer", minimum: 0 },
+          failedAttempts: { type: "integer", minimum: 0 },
+          state: { $ref: "#/components/schemas/FullAutoRunState" },
+          stateRevision: { type: "integer", minimum: 0 },
+          terminalReason: { type: ["string", "null"], minLength: 1, maxLength: FULL_AUTO_RUN_REASON_LIMIT },
+          predecessorRunRef: { type: ["string", "null"], minLength: 1, maxLength: 180 },
+          migratedFrom: { type: ["string", "null"], enum: ["legacy_registry", null] },
+          createdAt: { type: "string" },
+          startedAt: { type: ["string", "null"] },
+          lastProgressAt: { type: ["string", "null"] },
+          pausedAt: { type: ["string", "null"] },
+          stoppedAt: { type: ["string", "null"] },
+          completedAt: { type: ["string", "null"] },
+          transitions: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunTransitionRecord" } },
+        },
+      },
+      FullAutoControlRunListResponse: {
+        type: "object",
+        required: ["schema", "serverInstanceId", "runs"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          serverInstanceId: { type: "string", minLength: 16, maxLength: 120 },
+          runs: { type: "array", items: { $ref: "#/components/schemas/FullAutoControlRun" } },
+        },
+      },
+      FullAutoControlRunStatusResponse: {
+        type: "object",
+        required: ["schema", "serverInstanceId", "run"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          serverInstanceId: { type: "string", minLength: 16, maxLength: 120 },
+          run: { $ref: "#/components/schemas/FullAutoControlRun" },
+        },
+      },
+      FullAutoControlRunMutationResponse: {
+        type: "object",
+        required: ["schema", "ok", "run"],
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", const: FULL_AUTO_CONTROL_SCHEMA },
+          ok: { type: "boolean", const: true },
+          run: { $ref: "#/components/schemas/FullAutoControlRun" },
+        },
+      },
+      FullAutoControlRunStartRequest: {
+        type: "object",
+        required: ["workspaceRef", "title", "objective", "doneCondition"],
+        additionalProperties: false,
+        properties: {
+          workspaceRef: {
+            type: "string",
+            minLength: 1,
+            maxLength: 1024,
+            description: "The absolute workspace path the caller expects Full Auto to run against.",
+          },
+          title: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_TITLE_LIMIT },
+          objective: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_OBJECTIVE_LIMIT },
+          doneCondition: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_DONE_CONDITION_LIMIT },
+          lane: {
+            type: "string",
+            minLength: 1,
+            maxLength: 80,
+            default: "codex-local",
+            description: "Optional admitted ProviderLane ref; defaults to codex-local.",
+          },
+          turnCap: { type: "integer", minimum: 1, maximum: 1000, default: 20 },
         },
       },
     },

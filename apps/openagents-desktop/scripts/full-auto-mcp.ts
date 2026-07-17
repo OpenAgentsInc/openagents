@@ -31,6 +31,9 @@ const SERVER_INFO = { name: "openagents-desktop-full-auto", version: "1.0.0" } a
 const threadRefProperty = {
   threadRef: { type: "string", minLength: 1, maxLength: 120, description: "Desktop thread ref." },
 } as const
+const runRefProperty = {
+  runRef: { type: "string", minLength: 1, maxLength: 180, description: "FullAutoRun ref (FA-RUN-01)." },
+} as const
 
 const TOOLS = [
   {
@@ -100,6 +103,54 @@ const TOOLS = [
     description: "Bounded recent Full Auto turn history (identity/phase/disposition/timestamps; never transcript text).",
     inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
   },
+  // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface.
+  {
+    name: "full_auto_runs_list",
+    description: "List every durable FullAutoRun, settled against current thread-level truth.",
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  },
+  {
+    name: "full_auto_run_status",
+    description: "One run's settled current lifecycle state, objective, and transition history.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
+  {
+    name: "full_auto_run_start",
+    description:
+      "Start a new FullAutoRun: title, objective, and done condition are REQUIRED. Refused with " +
+      "409 active_run_conflict when a Full Auto run is already active for this Desktop profile -- " +
+      "v1 allows at most one active run per profile.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workspaceRef", "title", "objective", "doneCondition"],
+      properties: {
+        workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
+        title: { type: "string", minLength: 1, maxLength: 120, description: "Owner-visible run title." },
+        objective: { type: "string", minLength: 1, maxLength: 4000, description: "What this run should accomplish." },
+        doneCondition: { type: "string", minLength: 1, maxLength: 2000, description: "How to know the run is done." },
+        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
+        turnCap: { type: "integer", minimum: 1, maximum: 1000, description: "Optional turn cap; defaults to 20." },
+      },
+    },
+  },
+  {
+    name: "full_auto_run_pause",
+    description:
+      "Pause a run. Prevents any new dispatch immediately. With an active turn, transitions to " +
+      "Pausing until that turn resolves, then Paused; with no turn in flight, transitions directly to Paused.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
+  {
+    name: "full_auto_run_resume",
+    description: "Resume a run. Legal ONLY from Paused; re-validates workspace/lane admission before dispatching again.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
+  {
+    name: "full_auto_run_stop",
+    description: "Stop a run. Terminal; legal from any non-terminal state; a stopped run is never resumed.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
 ] as const
 
 type JsonRpcRequest = Readonly<{
@@ -131,6 +182,7 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
   const operations = controlOperations(connection)
   const threadRef = typeof args.threadRef === "string" ? args.threadRef : ""
   const workspaceRef = typeof args.workspaceRef === "string" ? args.workspaceRef : ""
+  const runRef = typeof args.runRef === "string" ? args.runRef : ""
   const result = name === "provider_lanes_list"
     ? await operations.lanes()
     : name === "full_auto_list"
@@ -151,6 +203,25 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
     ? await operations.continueNow(threadRef)
     : name === "full_auto_turns"
     ? await operations.turns(threadRef)
+    : name === "full_auto_runs_list"
+    ? await operations.runsList()
+    : name === "full_auto_run_status"
+    ? await operations.runStatus(runRef)
+    : name === "full_auto_run_start"
+    ? await operations.runsStart({
+        workspaceRef,
+        title: typeof args.title === "string" ? args.title : "",
+        objective: typeof args.objective === "string" ? args.objective : "",
+        doneCondition: typeof args.doneCondition === "string" ? args.doneCondition : "",
+        ...(typeof args.lane === "string" ? { lane: args.lane } : {}),
+        ...(typeof args.turnCap === "number" ? { turnCap: args.turnCap } : {}),
+      })
+    : name === "full_auto_run_pause"
+    ? await operations.runPause(runRef)
+    : name === "full_auto_run_resume"
+    ? await operations.runResume(runRef)
+    : name === "full_auto_run_stop"
+    ? await operations.runStop(runRef)
     : null
   if (result === null) {
     return { content: [{ type: "text", text: `unknown tool: ${name}` }], isError: true }

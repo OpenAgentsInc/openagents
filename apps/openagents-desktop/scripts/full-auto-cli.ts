@@ -11,6 +11,14 @@
  *   node --import tsx scripts/full-auto-cli.ts continue-now <threadRef>
  *   node --import tsx scripts/full-auto-cli.ts turns <threadRef>
  *   node --import tsx scripts/full-auto-cli.ts openapi
+ *
+ * FA-RUN-01 (#8969) durable run lifecycle commands:
+ *   node --import tsx scripts/full-auto-cli.ts runs
+ *   node --import tsx scripts/full-auto-cli.ts run-status <runRef>
+ *   node --import tsx scripts/full-auto-cli.ts run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>]
+ *   node --import tsx scripts/full-auto-cli.ts run-pause <runRef>
+ *   node --import tsx scripts/full-auto-cli.ts run-resume <runRef>
+ *   node --import tsx scripts/full-auto-cli.ts run-stop <runRef>
  * Options: --user-data <path> (or OPENAGENTS_DESKTOP_USER_DATA) when Desktop
  * runs against a non-default userData directory.
  */
@@ -31,7 +39,13 @@ commands:
   disable <threadRef>
   continue-now <threadRef>
   turns <threadRef>
-  openapi`
+  openapi
+  runs
+  run-status <runRef>
+  run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>]
+  run-pause <runRef>
+  run-resume <runRef>
+  run-stop <runRef>`
 
 const main = async (): Promise<void> => {
   const argv = [...process.argv.slice(2)]
@@ -46,6 +60,9 @@ const main = async (): Promise<void> => {
   const workspace = takeOption("--workspace")
   const title = takeOption("--title")
   const lane = takeOption("--lane")
+  const objective = takeOption("--objective")
+  const doneCondition = takeOption("--done")
+  const turnCapRaw = takeOption("--turn-cap")
   const [command, threadRef] = argv
 
   const connection = readControlConnection(resolveUserDataDir(userData))
@@ -57,6 +74,20 @@ const main = async (): Promise<void> => {
       process.exit(2)
     }
     return threadRef
+  }
+  const requireRunRef = (): string => {
+    if (threadRef === undefined || threadRef.length === 0) {
+      console.error(`${command}: a <runRef> argument is required\n${USAGE}`)
+      process.exit(2)
+    }
+    return threadRef
+  }
+  const requireOption = (name: string, value: string | undefined): string => {
+    if (value === undefined || value.length === 0) {
+      console.error(`${command}: --${name} <value> is required\n${USAGE}`)
+      process.exit(2)
+    }
+    return value
   }
 
   const result = command === "lanes"
@@ -90,6 +121,25 @@ const main = async (): Promise<void> => {
     ? await operations.continueNow(requireThreadRef())
     : command === "turns"
     ? await operations.turns(requireThreadRef())
+    : command === "runs"
+    ? await operations.runsList()
+    : command === "run-status"
+    ? await operations.runStatus(requireRunRef())
+    : command === "run-start"
+    ? await operations.runsStart({
+        workspaceRef: requireOption("workspace", workspace),
+        title: requireOption("title", title),
+        objective: requireOption("objective", objective),
+        doneCondition: requireOption("done", doneCondition),
+        ...(lane === undefined ? {} : { lane }),
+        ...(turnCapRaw === undefined ? {} : { turnCap: Number.parseInt(turnCapRaw, 10) }),
+      })
+    : command === "run-pause"
+    ? await operations.runPause(requireRunRef())
+    : command === "run-resume"
+    ? await operations.runResume(requireRunRef())
+    : command === "run-stop"
+    ? await operations.runStop(requireRunRef())
     : null
 
   if (result === null) {

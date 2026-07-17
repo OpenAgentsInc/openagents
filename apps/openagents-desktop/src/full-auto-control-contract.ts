@@ -8,6 +8,15 @@ import {
   FULL_AUTO_BLOCKED_REASON_LIMIT,
   FullAutoDisabledBySchema,
 } from "./full-auto-registry.ts"
+import {
+  FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
+  FULL_AUTO_RUN_OBJECTIVE_LIMIT,
+  FULL_AUTO_RUN_REASON_LIMIT,
+  FULL_AUTO_RUN_TITLE_LIMIT,
+  FullAutoRunObjectiveSourceSchema,
+  FullAutoRunStateSchema,
+  FullAutoRunTransitionRecordSchema,
+} from "./full-auto-run-registry.ts"
 import { LocalTurnDispositionSchema, LocalTurnPhaseSchema } from "./local-turn-journal.ts"
 
 /**
@@ -80,6 +89,89 @@ export const decodeFullAutoControlStartRequest = (
   const decoded = Schema.decodeUnknownExit(FullAutoControlStartRequestSchema)(value)
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
+
+const RunRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
+export const decodeFullAutoControlRunRef = (value: unknown): string | null => {
+  const decoded = Schema.decodeUnknownExit(RunRef)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
+/**
+ * FA-RUN-01 (#8969): POST /v1/full-auto/runs/start -- the run-level
+ * bootstrap. Unlike the thread-level /v1/full-auto/start (kept unchanged),
+ * this route requires an explicit title/objective/doneCondition (FA-AC-38)
+ * and enforces the v1 one-active-run-per-profile concurrency policy
+ * (FA-AC-39) before it mints anything.
+ */
+export const FullAutoControlRunStartRequestSchema = Schema.Struct({
+  workspaceRef: WorkspaceRef,
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_TITLE_LIMIT)),
+  objective: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_OBJECTIVE_LIMIT)),
+  doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
+  lane: Schema.optional(LaneRef),
+  turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
+})
+export type FullAutoControlRunStartRequest = typeof FullAutoControlRunStartRequestSchema.Type
+export const decodeFullAutoControlRunStartRequest = (
+  value: unknown,
+): FullAutoControlRunStartRequest | null => {
+  const decoded = Schema.decodeUnknownExit(FullAutoControlRunStartRequestSchema)(value)
+  return Exit.isSuccess(decoded) ? decoded.value : null
+}
+
+/** The public-safe projection of one `FullAutoRun`. Same trust tier as the
+ * rest of this loopback, bearer-gated surface (which already exposes
+ * workspaceRef/accountRef) -- objective/doneCondition are included here so a
+ * local control-API caller can see the mission it is driving, but this
+ * module NEVER writes objective/doneCondition text into `auditLog` or any
+ * other routine log line (see the privacy note in full-auto-run-registry.ts). */
+export const FullAutoControlRunSchema = Schema.Struct({
+  runRef: RunRef,
+  threadRef: Schema.NullOr(ThreadRef),
+  title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_TITLE_LIMIT)),
+  objective: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_OBJECTIVE_LIMIT)),
+  objectiveSource: FullAutoRunObjectiveSourceSchema,
+  doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
+  workspaceRef: Schema.NullOr(WorkspaceRef),
+  lane: Schema.NullOr(LaneRef),
+  turnCap: Count,
+  successfulAttempts: Count,
+  failedAttempts: Count,
+  state: FullAutoRunStateSchema,
+  stateRevision: Count,
+  terminalReason: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_REASON_LIMIT))),
+  predecessorRunRef: Schema.NullOr(RunRef),
+  migratedFrom: Schema.NullOr(Schema.Literal("legacy_registry")),
+  createdAt: Schema.String,
+  startedAt: Schema.NullOr(Schema.String),
+  lastProgressAt: Schema.NullOr(Schema.String),
+  pausedAt: Schema.NullOr(Schema.String),
+  stoppedAt: Schema.NullOr(Schema.String),
+  completedAt: Schema.NullOr(Schema.String),
+  transitions: Schema.Array(FullAutoRunTransitionRecordSchema),
+})
+export type FullAutoControlRun = typeof FullAutoControlRunSchema.Type
+
+export const FullAutoControlRunListResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  serverInstanceId: FullAutoControlInstanceIdSchema,
+  runs: Schema.Array(FullAutoControlRunSchema),
+})
+export type FullAutoControlRunListResponse = typeof FullAutoControlRunListResponseSchema.Type
+
+export const FullAutoControlRunStatusResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  serverInstanceId: FullAutoControlInstanceIdSchema,
+  run: FullAutoControlRunSchema,
+})
+export type FullAutoControlRunStatusResponse = typeof FullAutoControlRunStatusResponseSchema.Type
+
+export const FullAutoControlRunMutationResponseSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_CONTROL_SCHEMA),
+  ok: Schema.Literal(true),
+  run: FullAutoControlRunSchema,
+})
+export type FullAutoControlRunMutationResponse = typeof FullAutoControlRunMutationResponseSchema.Type
 
 /** Coarse live state riding alongside the durable record (FA-H4 vocabulary). */
 export const FullAutoControlLiveSchema = Schema.Struct({
@@ -173,6 +265,12 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
   "invalid_request",
   "workspace_mismatch",
   "lane_not_eligible",
+  /** FA-AC-39: a second active run was refused. `activeRunRef` on the error
+   * body identifies the existing run without leaking its objective. */
+  "active_run_conflict",
+  /** FA-AC-43: the requested run-lifecycle transition is not legal from the
+   * run's current state (for example Resume from a non-Paused state). */
+  "illegal_transition",
 ])
 export type FullAutoControlErrorTag = typeof FullAutoControlErrorTagSchema.Type
 
@@ -183,6 +281,12 @@ export const FullAutoControlErrorSchema = Schema.Struct({
    * Local loopback surface -- the caller already knows its own paths. */
   expectedWorkspaceRef: Schema.optional(WorkspaceRef),
   resolvedWorkspaceRef: Schema.optional(WorkspaceRef),
+  /** active_run_conflict only: identifies the existing run, never its
+   * objective (FA-AC-39). */
+  activeRunRef: Schema.optional(RunRef),
+  /** illegal_transition only: the exact refused edge. */
+  fromState: Schema.optional(FullAutoRunStateSchema),
+  toState: Schema.optional(FullAutoRunStateSchema),
 })
 export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
 
@@ -202,6 +306,17 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "post", path: "/v1/full-auto/{threadRef}/disable", operationId: "disableFullAuto" },
   { method: "post", path: "/v1/full-auto/{threadRef}/continue-now", operationId: "continueFullAutoNow" },
   { method: "get", path: "/v1/full-auto/{threadRef}/turns", operationId: "listFullAutoTurns" },
+  // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface. Distinct
+  // from the thread-level routes above (kept unchanged) -- these operate on
+  // runRef identity, enforce the v1 one-active-run-per-profile concurrency
+  // policy, and route every mutation through the single typed transition
+  // function in full-auto-run-registry.ts.
+  { method: "get", path: "/v1/full-auto/runs", operationId: "listFullAutoRuns" },
+  { method: "post", path: "/v1/full-auto/runs/start", operationId: "startFullAutoRun" },
+  { method: "get", path: "/v1/full-auto/runs/{runRef}", operationId: "getFullAutoRunStatus" },
+  { method: "post", path: "/v1/full-auto/runs/{runRef}/pause", operationId: "pauseFullAutoRun" },
+  { method: "post", path: "/v1/full-auto/runs/{runRef}/resume", operationId: "resumeFullAutoRun" },
+  { method: "post", path: "/v1/full-auto/runs/{runRef}/stop", operationId: "stopFullAutoRun" },
 ] as const
 export type FullAutoControlRoute = (typeof FULL_AUTO_CONTROL_ROUTES)[number]
 

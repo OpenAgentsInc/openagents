@@ -14,17 +14,25 @@ import {
   FULL_AUTO_CONTROL_SCHEMA,
   FULL_AUTO_CONTROL_TURNS_LIMIT,
   decodeFullAutoControlEnableRequest,
+  decodeFullAutoControlRunRef,
+  decodeFullAutoControlRunStartRequest,
   decodeFullAutoControlStartRequest,
   decodeFullAutoControlThreadRef,
   type FullAutoControlError,
   type FullAutoControlLive,
   type FullAutoControlRecord,
+  type FullAutoControlRun,
   type FullAutoControlTurn,
 } from "./full-auto-control-contract.ts"
 import { fullAutoControlOpenApiDocument } from "./full-auto-control-openapi.ts"
 import type { FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
 import type { LocalTurnRecord } from "./local-turn-journal.ts"
 import { FULL_AUTO_DEFAULT_LANE } from "./full-auto-lane.ts"
+import {
+  settleFullAutoRunFromThreadState,
+  type FullAutoRun,
+  type FullAutoRunRegistry,
+} from "./full-auto-run-registry.ts"
 import type { ProviderLaneRegistryEntry } from "./provider-lane-registry.ts"
 
 /**
@@ -134,6 +142,18 @@ export type FullAutoControlCapabilities = Readonly<{
   isLaneEligible?: (laneRef: string) => boolean
   /** L8: public-safe lane registry. Includes unavailable/unadmitted lanes. */
   listLanes?: () => Promise<ReadonlyArray<ProviderLaneRegistryEntry>>
+  /** FA-RUN-01 (#8969): the durable FullAutoRun objective/lifecycle store.
+   * Every run-level route below operates exclusively through this registry's
+   * own typed transition function -- the server never writes `state`
+   * directly. */
+  runRegistry: FullAutoRunRegistry
+  /** FA-AC-44 Pause: best-effort request to interrupt the thread's actively
+   * running turn (the exact same three-way codexLocal/fableLocal/ACP-driver
+   * interrupt chain the existing CodexLocalFullAutoInterruptChannel IPC
+   * handler already uses). Returns false when nothing was running or no
+   * lane accepted the interrupt; Pause still transitions to Pausing and
+   * waits for the turn to resolve either way. */
+  interruptLiveTurn?: (threadRef: string) => boolean
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -175,6 +195,42 @@ const projectRecord = (
   disabledAt: record.disabledAt ?? null,
   live: live ?? { state: "idle", turnRef: null },
 })
+
+const projectRun = (run: FullAutoRun): FullAutoControlRun => ({
+  runRef: run.runRef,
+  threadRef: run.threadRef ?? null,
+  title: run.title,
+  objective: run.objective,
+  objectiveSource: run.objectiveSource,
+  doneCondition: run.doneCondition,
+  workspaceRef: run.workspaceRef ?? null,
+  lane: run.profile?.lane ?? null,
+  turnCap: run.turnCap,
+  successfulAttempts: run.successfulAttempts,
+  failedAttempts: run.failedAttempts,
+  state: run.state,
+  stateRevision: run.stateRevision,
+  terminalReason: run.terminalReason ?? null,
+  predecessorRunRef: run.predecessorRunRef ?? null,
+  migratedFrom: run.migratedFrom ?? null,
+  createdAt: run.createdAt,
+  startedAt: run.startedAt ?? null,
+  lastProgressAt: run.lastProgressAt ?? null,
+  pausedAt: run.pausedAt ?? null,
+  stoppedAt: run.stoppedAt ?? null,
+  completedAt: run.completedAt ?? null,
+  transitions: run.transitions,
+})
+
+/** Settles a run against the current thread-level truth before projecting
+ * it -- the single place Pausing->Paused, cap/failure/orphan sync, and
+ * every read of a run's state agree with each other (see
+ * `settleFullAutoRunFromThreadState` for the exact rules). */
+const settleRun = (capabilities: FullAutoControlCapabilities, run: FullAutoRun): FullAutoRun =>
+  settleFullAutoRunFromThreadState(capabilities.runRegistry, run, {
+    threadRecord: run.threadRef === undefined ? null : capabilities.registry.record(run.threadRef),
+    turnRunning: run.threadRef !== undefined && capabilities.liveState(run.threadRef)?.state === "turn_running",
+  })
 
 const projectTurns = (records: ReadonlyArray<LocalTurnRecord>): ReadonlyArray<FullAutoControlTurn> =>
   [...records]
@@ -378,6 +434,277 @@ export const startFullAutoControlServer = (
         ok: true,
         record: projectRecord(record, capabilities.liveState(startedThreadRef)),
       })
+      return
+    }
+
+    // FA-RUN-01 (#8969): the run-level lifecycle surface. Matched BEFORE the
+    // generic thread-ref regex below so "runs" is never mistaken for a
+    // threadRef, exactly like /v1/full-auto/start is special-cased above.
+    if (url.pathname === "/v1/full-auto/runs") {
+      if (method !== "get") {
+        sendError(response, 405, { error: "method_not_allowed", message: "Use GET." })
+        return
+      }
+      sendJson(response, 200, {
+        schema: FULL_AUTO_CONTROL_SCHEMA,
+        serverInstanceId: instanceId,
+        runs: capabilities.runRegistry.list().map(run => projectRun(settleRun(capabilities, run))),
+      })
+      return
+    }
+
+    if (url.pathname === "/v1/full-auto/runs/start") {
+      if (method !== "post") {
+        sendError(response, 405, { error: "method_not_allowed", message: "Use POST." })
+        return
+      }
+      const body = decodeFullAutoControlRunStartRequest(await readJsonBody(request))
+      if (body === null) {
+        sendError(response, 400, {
+          error: "invalid_request",
+          message:
+            "runs/start requires a JSON body: { workspaceRef, title, objective, doneCondition, lane?, turnCap? }.",
+        })
+        return
+      }
+      const resolvedWorkspaceRef = capabilities.resolveWorkspaceRef()
+      if (body.workspaceRef !== resolvedWorkspaceRef) {
+        auditLog("runs/start", "-", "refused workspace_mismatch")
+        sendError(response, 409, {
+          error: "workspace_mismatch",
+          message:
+            "The named workspace does not match the currently resolved workspace; no run was started.",
+          expectedWorkspaceRef: body.workspaceRef,
+          resolvedWorkspaceRef,
+        })
+        return
+      }
+      const lane = body.lane ?? FULL_AUTO_DEFAULT_LANE
+      if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
+        sendError(response, 409, {
+          error: "lane_not_eligible",
+          message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
+        })
+        return
+      }
+      // FA-AC-39: check BEFORE minting anything -- a refusal must leave no
+      // side effect behind, never a half-started thread.
+      const existingActive = capabilities.runRegistry.activeRun()
+      if (existingActive !== null) {
+        auditLog("runs/start", "-", `refused active_run_conflict runRef=${existingActive.runRef}`)
+        sendError(response, 409, {
+          error: "active_run_conflict",
+          message: "A Full Auto run is already active for this Desktop profile.",
+          activeRunRef: existingActive.runRef,
+        })
+        return
+      }
+      const startedThreadRef = capabilities.createThread(body.title, lane)
+      capabilities.registry.set(startedThreadRef, true, { workspaceRef: resolvedWorkspaceRef, profile: { lane } })
+      const result = capabilities.runRegistry.startNew({
+        title: body.title,
+        objective: body.objective,
+        doneCondition: body.doneCondition,
+        objectiveSource: "control_caller",
+        workspaceRef: resolvedWorkspaceRef,
+        profile: { lane },
+        ...(body.turnCap === undefined ? {} : { turnCap: body.turnCap }),
+        threadRef: startedThreadRef,
+        actor: "control_api",
+        reason: `started via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER})`,
+      })
+      if (!result.ok) {
+        // Genuinely unexpected given the pre-check above (Node is
+        // single-threaded and nothing awaits between it and here), but never
+        // silently drop the minted thread's Full Auto grant if this ever
+        // fires -- report the conflict honestly.
+        auditLog("runs/start", startedThreadRef, `unexpected refusal: ${result.reason}`)
+        sendError(response, 409, {
+          error: result.reason === "active_run_conflict" ? "active_run_conflict" : "invalid_request",
+          message: "A Full Auto run could not be started.",
+          ...(result.reason === "active_run_conflict" ? { activeRunRef: result.activeRunRef } : {}),
+        })
+        return
+      }
+      capabilities.appendSystemNote(
+        startedThreadRef,
+        `Full Auto run started programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+      )
+      void capabilities.triggerReconciliation().catch(() => {})
+      auditLog("runs/start", startedThreadRef, `ok runRef=${result.run.runRef}`)
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+      return
+    }
+
+    const runMatch = /^\/v1\/full-auto\/runs\/([^/]+)(?:\/(pause|resume|stop))?$/.exec(url.pathname)
+    if (runMatch !== null) {
+      const runRef = decodeFullAutoControlRunRef(decodeURIComponent(runMatch[1]!))
+      if (runRef === null) {
+        sendError(response, 400, { error: "invalid_request", message: "runRef must be a 1-180 character string." })
+        return
+      }
+      const runAction = runMatch[2] ?? null
+
+      if (runAction === null) {
+        if (method !== "get") {
+          sendError(response, 405, { error: "method_not_allowed", message: "Use GET." })
+          return
+        }
+        const run = capabilities.runRegistry.get(runRef)
+        if (run === null) {
+          sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+          return
+        }
+        sendJson(response, 200, {
+          schema: FULL_AUTO_CONTROL_SCHEMA,
+          serverInstanceId: instanceId,
+          run: projectRun(settleRun(capabilities, run)),
+        })
+        return
+      }
+
+      if (method !== "post") {
+        sendError(response, 405, { error: "method_not_allowed", message: "Use POST." })
+        return
+      }
+      const run = capabilities.runRegistry.get(runRef)
+      if (run === null) {
+        sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+        return
+      }
+
+      if (runAction === "pause") {
+        const turnRunning = run.threadRef !== undefined
+          && capabilities.liveState(run.threadRef)?.state === "turn_running"
+        const to = turnRunning ? "pausing" : "paused"
+        const result = capabilities.runRegistry.transition(runRef, {
+          to,
+          actor: "control_api",
+          reason: `Pause requested via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+        })
+        if (!result.ok) {
+          if (result.reason === "not_found") {
+            sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+            return
+          }
+          sendError(response, 409, {
+            error: "illegal_transition",
+            message: `Pause is not legal from state ${result.from}.`,
+            fromState: result.from,
+            toState: result.to,
+          })
+          return
+        }
+        // Pause immediately prevents any new dispatch, whether or not a
+        // turn is currently in flight -- disable the thread-level gate right
+        // now rather than waiting for the turn to resolve.
+        if (run.threadRef !== undefined) {
+          capabilities.registry.set(run.threadRef, false, { disabledBy: "control_api" })
+          if (turnRunning) capabilities.interruptLiveTurn?.(run.threadRef)
+          capabilities.appendSystemNote(
+            run.threadRef,
+            `Full Auto run paused programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+          )
+        }
+        auditLog("runs/pause", run.threadRef ?? runRef, `ok state=${result.run.state}`)
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+        return
+      }
+
+      if (runAction === "resume") {
+        if (run.state !== "paused") {
+          sendError(response, 409, {
+            error: "illegal_transition",
+            message: `Resume is legal only from paused (current state: ${run.state}).`,
+            fromState: run.state,
+            toState: "running",
+          })
+          return
+        }
+        // FA-AC-44: revalidate workspace admission before dispatching again
+        // -- the same fail-closed rule Start/Enable already enforce. A
+        // mismatch is a REFUSAL, never a redirect or a silent state change:
+        // the run stays exactly Paused (matching the enable/start pattern of
+        // leaving the registry untouched on mismatch) so the owner can Stop
+        // it or Resume again once the expected workspace is available.
+        const resolvedWorkspaceRef = capabilities.resolveWorkspaceRef()
+        if (run.workspaceRef !== undefined && run.workspaceRef !== resolvedWorkspaceRef) {
+          sendError(response, 409, {
+            error: "workspace_mismatch",
+            message: "The run's granted workspace no longer matches the currently resolved workspace; Resume refused and the run remains Paused.",
+            expectedWorkspaceRef: run.workspaceRef,
+            resolvedWorkspaceRef,
+          })
+          return
+        }
+        const lane = run.profile?.lane ?? FULL_AUTO_DEFAULT_LANE
+        if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
+          sendError(response, 409, {
+            error: "lane_not_eligible",
+            message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
+          })
+          return
+        }
+        const result = capabilities.runRegistry.transition(runRef, {
+          to: "running",
+          actor: "control_api",
+          reason: `Resume requested via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+        })
+        if (!result.ok) {
+          sendError(response, 409, {
+            error: "illegal_transition",
+            message: "Resume is no longer legal for this run.",
+            fromState: run.state,
+            toState: "running",
+          })
+          return
+        }
+        if (run.threadRef !== undefined) {
+          // FA-AC-15/FA-AC-44: re-enable through the exact same exactly-once
+          // dispatch path every other Full Auto trigger already uses.
+          capabilities.registry.set(run.threadRef, true, { workspaceRef: resolvedWorkspaceRef, profile: run.profile })
+          capabilities.appendSystemNote(
+            run.threadRef,
+            `Full Auto run resumed programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+          )
+        }
+        void capabilities.triggerReconciliation().catch(() => {})
+        auditLog("runs/resume", run.threadRef ?? runRef, "ok")
+        sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
+        return
+      }
+
+      // stop: terminal, legal from any non-terminal state, never resumed.
+      const turnRunning = run.threadRef !== undefined
+        && capabilities.liveState(run.threadRef)?.state === "turn_running"
+      const result = capabilities.runRegistry.transition(runRef, {
+        to: "stopped",
+        actor: "control_api",
+        reason: `Stop requested via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+      })
+      if (!result.ok) {
+        if (result.reason === "not_found") {
+          sendError(response, 404, { error: "not_found", message: "No Full Auto run exists for that runRef." })
+          return
+        }
+        sendError(response, 409, {
+          error: "illegal_transition",
+          message: `Stop is not legal from state ${result.from} (the run is already terminal).`,
+          fromState: result.from,
+          toState: result.to,
+        })
+        return
+      }
+      if (run.threadRef !== undefined) {
+        capabilities.registry.set(run.threadRef, false, { disabledBy: "control_api" })
+        if (turnRunning) capabilities.interruptLiveTurn?.(run.threadRef)
+        capabilities.appendSystemNote(
+          run.threadRef,
+          `Full Auto run stopped programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+        )
+      }
+      auditLog("runs/stop", run.threadRef ?? runRef, "ok")
+      sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: projectRun(result.run) })
       return
     }
 

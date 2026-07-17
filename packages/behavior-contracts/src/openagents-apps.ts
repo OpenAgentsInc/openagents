@@ -973,11 +973,19 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "Planned oracle proving the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle: Pause with an active turn transitions through Pausing to Paused only once that turn resolves; Pause with no turn in flight transitions directly to Paused; Resume is legal only from Paused and dispatches exactly once; Stop is terminal, legal from any non-terminal state, and distinct from Pause (never resumable); and every transition persists actor/timestamp/typed reason.",
+            "FA-RUN-01 (#8969) landed: unit coverage over the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle state machine, its exhaustive legal-transition matrix, the v1 one-active-run-per-profile concurrency policy, rerun/new-generation semantics, and the additive legacy-registry migration -- Pause with an active turn transitions through Pausing to Paused only once that turn resolves; Pause with no turn in flight transitions directly to Paused; Resume is legal only from Paused and dispatches exactly once; Stop is terminal, legal from any non-terminal state, and distinct from Pause (never resumable); and every transition persists actor/timestamp/typed reason.",
+          id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.run_model",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/tests/full-auto-run-registry.test.ts",
+        },
+        {
+          description:
+            "Planned: FA-UX-01 (#8974) wires the read-only run view's Pause/Resume/Stop controls to the FA-RUN-01 transitions this contract already binds, so the full owner-facing statement (named launch, explicit objective/done condition, Play/Pause/Stop UI, read-only running view) is provable end to end.",
           id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.planned",
           kind: "planned",
           mode: "unit",
-          ref: "github:OpenAgentsInc/openagents#8969",
+          ref: "github:OpenAgentsInc/openagents#8974",
         },
       ],
       productArea: "Desktop Full Auto run lifecycle",
@@ -991,7 +999,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
       surface: "openagents-desktop",
       verification:
-        "Planned: FA-RUN-01 (#8969) unit/e2e coverage over the FullAutoRun state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec) plus FA-UX-01 (#8974) wiring the Pause/Resume/Stop controls in the read-only run view to those exact typed transitions -- an illegal transition (e.g. Resume from a non-Paused state) must be refused, never silently coerced.",
+        "FA-RUN-01 (#8969) landed: the durable FullAutoRun lifecycle state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec), its control-API Pause/Resume/Stop routes, and the legacy-registry migration are unit- and route-tested (apps/openagents-desktop/tests/full-auto-run-registry.test.ts, apps/openagents-desktop/src/full-auto-run-control-server.test.ts). Still pending: FA-UX-01 (#8974) wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop controls -- an illegal transition (e.g. Resume from a non-Paused state) must be refused, never silently coerced, and this contract stays `pending` (not `enforced`) until that UI wiring lands.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
