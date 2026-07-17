@@ -5,7 +5,7 @@ import { openMobileCodingAttachmentPicker } from "../src/coding/mobile-coding-at
 const digest = "ab".repeat(32)
 
 describe("contract openagents_mobile.coding.native_attachment_picker.v1", () => {
-  test("prepares file and image bytes without exposing a native URI", async () => {
+  test("prepares file and image bytes with only the managed persistent preview URI", async () => {
     const persisted: string[] = []
     const picker = openMobileCodingAttachmentPicker({
       pickFiles: async () => ({
@@ -15,7 +15,10 @@ describe("contract openagents_mobile.coding.native_attachment_picker.v1", () => 
           mime: "image/png",
           sizeBytes: 3,
           bytes: async () => new Uint8Array([1, 2, 3]),
-          persist: async value => { persisted.push(value) },
+          persist: async value => {
+            persisted.push(value)
+            return `file:///openagents-coding-attachments/${value}`
+          },
         }],
       }),
       sha256: async () => digest.toUpperCase(),
@@ -29,10 +32,11 @@ describe("contract openagents_mobile.coding.native_attachment_picker.v1", () => 
         mime: "image/png",
         sizeBytes: 3,
         digest,
+        previewUrl: `file:///openagents-coding-attachments/${digest}`,
       }],
     })
     expect(persisted).toEqual([digest])
-    expect(JSON.stringify(result)).not.toContain("file://")
+    expect(JSON.stringify(result)).not.toContain("native-picker")
   })
 
   test("bounds count and bytes before persistent storage", async () => {

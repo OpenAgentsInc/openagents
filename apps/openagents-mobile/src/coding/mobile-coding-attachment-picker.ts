@@ -9,7 +9,7 @@ export type MobileCodingPickedFile = Readonly<{
   mime: string
   sizeBytes: number
   bytes: () => Promise<Uint8Array>
-  persist: (digest: string) => Promise<void>
+  persist: (digest: string) => Promise<string | void>
 }>
 
 export type MobileCodingAttachmentPickerPort = Readonly<{
@@ -69,13 +69,16 @@ export const openMobileCodingAttachmentPicker = (
           return pickerFailure("The selected file or image could not be stored on this device.")
         }
         if (digests.has(digest)) continue
-        await file.persist(digest)
+        const previewUrl = await file.persist(digest)
         digests.add(digest)
         prepared.push({
           name: file.name.trim().slice(0, 160) || "attachment",
           mime: file.mime.trim().slice(0, 128) || "application/octet-stream",
           sizeBytes: bytes.byteLength,
           digest,
+          ...(file.mime.startsWith("image/") && typeof previewUrl === "string" && previewUrl.startsWith("file:")
+            ? { previewUrl }
+            : {}),
         })
       }
       return prepared.length === 0

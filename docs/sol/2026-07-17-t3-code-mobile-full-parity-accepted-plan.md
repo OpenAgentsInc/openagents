@@ -493,3 +493,81 @@ commands, `@` context, attachment editing, and active-run queue/stop remain
 - residual: `T3M-B1` is complete; `T3M-B2` slash commands, `@` context,
   attachment editing, and active-run queue/stop is the next ordered packet;
   full mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-B2.1
+
+Outcome: make draft attachments first-class composer content before adding the
+command/context discovery layer: compact image/file previews, exact per-item
+state, removal, and bounded retry without weakening device-local byte
+verification.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/coding/mobile-coding-composer.ts`
+- `apps/openagents-mobile/src/coding/mobile-coding-attachment-picker.ts`
+- `apps/openagents-mobile/src/coding/expo-mobile-coding-attachment-picker.ts`
+- `apps/openagents-mobile/src/screens/mobile-composer-attachments.ts`
+- `apps/openagents-mobile/src/screens/khala-core.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/src/app.tsx`
+- `apps/openagents-mobile/tests/mobile-composer-attachments.test.ts`
+- `apps/openagents-mobile/tests/mobile-coding-composer.test.ts`
+- `apps/openagents-mobile/tests/mobile-coding-attachment-picker.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- `packages/khala-sync-client/src/index.ts`
+- this ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: canonical composer transactions, persisted private drafts,
+device-local attachment bytes, exact draft identity, Dynamic Type controls,
+behavior registry, and Sol manifest.
+
+Required behavior:
+
+- every selected attachment renders in a bounded composer strip as an image
+  preview or file card with filename, size, type, and exact staged/uploading/
+  ready/error state;
+- remove applies the canonical `RemoveAttachment` transaction to the exact
+  active draft, persists it, and cannot remove a stale or foreign attachment;
+- retry is shown only for a failed item and routes through a host verifier that
+  must re-read and re-hash the original device-local bytes before the item can
+  return to ready;
+- pending mutation disables only the affected item and preserves the text,
+  target, other attachments, and transcript;
+- limits and delivery failures remain explicit; no binary-delivery or remote-
+  upload support is implied.
+
+Proof: canonical composer transaction tests, attachment projection/intent
+journeys, authoritative submit regression, accessibility, behavior contracts,
+mobile typecheck, and repository checks.
+
+Close rule: this closes attachment preview/removal/retry only. Typed slash
+commands and repository-backed `@` context remain `T3M-B2.2`; active-run
+queue/stop remains `T3M-B2.3`.
+
+### CLAIM
+
+- actor/session: `codex-t3-mobile-parity-b2-1-20260717`
+- base: `eae0c55d660812bdb630017bae5599c08a09ce0d`
+- worktree/branch: `openagents-t3-mobile-20260717` / detached `origin/main`
+- scope: `T3M-B2.1` draft attachment preview, exact removal, and verified retry
+- paths: the `T3M-B2.1` owned paths above
+- hot files: canonical composer exports, Home intent registry, Khala composer
+  presentation, native binding, behavior registry, Sol manifest
+- verification: focused mobile/composer suites, typecheck, behavior/Sol checks,
+  and `pnpm run check`
+- claimed_at: `2026-07-17T21:45:27Z`
+
+### CLAIM-STATUS
+
+- status: implementation complete and release gates green
+- verification: 71 focused composer attachment, canonical draft, native
+  picker/delivery, authoritative Home, accessibility, local-first registry,
+  and behavior-contract tests; Khala Sync client and mobile typechecks;
+  `pnpm run check`; `git diff --check`
+- authority note: preview URIs name only the app-managed persistent copy;
+  remove uses canonical composer transactions; retry requires exact failed
+  attachment identity plus matching size and SHA-256 from re-read local bytes
+- close boundary: no binary runtime delivery or remote upload claim; slash and
+  `@` discovery remain `T3M-B2.2`; queue/stop remains `T3M-B2.3`
+- verified_at: `2026-07-17T21:50:50Z`

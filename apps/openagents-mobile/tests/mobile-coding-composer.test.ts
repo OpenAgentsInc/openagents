@@ -338,6 +338,63 @@ describe("contract openagents_mobile.coding.canonical_composer_draft.v1", () => 
     expect(mobileCodingComposerText(edited!.draft)).toBe("Keep the image attached")
   })
 
+  test("removes only an exact draft attachment and retries only after matching byte proof", async () => {
+    const memory = memoryDrafts()
+    const composer = openMobileCodingComposer({
+      drafts: memory.drafts,
+      randomId: () => "attachment-edit",
+      now: () => at,
+    })
+    const opened = await composer.open({ target, resolution, runtime: "codex" })
+    const edited = await composer.updateText(opened!, "Keep the other file")
+    const attached = await composer.addAttachments(edited!, [{
+      name: "first.txt",
+      mime: "text/plain",
+      sizeBytes: 5,
+      digest: "aa".repeat(32),
+    }, {
+      name: "second.png",
+      mime: "image/png",
+      sizeBytes: 8,
+      digest: "bb".repeat(32),
+      previewUrl: "file:///attachments/second.png",
+    }])
+    const firstId = attached!.draft.doc.attachments[0]!.id
+    const second = attached!.draft.doc.attachments[1]!
+    expect(await composer.removeAttachment(attached!, "attachment.foreign")).toBeNull()
+    const removed = await composer.removeAttachment(attached!, firstId)
+    expect(removed?.draft.doc.attachments.map(value => value.name)).toEqual(["second.png"])
+    expect(removed?.draft.doc.blocks.some(block =>
+      block.kind === "attachmentRef" && block.attachmentId === firstId)).toBe(false)
+    expect(mobileCodingComposerText(removed!.draft)).toBe("Keep the other file")
+
+    const failed = decodeCodingComposerDraftSnapshot({
+      ...removed!.draft,
+      revision: removed!.draft.revision + 1,
+      doc: {
+        ...removed!.draft.doc,
+        attachments: [{ ...second, status: "error", errorText: "Local bytes could not be read." }],
+      },
+    })
+    memory.seed(failed)
+    const failedSession = { ...removed!, draft: failed }
+    expect(await composer.retryAttachment(failedSession, second.id, {
+      digest: "cc".repeat(32),
+      sizeBytes: 8,
+    })).toBeNull()
+    const retried = await composer.retryAttachment(failedSession, second.id, {
+      digest: "bb".repeat(32),
+      sizeBytes: 8,
+    })
+    expect(retried?.draft.doc.attachments[0]).toMatchObject({
+      id: second.id,
+      status: "ready",
+      digest: "bb".repeat(32),
+      previewUrl: "file:///attachments/second.png",
+    })
+    expect(retried?.draft.doc.attachments[0]?.errorText).toBeUndefined()
+  })
+
   test("restores the same canonical draft after a real local-store process restart", async () => {
     const root = mkdtempSync(join(tmpdir(), "openagents-mobile-composer-"))
     const database = join(root, "composer.sqlite")

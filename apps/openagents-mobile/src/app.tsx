@@ -108,6 +108,14 @@ type MobileCodingHomeBinding = Readonly<{
   pickComposerAttachments: (
     session: MobileCodingComposerSession,
   ) => Promise<MobileCodingAttachmentUpdateResult>
+  removeComposerAttachment: (
+    session: MobileCodingComposerSession,
+    attachmentId: string,
+  ) => Promise<MobileCodingComposerSession | null>
+  retryComposerAttachment: (
+    session: MobileCodingComposerSession,
+    attachmentId: string,
+  ) => Promise<MobileCodingComposerSession | null>
   prepareComposerSubmission: (
     session: MobileCodingComposerSession,
     message: string,
@@ -259,6 +267,32 @@ const selectAuthenticatedMobileExperience = async (
         const updated = await composer.selectTarget(session, target)
         if (updated !== null) activeComposer = updated
         return updated
+      },
+      removeComposerAttachment: async (session, attachmentId) => {
+        if (composer === null) return null
+        const updated = await composer.removeAttachment(session, attachmentId)
+        if (updated !== null) activeComposer = updated
+        return updated
+      },
+      retryComposerAttachment: async (session, attachmentId) => {
+        if (composer === null) return null
+        const attachment = session.draft.doc.attachments.find(candidate =>
+          candidate.id === attachmentId && candidate.status === "error")
+        if (attachment?.digest === undefined) return null
+        try {
+          const bytes = await attachmentDelivery.read(attachment.digest)
+          const digest = (await attachmentDelivery.sha256(bytes)).toLowerCase()
+          if (bytes.byteLength !== attachment.sizeBytes ||
+            digest !== attachment.digest.toLowerCase()) return null
+          const updated = await composer.retryAttachment(session, attachmentId, {
+            digest,
+            sizeBytes: bytes.byteLength,
+          })
+          if (updated !== null) activeComposer = updated
+          return updated
+        } catch {
+          return null
+        }
       },
       prepareComposerSubmission: (session, message) =>
         prepareMobileCodingAttachmentDelivery({

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "496eef37be89e07e65952074a018beb229b6bfef8ea7f2d2175d1b424ac14a35",
+  "sourceTreeSha256": "758289f33cc8802d7c74a15ccff084322f73c324fa836e67afcd22343189763a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1972,7 +1972,7 @@
       "owner": "Sol T3 Code mobile parity",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "b66c28f98156b8737920c9dd6ca2e1c76425fae9ec3f6490a8de24e72b2bdeab",
+      "sha256": "1b9f50b8cbf47819120dc097742c8d0b9e26b8ed4808be34a663408f6f92c644",
       "status": "active — full mobile parity",
       "snapshot": "`eb15ce99c54af497874a998192b1afbb2fa8268b`",
       "reviewedAt": "2026-07-12",

@@ -156,6 +156,7 @@ export interface HomeState {
   readonly fleetRuns?: FleetRunClientProjection
   readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
+  readonly codingAttachmentMutatingRef: string | null
   readonly codingAttachmentStatus: Readonly<{
     kind: "ready" | "failed"
     message: string
@@ -295,6 +296,7 @@ export const initialHomeState: HomeState = {
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
+  codingAttachmentMutatingRef: null,
   codingAttachmentStatus: null,
   accessibility: defaultMobileAccessibilityProfile,
   khala: initialKhalaState,
@@ -389,6 +391,14 @@ export const PortableControlRequested = defineIntent(
 export const CodingComposerAttachmentsRequested = defineIntent(
   "CodingComposerAttachmentsRequested",
   EmptyPayload,
+)
+export const CodingComposerAttachmentRemoved = defineIntent(
+  "CodingComposerAttachmentRemoved",
+  Schema.Struct({ attachmentId: Schema.String }),
+)
+export const CodingComposerAttachmentRetryRequested = defineIntent(
+  "CodingComposerAttachmentRetryRequested",
+  Schema.Struct({ attachmentId: Schema.String }),
 )
 export const CodingExecutionTargetSelected = defineIntent(
   "CodingExecutionTargetSelected",
@@ -495,6 +505,8 @@ export const homeIntentDefinitions = [
   PortableDestinationSelected,
   PortableControlRequested,
   CodingComposerAttachmentsRequested,
+  CodingComposerAttachmentRemoved,
+  CodingComposerAttachmentRetryRequested,
   CodingExecutionTargetSelected,
   CodingComposerTargetPickerOpened,
   CodingComposerTargetPickerDismissed,
@@ -579,6 +591,7 @@ export const renderContentView = (state: HomeState): View =>
           state.codingComposer,
           state.codingAttachmentPicking,
           state.codingAttachmentStatus,
+          state.codingAttachmentMutatingRef,
           state.accessibility,
           state.codingExecutionTargets,
           {
@@ -1361,6 +1374,14 @@ export interface HomeProgramOptions {
     pickComposerAttachments: (
       session: MobileCodingComposerSession,
     ) => Promise<MobileCodingAttachmentUpdateResult>
+    removeComposerAttachment?: (
+      session: MobileCodingComposerSession,
+      attachmentId: string,
+    ) => Promise<MobileCodingComposerSession | null>
+    retryComposerAttachment?: (
+      session: MobileCodingComposerSession,
+      attachmentId: string,
+    ) => Promise<MobileCodingComposerSession | null>
     prepareComposerSubmission?: (
       session: MobileCodingComposerSession,
       message: string,
@@ -1734,6 +1755,7 @@ const makeSyncedConversationHandlers = (
         codingComposer: activeRemoved ? null : current.codingComposer,
         codingComposerTargetPickerOpen: activeRemoved ? false : current.codingComposerTargetPickerOpen,
         codingComposerTargetSearch: activeRemoved ? "" : current.codingComposerTargetSearch,
+        codingAttachmentMutatingRef: activeRemoved ? null : current.codingAttachmentMutatingRef,
         threadLifecycle: {
           editingThreadRef: null,
           renameDraft: "",
@@ -1776,6 +1798,7 @@ const makeSyncedConversationHandlers = (
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
       codingAttachmentPicking: false,
+      codingAttachmentMutatingRef: null,
       codingAttachmentStatus: null,
       khala: {
         ...current.khala,
@@ -1815,6 +1838,7 @@ const makeSyncedConversationHandlers = (
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
       codingAttachmentPicking: false,
+      codingAttachmentMutatingRef: null,
       codingAttachmentStatus: null,
       khala: { ...current.khala, pending: true },
     }))
@@ -2197,6 +2221,58 @@ export const makeHomeHandlers = (
         options.coding,
         selectedThreadLease,
       )
+  const mutateComposerAttachment = (
+    attachmentId: string,
+    action: "remove" | "retry",
+  ) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const composer = before.codingComposer
+    const mutate = action === "remove"
+      ? options.coding?.removeComposerAttachment
+      : options.coding?.retryComposerAttachment
+    if (composer === null || mutate === undefined || before.khala.pending ||
+      before.codingAttachmentMutatingRef !== null ||
+      !composer.draft.doc.attachments.some(attachment =>
+        attachment.id === attachmentId && (action === "remove" || attachment.status === "error"))) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      codingAttachmentMutatingRef: attachmentId,
+      codingAttachmentStatus: null,
+    }))
+    const updated = yield* Effect.promise(async () => {
+      try {
+        return await mutate(composer, attachmentId)
+      } catch {
+        return null
+      }
+    })
+    yield* SubscriptionRef.update(state, current => {
+      if (current.codingComposer?.draft.draftRef !== composer.draft.draftRef ||
+        current.codingAttachmentMutatingRef !== attachmentId) return current
+      return updated === null
+        ? {
+            ...current,
+            codingAttachmentMutatingRef: null,
+            codingAttachmentStatus: {
+              kind: "failed" as const,
+              message: action === "remove"
+                ? "That attachment could not be removed. The draft was kept."
+                : "That attachment could not be reverified. Remove it and attach it again.",
+            },
+          }
+        : {
+            ...current,
+            codingComposer: updated,
+            codingAttachmentMutatingRef: null,
+            codingAttachmentStatus: {
+              kind: "ready" as const,
+              message: action === "remove"
+                ? "Attachment removed from this draft."
+                : "Attachment reverified on this device.",
+            },
+          }
+    })
+  })
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
     NewChatPressed: synced?.NewChatPressed ??
@@ -2208,6 +2284,7 @@ export const makeHomeHandlers = (
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
         codingAttachmentPicking: false,
+        codingAttachmentMutatingRef: null,
         codingAttachmentStatus: null,
         khala: initialKhalaState,
       }))),
@@ -2261,6 +2338,10 @@ export const makeHomeHandlers = (
             }
           })
         }),
+    CodingComposerAttachmentRemoved: payload =>
+      mutateComposerAttachment(payload.attachmentId, "remove"),
+    CodingComposerAttachmentRetryRequested: payload =>
+      mutateComposerAttachment(payload.attachmentId, "retry"),
     CodingExecutionTargetSelected: options.coding === undefined
       ? () => Effect.void
       : payload => Effect.gen(function* () {
@@ -2363,6 +2444,7 @@ export const makeHomeHandlers = (
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingAttachmentPicking: false,
+            codingAttachmentMutatingRef: null,
             codingAttachmentStatus: null,
             attentionNotice: null,
             khala: { ...current.khala, pending: true },
@@ -2624,6 +2706,7 @@ export const makeHomeHandlers = (
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingAttachmentPicking: false,
+            codingAttachmentMutatingRef: null,
             codingAttachmentStatus: null,
             khala: { ...current.khala, pending: true },
           }))
@@ -2646,6 +2729,7 @@ export const makeHomeHandlers = (
                 codingComposerTargetPickerOpen: false,
                 codingComposerTargetSearch: "",
                 codingAttachmentPicking: false,
+                codingAttachmentMutatingRef: null,
                 codingAttachmentStatus: null,
                 khala: {
                   ...withConfirmedThread(current, selected.thread).khala,
@@ -2724,6 +2808,8 @@ export interface HomeProgramHandle {
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
     readonly pickAttachments: () => void
+    readonly removeAttachment: (attachmentId: string) => void
+    readonly retryAttachment: (attachmentId: string) => void
     readonly selectTarget: (targetId: string) => void
     readonly openTargetPicker: () => void
     readonly dismissTargetPicker: () => void
@@ -2888,6 +2974,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     portableSubmittingAction: null,
                     portableNotice: null,
                     codingAttachmentPicking: false,
+                    codingAttachmentMutatingRef: null,
                     codingAttachmentStatus: null,
                     khala: initialKhalaState,
                   }
@@ -2930,6 +3017,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             threadRef: target.threadRef,
           }))),
           pickAttachments: fire("CodingComposerAttachmentsRequested"),
+          removeAttachment: attachmentId => fireRef(IntentRef(
+            "CodingComposerAttachmentRemoved",
+            StaticPayload({ attachmentId }),
+          )),
+          retryAttachment: attachmentId => fireRef(IntentRef(
+            "CodingComposerAttachmentRetryRequested",
+            StaticPayload({ attachmentId }),
+          )),
           selectTarget: targetId => fireRef(IntentRef(
             "CodingExecutionTargetSelected",
             StaticPayload({ targetId }),

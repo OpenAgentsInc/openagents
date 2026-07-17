@@ -28,6 +28,7 @@ import {
   renderMobileComposerToolbar,
   type MobileComposerToolbarState,
 } from "./mobile-composer-toolbar"
+import { renderMobileComposerAttachments } from "./mobile-composer-attachments"
 import { renderMobileInteractionCard } from "./mobile-interaction-card"
 import {
   mobileAttachmentRef,
@@ -587,6 +588,7 @@ export const renderKhalaSurface = (
     kind: "ready" | "failed"
     message: string
   }> | null = null,
+  codingAttachmentMutatingRef: string | null = null,
   accessibility: MobileAccessibilityProfile = defaultMobileAccessibilityProfile,
   executionTargets: ReadonlyArray<MobileExecutionTargetOption> = [],
   composerToolbarState: MobileComposerToolbarState = { pickerOpen: false, search: "" },
@@ -727,6 +729,13 @@ export const renderKhalaSurface = (
         executionTargets,
         composerToolbarState,
       ),
+      ...(codingComposer === null
+        ? []
+        : renderMobileComposerAttachments(
+            codingComposer.draft.doc.attachments,
+            codingAttachmentMutatingRef,
+            accessibility,
+          )),
       Composer({
         key: "khala-composer",
         doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],

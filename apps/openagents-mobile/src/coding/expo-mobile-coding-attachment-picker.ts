@@ -43,6 +43,7 @@ export const openExpoMobileCodingAttachmentPicker = (): MobileCodingAttachmentPi
             attachments.create({ idempotent: true, intermediates: true })
             const destination = new File(attachments, sha256)
             if (!destination.exists) await file.copy(destination)
+            return destination.uri
           },
         })),
       }

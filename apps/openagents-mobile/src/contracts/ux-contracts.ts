@@ -5,8 +5,51 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.5",
+    version: "2026-07-17.6",
     contracts: [
+      {
+        contractId: "openagents_mobile.composer.attachment_editing.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile coding composer",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "Device-local draft attachments render as compact image previews or file cards with exact state, size, and type; the user can remove an exact item and retry a failed item without losing the text, target, other attachments, or transcript.",
+        authorityBoundary:
+          "Removal is a canonical persisted composer transaction scoped to the exact active draft. Retry is admitted only for an existing failed attachment and can return to ready only after the host re-reads the managed device-local bytes and proves the stored size and SHA-256 digest. This does not add binary runtime delivery or remote upload authority.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-composer-attachments.ts",
+          "apps/openagents-mobile/src/coding/mobile-coding-composer.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-b21",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/threads/ThreadComposer.tsx",
+        ],
+        oracles: [
+          {
+            id: "mobile_composer_attachment_projection_and_intents",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-composer-attachments.test.ts",
+            description:
+              "Proves image/file presentation, exact states and errors, Dynamic Type actions, foreign/stale refusal, active-draft remove/retry, transcript preservation, and honest feedback.",
+          },
+          {
+            id: "mobile_composer_attachment_canonical_transactions",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-coding-composer.test.ts",
+            description:
+              "Proves canonical removal preserves text and other items while verified retry rejects mismatched proof and clears failure only for matching device-local bytes.",
+          },
+        ],
+        verification:
+          "Composer attachment, canonical draft, picker/delivery, authoritative Home, accessibility, registry, mobile typecheck, and repository checks; physical image preview and screen-reader evidence remain T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.authoritative_target_toolbar.v1",
         state: "enforced",

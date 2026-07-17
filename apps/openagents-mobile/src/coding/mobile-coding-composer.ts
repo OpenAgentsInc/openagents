@@ -6,6 +6,7 @@ import {
   emptyComposerState,
   parseComposerMarkdown,
   readyComposerAttachmentTransaction,
+  retryComposerAttachmentTransaction,
   serializeComposerMarkdown,
   stageComposerAttachmentFiles,
   type CodingComposerDraftSnapshot,
@@ -41,6 +42,7 @@ export type MobileCodingAttachmentFile = Readonly<{
   mime: string
   sizeBytes: number
   digest: string
+  previewUrl?: string
 }>
 
 export type MobileCodingAttachmentUpdateResult =
@@ -71,6 +73,15 @@ export type MobileCodingComposer = Readonly<{
   addAttachments: (
     session: MobileCodingComposerSession,
     files: ReadonlyArray<MobileCodingAttachmentFile>,
+  ) => Promise<MobileCodingComposerSession | null>
+  removeAttachment: (
+    session: MobileCodingComposerSession,
+    attachmentId: string,
+  ) => Promise<MobileCodingComposerSession | null>
+  retryAttachment: (
+    session: MobileCodingComposerSession,
+    attachmentId: string,
+    proof: Readonly<{ digest: string; sizeBytes: number }>,
   ) => Promise<MobileCodingComposerSession | null>
   clear: (
     session: MobileCodingComposerSession,
@@ -202,7 +213,8 @@ const validAttachmentFile = (
   Number.isSafeInteger(file.sizeBytes) &&
   file.sizeBytes >= 0 &&
   file.sizeBytes <= MAX_MOBILE_CODING_ATTACHMENT_BYTES &&
-  /^[a-f0-9]{64}$/u.test(file.digest)
+  /^[a-f0-9]{64}$/u.test(file.digest) &&
+  (file.previewUrl === undefined || file.previewUrl.startsWith("file:"))
 
 const composerStateForDraft = (
   draft: CodingComposerDraftSnapshot,
@@ -326,6 +338,7 @@ export const openMobileCodingComposer = (input: Readonly<{
           name: file.name,
           type: file.mime,
           size: file.sizeBytes,
+          ...(file.previewUrl === undefined ? {} : { previewUrl: file.previewUrl }),
         }], {
           source: "manual",
           idPrefix: `mobile-${file.digest}`,
@@ -356,6 +369,54 @@ export const openMobileCodingComposer = (input: Readonly<{
         selection: state.selection,
         view: state.view,
         updatedAt,
+      })
+      return saveSession(input.drafts, { ...session, draft })
+    },
+    removeAttachment: async (session, attachmentId) => {
+      if (session.draft.submission.status !== "editing") return null
+      const attachment = session.draft.doc.attachments.find(candidate => candidate.id === attachmentId)
+      if (attachment === undefined) return null
+      const applied = applyComposerTransaction(composerStateForDraft(session.draft), {
+        steps: [{ _tag: "RemoveAttachment", attachmentId: attachment.id }],
+        meta: { source: "program", time: Date.parse(now()) },
+      })
+      if (!applied.ok) return null
+      const draft = decodeCodingComposerDraftSnapshot({
+        ...session.draft,
+        revision: session.draft.revision + 1,
+        doc: applied.state.doc,
+        selection: applied.state.selection,
+        view: applied.state.view,
+        updatedAt: now(),
+      })
+      return saveSession(input.drafts, { ...session, draft })
+    },
+    retryAttachment: async (session, attachmentId, proof) => {
+      if (session.draft.submission.status !== "editing") return null
+      const attachment = session.draft.doc.attachments.find(candidate => candidate.id === attachmentId)
+      if (attachment === undefined || attachment.status !== "error" ||
+        attachment.digest === undefined || attachment.digest !== proof.digest ||
+        attachment.sizeBytes !== proof.sizeBytes) return null
+      const initial = composerStateForDraft(session.draft)
+      const retry = retryComposerAttachmentTransaction(initial, attachment.id, Date.parse(now()))
+      if (retry === null) return null
+      const staged = applyComposerTransaction(initial, retry)
+      if (!staged.ok) return null
+      const ready = readyComposerAttachmentTransaction(staged.state, attachment.id, {
+        surface: "native-local",
+        digest: proof.digest,
+        time: Date.parse(now()),
+      })
+      if (ready === null) return null
+      const completed = applyComposerTransaction(staged.state, ready)
+      if (!completed.ok) return null
+      const draft = decodeCodingComposerDraftSnapshot({
+        ...session.draft,
+        revision: session.draft.revision + 1,
+        doc: completed.state.doc,
+        selection: completed.state.selection,
+        view: completed.state.view,
+        updatedAt: now(),
       })
       return saveSession(input.drafts, { ...session, draft })
     },

@@ -56,6 +56,7 @@ export {
   emptyComposerState,
   parseComposerMarkdown,
   readyComposerAttachmentTransaction,
+  retryComposerAttachmentTransaction,
   serializeComposerMarkdown,
   stageComposerAttachmentFiles,
   type CodingComposerDraftSnapshot,
