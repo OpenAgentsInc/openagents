@@ -155,10 +155,17 @@ cross-platform distribution evidence without those separate ceremonies.
 
 ### CLAIM-STATUS
 
-- implementation: in progress
-- focused proof: pending census and packaged journey gates
-- residual: signed/notarized promotion and cross-platform distribution remain
-  separate release-authority work
+- implementation: complete and published; the exact 151-row census contains 99
+  adapted, 46 covered, 6 explicitly rejected, and zero undisposed components
+- focused proof: 216 Desktop files / 2,079 passing / 39 skipped, production and
+  both source Electron smokes, the packaged canonical React journey, exact
+  packaged Codex identity, and all 24 zero-drift visual frames pass
+- packaged source: `1f42cd2998b352575f3092e0ae5b88e5190e1fad`; staged ledger
+  `sha256:6295cbd544c445835c3f1d1bf9484eedef8dac600373cee26a82ea63288b4b5c`
+- receipt: [`2026-07-17-t3ui-12-census-packaged-evidence-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md)
+- residual: the unsigned-development package is not signed-release evidence;
+  current signing/notarization/promotion, cross-platform artifacts, and one
+  compatibility-renderer packaged editor-recovery miss remain explicit
 
 ## Explicit non-authority
 
