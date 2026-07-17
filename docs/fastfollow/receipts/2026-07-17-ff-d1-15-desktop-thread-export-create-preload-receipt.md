@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_15.desktop_thread_export_create_preload.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "implementation_ready_for_claim_release"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
@@ -72,6 +72,11 @@ produce no reported type errors, pass isolated strict compilation, and build
 into the production preload. The targeted AssuranceSpec suite reproduces the
 unrelated environment-profile digest snapshot mismatch at 189/190. Neither
 baseline is owned, absorbed, weakened, or claimed fixed here.
+
+The implementation landed on `main` as
+`5c84a0a69001a76ba62593129dbd2b50c2e33c01`. The fetched remote tree exactly
+matched the fully checked local implementation tree after the disjoint Sync
+landing was reconciled.
 
 ## Honest boundary and next packet
 
