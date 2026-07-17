@@ -1039,3 +1039,19 @@ release finish remain `T3M-D1` through `T3M-F2`.
   focus restoration identity, tests, behavior contract, and Sol receipt
 - exclusions: sheets/swipes/hardware shortcuts (`T3M-C2.2`), workbench feature
   routes (`T3M-D1`–`T3M-E2`), and physical distribution evidence (`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `420fa1b5ff43ce065f1b52b9b45f1f843ce62212` on `main`
+- verification: pre-rebase 200 mobile tests, mobile and RN-renderer typechecks,
+  repository lint/format, and 19 Sol tests; post-rebase 47 adaptive/Home/
+  accessibility/renderer/behavior tests, mobile typecheck, and 19 Sol tests;
+  `git diff --check`
+- authority note: viewport changes update only layout state in the live Home
+  program, preserving draft/transcript authority; regular mode mounts the sole
+  detail tree once beside confirmed navigation through typed SplitPane data
+- close boundary: `T3M-C2.1` compact/regular composition, bounded sidebar,
+  route-aware navigation copy, rotation continuity, and focus-return identity
+  are complete; native sheet/swipe/keyboard focus behavior remains `T3M-C2.2`
+  and full mobile parity remains open through `T3M-F2`
+- verified_at: `2026-07-17T22:39:47Z`
