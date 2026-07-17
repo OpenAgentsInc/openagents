@@ -174,7 +174,7 @@ notarization and Gatekeeper verification.
   - `react-composer.tsx` uses the admitted shadcn Textarea/Button layer with
     closed-catalog icon actions for Attach, Remove, Commands, Stop, and Send.
     Its bounded preview tray, picker, paste, and drop routes retain typed Effect
-    intents; textual Steer/Queue choices remain text-only while a turn is pending.
+    intents; one textual Steer/Queue toggle shows only the active behavior while a turn is pending.
 - `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
   and workers; Vite + the React and Tailwind plugins emit the fixed signed
   renderer assets `index.html`, `boot.js`, and `app.css`.

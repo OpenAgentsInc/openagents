@@ -1732,8 +1732,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   .oa-react-composer-queue li button { grid-row: 2; }
 }
 
-.oa-react-composer-bar,
-.oa-react-submit-mode {
+.oa-react-composer-bar {
   display: flex;
   align-items: center;
   gap: var(--en-spacing-1);
@@ -1829,15 +1828,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textPrimary);
 }
 
-.oa-react-submit-mode {
-  min-width: 0;
-  padding: 2px;
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-md);
-  background: var(--en-color-surfaceRaised);
-}
-
-.oa-react-submit-mode button {
+.oa-react-submit-mode-toggle {
+  flex: 0 0 auto;
   min-height: 36px;
 }
 

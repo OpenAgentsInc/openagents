@@ -619,8 +619,10 @@ reference and the existing Khala theme.
   offsets and merges into the current Lexical history checkpoint; ordinary
   shell rerenders therefore neither move the caret nor reset undo history.
 - Enter submits, Shift+Enter inserts a newline, and an IME composition never
-  submits. Submission retains the existing exact Steer, Queue, and idle Send
-  intents and duplicate-commit guard.
+  submits. While a turn is pending, one textual mode toggle shows only the
+  active Steer or Queue behavior; toggling changes presentation state without
+  changing the existing exact Steer, Queue, and idle Send intents or the
+  duplicate-commit guard.
 - The editor is an accessible multiline textbox, remains focused across an
   explicit new-session transition, grows within a bounded scroll region, and
   keeps attachment/status changes out of the reading surface's layout.

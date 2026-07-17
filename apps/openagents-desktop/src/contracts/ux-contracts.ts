@@ -90,7 +90,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Use the supplied Message Scroller ideas throughout the message area and make the input bar match its compact icon-led quality.",
         authorityBoundary:
-          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition with closed-catalog icon slots plus accessible names; Steer and Queue stay textual because they are mutually exclusive behavior choices. #8828 restores the already-authorized bounded image picker/paste/drop projection without adding model, transport, branching, or persistence authority.",
+          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition with closed-catalog icon slots plus accessible names; one textual mode toggle shows only the active Steer or Queue behavior and switches to the other admitted behavior without changing submission authority. #8828 restores the already-authorized bounded image picker/paste/drop projection without adding model, transport, branching, or persistence authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/components/ui/message-scroller.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
@@ -114,7 +114,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
             description:
-              "Proves Commands, Stop, and Send/Steer/Queue submission use catalog-marked icon controls with accessible labels while preserving exact intents, focus, autosize, duplicate-send defense, IME composition, and pending-mode behavior.",
+              "Proves Commands, Stop, and Send/Steer/Queue submission use catalog-marked icon controls with accessible labels, the pending-mode control renders only its active Steer or Queue choice, and toggling preserves exact intents, focus, autosize, duplicate-send defense, IME composition, and pending-mode behavior.",
           },
         ],
         verification:

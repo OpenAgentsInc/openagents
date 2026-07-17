@@ -324,6 +324,12 @@ export const ReactComposer = ({
   // submits while this holds.
   const fullAutoRunning = activeFullAutoTurnRunning(state);
   const pendingAction = composerActionPresentation(state.composerAdmission, state.pendingSubmitMode);
+  const alternatePendingMode = state.pendingSubmitMode === "steer" ? "queue" : "steer";
+  const alternatePendingAction = composerActionPresentation(state.composerAdmission, alternatePendingMode);
+  const alternatePendingModeSupported = alternatePendingMode === "steer"
+    ? capabilities?.steerTurn ?? true
+    : capabilities?.queueFollowup ?? true;
+  const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
   const canSubmit = state.pending
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
@@ -535,33 +541,23 @@ export const ReactComposer = ({
           <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
           Full Auto
         </DesktopComposerButton> : null}
-        {state.pending ? (
-          <div className="oa-react-submit-mode" role="radiogroup" aria-label="Pending message behavior">
-            {(capabilities?.steerTurn ?? true) ? <Button
-              type="button"
-              variant={state.pendingSubmitMode === "steer" ? "secondary" : "ghost"}
-              size="sm"
-              role="radio"
-              aria-label="Steer now"
-              aria-checked={state.pendingSubmitMode === "steer"}
-              disabled={!composerActionPresentation(state.composerAdmission, "steer").enabled}
-              onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "steer")}
-            >
-              Steer now
-            </Button> : null}
-            {(capabilities?.queueFollowup ?? true) ? <Button
-              type="button"
-              variant={state.pendingSubmitMode === "queue" ? "secondary" : "ghost"}
-              size="sm"
-              role="radio"
-              aria-label="Queue next"
-              aria-checked={state.pendingSubmitMode === "queue"}
-              disabled={!composerActionPresentation(state.composerAdmission, "queue").enabled}
-              onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", "queue")}
-            >
-              Queue next
-            </Button> : null}
-          </div>
+        {state.pending && ((capabilities?.steerTurn ?? true) || (capabilities?.queueFollowup ?? true)) ? (
+          <Button
+            className="oa-react-submit-mode-toggle"
+            type="button"
+            variant="secondary"
+            size="sm"
+            aria-label={canTogglePendingMode
+              ? `${pendingAction.label}. Switch to ${alternatePendingAction.label.toLowerCase()}`
+              : `${pendingAction.label}. ${alternatePendingAction.consequence}`}
+            title={canTogglePendingMode
+              ? `Click to switch to ${alternatePendingAction.label.toLowerCase()}`
+              : alternatePendingAction.consequence}
+            disabled={!canTogglePendingMode}
+            onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", alternatePendingMode)}
+          >
+            {pendingAction.label}
+          </Button>
         ) : null}
         <span className="oa-react-composer-spacer" />
         {!state.pending && (!lane.available || !capabilityAdmitted) ? (

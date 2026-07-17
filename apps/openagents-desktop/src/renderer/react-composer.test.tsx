@@ -316,9 +316,9 @@ describe("React Codex composer", () => {
   });
 
   test.each([
-    ["Steer now", "steer", "DesktopSteerCurrentRequested"],
-    ["Queue next", "queue", "DesktopQueueNextRequested"],
-  ] as const)("selecting %s keeps an enabled explicit submit path", async (buttonLabel, pendingSubmitMode, intentName) => {
+    ["Steer now", "Queue next", "steer", "DesktopSteerCurrentRequested"],
+    ["Queue next", "Steer now", "queue", "DesktopQueueNextRequested"],
+  ] as const)("the single %s mode toggle keeps an enabled explicit submit path", async (buttonLabel, initialLabel, pendingSubmitMode, intentName) => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -339,7 +339,11 @@ describe("React Codex composer", () => {
       );
       (last ? buttons.at(-1) : buttons[0])?.click();
     };
-    await interact(() => click(buttonLabel));
+    const toggle = container.querySelector(".oa-react-submit-mode-toggle");
+    expect(toggle?.textContent).toBe(initialLabel);
+    expect(container.textContent).not.toContain(buttonLabel);
+    expect(container.querySelectorAll(".oa-react-submit-mode-toggle")).toHaveLength(1);
+    await interact(() => click(initialLabel));
     expect(received).toContainEqual({ name: "DesktopPendingSubmitModeSelected", payload: pendingSubmitMode });
     await render(
       root,
@@ -348,6 +352,8 @@ describe("React Codex composer", () => {
         report={report}
       />,
     );
+    expect(container.querySelector(".oa-react-submit-mode-toggle")?.textContent).toBe(buttonLabel);
+    expect(container.textContent).not.toContain(initialLabel);
     await interact(() => click(pendingSubmitMode === "steer" ? "Steer" : "Queue", true));
     expect(received).toEqual(
       expect.arrayContaining([
