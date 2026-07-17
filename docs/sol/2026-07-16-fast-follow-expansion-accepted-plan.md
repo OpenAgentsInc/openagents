@@ -1072,6 +1072,77 @@ evidence, and Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-15 — Canonical-export creation preload boundary
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-14. Active
+work still owns Desktop `main.ts`, history, shell, renderer, update, and release
+surfaces. The current sandboxed renderer bridge can write an already-created
+export receipt but cannot submit the bounded owner-only export intent that
+creates that receipt. This packet therefore adds one fixed creation channel
+and exposes its exact intent/result boundary through preload without
+registering a colliding main-process handler or rendering pixels.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-create-bridge-contract.ts`
+- `apps/openagents-desktop/src/thread-export-create-bridge-contract.test.ts`
+- `apps/openagents-desktop/src/preload.cts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-15-desktop-thread-export-create-preload-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_disclosure_receipt.v1`, the fixed Desktop canonical-export
+creation channel, the sandboxed preload allowlist, and FF-D1-11's bounded
+command result. Existing Desktop main-process registration, renderer, history,
+shell, Sync, provider, file transport, and disclosure-audience contracts remain
+unchanged.
+
+Required behavior:
+
+- the bridge accepts only an exact owner-only `canonical_event_bundle`
+  `thread.export.create` intent and rejects malformed, raw-content-bearing,
+  broader, other-format, visibility, or envelope-smuggled requests before IPC;
+- the preload exposes one fixed `threadExports.create` method and channel,
+  never raw `ipcRenderer`, caller-selected events, authority relations, receipt
+  metadata, artifact bytes, destination paths, filesystem, process, or provider
+  authority;
+- exact stored/unchanged command outcomes return only their decoded canonical
+  export receipt, while bounded rejected outcomes retain only their typed
+  reason; malformed or native failures collapse to `command_unavailable`;
+- result receipts must match the request intent, idempotency key, thread,
+  export kind, format, and owner-only audience; and
+- no result exposes canonical event payloads, authority relations, paths,
+  bytes, native errors, broader disclosure, deployment, release, or acceptance
+  claims.
+
+Proof: focused create-bridge/preload plus command/store tests; isolated
+TypeScript compilation and production preload build where the package baseline
+permits it; Fast Follow, behavior-contract, ProductSpec, Sol, and
+repository-required checks. Known current-main Desktop lifecycle typecheck and
+AssuranceSpec environment-digest snapshot failures remain baseline collisions
+unless separately resolved on `main`.
+
+Close rule: this packet closes only the sandboxed renderer-to-main creation
+request/result boundary. Main-process creation-handler registration, actual
+`main.ts` composition, renderer create-then-write command/pixels, broader
+disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion
+remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-15-20260717`
+- base: `f64af79791424f1819655cdfa63e40e7297689b1`
+- worktree/branch: `openagents-ff-d1-15` / detached `origin/main`
+- scope: fixed schema-decoded owner-only canonical-export creation preload boundary
+- paths: the FF-D1-15 owned implementation paths above
+- hot files: sandboxed `preload.cts`, new creation bridge/test, accepted-plan ledger, and Sol manifest
+- hot contracts: exact owner-only export intent admission, fixed creation IPC channel, identity-bound ref-only receipt result, and no raw host authority
+- dependencies: FF-D1-14 released; no relevant feature issue or competing claim; active Desktop main/history/shell/renderer/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T16:20:53Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
