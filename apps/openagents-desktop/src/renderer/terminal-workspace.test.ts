@@ -5,7 +5,7 @@
  * headlessly through the real registry with a fake bridge (no Electron).
  */
 import { describe, expect, test } from "vite-plus/test"
-import { resolveIntentRef, type View } from "@effect-native/core"
+import { ComponentValueBinding, IntentRef, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
@@ -188,12 +188,13 @@ describe("typed terminal intent loop (registry -> bridge -> state)", () => {
   const makeHarness = (
     bridge: TerminalRendererBridge,
     initial: TerminalWorkspaceState = emptyTerminalWorkspaceState(),
+    attachContext?: Parameters<typeof makeTerminalWorkspaceHandlers>[2],
   ) =>
     Effect.gen(function* () {
       const state = yield* SubscriptionRef.make({ terminal: initial })
       const registry = yield* makeIntentRegistry(
         terminalWorkspaceIntents,
-        makeTerminalWorkspaceHandlers(state, bridge),
+        makeTerminalWorkspaceHandlers(state, bridge, attachContext),
       )
       return { state, registry }
     })
@@ -201,6 +202,7 @@ describe("typed terminal intent loop (registry -> bridge -> state)", () => {
   const baseBridge = (): TerminalRendererBridge => ({
     create: async () => ({ ok: true, sessionRef: "terminal.new111aaa", cwdLabel: "repo", shellLabel: "sh", cols: 80, rows: 24 }),
     input: async () => ({ ok: true }),
+    resize: async () => ({ ok: true }),
     interrupt: async () => ({ ok: true }),
     restart: async () => ({ ok: true }),
     close: async () => ({ ok: true }),
@@ -234,6 +236,32 @@ describe("typed terminal intent loop (registry -> bridge -> state)", () => {
       yield* registry.dispatch(resolveIntentRef(send.onPress, null))
       expect(writes).toEqual([{ sessionRef: "terminal.aaa111bbb", data: "npm run build\n" }])
       expect((yield* SubscriptionRef.get(state)).terminal.input).toBe("")
+    }))
+  })
+
+  test("attaches only the active session through the typed context seam", async () => {
+    const attached: string[] = []
+    await Effect.runPromise(Effect.gen(function* () {
+      const { registry } = yield* makeHarness(
+        baseBridge(),
+        withTerminalEvent(runningState(), { kind: "output", sessionRef: "terminal.aaa111bbb", chunk: "$ pnpm test\n" }),
+        session => Effect.sync(() => attached.push(session.sessionRef)),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("TerminalContextAttached"), null))
+      expect(attached).toEqual(["terminal.aaa111bbb"])
+    }))
+  })
+
+  test("resize sends bounded geometry for the active host-owned session", async () => {
+    const resizes: Array<unknown> = []
+    await Effect.runPromise(Effect.gen(function* () {
+      const bridge: TerminalRendererBridge = {
+        ...baseBridge(),
+        resize: async value => { resizes.push(value); return { ok: true } },
+      }
+      const { registry } = yield* makeHarness(bridge, runningState())
+      yield* registry.dispatch(resolveIntentRef(IntentRef("TerminalResizeRequested", ComponentValueBinding()), { cols: 96, rows: 32 }))
+      expect(resizes).toEqual([{ sessionRef: "terminal.aaa111bbb", cols: 96, rows: 32 }])
     }))
   })
 

@@ -113,16 +113,19 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-06
+## Active packet — T3UI-07
 
-Outcome: fill the admitted Files and Review tabs with grant-scoped file/editor
-flows and exact read-only rich Diff while keeping the transcript mounted.
+Outcome: mount the existing generation-owned terminal authority as a persistent
+transcript-preserving workbench with explicit bounded composer attachment.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
 - `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
+- `apps/openagents-desktop/src/renderer/react-composer.tsx`
+- `apps/openagents-desktop/src/renderer/shell.ts`
+- `apps/openagents-desktop/src/renderer/terminal-workspace.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
 - `apps/openagents-desktop/src/visual-baseline-contract.ts`
@@ -132,39 +135,40 @@ Owned paths:
 
 Required behavior:
 
-- file tree, expansion, selection, refresh, name/content search, paging bounds,
-  and typed unavailable states use existing relative-ref authorities;
-- document tabs, editing, save, undo/redo, find, close confirmation, and
-  external-change conflict resolution use existing editor intents;
-- changed files and exact fenced hunks render without Git mutation affordances;
-- diff close/attachment use existing typed intents and line notes remain local;
-  and
-- the transcript stays mounted behind the T3UI-05 workbench panel.
+- terminal tabs preserve exact generation-owned session identity and status;
+- create, select, input, interrupt, restart, refresh, close, and preview actions
+  dispatch existing typed intents; the renderer receives no shell capability;
+- output follows the active tail, replays recovered snapshots, and discloses
+  recovery and gaps;
+- explicit attachment copies only a bounded output tail into one-turn composer
+  state and lowers it as untrusted provider context; and
+- the transcript remains mounted behind the T3UI-05 workbench panel.
 
-Proof: mounted file/tree/editor/diff exact-intent tests, rich Files and Diff
-visual fixtures, Desktop typecheck, full serial suite, production build,
-Electron fixture smokes, Sol guards, and publishing.
+Proof: terminal transition and exact-intent tests, mounted workbench controls,
+composer-context lowering tests, the terminal visual fixture, Desktop typecheck,
+full serial suite, production build, Electron fixture smokes, Sol guards, and
+publishing.
 
-Close rule: this packet closes the current rich Files/editor and exact read-only
-Diff gap. Terminal, preview, settings, installed journey, signed release, and
-T3 parity remain later.
+Close rule: this packet closes the local persistent terminal-workbench gap.
+Browser preview, settings, remote/mobile, installed journey, signed release,
+and T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-06-20260717`
-- base: `2009c27e09`
+- actor/session: `codex-t3ui-07-20260717`
+- base: `0f00c016a9`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: grant-scoped Files/editor and exact read-only rich Diff
+- scope: generation-owned persistent terminal workbench and bounded attachment
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: relative tree/search, document tabs/editor/conflicts, changed
-  files, exact hunks, local annotations, and composer attachment are mounted
-- focused proof: the combined shell/fixture set passes 36 tests and two rich
-  surface visual states are admitted before final full acceptance
-- receipt: [`2026-07-17-t3ui-06-files-rich-diff-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-06-files-rich-diff-receipt.md)
-- residual: terminal and later packets remain; this is not T3 parity
+- implementation: persistent terminal tabs, output replay, controls, preview
+  links, and explicit bounded composer attachment are mounted
+- focused proof: terminal and shell contracts pass and the 19th visual state is
+  admitted before final full acceptance
+- receipt: [`2026-07-17-t3ui-07-terminal-workbench-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-07-terminal-workbench-receipt.md)
+- residual: preview and later packets remain; this is not T3 parity
 
 ## Explicit non-authority
 

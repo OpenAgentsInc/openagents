@@ -26,6 +26,7 @@ export const VISUAL_BASELINE_SHELL_STATES = [
   "full-auto-running",
   "surface-tabs",
   "files-rich-diff",
+  "terminal-workbench",
 ] as const;
 export type VisualBaselineShellStateName = (typeof VISUAL_BASELINE_SHELL_STATES)[number];
 

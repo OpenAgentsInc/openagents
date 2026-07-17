@@ -50,14 +50,21 @@
     {
       "name": "surface-tabs",
       "file": "surface-tabs.png",
-      "sha256": "f807bdcb70c77667d6ca8c79bd892e3c062920097ab3fb088aa0e9a8c3327b9a",
+      "sha256": "5f6cc178da5f24f66654f402052b3b3d4ee376f49075b2d59c2df8cbc9099da9",
       "width": 1280,
       "height": 800
     },
     {
       "name": "files-rich-diff",
       "file": "files-rich-diff.png",
-      "sha256": "95e211e5cbfc02792d87af140e3851a2e7a7daf3a99e899b6fd92ba426529ac0",
+      "sha256": "676d87b1db43c5bc8b1ddee630cf6a460c3813ed2ad966dc1999a348397fb39e",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "terminal-workbench",
+      "file": "terminal-workbench.png",
+      "sha256": "94e8eb95cdddfa6cbba6cba3de7367f0f3639e1b15fe142db0c45e0310cb4f63",
       "width": 1280,
       "height": 800
     },

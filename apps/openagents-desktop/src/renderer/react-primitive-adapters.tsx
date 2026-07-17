@@ -1,7 +1,9 @@
 import {
   StrictMode,
+  createContext,
   createElement,
   useEffect,
+  useContext,
   useMemo,
   useRef,
   useState,
@@ -42,6 +44,7 @@ import {
   Plus,
   RotateCcw,
   SearchCheck,
+  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react"
@@ -81,7 +84,7 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-import { ReactFilesSurface, ReactReviewSurface } from "./react-workspace-surfaces.tsx"
+import { ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
 import {
   decodeDesktopSurfaceLayout,
   defaultDesktopSurfaceLayout,
@@ -371,6 +374,8 @@ const CodingProjectSection = ({ state, report, onDismiss }: {
   </section>
 }
 
+const SurfaceOpenContext = createContext<(surface: DesktopSurfaceKind) => void>(() => undefined)
+
 export const ConversationHeader = ({ state, report }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
@@ -378,20 +383,27 @@ export const ConversationHeader = ({ state, report }: {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
   )
+  const openSurface = useContext(SurfaceOpenContext)
   return <DesktopConversationHeader
     lifecycle={selectedLifecycle(state)}
     secondary={selectedCoding === undefined ? undefined : `${selectedCoding.repositoryLabel} / ${selectedCoding.worktreeLabel}`}
     title={selectedTitle(state)}
     actions={selectedCoding === undefined ? undefined : <div className="oa-react-conversation-actions" aria-label="Project actions">
       <span title="Current branch"><GitBranch aria-hidden="true" />{state.git.status?.branch ?? selectedCoding.worktreeLabel}</span>
-      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopWorkspaceSelected", "files")}><FileCode2 aria-hidden="true" />Files</Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopWorkspaceSelected", "review")}><SearchCheck aria-hidden="true" />Review</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("files")}><FileCode2 aria-hidden="true" />Files</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("review")}><SearchCheck aria-hidden="true" />Review</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("terminal")}><TerminalSquare aria-hidden="true" />Terminal</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}><FolderGit2 aria-hidden="true" />Change</Button>
     </div>}
   />
 }
 
-const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : "Review"
+const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : surface === "review" ? "Review" : "Terminal"
+const SurfaceIcon = ({ surface }: { readonly surface: DesktopSurfaceKind }): ReactElement => surface === "files"
+  ? <Files aria-hidden="true" />
+  : surface === "review"
+    ? <FileDiff aria-hidden="true" />
+    : <TerminalSquare aria-hidden="true" />
 
 const SurfacePanelContent = ({ state, surface, report }: {
   readonly state: DesktopShellState
@@ -399,7 +411,9 @@ const SurfacePanelContent = ({ state, surface, report }: {
   readonly report: IntentReporter
 }): ReactElement => surface === "files"
   ? <ReactFilesSurface state={state} report={report} />
-  : <ReactReviewSurface state={state} report={report} />
+  : surface === "review"
+    ? <ReactReviewSurface state={state} report={report} />
+    : <ReactTerminalSurface state={state} report={report} />
 
 export const DesktopSurfaceManager = ({ state, report, conversation }: {
   readonly state: DesktopShellState
@@ -428,13 +442,18 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   }, [state.workspace])
   const activate = (surface: DesktopSurfaceKind): void => {
     update({ type: "open", surface })
-    dispatch(report, "DesktopWorkspaceSelected", surface)
+    if (surface === "terminal") {
+      if (state.terminal.sessions.length === 0) dispatch(report, "TerminalCreateRequested")
+    } else {
+      dispatch(report, "DesktopWorkspaceSelected", surface)
+    }
     setAddOpen(false)
   }
   const close = (surface: DesktopSurfaceKind, action: "close" | "close_others" | "close_right"): void => {
     const next = reduceDesktopSurfaceLayout(layout, { type: action, surface })
     setLayout(next)
-    dispatch(report, "DesktopWorkspaceSelected", next.active ?? "chat")
+    if (next.active === null) dispatch(report, "DesktopWorkspaceSelected", "chat")
+    else if (next.active !== "terminal") dispatch(report, "DesktopWorkspaceSelected", next.active)
   }
   const closeAll = (): void => {
     update({ type: "close_all" })
@@ -442,7 +461,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   }
   const active = layout.active
   return <div className="oa-react-surface-layout" data-maximized={layout.maximized ? "true" : "false"}>
-    <div className="oa-react-chat-column">{conversation}</div>
+    <div className="oa-react-chat-column"><SurfaceOpenContext.Provider value={activate}>{conversation}</SurfaceOpenContext.Provider></div>
     {active === null ? null : <>
       <button
         aria-label="Resize workbench panel"
@@ -469,7 +488,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
           <div role="tablist" aria-label="Workbench surfaces">
             {layout.surfaces.map(surface => <ContextMenu key={surface}>
               <ContextMenuTrigger render={<div aria-selected={active === surface} role="tab">
-                <button onClick={() => activate(surface)} type="button">{surface === "files" ? <Files aria-hidden="true" /> : <FileDiff aria-hidden="true" />}<span>{surfaceLabel(surface)}</span></button>
+                <button onClick={() => activate(surface)} type="button"><SurfaceIcon surface={surface} /><span>{surfaceLabel(surface)}</span></button>
                 <button
                 aria-label={`Close ${surfaceLabel(surface)}`}
                 onClick={event => { event.stopPropagation(); close(surface, "close") }}
@@ -489,7 +508,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
             <button aria-label="Close panel" onClick={closeAll} type="button"><X aria-hidden="true" /></button>
           </div>
           {!addOpen ? null : <div className="oa-react-surface-add" role="menu">
-            {(["files", "review"] as const).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button">{surface === "files" ? <Files aria-hidden="true" /> : <FileDiff aria-hidden="true" />}{surfaceLabel(surface)}</button>)}
+            {(["files", "review", "terminal"] as const).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button"><SurfaceIcon surface={surface} />{surfaceLabel(surface)}</button>)}
           </div>}
         </header>
         <SurfacePanelContent state={state} surface={active} report={report} />

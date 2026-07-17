@@ -51,6 +51,7 @@ import {
   Settings,
   Square,
   SquarePen,
+  TerminalSquare,
   X,
   XCircle,
   Zap,
@@ -480,7 +481,7 @@ export const ReactComposer = ({
     : capabilities?.queueFollowup ?? true;
   const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
-  const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null;
+  const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null;
   const canSubmit = state.pending || fullAutoRunning
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
     : lane.available && capabilityAdmitted && (hasText || hasBoundedContext);
@@ -516,7 +517,7 @@ export const ReactComposer = ({
     const submitIntent = submitIntentFor(pendingMode);
     const submissionKey = nextHasText
       ? editorValue
-      : `context:${state.composerImages.length}:${state.composerReviewContext?.path ?? ""}:${state.composerFileContext?.path ?? ""}`;
+      : `context:${state.composerImages.length}:${state.composerReviewContext?.path ?? ""}:${state.composerFileContext?.path ?? ""}:${state.composerTerminalContext?.sessionRef ?? ""}`;
     const now = Date.now();
     if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
       return;
@@ -583,7 +584,7 @@ export const ReactComposer = ({
           </ol>
         </section>
       )}
-      {state.composerReviewContext === null && state.composerFileContext === null ? null : (
+      {state.composerReviewContext === null && state.composerFileContext === null && state.composerTerminalContext === null ? null : (
         <div className="oa-react-composer-contexts" role="list" aria-label="Attached message context">
           {state.composerReviewContext === null ? null : (
             <div className="oa-react-composer-context" role="listitem" data-context-kind="review">
@@ -609,6 +610,20 @@ export const ReactComposer = ({
               <Button type="button" variant="ghost" size="icon-sm"
                 aria-label={`Remove mentioned file ${state.composerFileContext.path}`}
                 onClick={() => dispatch(report, "DesktopFileContextRemoved")}>
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+          )}
+          {state.composerTerminalContext === null ? null : (
+            <div className="oa-react-composer-context" role="listitem" data-context-kind="terminal">
+              <TerminalSquare aria-hidden="true" />
+              <span>
+                <strong>{state.composerTerminalContext.shellLabel}</strong>
+                <small>{state.composerTerminalContext.cwdLabel} · {state.composerTerminalContext.status}</small>
+              </span>
+              <Button type="button" variant="ghost" size="icon-sm"
+                aria-label={`Remove terminal output for ${state.composerTerminalContext.shellLabel}`}
+                onClick={() => dispatch(report, "DesktopTerminalContextRemoved")}>
                 <X aria-hidden="true" />
               </Button>
             </div>

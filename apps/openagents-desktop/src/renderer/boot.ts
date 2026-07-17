@@ -308,6 +308,7 @@ type DesktopBridge = Readonly<{
   terminal?: Readonly<{
     create?: (value: unknown) => Promise<unknown>
     input?: (value: unknown) => Promise<unknown>
+    resize?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
     restart?: (value: unknown) => Promise<unknown>
     close?: (value: unknown) => Promise<unknown>
@@ -540,6 +541,7 @@ const gitGithubBridge: GitGithubBridge = {
 const terminalRendererBridge: TerminalRendererBridge = {
   create: (value) => readBridge()?.terminal?.create?.(value) ?? unavailableTerminalBridge.create(value),
   input: (value) => readBridge()?.terminal?.input?.(value) ?? unavailableTerminalBridge.input(value),
+  resize: (value) => readBridge()?.terminal?.resize?.(value) ?? unavailableTerminalBridge.resize(value),
   interrupt: (value) => readBridge()?.terminal?.interrupt?.(value) ?? unavailableTerminalBridge.interrupt(value),
   restart: (value) => readBridge()?.terminal?.restart?.(value) ?? unavailableTerminalBridge.restart(value),
   close: (value) => readBridge()?.terminal?.close?.(value) ?? unavailableTerminalBridge.close(value),

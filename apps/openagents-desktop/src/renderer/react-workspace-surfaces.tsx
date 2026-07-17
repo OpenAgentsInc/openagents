@@ -1,5 +1,5 @@
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactElement } from "react"
-import { ChevronDown, ChevronRight, File, FileDiff, Folder, FolderOpen, RefreshCw, Search, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from "react"
+import { ChevronDown, ChevronRight, CircleStop, File, FileDiff, Folder, FolderOpen, Plus, RefreshCw, RotateCcw, Search, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
@@ -145,3 +145,55 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
 }
 
 const GitBranchLabel = ({ branch }: { readonly branch: string | null }): ReactElement => <><strong>{branch ?? "Repository"}</strong><small>Changes</small></>
+
+export const ReactTerminalSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
+  const terminal = state.terminal
+  const active = terminal.sessions.find(session => session.sessionRef === terminal.activeRef) ?? null
+  const outputRef = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    const output = outputRef.current
+    if (output !== null) output.scrollTop = output.scrollHeight
+  }, [active?.output])
+  useEffect(() => {
+    const output = outputRef.current
+    if (output === null || active === null || typeof ResizeObserver === "undefined") return
+    let last = ""
+    const observer = new ResizeObserver(entries => {
+      const box = entries[0]?.contentRect
+      if (box === undefined) return
+      const cols = Math.max(1, Math.min(1_000, Math.floor(box.width / 8)))
+      const rows = Math.max(1, Math.min(1_000, Math.floor(box.height / 18)))
+      const next = `${cols}:${rows}`
+      if (next === last) return
+      last = next
+      dispatch(report, "TerminalResizeRequested", { cols, rows })
+    })
+    observer.observe(output)
+    return () => observer.disconnect()
+  }, [active?.sessionRef, report])
+  return <section className="oa-react-terminal-workbench" aria-label="Terminal surface">
+    <header className="oa-react-terminal-tabs">
+      <div role="tablist" aria-label="Terminal sessions">
+        {terminal.sessions.map((session, index) => <div aria-selected={session.sessionRef === terminal.activeRef} key={session.sessionRef} role="tab">
+          <button onClick={() => dispatch(report, "TerminalSelected", session.sessionRef)} type="button"><TerminalSquare aria-hidden="true" /><span>{session.shellLabel || `Terminal ${index + 1}`}</span><small data-status={session.status}>{session.status}</small></button>
+          <button aria-label={`Close ${session.shellLabel || `terminal ${index + 1}`}`} onClick={() => dispatch(report, "TerminalCloseRequested", session.sessionRef)} type="button"><X aria-hidden="true" /></button>
+        </div>)}
+      </div>
+      <Button size="icon-sm" variant="ghost" aria-label="New terminal" onClick={() => dispatch(report, "TerminalCreateRequested")}><Plus aria-hidden="true" /></Button>
+    </header>
+    {terminal.notice === null ? null : <p className="oa-react-terminal-notice" role="alert">{terminal.notice}</p>}
+    {active === null ? <div className="oa-react-editor-empty"><TerminalSquare aria-hidden="true" /><h3>No terminal open</h3><p>Start a generation-owned terminal in this workspace.</p><Button size="sm" onClick={() => dispatch(report, "TerminalCreateRequested")}>New terminal</Button></div> : <>
+      <div className="oa-react-terminal-toolbar">
+        <div><strong>{active.cwdLabel}</strong><small>{active.shellLabel}{active.recovered ? " · recovered" : ""}{active.gap ? " · output gap" : ""}</small></div>
+        <div><Button size="sm" variant="ghost" disabled={active.output.length === 0} onClick={() => dispatch(report, "TerminalContextAttached")}><File aria-hidden="true" />Add output</Button><Button size="sm" variant="ghost" aria-label="Interrupt terminal" disabled={active.status !== "running"} onClick={() => dispatch(report, "TerminalInterruptRequested")}><CircleStop aria-hidden="true" />Interrupt</Button><Button size="sm" variant="ghost" onClick={() => dispatch(report, "TerminalRestartRequested")}><RotateCcw aria-hidden="true" />Restart</Button><Button size="icon-sm" variant="ghost" aria-label="Refresh terminals" onClick={() => dispatch(report, "TerminalRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></div>
+      </div>
+      <pre className="oa-react-terminal-output" ref={outputRef} aria-label={`Output for ${active.shellLabel}`} tabIndex={0}>{active.output || (active.status === "running" ? "Terminal ready." : `Process exited${active.exitCode === null ? "." : ` with code ${active.exitCode}.`}`)}</pre>
+      {active.previews.length === 0 ? null : <div className="oa-react-terminal-previews" aria-label="Detected previews">{active.previews.map(preview => <button disabled={!preview.ready} key={preview.port} onClick={() => dispatch(report, "TerminalPreviewOpenRequested", preview.port)} type="button">{preview.ready ? "Open" : "Waiting for"} localhost:{preview.port}</button>)}</div>}
+      <form className="oa-react-terminal-input" onSubmit={event => { event.preventDefault(); dispatch(report, "TerminalInputSubmitted") }}>
+        <span aria-hidden="true">›</span><Input aria-label="Terminal input" autoComplete="off" disabled={active.status !== "running"} value={terminal.input} onChange={event => dispatch(report, "TerminalInputChanged", event.currentTarget.value)}
+          onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "c") { event.preventDefault(); dispatch(report, "TerminalInterruptRequested") } }} />
+        <Button size="sm" disabled={active.status !== "running"} type="submit">Run</Button>
+      </form>
+    </>}
+  </section>
+}

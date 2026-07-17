@@ -1123,6 +1123,36 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-diff-annotation-form input { width: 320px; height: 27px; }
 .oa-react-diff-annotation-form button { height: 27px; font-size: 10px; }
 
+.oa-react-terminal-workbench { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--en-color-surfaceSunken); }
+.oa-react-terminal-tabs { display: flex; min-width: 0; min-height: 34px; align-items: stretch; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
+.oa-react-terminal-tabs > [role="tablist"] { display: flex; min-width: 0; flex: 1 1 auto; overflow-x: auto; }
+.oa-react-terminal-tabs [role="tab"] { display: flex; min-width: 118px; max-width: 190px; border-right: 1px solid var(--en-color-borderSubtle); }
+.oa-react-terminal-tabs [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--en-color-accent); background: var(--en-color-background); }
+.oa-react-terminal-tabs [role="tab"] button { display: inline-flex; min-width: 0; align-items: center; gap: 5px; padding: 0 7px; border: 0; color: var(--en-color-textMuted); background: transparent; font-size: 10px; cursor: pointer; }
+.oa-react-terminal-tabs [role="tab"] button:first-child { flex: 1 1 auto; }
+.oa-react-terminal-tabs [role="tab"] button:last-child { width: 26px; flex: 0 0 26px; }
+.oa-react-terminal-tabs [role="tab"] svg { width: 12px; height: 12px; }
+.oa-react-terminal-tabs [role="tab"] span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-terminal-tabs [role="tab"] small { font-size: 8px; text-transform: uppercase; }
+.oa-react-terminal-tabs [role="tab"] small[data-status="running"] { color: var(--en-color-success); }
+.oa-react-terminal-tabs [role="tab"] small[data-status="exited"] { color: var(--en-color-warning); }
+
+.oa-react-terminal-notice { margin: 0; padding: 5px 8px; border-bottom: 1px solid var(--en-color-warning); color: var(--en-color-warning); font-size: 10px; }
+.oa-react-terminal-toolbar { display: flex; min-width: 0; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
+.oa-react-terminal-toolbar > div { display: flex; min-width: 0; align-items: center; gap: 3px; }
+.oa-react-terminal-toolbar > div:first-child { display: grid; }
+.oa-react-terminal-toolbar strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-terminal-toolbar small { color: var(--en-color-textMuted); font-size: 8px; }
+.oa-react-terminal-toolbar button { height: 26px; font-size: 9px; }
+.oa-react-terminal-toolbar svg { width: 12px; height: 12px; }
+.oa-react-terminal-output { min-width: 0; min-height: 0; flex: 1 1 auto; margin: 0; overflow: auto; padding: 10px; color: var(--en-color-textPrimary); background: var(--en-color-surfaceSunken); font-family: var(--oa-font-mono); font-size: 10px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.oa-react-terminal-previews { display: flex; gap: 4px; overflow-x: auto; padding: 4px 8px; border-top: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
+.oa-react-terminal-previews button { min-height: 24px; padding: 0 7px; border: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); background: transparent; font-size: 9px; cursor: pointer; }
+.oa-react-terminal-input { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
+.oa-react-terminal-input > span { color: var(--en-color-accentText); font-family: var(--oa-font-mono); }
+.oa-react-terminal-input input { min-width: 0; height: 28px; flex: 1 1 auto; border: 0; background: transparent; font-family: var(--oa-font-mono); font-size: 10px; }
+.oa-react-terminal-input button { height: 28px; }
+
 @media (max-width: 980px) {
   .oa-react-surface-panel { position: absolute; z-index: 5; inset: 0 0 0 auto; width: min(560px, 100%) !important; box-shadow: -18px 0 48px rgb(0 0 0 / 28%); }
   .oa-react-surface-resize { display: none; }

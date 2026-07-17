@@ -4431,7 +4431,7 @@ const smokeReactTurn = `(async () => {
     itemWidth >= assistantWidth && contentWidth >= itemWidth
   const reviewTrigger = buttons().find((button) => button.textContent?.trim() === "Review changes")
   const reviewSurface = document.querySelector('.oa-react-review-drawer, [data-slot="sheet-content"]')
-  const forbidden = ["Stage", "Discard", "Commit", "Push", "Terminal"]
+  const forbidden = ["Stage", "Discard", "Commit", "Push"]
     .filter((label) => buttons().some((button) => button.textContent?.trim() === label))
   return {
     ok: decisionOpened && decisionReconciled && turnVisible && transcriptWidthStable && reviewTrigger === undefined &&

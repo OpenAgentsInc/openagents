@@ -728,7 +728,7 @@ describe("React workbench shell", () => {
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={state} report={report} />)
     expect(container.querySelector(".oa-react-conversation-meta")?.textContent).toContain("openagents / feature/t3-ui")
-    expect(container.querySelector(".oa-react-conversation-actions")?.textContent).toContain("feature/t3-uiFilesReviewChange")
+    expect(container.querySelector(".oa-react-conversation-actions")?.textContent).toContain("feature/t3-uiFilesReviewTerminalChange")
     await interact(() => {
       ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Files") as HTMLButtonElement | undefined)?.click()
       ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Review") as HTMLButtonElement | undefined)?.click()
@@ -826,6 +826,36 @@ describe("React workbench shell", () => {
     const annotate = container.querySelector('[aria-label="Annotate line 1"]') as HTMLButtonElement
     await interact(() => annotate.click())
     expect(container.querySelector('[aria-label="Comment on line 1"]')).not.toBeNull()
+  })
+
+  test("mounts generation-owned persistent terminal tabs and typed PTY controls", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const codingSession = { sessionRef: "session-terminal", workContextRef: "context-1", grantRef: "grant-1", projectRef: "project-1", repositoryRef: "repository-1", worktreeRef: "worktree-1", projectLabel: "OpenAgents", repositoryLabel: "openagents", worktreeLabel: "main", state: "active" as const, lastActiveAt: "2026-07-14T12:00:00.000Z", recoveryReason: null }
+    const state: DesktopShellState = {
+      ...base,
+      codingCatalog: { ...base.codingCatalog, selectedSessionRef: codingSession.sessionRef, sessions: [codingSession] },
+      terminal: { phase: "ready", activeRef: "terminal-1", input: "pnpm test", notice: null, sessions: [{ sessionRef: "terminal-1", cwdLabel: "openagents", shellLabel: "zsh", status: "running", exitCode: null, recovered: true, gap: false, output: "$ pnpm test\n42 passed\n", previews: [{ port: 3000, url: "http://localhost:3000", ready: true }] }] },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    const terminalButton = [...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Terminal") as HTMLButtonElement
+    await interact(() => terminalButton.click())
+    expect(container.querySelector('[aria-label="Terminal surface"]')?.textContent).toContain("42 passed")
+    expect(container.querySelector('[aria-label="Terminal sessions"] [role="tab"][aria-selected="true"]')?.textContent).toContain("zshrunning")
+    expect((container.querySelector('[aria-label="Terminal input"]') as HTMLInputElement).value).toBe("pnpm test")
+    await interact(() => (container.querySelector(".oa-react-terminal-input") as HTMLFormElement).requestSubmit())
+    await interact(() => (container.querySelector('[aria-label="Interrupt terminal"]') as HTMLButtonElement).click())
+    await interact(() => ([...container.querySelectorAll(".oa-react-terminal-toolbar button")].find(button => button.textContent === "Add output") as HTMLButtonElement).click())
+    await interact(() => (container.querySelector(".oa-react-terminal-previews button") as HTMLButtonElement).click())
+    expect(received).toEqual(expect.arrayContaining([
+      { name: "TerminalInputSubmitted", payload: null },
+      { name: "TerminalInterruptRequested", payload: null },
+      { name: "TerminalContextAttached", payload: null },
+      { name: "TerminalPreviewOpenRequested", payload: 3000 },
+    ]))
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {

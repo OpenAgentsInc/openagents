@@ -27,6 +27,7 @@ import {
   visualBaselineShellState,
 } from "./visual-baseline-fixtures.ts";
 import { mountVisualBaselineWorkbench } from "./visual-baseline-workbench.tsx";
+import { desktopSurfaceLayoutStorageKey } from "./surface-layout.ts";
 
 /** Freeze the renderer clock: `new Date()` and `Date.now()` return the fixture
  * instant; explicit-argument construction stays untouched (fixture parsing). */
@@ -79,6 +80,15 @@ export const mountVisualBaseline = async (root: HTMLElement, stateName: string):
   }
   const theme = themeForPreferences(preferences);
   if (isVisualBaselineShellStateName(stateName)) {
+    if (stateName === "terminal-workbench") {
+      window.localStorage.setItem(`${desktopSurfaceLayoutStorageKey}:session.visual.surface`, JSON.stringify({
+        version: 1,
+        surfaces: ["terminal"],
+        active: "terminal",
+        maximized: false,
+        panelWidth: 640,
+      }));
+    }
     const report: IntentReporter = () => Effect.void;
     const scope = Effect.runSync(Scope.make());
     window.addEventListener(

@@ -36,6 +36,10 @@ import {
   decodeTerminalCreateResult,
   decodeTerminalPreviewOpenResult,
   decodeTerminalSnapshot,
+  TERMINAL_MAX_COLS,
+  TERMINAL_MAX_ROWS,
+  TERMINAL_MIN_COLS,
+  TERMINAL_MIN_ROWS,
   type TerminalEvent,
 } from "../terminal-contract.ts"
 
@@ -210,10 +214,15 @@ export const TerminalCreateRequested = defineIntent("TerminalCreateRequested", S
 export const TerminalSelected = defineIntent("TerminalSelected", Schema.String)
 export const TerminalInputChanged = defineIntent("TerminalInputChanged", Schema.String)
 export const TerminalInputSubmitted = defineIntent("TerminalInputSubmitted", Schema.Null)
+export const TerminalResizeRequested = defineIntent("TerminalResizeRequested", Schema.Struct({
+  cols: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: TERMINAL_MIN_COLS, maximum: TERMINAL_MAX_COLS })),
+  rows: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: TERMINAL_MIN_ROWS, maximum: TERMINAL_MAX_ROWS })),
+}))
 export const TerminalInterruptRequested = defineIntent("TerminalInterruptRequested", Schema.Null)
 export const TerminalRestartRequested = defineIntent("TerminalRestartRequested", Schema.Null)
 export const TerminalCloseRequested = defineIntent("TerminalCloseRequested", Schema.String)
 export const TerminalPreviewOpenRequested = defineIntent("TerminalPreviewOpenRequested", Schema.Number)
+export const TerminalContextAttached = defineIntent("TerminalContextAttached", Schema.Null)
 export const TerminalRefreshRequested = defineIntent("TerminalRefreshRequested", Schema.Null)
 export const TerminalEventReceived = defineIntent("TerminalEventReceived", TerminalEventSchema)
 export const TerminalEventsReceived = defineIntent("TerminalEventsReceived", Schema.Array(TerminalEventSchema))
@@ -223,10 +232,12 @@ export const terminalWorkspaceIntents = [
   TerminalSelected,
   TerminalInputChanged,
   TerminalInputSubmitted,
+  TerminalResizeRequested,
   TerminalInterruptRequested,
   TerminalRestartRequested,
   TerminalCloseRequested,
   TerminalPreviewOpenRequested,
+  TerminalContextAttached,
   TerminalRefreshRequested,
   TerminalEventReceived,
   TerminalEventsReceived,
@@ -239,6 +250,7 @@ export const terminalWorkspaceIntents = [
 export type TerminalRendererBridge = Readonly<{
   create: (value: unknown) => Promise<unknown>
   input: (value: unknown) => Promise<unknown>
+  resize: (value: unknown) => Promise<unknown>
   interrupt: (value: unknown) => Promise<unknown>
   restart: (value: unknown) => Promise<unknown>
   close: (value: unknown) => Promise<unknown>
@@ -249,6 +261,7 @@ export type TerminalRendererBridge = Readonly<{
 export const unavailableTerminalBridge: TerminalRendererBridge = {
   create: async () => ({ ok: false, reason: "unavailable", message: "Terminals are unavailable." }),
   input: async () => ({ ok: false, reason: "not_found" }),
+  resize: async () => ({ ok: false, reason: "not_found" }),
   interrupt: async () => ({ ok: false, reason: "not_found" }),
   restart: async () => ({ ok: false, reason: "not_found" }),
   close: async () => ({ ok: false, reason: "not_found" }),
@@ -264,6 +277,7 @@ const activeRefOf = <S extends TerminalCapableState>(state: S): string | null =>
 export const makeTerminalWorkspaceHandlers = <S extends TerminalCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: TerminalRendererBridge = unavailableTerminalBridge,
+  attachContext?: (session: TerminalRendererSession) => Effect.Effect<void>,
 ) => ({
   TerminalRefreshRequested: () =>
     Effect.gen(function* () {
@@ -333,6 +347,12 @@ export const makeTerminalWorkspaceHandlers = <S extends TerminalCapableState>(
           bridge.input({ sessionRef, data: `${line}\n` }).catch(() => null)),
       )
     }),
+  TerminalResizeRequested: ({ cols, rows }: Readonly<{ cols: number; rows: number }>) =>
+    Effect.gen(function* () {
+      const sessionRef = activeRefOf(yield* SubscriptionRef.get(state))
+      if (sessionRef === null) return
+      yield* Effect.promise(() => bridge.resize({ sessionRef, cols, rows }).catch(() => null))
+    }),
   TerminalInterruptRequested: () =>
     Effect.gen(function* () {
       const sessionRef = activeRefOf(yield* SubscriptionRef.get(state))
@@ -368,6 +388,11 @@ export const makeTerminalWorkspaceHandlers = <S extends TerminalCapableState>(
         }))
       }
     }),
+  TerminalContextAttached: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const session = current.terminal.sessions.find(candidate => candidate.sessionRef === current.terminal.activeRef)
+    if (session !== undefined && session.output !== "" && attachContext !== undefined) yield* attachContext(session)
+  }),
   TerminalEventReceived: (event: TerminalEvent) =>
     SubscriptionRef.update(state, (current) => ({
       ...current,

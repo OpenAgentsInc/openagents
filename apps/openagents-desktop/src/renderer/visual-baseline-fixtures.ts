@@ -290,5 +290,29 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
         },
       };
     }
+    case "terminal-workbench": {
+      const state = visualBaselineShellState("surface-tabs");
+      return {
+        ...state,
+        workspace: "chat",
+        terminal: {
+          phase: "ready",
+          activeRef: "terminal.visual",
+          input: "pnpm test",
+          notice: null,
+          sessions: [{
+            sessionRef: "terminal.visual",
+            cwdLabel: "openagents · feature/t3-ui",
+            shellLabel: "zsh",
+            status: "running",
+            exitCode: null,
+            recovered: true,
+            gap: false,
+            output: "$ pnpm test\n✓ transcript message contracts\n✓ sticky scroll controller\n✓ terminal lifecycle\n\n209 files passed\n2025 tests passed\n",
+            previews: [{ port: 5173, url: "http://localhost:5173", ready: true }],
+          }],
+        },
+      };
+    }
   }
 };

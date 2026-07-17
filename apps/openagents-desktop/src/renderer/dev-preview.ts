@@ -6,6 +6,7 @@ export const desktopPreviewReloadRisk = (state: DesktopShellState): boolean =>
   state.composerImages.length > 0 ||
   state.composerReviewContext !== null ||
   state.composerFileContext !== null ||
+  state.composerTerminalContext !== null ||
   Object.values(state.questionCards).some(interaction =>
     interaction.submitting === true ||
     (!interaction.answered && (
