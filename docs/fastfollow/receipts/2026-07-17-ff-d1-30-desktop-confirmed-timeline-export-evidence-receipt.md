@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "eae0c55d660812bdb630017bae5599c08a09ce0d"
 claim_revision: "3b319f0465919a49a081504a5207878b9d43b22f"
-implementation_revision: "pending"
+implementation_revision: "de2f39ee26954e40108170d70217783e118c3897"
 proof_rung: "desktop_confirmed_timeline_export_evidence"
 observed_at: "2026-07-17T21:52:23Z"
 ---
@@ -77,5 +77,6 @@ publication, compose the source in `main.ts`, connect renderer commands, render
 pixels, or prove an installed runtime journey. Those residuals, owner
 acceptance, and Day 1 completion remain unclaimed.
 
-The exact tested implementation revision is recorded by the documentation-only
-claim release after the implementation tree lands on `origin/main`.
+The exact tested implementation tree landed on `origin/main` at
+`de2f39ee26954e40108170d70217783e118c3897` before this documentation-only
+claim release.
