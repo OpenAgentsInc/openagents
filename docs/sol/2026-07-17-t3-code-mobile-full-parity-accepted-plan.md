@@ -1362,3 +1362,21 @@ remain `T3M-F1`/`T3M-F2`.
   tests, behavior contract, and Sol receipt
 - exclusions: live paired PTY endpoint (`T3M-F1`), packaged native emulator and
   physical-device background/distribution evidence (`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `b20873eab90c3dd2d4f19b79edf46cad18e5001c` on `main`
+- verification: pre-rebase 249 mobile tests, 36 behavior-contract tests,
+  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 24
+  terminal/environment/Sol tests, mobile typecheck, and the 141-document Sol
+  manifest check
+- authority note: the paired host alone chooses shell/cwd/environment; mobile
+  can send only bounded typed terminal operations against exact host-minted
+  terminal/version identity. Output replay is contiguous and bounded, gaps are
+  explicit, command success requires a receipt, and foreground recovery only
+  refreshes an already-open Terminal route
+- close boundary: `T3M-E2` is complete in application code. Live paired PTY
+  endpoint provisioning, packaged native-emulator evidence, and physical
+  background journeys remain explicit `T3M-F1/F2`; ordered work advances to
+  `T3M-F1`
+- verified_at: `2026-07-17T23:34:56Z`
