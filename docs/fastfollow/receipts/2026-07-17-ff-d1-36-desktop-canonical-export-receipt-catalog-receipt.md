@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "50486fabbdc2e9d6d5fb30a5c824ecebe1674ddc"
 claim_revision: "774a5b3908e3aac6b5626c9a0cd6e3b93356dd50"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "7bf96755257705bf404ee27c829551965f002646"
 proof_rung: "desktop_canonical_export_receipt_catalog"
 observed_at: "2026-07-17T23:41:20Z"
 ---
@@ -85,5 +85,6 @@ reversion facts, authorize named groups, register acquisition in `main.ts`, or
 prove an installed runtime journey. Those residuals, owner acceptance, and Day
 1 completion remain unclaimed.
 
-The exact tested implementation tree will replace `pending_remote_landing`
-when it lands on `origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`7bf96755257705bf404ee27c829551965f002646` before this documentation-only
+claim release.

@@ -2898,6 +2898,15 @@ completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-36-desktop-canonical-export-receipt-catalog-receipt.md`
 - residual: broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `774a5b3908e3aac6b5626c9a0cd6e3b93356dd50`
+- implementation_revision: `7bf96755257705bf404ee27c829551965f002646`
+- status: released; FF-D1-36 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-36-desktop-canonical-export-receipt-catalog-receipt.md`
+- released_at: `2026-07-17T23:42:52Z`
+- residual: broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
