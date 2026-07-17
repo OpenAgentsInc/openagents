@@ -821,6 +821,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T15:01:00Z`
 
+### CLAIM-STATUS
+
+- implementation: added a new-file-only Desktop main-process coordinator that accepts only an export intent, reads exact bounded canonical evidence from a host-owned source, compiles through FF-D1-09, and persists through FF-D1-10
+- authority/privacy proof: broader or malformed intents never read evidence; callers cannot inject events, relations, digests, clocks, or receipt refs; results never contain raw evidence, paths, or exception text
+- focused proof: all 10 command/store integration tests passed; the new command passes isolated strict TypeScript compilation
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10; the known AssuranceSpec environment-digest snapshot drift remains outside this packet
+- residual: IPC/preload wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
