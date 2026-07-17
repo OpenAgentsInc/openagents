@@ -1275,3 +1275,38 @@ remain `T3M-F1`/`T3M-F2`; Git, terminal, connections, and release remain open.
   endpoint provisioning and installed writeback remain explicit `T3M-F1/F2`
   evidence; ordered work advances to `T3M-E1`
 - verified_at: `2026-07-17T23:17:18Z`
+
+## Active packet — T3M-E1
+
+Outcome: add a transcript-preserving Git workbench whose status, branch,
+commit, and push operations remain bound to the exact selected worktree and
+become successful only through authoritative receipts.
+
+Required behavior: status responses are bounded and carry exact
+session/repository/worktree/status/HEAD identity, changed files, current branch,
+upstream, ahead/behind counts, default-branch state, and a bounded branch list.
+Checkout, commit, and push use a closed typed operation set, validate selection
+against the current snapshot, require explicit confirmation carrying exact
+status and HEAD fences, and include idempotency identity. Stale status, dirty
+tree, conflict, non-fast-forward, auth, hook, detached, missing-upstream, and
+generic failures are typed, visible, and cannot mint success. Only a decoded
+exact receipt may replace status or display success; route dismissal invalidates
+late responses and preserves the conversation state.
+
+Close rule: this closes the E1 mobile contract, Git route/state machine,
+authenticated environment seam, confirmation flow, failures, and receipts in
+application code. Live endpoint provisioning and installed iOS/Android Git
+mutation evidence remain `T3M-F1`/`T3M-F2`; terminal and native finish remain
+open.
+
+### CLAIM
+
+- packet: `T3M-E1`
+- base: `13393b62306325dd1576c31ea8e29731461f6ab6`
+- claimed_at: `2026-07-17T23:23:26Z`
+- scope: exact-worktree Git status/branch/file contracts, Git workbench route,
+  confirmation-fenced checkout/commit/push, typed conflicts/failures,
+  authenticated provider seam, receipts, tests, behavior contract, and Sol
+  receipt
+- exclusions: live paired endpoint and installed mutation evidence
+  (`T3M-F1/F2`), terminal/connections/release (`T3M-E2`–`T3M-F2`)

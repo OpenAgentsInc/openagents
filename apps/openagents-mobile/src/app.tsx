@@ -33,6 +33,7 @@ import { prepareMobileCodingAttachmentDelivery } from "./coding/mobile-coding-at
 import type { MobileExecutionTargetOption } from "./coding/mobile-execution-targets"
 import type { MobileComposerPathSearchPort } from "./coding/mobile-composer-path-context"
 import type { MobileRepositoryFilesPort } from "./coding/mobile-repository-files"
+import type { MobileRepositoryGitPort } from "./coding/mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "./coding/mobile-repository-review"
 import {
   buildMobilePortableSessionCommand,
@@ -91,6 +92,7 @@ type MobileCodingHomeBinding = Readonly<{
   searchComposerPaths?: MobileComposerPathSearchPort["search"]
   repositoryFiles?: MobileRepositoryFilesPort
   repositoryReview?: MobileRepositoryReviewPort
+  repositoryGit?: MobileRepositoryGitPort
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
@@ -278,6 +280,7 @@ const selectAuthenticatedMobileExperience = async (
         : {
             repositoryFiles: repositoryEnvironment,
             repositoryReview: repositoryEnvironment,
+            repositoryGit: repositoryEnvironment,
             searchComposerPaths: repositoryEnvironment.search,
           }),
       ...(fleetRunResult.state === "available"

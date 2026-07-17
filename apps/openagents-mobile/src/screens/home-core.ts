@@ -77,6 +77,15 @@ import {
   type MobileRepositoryReviewState,
 } from "../coding/mobile-repository-review"
 import {
+  decodeMobileGitMutationResult,
+  decodeMobileGitStatus,
+  initialMobileRepositoryGitState,
+  MOBILE_GIT_COMMIT_MESSAGE_MAX,
+  type MobileGitMutationRequest,
+  type MobileRepositoryGitPort,
+  type MobileRepositoryGitState,
+} from "../coding/mobile-repository-git"
+import {
   projectMobilePortableSessionControl,
   type MobilePortableControlAction,
   type MobilePortableSessionControl,
@@ -113,6 +122,7 @@ import {
 import type { MobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
 import { renderMobileFilesView } from "./mobile-files-view"
 import { renderMobileChangesView } from "./mobile-changes-view"
+import { renderMobileGitView } from "./mobile-git-view"
 
 import {
   AgentRowSelected,
@@ -187,9 +197,10 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
-  readonly workbenchRoute: "conversation" | "files" | "changes"
+  readonly workbenchRoute: "conversation" | "files" | "changes" | "git"
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
+  readonly repositoryGit: MobileRepositoryGitState
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
@@ -352,6 +363,7 @@ export const initialHomeState: HomeState = {
   workbenchRoute: "conversation",
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
+  repositoryGit: initialMobileRepositoryGitState,
   modeMenuOpen: false,
   syncPhase: "unconfigured",
   conversationAuthority: "local",
@@ -573,6 +585,18 @@ export const RepositoryReviewRowSelected = defineIntent(
 )
 export const RepositoryReviewCommentChanged = defineIntent("RepositoryReviewCommentChanged", Schema.String)
 export const RepositoryReviewSubmitted = defineIntent("RepositoryReviewSubmitted", EmptyPayload)
+export const GitRouteOpened = defineIntent("GitRouteOpened", EmptyPayload)
+export const RepositoryGitRefreshed = defineIntent("RepositoryGitRefreshed", EmptyPayload)
+export const RepositoryGitBranchSelected = defineIntent("RepositoryGitBranchSelected", Schema.Struct({
+  branchRef: Schema.String,
+  name: Schema.String,
+}))
+export const RepositoryGitFileToggled = defineIntent("RepositoryGitFileToggled", Schema.Struct({ pathRef: Schema.String }))
+export const RepositoryGitCommitMessageChanged = defineIntent("RepositoryGitCommitMessageChanged", Schema.String)
+export const RepositoryGitCommitRequested = defineIntent("RepositoryGitCommitRequested", EmptyPayload)
+export const RepositoryGitPushRequested = defineIntent("RepositoryGitPushRequested", EmptyPayload)
+export const RepositoryGitConfirmationCancelled = defineIntent("RepositoryGitConfirmationCancelled", EmptyPayload)
+export const RepositoryGitConfirmationAccepted = defineIntent("RepositoryGitConfirmationAccepted", EmptyPayload)
 export const FilesRouteOpened = defineIntent("FilesRouteOpened", EmptyPayload)
 export const FilesRouteClosed = defineIntent("FilesRouteClosed", EmptyPayload)
 export const RepositoryDirectoryToggled = defineIntent(
@@ -712,6 +736,15 @@ export const homeIntentDefinitions = [
   RepositoryReviewRowSelected,
   RepositoryReviewCommentChanged,
   RepositoryReviewSubmitted,
+  GitRouteOpened,
+  RepositoryGitRefreshed,
+  RepositoryGitBranchSelected,
+  RepositoryGitFileToggled,
+  RepositoryGitCommitMessageChanged,
+  RepositoryGitCommitRequested,
+  RepositoryGitPushRequested,
+  RepositoryGitConfirmationCancelled,
+  RepositoryGitConfirmationAccepted,
   FilesRouteOpened,
   FilesRouteClosed,
   RepositoryDirectoryToggled,
@@ -759,6 +792,10 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "git") {
+    const status = state.repositoryGit.status
+    return { title: "Git", subtitle: status?.branch ?? (status?.detached ? "Detached HEAD" : "Exact worktree") }
+  }
   if (state.workbenchRoute === "changes") {
     const scope = state.repositoryReview.scope
     return { title: "Changes", subtitle: scope === null ? "Review workbench" : `${scope.repositoryRef} · ${scope.worktreeRef}` }
@@ -825,7 +862,9 @@ export const renderContentView = (state: HomeState): View =>
       direction: "column",
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
-    state.workbenchRoute === "changes"
+    state.workbenchRoute === "git"
+      ? [renderMobileGitView(state.repositoryGit, state.accessibility)]
+      : state.workbenchRoute === "changes"
       ? [renderMobileChangesView(state.repositoryReview, state.accessibility)]
       : state.workbenchRoute === "files"
       ? [renderMobileFilesView(state.repositoryBrowser, state.accessibility)]
@@ -1323,6 +1362,17 @@ export const renderHomeView = (state: HomeState): View =>
                       : "Open repository changes",
                     onPress: IntentRef(
                       state.workbenchRoute === "changes" ? "WorkbenchConversationOpened" : "ChangesRouteOpened",
+                      StaticPayload({}),
+                    ),
+                    style: mobileInteractiveStyle(state.accessibility),
+                  }), IconButton({
+                    key: "home-git",
+                    icon: state.workbenchRoute === "git" ? "Chats" : "Branch",
+                    accessibilityLabel: state.workbenchRoute === "git"
+                      ? "Return to conversation"
+                      : "Open Git workbench",
+                    onPress: IntentRef(
+                      state.workbenchRoute === "git" ? "WorkbenchConversationOpened" : "GitRouteOpened",
                       StaticPayload({}),
                     ),
                     style: mobileInteractiveStyle(state.accessibility),
@@ -1843,6 +1893,7 @@ export interface HomeProgramOptions {
     searchComposerPaths?: MobileComposerPathSearchPort["search"]
     repositoryFiles?: MobileRepositoryFilesPort
     repositoryReview?: MobileRepositoryReviewPort
+    repositoryGit?: MobileRepositoryGitPort
     removeComposerAttachment?: (
       session: MobileCodingComposerSession,
       attachmentId: string,
@@ -2346,6 +2397,7 @@ const makeSyncedConversationHandlers = (
       workbenchRoute: "conversation" as const,
       repositoryBrowser: initialMobileRepositoryBrowserState,
       repositoryReview: initialMobileRepositoryReviewState,
+      repositoryGit: initialMobileRepositoryGitState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2391,6 +2443,7 @@ const makeSyncedConversationHandlers = (
       workbenchRoute: "conversation" as const,
       repositoryBrowser: initialMobileRepositoryBrowserState,
       repositoryReview: initialMobileRepositoryReviewState,
+      repositoryGit: initialMobileRepositoryGitState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2909,6 +2962,72 @@ export const makeHomeHandlers = (
           ? { ...current, repositoryReview: { ...current.repositoryReview, state: "failed" as const, message: "The environment returned an invalid or unavailable change summary." } }
           : { ...current, repositoryReview: { ...current.repositoryReview, state: "ready" as const, summary, message: null } })
   })
+  const loadRepositoryGit = () => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const scope = repositoryScope(before.codingComposer)
+    const epoch = before.repositoryGit.requestEpoch + 1
+    if (scope === null || options.coding?.repositoryGit === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        workbenchRoute: "git" as const,
+        repositoryGit: {
+          ...initialMobileRepositoryGitState,
+          scope,
+          state: "unavailable" as const,
+          requestEpoch: epoch,
+          message: scope === null
+            ? "Select an exact coding worktree before using Git."
+            : "Connect the paired worktree environment to use Git.",
+        },
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      drawerOpen: false,
+      workbenchRoute: "git" as const,
+      repositoryGit: { ...initialMobileRepositoryGitState, scope, state: "loading" as const, requestEpoch: epoch },
+    }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryGit!.gitStatus(scope)) } catch { raw = null }
+    const status = decodeMobileGitStatus(raw, scope)
+    yield* SubscriptionRef.update(state, current =>
+      current.workbenchRoute !== "git" || current.repositoryGit.requestEpoch !== epoch ||
+        current.repositoryGit.scope?.sessionRef !== scope.sessionRef
+        ? current
+        : status === null
+          ? { ...current, repositoryGit: { ...current.repositoryGit, state: "failed" as const, message: "The environment returned invalid or unavailable Git status." } }
+          : { ...current, repositoryGit: { ...current.repositoryGit, state: "ready" as const, status,
+            selectedPaths: status.files.filter(file => file.status !== "unmerged").map(file => file.pathRef), message: null } })
+  })
+  const runRepositoryGitMutation = (request: MobileGitMutationRequest) => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    if (before.workbenchRoute !== "git" || before.repositoryGit.status?.statusRef !== request.statusRef ||
+      before.repositoryGit.pendingConfirmation?.idempotencyRef !== request.idempotencyRef ||
+      options.coding?.repositoryGit === undefined) return
+    const epoch = before.repositoryGit.requestEpoch + 1
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      repositoryGit: { ...current.repositoryGit, requestEpoch: epoch, submitting: true, message: null, failureCode: null },
+    }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryGit!.gitMutate(request)) } catch { raw = null }
+    const result = decodeMobileGitMutationResult(raw, request)
+    yield* SubscriptionRef.update(state, current => {
+      if (current.workbenchRoute !== "git" || current.repositoryGit.requestEpoch !== epoch ||
+        current.repositoryGit.pendingConfirmation?.idempotencyRef !== request.idempotencyRef ||
+        current.repositoryGit.status?.statusRef !== request.statusRef) return current
+      if (result === null) return { ...current, repositoryGit: { ...current.repositoryGit, submitting: false,
+        pendingConfirmation: null, failureCode: "operation_failed" as const, message: "The environment returned no valid Git receipt." } }
+      if ("code" in result) return { ...current, repositoryGit: { ...current.repositoryGit, submitting: false,
+        pendingConfirmation: null, failureCode: result.code, message: result.message } }
+      return { ...current, repositoryGit: { ...current.repositoryGit, state: "ready" as const, status: result.status,
+        selectedPaths: result.status.files.filter(file => file.status !== "unmerged").map(file => file.pathRef),
+        commitMessage: request.op === "commit" ? "" : current.repositoryGit.commitMessage,
+        pendingConfirmation: null, submitting: false, receipts: [...current.repositoryGit.receipts, result],
+        failureCode: null, message: null } }
+    })
+  })
   const mutateComposerAttachment = (
     attachmentId: string,
     action: "remove" | "retry",
@@ -3089,6 +3208,10 @@ export const makeHomeHandlers = (
             ...current.repositoryReview,
             requestEpoch: current.repositoryReview.requestEpoch + 1,
           },
+          repositoryGit: {
+            ...current.repositoryGit,
+            requestEpoch: current.repositoryGit.requestEpoch + 1,
+          },
         }
         if (current.threadLifecycle.pendingAction !== null) return current
         return {
@@ -3201,6 +3324,7 @@ export const makeHomeHandlers = (
         workbenchRoute: "conversation" as const,
         repositoryBrowser: initialMobileRepositoryBrowserState,
         repositoryReview: initialMobileRepositoryReviewState,
+        repositoryGit: initialMobileRepositoryGitState,
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
@@ -3426,6 +3550,7 @@ export const makeHomeHandlers = (
       ...current,
       workbenchRoute: "conversation" as const,
       repositoryReview: { ...current.repositoryReview, requestEpoch: current.repositoryReview.requestEpoch + 1 },
+      repositoryGit: { ...current.repositoryGit, requestEpoch: current.repositoryGit.requestEpoch + 1 },
       workspaceFocusTarget: "transcript" as const,
     })),
     RepositoryChangedFileSelected: payload => Effect.gen(function* () {
@@ -3491,6 +3616,64 @@ export const makeHomeHandlers = (
           : receipt === null
             ? { ...current, repositoryReview: { ...current.repositoryReview, submitting: false, message: "The review instruction was not recorded." } }
             : { ...current, repositoryReview: { ...current.repositoryReview, submitting: false, selectedRowRef: null, commentDraft: "", receipts: [...current.repositoryReview.receipts, receipt], message: null } })
+    }),
+    GitRouteOpened: loadRepositoryGit,
+    RepositoryGitRefreshed: loadRepositoryGit,
+    RepositoryGitBranchSelected: payload => SubscriptionRef.update(state, current => {
+      const git = current.repositoryGit
+      const status = git.status
+      const branch = status?.branches.find(item => item.branchRef === payload.branchRef && item.name === payload.name)
+      if (current.workbenchRoute !== "git" || git.scope === null || status === null || branch === undefined || branch.current || git.submitting) return current
+      const nonce = `${Date.now().toString(36)}.${git.receipts.length}`
+      return { ...current, repositoryGit: { ...git, pendingConfirmation: {
+        ...git.scope, op: "checkout" as const, statusRef: status.statusRef, expectedHeadRef: status.headRef,
+        branchRef: branch.branchRef, branchName: branch.name, idempotencyRef: `git.mobile.checkout.${nonce}`,
+        confirmationRef: `confirmation.mobile.checkout.${nonce}`,
+      }, failureCode: null, message: null } }
+    }),
+    RepositoryGitFileToggled: payload => SubscriptionRef.update(state, current => {
+      const git = current.repositoryGit
+      const file = git.status?.files.find(item => item.pathRef === payload.pathRef && item.status !== "unmerged")
+      if (current.workbenchRoute !== "git" || file === undefined || git.submitting) return current
+      return { ...current, repositoryGit: { ...git, selectedPaths: git.selectedPaths.includes(file.pathRef)
+        ? git.selectedPaths.filter(pathRef => pathRef !== file.pathRef)
+        : [...git.selectedPaths, file.pathRef] } }
+    }),
+    RepositoryGitCommitMessageChanged: (message: string) => SubscriptionRef.update(state, current =>
+      current.workbenchRoute !== "git" || current.repositoryGit.submitting
+        ? current
+        : { ...current, repositoryGit: { ...current.repositoryGit, commitMessage: message.slice(0, MOBILE_GIT_COMMIT_MESSAGE_MAX) } }),
+    RepositoryGitCommitRequested: () => SubscriptionRef.update(state, current => {
+      const git = current.repositoryGit
+      const status = git.status
+      const paths = status?.files.filter(file => git.selectedPaths.includes(file.pathRef) && file.status !== "unmerged").map(file => file.pathRef) ?? []
+      const message = git.commitMessage.trim()
+      if (current.workbenchRoute !== "git" || git.scope === null || status === null || status.detached ||
+        git.submitting || paths.length === 0 || message === "") return current
+      const nonce = `${Date.now().toString(36)}.${git.receipts.length}`
+      return { ...current, repositoryGit: { ...git, pendingConfirmation: {
+        ...git.scope, op: "commit" as const, statusRef: status.statusRef, expectedHeadRef: status.headRef,
+        paths, message, idempotencyRef: `git.mobile.commit.${nonce}`, confirmationRef: `confirmation.mobile.commit.${nonce}`,
+      }, failureCode: null, message: null } }
+    }),
+    RepositoryGitPushRequested: () => SubscriptionRef.update(state, current => {
+      const git = current.repositoryGit
+      const status = git.status
+      if (current.workbenchRoute !== "git" || git.scope === null || status === null || status.detached ||
+        status.branch === null || status.upstream === null || status.ahead === 0 || git.submitting) return current
+      const nonce = `${Date.now().toString(36)}.${git.receipts.length}`
+      return { ...current, repositoryGit: { ...git, pendingConfirmation: {
+        ...git.scope, op: "push" as const, statusRef: status.statusRef, expectedHeadRef: status.headRef,
+        branchName: status.branch, idempotencyRef: `git.mobile.push.${nonce}`, confirmationRef: `confirmation.mobile.push.${nonce}`,
+      }, failureCode: null, message: null } }
+    }),
+    RepositoryGitConfirmationCancelled: () => SubscriptionRef.update(state, current =>
+      current.repositoryGit.submitting ? current : { ...current, repositoryGit: { ...current.repositoryGit, pendingConfirmation: null } }),
+    RepositoryGitConfirmationAccepted: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const request = before.repositoryGit.pendingConfirmation
+      if (request === null) return
+      yield* runRepositoryGitMutation(request)
     }),
     RuntimeTurnStopConfirmationRequested: payload =>
       SubscriptionRef.update(state, current => {
@@ -3858,6 +4041,7 @@ export const makeHomeHandlers = (
             workbenchRoute: "conversation" as const,
             repositoryBrowser: initialMobileRepositoryBrowserState,
             repositoryReview: initialMobileRepositoryReviewState,
+            repositoryGit: initialMobileRepositoryGitState,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingPathDiscovery: { state: "idle" as const },
@@ -3982,6 +4166,14 @@ export interface HomeProgramHandle {
     readonly selectReviewRow: (rowId: string) => void
     readonly changeReviewComment: (comment: string) => void
     readonly submitReview: () => void
+    readonly openGit: () => void
+    readonly selectGitBranch: (branchRef: string, name: string) => void
+    readonly toggleGitFile: (pathRef: string) => void
+    readonly changeGitCommitMessage: (message: string) => void
+    readonly requestGitCommit: () => void
+    readonly requestGitPush: () => void
+    readonly acceptGitConfirmation: () => void
+    readonly cancelGitConfirmation: () => void
     readonly openFiles: () => void
     readonly closeFiles: () => void
     readonly refreshFiles: () => void
@@ -4165,6 +4357,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     workbenchRoute: "conversation" as const,
                     repositoryBrowser: initialMobileRepositoryBrowserState,
                     repositoryReview: initialMobileRepositoryReviewState,
+                    repositoryGit: initialMobileRepositoryGitState,
                     threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
                     codingComposerTargetPickerOpen: false,
@@ -4250,6 +4443,23 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             comment,
           ),
           submitReview: fire("RepositoryReviewSubmitted"),
+          openGit: fire("GitRouteOpened"),
+          selectGitBranch: (branchRef, name) => fireRef(IntentRef(
+            "RepositoryGitBranchSelected",
+            StaticPayload({ branchRef, name }),
+          )),
+          toggleGitFile: pathRef => fireRef(IntentRef(
+            "RepositoryGitFileToggled",
+            StaticPayload({ pathRef }),
+          )),
+          changeGitCommitMessage: message => fireText(
+            IntentRef("RepositoryGitCommitMessageChanged", ComponentValueBinding()),
+            message,
+          ),
+          requestGitCommit: fire("RepositoryGitCommitRequested"),
+          requestGitPush: fire("RepositoryGitPushRequested"),
+          acceptGitConfirmation: fire("RepositoryGitConfirmationAccepted"),
+          cancelGitConfirmation: fire("RepositoryGitConfirmationCancelled"),
           openFiles: fire("FilesRouteOpened"),
           closeFiles: fire("FilesRouteClosed"),
           refreshFiles: fire("RepositoryFilesRefreshed"),

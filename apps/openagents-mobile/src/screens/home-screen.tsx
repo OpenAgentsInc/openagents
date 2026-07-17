@@ -18,6 +18,7 @@ import type {
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import type { MobileComposerPathSearchPort } from "../coding/mobile-composer-path-context"
 import type { MobileRepositoryFilesPort } from "../coding/mobile-repository-files"
+import type { MobileRepositoryGitPort } from "../coding/mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "../coding/mobile-repository-review"
 import type {
   ConfirmedPortableSessionSnapshot,
@@ -84,6 +85,7 @@ export const HomeScreen = ({
     searchComposerPaths?: MobileComposerPathSearchPort["search"]
     repositoryFiles?: MobileRepositoryFilesPort
     repositoryReview?: MobileRepositoryReviewPort
+    repositoryGit?: MobileRepositoryGitPort
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,

@@ -1,5 +1,6 @@
 import type { MobileComposerPathSearchPort } from "./mobile-composer-path-context"
 import type { MobileRepositoryFilesPort } from "./mobile-repository-files"
+import type { MobileRepositoryGitPort } from "./mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "./mobile-repository-review"
 
 export const MOBILE_REPOSITORY_TREE_ENDPOINT = "/api/mobile/coding/repository/tree"
@@ -8,11 +9,13 @@ export const MOBILE_REPOSITORY_SEARCH_ENDPOINT = "/api/mobile/coding/repository/
 export const MOBILE_REPOSITORY_STATUS_ENDPOINT = "/api/mobile/coding/repository/status"
 export const MOBILE_REPOSITORY_DIFF_ENDPOINT = "/api/mobile/coding/repository/diff"
 export const MOBILE_REPOSITORY_REVIEW_ENDPOINT = "/api/mobile/coding/repository/reviews"
+export const MOBILE_REPOSITORY_GIT_STATUS_ENDPOINT = "/api/mobile/coding/repository/git/status"
+export const MOBILE_REPOSITORY_GIT_MUTATE_ENDPOINT = "/api/mobile/coding/repository/git/mutate"
 
 const MAX_METADATA_RESPONSE_BYTES = 256 * 1024
 const MAX_CONTENT_RESPONSE_BYTES = 14 * 1024 * 1024
 
-export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & Readonly<{
+export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & MobileRepositoryGitPort & Readonly<{
   search: MobileComposerPathSearchPort["search"]
 }>
 
@@ -77,5 +80,7 @@ export const createAuthenticatedMobileRepositoryEnvironment = (input: Readonly<{
     status: request => post(MOBILE_REPOSITORY_STATUS_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
     diff: request => post(MOBILE_REPOSITORY_DIFF_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
     submitReview: request => post(MOBILE_REPOSITORY_REVIEW_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    gitStatus: request => post(MOBILE_REPOSITORY_GIT_STATUS_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    gitMutate: request => post(MOBILE_REPOSITORY_GIT_MUTATE_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
   }
 }

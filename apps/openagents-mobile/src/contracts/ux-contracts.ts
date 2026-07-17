@@ -5,8 +5,48 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.17",
+    version: "2026-07-17.18",
     contracts: [
+      {
+        contractId: "openagents_mobile.exact_worktree_git.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile exact-worktree Git",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "A coding session can inspect its exact Git status and branches, select current changed files, confirm and record a commit, confirm and push it, switch branches, and see typed conflicts, failures, and authoritative receipts without leaving the conversation context.",
+        authorityBoundary:
+          "Status is bounded and bound to the exact session, repository, worktree, status, and HEAD. Checkout, commit, and push use a closed operation set with exact current branch/file selection, bounded commit text, idempotency identity, and explicit confirmation identity. Stale status, dirty tree, conflict, non-fast-forward, auth, hook, detached, upstream, and generic failures remain typed and mint no receipt. Only a successfully decoded exact receipt may replace status or display success. Live paired endpoint and installed mutation evidence remain T3M-F1/F2.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/coding/mobile-repository-git.ts",
+          "apps/openagents-mobile/src/coding/mobile-repository-environment-client.ts",
+          "apps/openagents-mobile/src/screens/mobile-git-view.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-e1",
+        ],
+        oracles: [
+          {
+            id: "mobile_exact_worktree_git_journey",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-git.test.ts",
+            description:
+              "Proves bounded status decoding, exact confirmation-fenced commit/push/checkout, receipt-driven replacement, typed non-fast-forward failure, and transcript preservation.",
+          },
+          {
+            id: "mobile_git_authenticated_transport",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-environment-client.test.ts",
+            description:
+              "Proves Git status and mutation use exact HTTPS endpoints with bearer-header custody, omitted ambient credentials, redirect refusal, and bounded JSON.",
+          },
+        ],
+        verification:
+          "Mobile Git/environment, authoritative Home/mobile, behavior-contract, mobile typecheck, and repository checks; live paired endpoint plus installed iOS/Android mutation evidence remain T3M-F1/F2.",
+      },
       {
         contractId: "openagents_mobile.repository_changes_review.v1",
         state: "enforced",
