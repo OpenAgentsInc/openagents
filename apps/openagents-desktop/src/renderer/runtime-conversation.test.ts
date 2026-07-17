@@ -3,6 +3,7 @@ import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contra
 import { decodeLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { readFileSync } from "node:fs"
 import type { DesktopThread } from "../chat-contract.ts"
+import { makeComposerSubmitIntent } from "../composer-admission.ts"
 import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
@@ -1276,8 +1277,23 @@ describe("durable runtime turn controls (CUT-16)", () => {
     const sendPromise = fixture.chat.sendMessage({ id: fixture.threadRef, message: "First", harness: "codex" })
     await until(() => fixture.commands.some(command => command.id === "conversation.start"))
 
-    expect(await fixture.chat.queueFollowup!({ threadRef: fixture.threadRef, message: "Queued follow-up" }))
-      .toEqual({ ok: true, queued: true })
+    const queue = makeComposerSubmitIntent({
+      admission: { state: "active_nonsteerable", activeTurnId: fixture.startedRunRefs()[0]!, reason: null, queuedCount: 0 },
+      mode: "queue",
+      threadRef: fixture.threadRef,
+      message: "Queued follow-up",
+      intentRef: "intent.durable.queue.1",
+      clientUserMessageId: "message.durable.queue.1",
+      createdAt: "2026-07-16T20:00:00.000Z",
+    })
+    if (queue?.kind !== "queue_next") throw new Error("queue intent missing")
+    expect(await fixture.chat.queueFollowupControl!(queue)).toMatchObject({
+      schema: "openagents.runtime_control_outcome.v1",
+      intentRef: "intent.durable.queue.1",
+      admission: { status: "accepted" },
+      delivery: { status: "queued", queueRef: "queue.intent.durable.queue.1" },
+      terminal: { status: "pending" },
+    })
     // Nothing is appended while the first turn still streams.
     expect(fixture.commands.filter(command => command.id === "conversation.append")).toHaveLength(1)
 
@@ -1302,6 +1318,20 @@ describe("durable runtime turn controls (CUT-16)", () => {
     const fixture = makeDurableControlFixture("codex")
     expect(await fixture.chat.queueFollowup!({ threadRef: fixture.threadRef, message: "Orphaned" }))
       .toEqual({ ok: false, queued: false })
+    const queue = makeComposerSubmitIntent({
+      admission: { state: "active_nonsteerable", activeTurnId: "run.missing", reason: null, queuedCount: 0 },
+      mode: "queue",
+      threadRef: fixture.threadRef,
+      message: "Orphaned",
+      intentRef: "intent.durable.queue.orphaned",
+      clientUserMessageId: "message.durable.queue.orphaned",
+      createdAt: "2026-07-16T20:00:00.000Z",
+    })
+    if (queue?.kind !== "queue_next") throw new Error("queue intent missing")
+    expect(await fixture.chat.queueFollowupControl!(queue)).toMatchObject({
+      admission: { status: "rejected", reasonRef: "reason.target_mismatch" },
+      delivery: { status: "failed", reasonRef: "reason.target_mismatch" },
+    })
     expect(fixture.commands).toEqual([])
   })
 })

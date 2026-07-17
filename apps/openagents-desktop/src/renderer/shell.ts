@@ -54,8 +54,11 @@ import {
   composerActionPresentation,
   idleComposerAdmission,
   makeComposerSubmitIntent,
+  makeComposerSubmitOutcome,
   type ComposerAdmission,
   type ComposerInterruptOutcome,
+  type ComposerSubmitIntent,
+  type ComposerSubmitOutcome,
 } from "../composer-admission.ts"
 import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
 import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
@@ -1461,10 +1464,14 @@ export type ChatHost = Readonly<{
   queueFollowup?: (input: Readonly<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string }>) => Promise<
     Readonly<{ ok: boolean; queued: boolean }>
   >
+  /** Provider-neutral Queue acknowledgement; preferred by the shell. */
+  queueFollowupControl?: (input: Extract<ComposerSubmitIntent, { kind: "queue_next" }>) => Promise<ComposerSubmitOutcome>
   /** Inject a message into the exact currently active Codex app-server turn. */
   steerCurrent?: (input: Readonly<{ threadRef: string; message: string; intentRef?: string; clientUserMessageId?: string; expectedTurnId?: string }>) => Promise<
     Readonly<{ ok: boolean; outcome: string }>
   >
+  /** Provider-neutral Steer acknowledgement; preferred by the shell. */
+  steerCurrentControl?: (input: Extract<ComposerSubmitIntent, { kind: "steer_current" }>) => Promise<ComposerSubmitOutcome>
   queueList?: (threadRef: string) => Promise<ReadonlyArray<CodexQueuedIntent>>
   queueEdit?: (request: Readonly<{ queueRef: string; expectedRevision: number; message: string }>) => Promise<Readonly<{ ok: boolean }>>
   queueCancel?: (request: Readonly<{ queueRef: string; expectedRevision: number }>) => Promise<Readonly<{ ok: boolean }>>
@@ -1989,14 +1996,36 @@ export const makeDesktopShellHandlers = (
     if (intent === null) return
     yield* SubscriptionRef.update(state, next => ({ ...next, composerIntentIdentity: identity }))
     if (intent.control.kind === "turn.steer") {
-      if (chat.steerCurrent === undefined) {
+      if (chat.steerCurrentControl === undefined && chat.steerCurrent === undefined) {
         yield* SubscriptionRef.update(state, next => withInput(next, message))
         return
       }
-      const steered = yield* Effect.promise(() =>
-        chat.steerCurrent!(intent as Extract<typeof intent, { kind: "steer_current" }>)
-          .catch(() => ({ ok: false, outcome: "lost_ack" })))
-      if (!steered.ok) {
+      const steerIntent = intent as Extract<typeof intent, { kind: "steer_current" }>
+      const steered = yield* Effect.promise(async () => {
+        try {
+          if (chat.steerCurrentControl !== undefined) return await chat.steerCurrentControl(steerIntent)
+          const legacy = await chat.steerCurrent!(steerIntent)
+          const observedAt = new Date().toISOString()
+          return makeComposerSubmitOutcome({
+            control: steerIntent.control,
+            observedAt,
+            admission: legacy.ok
+              ? { status: "accepted", acceptedAt: observedAt }
+              : { status: "rejected", reasonRef: "reason.adapter_refused" },
+            delivery: legacy.ok
+              ? { status: "applied", appliedAt: observedAt }
+              : { status: "failed", reasonRef: "reason.adapter_refused" },
+          })
+        } catch {
+          return makeComposerSubmitOutcome({
+            control: steerIntent.control,
+            observedAt: new Date().toISOString(),
+            admission: { status: "pending" },
+            delivery: { status: "pending" },
+          })
+        }
+      })
+      if (steered.delivery.status !== "applied") {
         yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
           ? { ...next, composerIntentIdentity: identity }
           : next)
@@ -2010,7 +2039,7 @@ export const makeDesktopShellHandlers = (
       }
       return
     }
-    if (chat.queueFollowup === undefined) {
+    if (chat.queueFollowupControl === undefined && chat.queueFollowup === undefined) {
       yield* SubscriptionRef.update(state, next => withInput(next, message))
       return
     }
@@ -2032,10 +2061,32 @@ export const makeDesktopShellHandlers = (
           })
       return
     }
-    const queued = yield* Effect.promise(() =>
-      chat.queueFollowup!(intent as Extract<typeof intent, { kind: "queue_next" }>)
-        .catch(() => ({ ok: false, queued: false })))
-    if (!queued.queued) {
+    const queueIntent = intent as Extract<typeof intent, { kind: "queue_next" }>
+    const queued = yield* Effect.promise(async () => {
+      try {
+        if (chat.queueFollowupControl !== undefined) return await chat.queueFollowupControl(queueIntent)
+        const legacy = await chat.queueFollowup!(queueIntent)
+        const observedAt = new Date().toISOString()
+        return makeComposerSubmitOutcome({
+          control: queueIntent.control,
+          observedAt,
+          admission: legacy.queued
+            ? { status: "accepted", acceptedAt: observedAt }
+            : { status: "rejected", reasonRef: "reason.adapter_refused" },
+          delivery: legacy.queued
+            ? { status: "queued", queueRef: `queue.${queueIntent.intentRef}` }
+            : { status: "failed", reasonRef: "reason.adapter_refused" },
+        })
+      } catch {
+        return makeComposerSubmitOutcome({
+          control: queueIntent.control,
+          observedAt: new Date().toISOString(),
+          admission: { status: "pending" },
+          delivery: { status: "pending" },
+        })
+      }
+    })
+    if (queued.delivery.status !== "queued") {
       yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
         ? { ...next, composerIntentIdentity: identity }
         : next)

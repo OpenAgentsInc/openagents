@@ -7,6 +7,7 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "../chat-contract.ts"
+import { makeComposerSubmitIntent } from "../composer-admission.ts"
 import type { FableLocalEventEnvelope } from "../fable-local-contract.ts"
 import type { ChatHost } from "./shell.ts"
 import {
@@ -506,6 +507,58 @@ describe("makeLocalHarnessChatHost", () => {
     const outcome = await harness.host.queueFollowup!({ threadRef: "thread-1", message: "and then this" })
     expect(outcome).toMatchObject({ ok: true, queued: true })
     expect(harness.queueCalls).toEqual([{ threadRef: "thread-1", message: "and then this" }])
+    harness.resolveStart({ ok: true, thread: finalThread })
+    await pending
+  })
+
+  test("Queue and Steer return typed acknowledgements for only the exact active target", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    await settle()
+
+    const queue = makeComposerSubmitIntent({
+      admission: { state: "active_steerable", activeTurnId: "provider-turn-1", reason: null, queuedCount: 0 },
+      mode: "queue",
+      threadRef: "thread-1",
+      message: "next",
+      intentRef: "intent.queue.1",
+      clientUserMessageId: "message.queue.1",
+      createdAt: "2026-07-16T20:00:00.000Z",
+    })
+    if (queue?.kind !== "queue_next") throw new Error("queue intent missing")
+    expect(await harness.host.queueFollowupControl!(queue)).toMatchObject({
+      schema: "openagents.runtime_control_outcome.v1",
+      intentRef: "intent.queue.1",
+      admission: { status: "accepted" },
+      delivery: { status: "queued", queueRef: "q1" },
+      terminal: { status: "pending" },
+    })
+
+    const steer = makeComposerSubmitIntent({
+      admission: { state: "active_steerable", activeTurnId: "provider-turn-1", reason: null, queuedCount: 1 },
+      mode: "steer",
+      threadRef: "thread-1",
+      message: "change course",
+      intentRef: "intent.steer.1",
+      clientUserMessageId: "message.steer.1",
+      createdAt: "2026-07-16T20:00:00.000Z",
+    })
+    if (steer?.kind !== "steer_current") throw new Error("steer intent missing")
+    expect(await harness.host.steerCurrentControl!(steer)).toMatchObject({
+      schema: "openagents.runtime_control_outcome.v1",
+      intentRef: "intent.steer.1",
+      admission: { status: "accepted" },
+      delivery: { status: "applied" },
+      terminal: { status: "pending" },
+    })
+
+    expect(await harness.host.queueFollowupControl!({ ...queue, threadRef: "wrong-thread" })).toMatchObject({
+      admission: { status: "rejected", reasonRef: "reason.target_mismatch" },
+      delivery: { status: "failed", reasonRef: "reason.target_mismatch" },
+    })
+    expect(harness.queueCalls).toHaveLength(1)
+    expect(harness.currentSteerCalls).toHaveLength(1)
+
     harness.resolveStart({ ok: true, thread: finalThread })
     await pending
   })

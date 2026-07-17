@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "81f2faa0a7ab8a96528bb05166bed4cd6c2909b6478723f947d207bc61da02d1",
+  "sourceTreeSha256": "1c56ac1c300ef00f93afafc823cab216f2462896502b20ffb60923d553d02fbf",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1778,7 +1778,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "5ce43146f5b78c32ba9640f44ce1a8f2f18b714890305f3d697091b37396700f",
+      "sha256": "43faaf18cb8a77e298b648c916c7392454c0171f885f6c73bbf218f30a2595a4",
       "status": "active",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1787,10 +1787,11 @@
         "docs/fastfollow/README.md",
         "docs/fastfollow/receipts/2026-07-16-fast-follow-expansion-admission-and-ff-d1-01-receipt.md",
         "docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-03-desktop-queue-steer-control-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 5,
+      "inboundSourceCount": 6,
       "issueLinks": []
     },
     {

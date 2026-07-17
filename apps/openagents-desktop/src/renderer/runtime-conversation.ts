@@ -12,6 +12,7 @@ import type {
 import {
   makeComposerInterruptIntent,
   makeComposerInterruptOutcome,
+  makeComposerSubmitOutcome,
 } from "../composer-admission.ts"
 import type { ChatHost } from "./shell.ts"
 import {
@@ -660,6 +661,30 @@ export const makeRuntimeConversationChatHost = (
       followupQueue.push({ threadRef: input.threadRef, message: input.message })
       return { ok: true, queued: true }
     },
+    queueFollowupControl: async input => {
+      const send = activeSend
+      const observedAt = now().toISOString()
+      if (
+        send === null || send.threadRef !== input.threadRef || input.message.trim() === "" ||
+        input.control.kind !== "turn.queue" ||
+        input.control.threadRef !== input.threadRef ||
+        input.control.messageRef !== input.clientUserMessageId
+      ) {
+        return makeComposerSubmitOutcome({
+          control: input.control,
+          observedAt,
+          admission: { status: "rejected", reasonRef: "reason.target_mismatch" },
+          delivery: { status: "failed", reasonRef: "reason.target_mismatch" },
+        })
+      }
+      followupQueue.push({ threadRef: input.threadRef, message: input.message })
+      return makeComposerSubmitOutcome({
+        control: input.control,
+        observedAt,
+        admission: { status: "accepted", acceptedAt: observedAt },
+        delivery: { status: "queued", queueRef: `queue.${input.intentRef}` },
+      })
+    },
   }
 }
 
@@ -828,5 +853,18 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
     interruptActiveControl: async () => active?.interruptActiveControl?.() ?? null,
     steerChild: async value => active?.steerChild?.(value) ?? { ok: false, outcome: "not_found" },
     queueFollowup: async value => active?.queueFollowup?.(value) ?? { ok: false, queued: false },
+    queueFollowupControl: async value => active?.queueFollowupControl?.(value) ?? makeComposerSubmitOutcome({
+      control: value.control,
+      observedAt: new Date().toISOString(),
+      admission: { status: "rejected", reasonRef: "reason.adapter_unavailable" },
+      delivery: { status: "unsupported", reasonRef: "reason.adapter_unavailable" },
+    }),
+    steerCurrent: async value => active?.steerCurrent?.(value) ?? { ok: false, outcome: "not_found" },
+    steerCurrentControl: async value => active?.steerCurrentControl?.(value) ?? makeComposerSubmitOutcome({
+      control: value.control,
+      observedAt: new Date().toISOString(),
+      admission: { status: "rejected", reasonRef: "reason.adapter_unavailable" },
+      delivery: { status: "unsupported", reasonRef: "reason.adapter_unavailable" },
+    }),
   }
 }

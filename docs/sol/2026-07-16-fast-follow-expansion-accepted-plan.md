@@ -199,7 +199,7 @@ replay reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day
 ### CLAIM
 
 - actor/session: `codex-full-auto-ff-d1-03-20260717`
-- base: `4efb1422f7844f377bb3ee6d4eeec0d24719b422`
+- base: `cf00d8e14f7af3f236412e94fd6105fa43277b88`
 - worktree/branch: `openagents-ff-d1-03` / detached `origin/main`
 - scope: foreground Desktop Queue/Steer canonical lowering and typed adapter outcomes
 - paths: the FF-D1-03 owned implementation paths above
@@ -207,6 +207,14 @@ replay reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day
 - hot contracts: runtime-control schema literals and Desktop ChatHost Queue/Steer return types
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T11:40:53Z`
+
+### CLAIM-STATUS
+
+- implementation: the shell and foreground local/durable adapters lower exact Queue/Steer controls and return typed admission/delivery acknowledgement
+- focused proof: 244 tests passed with 11 skipped across packet and capability suites; Desktop typecheck passed
+- authority proof: Fast Follow 7/7, behavior contracts 36/36, ProductSpec 104/104, and Sol checks 19/19 passed
+- repository check: `pnpm run check` passed
+- residual: durable outcome persistence/replay, Sync/mobile/Pylon adapters, rendered evidence, and Day 1 completion remain unclaimed later packets
 
 ## Explicit non-authority
 

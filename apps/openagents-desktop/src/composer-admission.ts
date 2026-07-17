@@ -82,6 +82,7 @@ export type ComposerSubmitIntent =
 
 export type ComposerInterruptIntent = Extract<RuntimeControlIntent, { kind: "turn.interrupt" }>
 export type ComposerInterruptOutcome = RuntimeControlOutcome
+export type ComposerSubmitOutcome = RuntimeControlOutcome
 
 export const makeComposerInterruptIntent = (input: Readonly<{
   threadRef: string
@@ -109,8 +110,8 @@ export const makeComposerInterruptIntent = (input: Readonly<{
   }) as ComposerInterruptIntent
 }
 
-export const makeComposerInterruptOutcome = (input: Readonly<{
-  control: ComposerInterruptIntent
+const makeComposerControlOutcome = (input: Readonly<{
+  control: RuntimeControlIntent
   observedAt: string
   admission: RuntimeControlOutcome["admission"]
   delivery: RuntimeControlOutcome["delivery"]
@@ -124,6 +125,20 @@ export const makeComposerInterruptOutcome = (input: Readonly<{
   delivery: input.delivery,
   terminal: { status: "pending" },
 })
+
+export const makeComposerInterruptOutcome = (input: Readonly<{
+  control: ComposerInterruptIntent
+  observedAt: string
+  admission: RuntimeControlOutcome["admission"]
+  delivery: RuntimeControlOutcome["delivery"]
+}>): ComposerInterruptOutcome => makeComposerControlOutcome(input)
+
+export const makeComposerSubmitOutcome = (input: Readonly<{
+  control: ComposerSubmitIntent["control"]
+  observedAt: string
+  admission: RuntimeControlOutcome["admission"]
+  delivery: RuntimeControlOutcome["delivery"]
+}>): ComposerSubmitOutcome => makeComposerControlOutcome(input)
 
 export const makeComposerSubmitIntent = (input: Readonly<{
   admission: ComposerAdmission

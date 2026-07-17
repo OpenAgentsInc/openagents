@@ -35,6 +35,7 @@ import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
 import {
   makeComposerInterruptIntent,
   makeComposerInterruptOutcome,
+  makeComposerSubmitOutcome,
 } from "../composer-admission.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
@@ -609,6 +610,90 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     })
   }
 
+  const queueFollowupControl: NonNullable<ChatHost["queueFollowupControl"]> = async request => {
+    const active = activeTurn
+    const observedAt = now().toISOString()
+    if (
+      active === null || active.bridge.queueFollowup === undefined ||
+      request.control.kind !== "turn.queue" ||
+      request.control.threadRef !== request.threadRef ||
+      request.control.threadRef !== active.threadRef ||
+      request.control.messageRef !== request.clientUserMessageId
+    ) {
+      return makeComposerSubmitOutcome({
+        control: request.control,
+        observedAt,
+        admission: { status: "rejected", reasonRef: "reason.target_mismatch" },
+        delivery: { status: "failed", reasonRef: "reason.target_mismatch" },
+      })
+    }
+    const raw = await active.bridge.queueFollowup({
+      threadRef: request.threadRef,
+      message: request.message,
+      intentRef: request.intentRef,
+      clientUserMessageId: request.clientUserMessageId,
+    })
+    const queued = typeof raw === "object" && raw !== null && (raw as { queued?: unknown }).queued === true
+    const queueRef = queued && typeof (raw as { queueRef?: unknown }).queueRef === "string"
+      ? (raw as { queueRef: string }).queueRef
+      : `queue.${request.intentRef}`
+    const acknowledgedAt = now().toISOString()
+    return makeComposerSubmitOutcome({
+      control: request.control,
+      observedAt: acknowledgedAt,
+      admission: queued
+        ? { status: "accepted", acceptedAt: observedAt }
+        : { status: "rejected", reasonRef: "reason.adapter_refused" },
+      delivery: queued
+        ? { status: "queued", queueRef }
+        : { status: "failed", reasonRef: "reason.adapter_refused" },
+    })
+  }
+
+  const steerCurrentControl: NonNullable<ChatHost["steerCurrentControl"]> = async request => {
+    const active = activeTurn
+    const observedAt = now().toISOString()
+    if (
+      active === null || active.bridge.steerCurrent === undefined ||
+      request.control.kind !== "turn.steer" ||
+      request.control.threadRef !== request.threadRef ||
+      request.control.threadRef !== active.threadRef ||
+      request.control.turnRef !== request.expectedTurnId ||
+      request.control.messageRef !== request.clientUserMessageId
+    ) {
+      return makeComposerSubmitOutcome({
+        control: request.control,
+        observedAt,
+        admission: { status: "rejected", reasonRef: "reason.target_mismatch" },
+        delivery: { status: "failed", reasonRef: "reason.target_mismatch" },
+      })
+    }
+    const raw = await active.bridge.steerCurrent({
+      threadRef: request.threadRef,
+      message: request.message,
+      intentRef: request.intentRef,
+      clientUserMessageId: request.clientUserMessageId,
+      expectedTurnId: request.expectedTurnId,
+    })
+    const outcome = typeof raw === "object" && raw !== null && typeof (raw as { outcome?: unknown }).outcome === "string"
+      ? (raw as { ok?: unknown; outcome: string })
+      : { ok: false, outcome: "invalid_response" }
+    const acknowledgedAt = now().toISOString()
+    const delivered = outcome.ok === true && outcome.outcome === "delivered"
+    return makeComposerSubmitOutcome({
+      control: request.control,
+      observedAt: acknowledgedAt,
+      admission: delivered
+        ? { status: "accepted", acceptedAt: observedAt }
+        : { status: "rejected", reasonRef: outcome.outcome === "unsupported" ? "reason.adapter_unsupported" : "reason.adapter_refused" },
+      delivery: delivered
+        ? { status: "applied", appliedAt: acknowledgedAt }
+        : outcome.outcome === "unsupported"
+          ? { status: "unsupported", reasonRef: "reason.adapter_unsupported" }
+          : { status: "failed", reasonRef: "reason.adapter_refused" },
+    })
+  }
+
   return {
     ...input.base,
     /**
@@ -647,9 +732,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
      */
     queueFollowup: async input => {
       const active = activeTurn
-      if (active === null || active.bridge.queueFollowup === undefined) {
-        return { ok: false, queued: false }
-      }
+      if (active === null || active.bridge.queueFollowup === undefined) return { ok: false, queued: false }
       const raw = await active.bridge.queueFollowup({
         threadRef: input.threadRef,
         message: input.message,
@@ -660,6 +743,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ? (raw as { ok: boolean; queued: boolean })
         : { ok: false, queued: false }
     },
+    queueFollowupControl,
     queueList: async threadRef => {
       const values = await input.codex?.queueList?.(threadRef)
       return Array.isArray(values) ? values as import("../codex-durable-queue.ts").CodexQueuedIntent[] : []
@@ -682,6 +766,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         ? raw as { ok: boolean; outcome: string }
         : { ok: false, outcome: "not_found" }
     },
+    steerCurrentControl,
     sendMessage: async send => {
       if (send.harness === undefined) return input.base.sendMessage(send)
       if (send.harness === "codex") {
