@@ -135,6 +135,19 @@ import { renderMobileFilesView } from "./mobile-files-view"
 import { renderMobileChangesView } from "./mobile-changes-view"
 import { renderMobileGitView } from "./mobile-git-view"
 import { renderMobileTerminalView } from "./mobile-terminal-view"
+import { renderMobileSettingsView } from "./mobile-settings-view"
+import {
+  decodeMobileEnvironmentDirectory,
+  decodeMobileEnvironmentReceipt,
+  initialMobileSettingsState,
+  mobileShareComposerText,
+  normalizeMobilePairingCode,
+  type MobileEnvironmentConnectionsPort,
+  type MobileNotificationSettingsPort,
+  type MobileSettingsSection,
+  type MobileSettingsState,
+  type MobileShareIntake,
+} from "../settings/mobile-settings"
 
 import {
   AgentRowSelected,
@@ -209,11 +222,12 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
-  readonly workbenchRoute: "conversation" | "files" | "changes" | "git" | "terminal"
+  readonly workbenchRoute: "conversation" | "files" | "changes" | "git" | "terminal" | "settings"
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
   readonly repositoryTerminal: MobileRepositoryTerminalState
+  readonly settings: MobileSettingsState
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
@@ -378,6 +392,7 @@ export const initialHomeState: HomeState = {
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
   repositoryTerminal: initialMobileRepositoryTerminalState,
+  settings: initialMobileSettingsState,
   modeMenuOpen: false,
   syncPhase: "unconfigured",
   conversationAuthority: "local",
@@ -438,6 +453,20 @@ export const WorkspaceKeyboardCommandReceived = defineIntent(
 )
 export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
 export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
+export const SettingsSectionSelected = defineIntent("SettingsSectionSelected", Schema.Struct({
+  section: Schema.Literals(["root", "account", "environments", "notifications", "appearance", "accessibility", "storage", "diagnostics", "legal", "share"]),
+}))
+export const EnvironmentDirectoryRequested = defineIntent("EnvironmentDirectoryRequested", EmptyPayload)
+export const EnvironmentPairingCodeChanged = defineIntent("EnvironmentPairingCodeChanged", Schema.String)
+export const EnvironmentPairRequested = defineIntent("EnvironmentPairRequested", EmptyPayload)
+export const EnvironmentInspected = defineIntent("EnvironmentInspected", Schema.Struct({ environmentRef: Schema.String }))
+export const EnvironmentReconnectRequested = defineIntent("EnvironmentReconnectRequested", Schema.Struct({ environmentRef: Schema.String }))
+export const NotificationPermissionRequested = defineIntent("NotificationPermissionRequested", EmptyPayload)
+export const NotificationPreferenceToggled = defineIntent("NotificationPreferenceToggled", Schema.Struct({
+  preference: Schema.Literals(["attention", "completion", "approvals"]),
+}))
+export const IncomingShareInserted = defineIntent("IncomingShareInserted", EmptyPayload)
+export const IncomingShareDismissed = defineIntent("IncomingShareDismissed", EmptyPayload)
 export const OpenAgentsSignInPressed = defineIntent("OpenAgentsSignInPressed", EmptyPayload)
 export const OpenAgentsSignOutPressed = defineIntent("OpenAgentsSignOutPressed", EmptyPayload)
 export const SurfaceModeSelected = defineIntent(
@@ -720,6 +749,16 @@ export const homeIntentDefinitions = [
   WorkspaceKeyboardCommandReceived,
   NewChatPressed,
   SettingsPressed,
+  SettingsSectionSelected,
+  EnvironmentDirectoryRequested,
+  EnvironmentPairingCodeChanged,
+  EnvironmentPairRequested,
+  EnvironmentInspected,
+  EnvironmentReconnectRequested,
+  NotificationPermissionRequested,
+  NotificationPreferenceToggled,
+  IncomingShareInserted,
+  IncomingShareDismissed,
   OpenAgentsSignInPressed,
   OpenAgentsSignOutPressed,
   SurfaceModeSelected,
@@ -829,6 +868,9 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "settings") {
+    return { title: "Settings", subtitle: state.settings.section === "root" ? "OpenAgents mobile" : state.settings.section }
+  }
   if (state.workbenchRoute === "terminal") {
     const active = state.repositoryTerminal.sessions.find(session => session.terminalRef === state.repositoryTerminal.activeRef)
     return { title: "Terminal", subtitle: active?.label ?? "Exact worktree" }
@@ -905,6 +947,11 @@ export const renderContentView = (state: HomeState): View =>
     },
     state.workbenchRoute === "terminal"
       ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
+      : state.workbenchRoute === "settings"
+      ? [renderMobileSettingsView(state.settings, state.accessibility, {
+          ...syncStatusCopy(state.syncPhase),
+          control: mobileAccountControl(state.syncPhase),
+        })]
       : state.workbenchRoute === "git"
       ? [renderMobileGitView(state.repositoryGit, state.accessibility)]
       : state.workbenchRoute === "changes"
@@ -1910,6 +1957,12 @@ export interface HomeProgramOptions {
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
   readonly fullAutoRun?: FullAutoRunProjectionResult
+  readonly settings?: Readonly<{
+    environments?: MobileEnvironmentConnectionsPort
+    notifications?: MobileNotificationSettingsPort
+    incomingShare?: MobileShareIntake | null
+    onShareConsumed?: () => void
+  }>
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot?: ConfirmedPortableSessionSnapshot | null
@@ -3264,6 +3317,41 @@ export const makeHomeHandlers = (
         })
       })
   const draftChanged = synced?.KhalaDraftChanged ?? khalaHandlers(state, options.khalaTurn).KhalaDraftChanged
+  const refreshEnvironmentDirectory = () => Effect.gen(function* () {
+    if (options.settings?.environments === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: { ...current.settings, environmentState: "unavailable" as const, notice: "Link a verified OpenAgents account to inspect environments." },
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: { ...current.settings, environmentState: "loading" as const, notice: null },
+    }))
+    const value = yield* Effect.promise(() => options.settings!.environments!.environmentDirectory().catch(() => null))
+    const directory = decodeMobileEnvironmentDirectory(value)
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: directory === null
+        ? { ...current.settings, environmentState: "unavailable" as const, environments: null, notice: "Environment health is unavailable or invalid." }
+        : { ...current.settings, environmentState: "ready" as const, environments: directory, notice: null },
+    }))
+  })
+  const refreshNotificationSnapshot = () => Effect.gen(function* () {
+    if (options.settings?.notifications === undefined) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: { ...current.settings, notificationLoading: true },
+    }))
+    const snapshot = yield* Effect.promise(() => options.settings!.notifications!.snapshot().catch(() => null))
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: snapshot === null
+        ? { ...current.settings, notificationLoading: false, notice: "Notification health is unavailable on this installation." }
+        : { ...current.settings, notificationLoading: false, notification: snapshot, notice: null },
+    }))
+  })
   const slashContext = (current: HomeState): MobileSlashCommandContext => ({
     composerAvailable: current.codingComposer !== null,
     targetCatalogAvailable: current.codingExecutionTargets.length > 0,
@@ -3891,13 +3979,106 @@ export const makeHomeHandlers = (
         !before.khala.runtimeControlActionsAvailable || synced === undefined) return
       yield* synced.RuntimeTurnControlRequested({ action: "cancel", runRef: payload.runRef })
     }),
-    SettingsPressed: () => SubscriptionRef.update(state, current => ({
+    SettingsPressed: () => Effect.gen(function* () {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        drawerOpen: false,
+        workspaceFocusTarget: "transcript" as const,
+        workbenchRoute: "settings" as const,
+        settings: { ...current.settings, section: "root" as const, incomingShare: options.settings?.incomingShare ?? current.settings.incomingShare },
+      }))
+      yield* Effect.all([refreshEnvironmentDirectory(), refreshNotificationSnapshot()], { concurrency: "unbounded" })
+    }),
+    SettingsSectionSelected: ({ section }: { readonly section: MobileSettingsSection }) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: { ...current.settings, section, notice: null },
+      })),
+    EnvironmentDirectoryRequested: refreshEnvironmentDirectory,
+    EnvironmentPairingCodeChanged: (value: string) => SubscriptionRef.update(state, current => ({
       ...current,
-      drawerOpen: false,
-      workspaceFocusTarget: "transcript" as const,
-      workbenchRoute: "conversation" as const,
-      surfaceMode: surfaceModeOptions[0]?.id ?? current.surfaceMode,
+      settings: { ...current.settings, pairingCode: normalizeMobilePairingCode(value), environmentReceipt: null, notice: null },
     })),
+    EnvironmentPairRequested: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const pairingCode = before.settings.pairingCode.trim()
+      if (options.settings?.environments === undefined || pairingCode.length === 0 || before.settings.submittingEnvironment) return
+      yield* SubscriptionRef.update(state, current => ({ ...current, settings: { ...current.settings, submittingEnvironment: true, notice: null } }))
+      const value = yield* Effect.promise(() => options.settings!.environments!.pairEnvironment({ pairingCode, idempotencyRef: `mobile.pair.${Date.now()}` }).catch(() => null))
+      const receipt = decodeMobileEnvironmentReceipt(value, "pair")
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: receipt === null
+          ? { ...current.settings, submittingEnvironment: false, notice: "Pairing was not confirmed. Check the code and try again." }
+          : { ...current.settings, submittingEnvironment: false, pairingCode: "", environments: receipt.directory, environmentState: "ready" as const, selectedEnvironmentRef: receipt.environmentRef, environmentReceipt: receipt, notice: null },
+      }))
+    }),
+    EnvironmentInspected: ({ environmentRef }: { readonly environmentRef: string }) => SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: { ...current.settings, selectedEnvironmentRef: current.settings.environments?.environments.some(item => item.environmentRef === environmentRef) ? environmentRef : null },
+    })),
+    EnvironmentReconnectRequested: ({ environmentRef }: { readonly environmentRef: string }) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (options.settings?.environments === undefined || before.settings.environments === null || before.settings.submittingEnvironment ||
+        !before.settings.environments.environments.some(item => item.environmentRef === environmentRef)) return
+      yield* SubscriptionRef.update(state, current => ({ ...current, settings: { ...current.settings, submittingEnvironment: true, notice: null } }))
+      const value = yield* Effect.promise(() => options.settings!.environments!.reconnectEnvironment({
+        environmentRef,
+        directoryRef: before.settings.environments!.directoryRef,
+        idempotencyRef: `mobile.reconnect.${Date.now()}`,
+      }).catch(() => null))
+      const receipt = decodeMobileEnvironmentReceipt(value, "reconnect")
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: receipt === null
+          ? { ...current.settings, submittingEnvironment: false, notice: "Reconnect was not confirmed." }
+          : { ...current.settings, submittingEnvironment: false, environments: receipt.directory, environmentReceipt: receipt, selectedEnvironmentRef: receipt.environmentRef, notice: null },
+      }))
+    }),
+    NotificationPermissionRequested: () => Effect.gen(function* () {
+      if (options.settings?.notifications === undefined) return
+      yield* SubscriptionRef.update(state, current => ({ ...current, settings: { ...current.settings, notificationLoading: true, notice: null } }))
+      const snapshot = yield* Effect.promise(() => options.settings!.notifications!.requestPermission().catch(() => null))
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: snapshot === null
+          ? { ...current.settings, notificationLoading: false, notice: "Notification permission could not be updated." }
+          : { ...current.settings, notificationLoading: false, notification: snapshot, notice: null },
+      }))
+    }),
+    NotificationPreferenceToggled: ({ preference }: { readonly preference: "attention" | "completion" | "approvals" }) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (options.settings?.notifications === undefined || before.settings.notificationLoading) return
+      const preferences = { ...before.settings.notification.preferences, [preference]: !before.settings.notification.preferences[preference] }
+      yield* SubscriptionRef.update(state, current => ({ ...current, settings: { ...current.settings, notificationLoading: true, notice: null } }))
+      const snapshot = yield* Effect.promise(() => options.settings!.notifications!.setPreferences(preferences).catch(() => null))
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: snapshot === null
+          ? { ...current.settings, notificationLoading: false, notice: "Notification preferences could not be saved." }
+          : { ...current.settings, notificationLoading: false, notification: snapshot, notice: null },
+      }))
+    }),
+    IncomingShareInserted: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (before.settings.incomingShare === null) return
+      const text = mobileShareComposerText(before.settings.incomingShare)
+      yield* draftChanged(text)
+      options.settings?.onShareConsumed?.()
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        workbenchRoute: "conversation" as const,
+        surfaceMode: "khala" as const,
+        settings: { ...current.settings, incomingShare: null, section: "root" as const, notice: null },
+      }))
+    }),
+    IncomingShareDismissed: () => Effect.gen(function* () {
+      options.settings?.onShareConsumed?.()
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        settings: { ...current.settings, incomingShare: null, section: "root" as const, notice: null },
+      }))
+    }),
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
       ? Effect.void
       : Effect.promise(options.sessionActions.signIn),
@@ -4391,6 +4572,9 @@ export interface HomeProgramHandle {
     readonly signIn: () => void
     readonly signOut: () => void
   }
+  readonly settings: {
+    readonly setIncomingShare: (share: MobileShareIntake | null) => void
+  }
 }
 
 export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramHandle =>
@@ -4413,6 +4597,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           ? {}
           : { fleetRuns: options.coding.fleetRuns }),
         fullAutoRun: options.fullAutoRun ?? baseInitialState.fullAutoRun,
+        settings: {
+          ...baseInitialState.settings,
+          incomingShare: options.settings?.incomingShare ?? null,
+        },
         codingExecutionTargetCatalogRequired:
           options.coding?.executionTargets !== undefined,
         khala: activeComposer === null
@@ -4726,6 +4914,14 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         session: {
           signIn: fire("OpenAgentsSignInPressed"),
           signOut: fire("OpenAgentsSignOutPressed"),
+        },
+        settings: {
+          setIncomingShare: share => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              settings: { ...current.settings, incomingShare: share },
+            })))
+          },
         },
       }
     }),

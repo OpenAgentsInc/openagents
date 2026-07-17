@@ -23,6 +23,11 @@ import type { MobileRepositoryGitPort } from "../coding/mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "../coding/mobile-repository-review"
 import type { MobileRepositoryTerminalPort } from "../coding/mobile-repository-terminal"
 import type {
+  MobileEnvironmentConnectionsPort,
+  MobileNotificationSettingsPort,
+  MobileShareIntake,
+} from "../settings/mobile-settings"
+import type {
   ConfirmedPortableSessionSnapshot,
   ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
@@ -59,6 +64,9 @@ export const HomeScreen = ({
   pendingAttentionTarget,
   onAttentionTargetConsumed,
   fullAutoRun,
+  notificationSettings,
+  incomingShare,
+  onShareConsumed,
 }: {
   readonly syncPhase: MobileSyncPhase
   readonly sessionActions: Readonly<{
@@ -69,6 +77,9 @@ export const HomeScreen = ({
   /** Live `FullAutoRun` mobile projection (openagents #8982); pushed into the
    * program on every change so the state header updates without a restart. */
   readonly fullAutoRun?: FullAutoRunProjectionResult | null
+  readonly notificationSettings?: MobileNotificationSettingsPort
+  readonly incomingShare?: MobileShareIntake | null
+  readonly onShareConsumed?: () => void
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot: ConfirmedPortableSessionSnapshot | null
@@ -89,6 +100,7 @@ export const HomeScreen = ({
     repositoryReview?: MobileRepositoryReviewPort
     repositoryGit?: MobileRepositoryGitPort
     repositoryTerminal?: MobileRepositoryTerminalPort
+    environmentConnections?: MobileEnvironmentConnectionsPort
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
@@ -128,13 +140,19 @@ export const HomeScreen = ({
       accessibility,
       workspaceWidth: initialWorkspaceWidth,
       coding,
+      settings: {
+        ...(coding?.environmentConnections === undefined ? {} : { environments: coding.environmentConnections }),
+        ...(notificationSettings === undefined ? {} : { notifications: notificationSettings }),
+        incomingShare: incomingShare ?? null,
+        ...(onShareConsumed === undefined ? {} : { onShareConsumed }),
+      },
       ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
     }),
     // fullAutoRun deliberately excluded: its initial value seeds the program
     // once at mount; later changes flow through `program.fullAuto.setProjection`
     // below (mirroring the syncPhase push pattern) so a live projection poll
     // never tears down and rebuilds the whole Effect Native program.
-    [sessionActions, conversation, coding, initialWorkspaceWidth],
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth],
   )
   useEffect(() => {
     let active = true
@@ -165,6 +183,9 @@ export const HomeScreen = ({
   useEffect(() => {
     program.fullAuto.setProjection(fullAutoRun ?? null)
   }, [program, fullAutoRun])
+  useEffect(() => {
+    program.settings.setIncomingShare(incomingShare ?? null)
+  }, [program, incomingShare])
   useEffect(() => {
     const subscription = AppState.addEventListener("change", next => {
       if (next === "active") program.coding.recoverTerminal()

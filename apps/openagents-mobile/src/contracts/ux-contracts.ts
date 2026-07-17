@@ -5,8 +5,41 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.19",
+    version: "2026-07-17.20",
     contracts: [
+      {
+        contractId: "openagents_mobile.settings_connections_native_finish.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile settings, connections, notifications, and share intake",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "Mobile provides a first-class settings hierarchy, verified environment pairing and health, explicit notification education/preferences/registration health, safe share intake, and public-safe inspectors without displacing the transcript workbench.",
+        authorityBoundary:
+          "The native host alone holds account credentials, notification registration material, permission APIs, and authenticated transport. The Effect Native tree receives only bounded public-safe state. Environment list, pair, and reconnect responses are exact, bounded, receipt-driven, and authenticated; malformed or unconfirmed mutations cannot display success. Notification permission is requested only after an explicit tap and raw device tokens never enter UI state. Share intake accepts bounded text and safe HTTP(S) URLs, requires review, and inserts into the composer without auto-submitting or changing transcript history. Live endpoint provisioning, packaged native proof, physical iOS/Android journeys, and signed distribution remain T3M-F2.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/settings/mobile-settings.ts",
+          "apps/openagents-mobile/src/settings/expo-mobile-notification-settings.ts",
+          "apps/openagents-mobile/src/screens/mobile-settings-view.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/app.tsx",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-f1",
+        ],
+        oracles: [
+          {
+            id: "mobile_settings_connections_journey",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-settings.test.ts",
+            description:
+              "Proves hierarchy rendering, bounded environment health, authenticated pair/reconnect endpoints and receipts, explicit-only notification permission, preference persistence seam, safe share review/insertion, and transcript preservation.",
+          },
+        ],
+        verification:
+          "Mobile settings/environment, app-composition, authoritative Home, behavior-contract, typecheck, and repository checks; physical-device and signed-distribution evidence remains T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.exact_worktree_terminal.v1",
         state: "enforced",

@@ -3,6 +3,7 @@ import type { MobileRepositoryFilesPort } from "./mobile-repository-files"
 import type { MobileRepositoryGitPort } from "./mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "./mobile-repository-review"
 import type { MobileRepositoryTerminalPort } from "./mobile-repository-terminal"
+import type { MobileEnvironmentConnectionsPort } from "../settings/mobile-settings"
 
 export const MOBILE_REPOSITORY_TREE_ENDPOINT = "/api/mobile/coding/repository/tree"
 export const MOBILE_REPOSITORY_READ_ENDPOINT = "/api/mobile/coding/repository/read"
@@ -16,11 +17,14 @@ export const MOBILE_REPOSITORY_TERMINAL_SNAPSHOT_ENDPOINT = "/api/mobile/coding/
 export const MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT = "/api/mobile/coding/repository/terminal/create"
 export const MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT = "/api/mobile/coding/repository/terminal/replay"
 export const MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT = "/api/mobile/coding/repository/terminal/command"
+export const MOBILE_ENVIRONMENT_DIRECTORY_ENDPOINT = "/api/mobile/environments"
+export const MOBILE_ENVIRONMENT_PAIR_ENDPOINT = "/api/mobile/environments/pair"
+export const MOBILE_ENVIRONMENT_RECONNECT_ENDPOINT = "/api/mobile/environments/reconnect"
 
 const MAX_METADATA_RESPONSE_BYTES = 256 * 1024
 const MAX_CONTENT_RESPONSE_BYTES = 14 * 1024 * 1024
 
-export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & MobileRepositoryGitPort & MobileRepositoryTerminalPort & Readonly<{
+export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & MobileRepositoryGitPort & MobileRepositoryTerminalPort & MobileEnvironmentConnectionsPort & Readonly<{
   search: MobileComposerPathSearchPort["search"]
 }>
 
@@ -91,5 +95,8 @@ export const createAuthenticatedMobileRepositoryEnvironment = (input: Readonly<{
     terminalCreate: request => post(MOBILE_REPOSITORY_TERMINAL_CREATE_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
     terminalReplay: request => post(MOBILE_REPOSITORY_TERMINAL_REPLAY_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
     terminalCommand: request => post(MOBILE_REPOSITORY_TERMINAL_COMMAND_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    environmentDirectory: () => post(MOBILE_ENVIRONMENT_DIRECTORY_ENDPOINT, {}, MAX_METADATA_RESPONSE_BYTES),
+    pairEnvironment: request => post(MOBILE_ENVIRONMENT_PAIR_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    reconnectEnvironment: request => post(MOBILE_ENVIRONMENT_RECONNECT_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
   }
 }

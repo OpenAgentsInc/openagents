@@ -198,14 +198,14 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(serialized).not.toContain("assignment.closeout.summary.e2d06ebe9e9eaf48dd9e8d74")
   })
 
-  test("drawer Settings opens the account and Sync surface", async () => {
+  test("drawer Settings opens the first-class settings hierarchy", async () => {
     const program = buildHomeProgram()
     program.chrome.toggleDrawer()
     program.chrome.pressSettings()
     await Effect.runPromise(settle)
     const state = await Effect.runPromise(lastState(program))
-    expect(state).toMatchObject({ drawerOpen: false, surfaceMode: "openagents" })
+    expect(state).toMatchObject({ drawerOpen: false, workbenchRoute: "settings" })
     expect(JSON.stringify(renderContentView({ ...state, syncPhase: "local_ready" })))
-      .toContain("Link OpenAgents account")
+      .toContain("Local identity and verified OpenAgents Sync")
   })
 })

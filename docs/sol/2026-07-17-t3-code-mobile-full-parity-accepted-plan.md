@@ -1380,3 +1380,59 @@ remain `T3M-F1`/`T3M-F2`.
   background journeys remain explicit `T3M-F1/F2`; ordered work advances to
   `T3M-F1`
 - verified_at: `2026-07-17T23:34:56Z`
+
+## Active packet — T3M-F1
+
+Outcome: make mobile connections and native settings coherent and usable while
+keeping credential, permission, registration, and transport authority in the
+native host and keeping the transcript workbench primary.
+
+Required behavior: Settings is a first-class typed route with account,
+environments, notifications, appearance, accessibility, storage/cache,
+diagnostics, legal, and pending-share destinations. Environment directory,
+pair, and reconnect traffic uses the verified-session authenticated client,
+bounded public-safe projections, explicit health/capabilities, idempotency
+identity, and exact receipts. Notification permission is requested only after
+an explicit tap; native token material never enters view state; preferences are
+persisted in native secure storage. Initial and live share links accept only
+bounded text and safe HTTP(S) URLs, require review, and insert into the composer
+without auto-submit or transcript mutation. Existing controller, environment,
+notification, Git, terminal, and agent views remain the inspectors for their
+respective authorities.
+
+Close rule: this closes the F1 application contract and host composition for
+settings, connection pairing/health, notification education/preferences/
+registration health, share intake, and inspectors. It does not claim that the
+currently fixed authenticated OpenAgents endpoint is provisioned with a live
+owner environment, that a native device token is available on a simulator, or
+that physical/signed builds passed. Those installed runtime and distribution
+receipts remain `T3M-F2`.
+
+### CLAIM
+
+- packet: `T3M-F1`
+- base: `50486fabbdc2e9d6d5fb30a5c824ecebe1674ddc`
+- claimed_at: `2026-07-18T00:42:00Z`
+- scope: first-class settings hierarchy, authenticated environment directory/
+  pair/reconnect client and receipts, notification education/preferences/
+  registration-health host, safe initial/live share intake, public-safe
+  inspectors, tests, behavior contract, and Sol receipt
+- exclusions: live owner-environment endpoint observation, physical iOS and
+  Android journeys, packaged native emulator, signed distribution, and owner
+  acceptance (`T3M-F2`)
+
+### CLAIM-STATUS
+
+- implementation: Settings is a transcript-preserving workbench route; account
+  state and actions reuse the existing session authority; connection health,
+  pairing, and reconnect are bounded and receipt-driven over exact authenticated
+  endpoints; permission prompting is explicit-only; notification preferences
+  stay in native secure storage; native registration material never crosses
+  into Effect Native; and safe shares require review before composer insertion
+- focused proof: 254 mobile tests passed, including the new settings,
+  environment transport, permission, preference, share-delivery, and transcript
+  preservation journey; 36 behavior-contract tests and mobile typecheck passed
+- repository gate: `pnpm run check` passed
+- residual: `T3M-F2` complete component census, layout/motion/haptic and
+  screen-reader finish, installed iOS/Android journeys, signed distribution,
+  and owner acceptance; this is not a full-parity claim

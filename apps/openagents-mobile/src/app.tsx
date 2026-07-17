@@ -36,6 +36,9 @@ import type { MobileRepositoryFilesPort } from "./coding/mobile-repository-files
 import type { MobileRepositoryGitPort } from "./coding/mobile-repository-git"
 import type { MobileRepositoryReviewPort } from "./coding/mobile-repository-review"
 import type { MobileRepositoryTerminalPort } from "./coding/mobile-repository-terminal"
+import type { MobileEnvironmentConnectionsPort, MobileShareIntake } from "./settings/mobile-settings"
+import { decodeMobileShareUrl } from "./settings/mobile-settings"
+import { openExpoMobileNotificationSettings } from "./settings/expo-mobile-notification-settings"
 import {
   buildMobilePortableSessionCommand,
   projectMobilePortableSessionControl,
@@ -95,6 +98,7 @@ type MobileCodingHomeBinding = Readonly<{
   repositoryReview?: MobileRepositoryReviewPort
   repositoryGit?: MobileRepositoryGitPort
   repositoryTerminal?: MobileRepositoryTerminalPort
+  environmentConnections?: MobileEnvironmentConnectionsPort
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
@@ -284,6 +288,7 @@ const selectAuthenticatedMobileExperience = async (
             repositoryReview: repositoryEnvironment,
             repositoryGit: repositoryEnvironment,
             repositoryTerminal: repositoryEnvironment,
+            environmentConnections: repositoryEnvironment,
             searchComposerPaths: repositoryEnvironment.search,
           }),
       ...(fleetRunResult.state === "available"
@@ -385,6 +390,7 @@ export const App = () => {
   const [conversationSelection, setConversationSelection] = useState<MobileConversationSelection | null>(null)
   const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
   const [pendingAttentionTarget, setPendingAttentionTarget] = useState<MobileAttentionTarget | null>(null)
+  const [incomingShare, setIncomingShare] = useState<MobileShareIntake | null>(null)
   const [conversationRevision, setConversationRevision] = useState(0)
   const [fullAutoRun, setFullAutoRun] = useState<FullAutoRunProjectionResult | null>(null)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
@@ -392,6 +398,7 @@ export const App = () => {
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
   const attentionDeliveryRef = useRef<NativeAttentionTargetDelivery | null>(null)
   const pendingAttentionTargetRef = useRef<MobileAttentionTarget | null>(null)
+  const notificationSettings = useMemo(() => openExpoMobileNotificationSettings(), [])
   const portableSubscriptionRef = useRef<(() => void) | null>(null)
   const attentionSubscriptionRef = useRef<(() => void) | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
@@ -400,6 +407,7 @@ export const App = () => {
     setPendingAttentionTarget(null)
     void attentionDeliveryRef.current?.flush()
   }, [])
+  const consumeIncomingShare = useCallback((): void => setIncomingShare(null), [])
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
@@ -575,17 +583,24 @@ export const App = () => {
           return false
         }
       }
+      const deliverUrl = (url: string): void => {
+        const share = decodeMobileShareUrl(url)
+        if (share !== null) {
+          setIncomingShare(share)
+          return
+        }
+        if (isAttentionUrl(url)) enqueueAttention({ source: "deep_link", url })
+        else enqueueCoding({ source: "deep_link", url })
+      }
       const isAttentionPayload = (payload: unknown): boolean =>
         typeof payload === "object" && payload !== null && !Array.isArray(payload) &&
         (payload as { schema?: unknown }).schema === MobileAttentionTargetSchemaVersion
       linkSubscription = Linking.addEventListener("url", event => {
-        if (isAttentionUrl(event.url)) enqueueAttention({ source: "deep_link", url: event.url })
-        else enqueueCoding({ source: "deep_link", url: event.url })
+        deliverUrl(event.url)
       })
       void Linking.getInitialURL().then(url => {
         if (url === null) return
-        if (isAttentionUrl(url)) enqueueAttention({ source: "deep_link", url })
-        else enqueueCoding({ source: "deep_link", url })
+        deliverUrl(url)
       })
       void Promise.resolve().then(async () => {
         const Notifications = require("expo-notifications") as typeof import("expo-notifications")
@@ -731,6 +746,9 @@ export const App = () => {
           pendingAttentionTarget={pendingAttentionTarget}
           onAttentionTargetConsumed={consumeAttentionTarget}
           fullAutoRun={fullAutoRun}
+          notificationSettings={notificationSettings}
+          incomingShare={incomingShare}
+          onShareConsumed={consumeIncomingShare}
         />
       )}
     </SafeAreaProvider>
