@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vite-plus/test"
 import { Effect, Stream } from "@effect-native/core/effect"
+import type { ConfirmedRuntimeAttentionSnapshot } from "@openagentsinc/khala-sync-client"
 
 import type { MobileCodingDirectory } from "../src/coding/mobile-coding-navigation"
+import type { MobileConversationHost, MobileConversationThread } from "../src/conversation/mobile-conversation"
+import { MobileAttentionTargetSchemaVersion } from "../src/attention/mobile-attention-target"
 import {
   buildHomeProgram,
   initialHomeState,
@@ -68,6 +71,25 @@ const lastState = (program: ReturnType<typeof buildHomeProgram>) =>
     return option.value
   })
 
+const attentionSnapshot: ConfirmedRuntimeAttentionSnapshot = {
+  status: { phase: "live", cursor: 9 },
+  pending: [{
+    schema: "openagents.runtime_attention.v1",
+    attentionRef: "interaction.approval.1",
+    ownerUserId: "owner.fixture",
+    interactionRef: "interaction.approval.1",
+    threadRef: "thread.attention.1",
+    turnRef: "turn.attention.1",
+    kind: "tool_approval",
+    status: "pending",
+    requestedAt: "2026-07-17T12:00:00.000Z",
+    expiresAt: "2026-07-17T12:10:00.000Z",
+    updatedAt: "2026-07-17T12:00:00.000Z",
+  }],
+  terminal: [],
+  issues: [],
+}
+
 describe("contract openagents_mobile.controller_shell.v1", () => {
   test("paints metadata-first Recent without opening transcript detail", () => {
     const view = JSON.stringify(renderContentView({
@@ -101,6 +123,50 @@ describe("contract openagents_mobile.controller_shell.v1", () => {
     expect(view).toContain("session.recovery")
     expect(view).toContain("Recovery required")
     expect(view).not.toContain("session.ready")
+  })
+
+  test("opens confirmed runtime attention through the shared controller intent", async () => {
+    const opened: string[] = []
+    const thread: MobileConversationThread = {
+      threadRef: "thread.attention.1",
+      title: "Approval",
+      messageCount: 0,
+      lastMessageAt: null,
+      updatedAt: "2026-07-17T12:00:00.000Z",
+      version: 1,
+      messages: [],
+    }
+    const host: MobileConversationHost = {
+      listThreads: async () => [thread],
+      newThread: async () => ({ ok: true, thread }),
+      openThread: async threadRef => { opened.push(threadRef); return thread },
+      sendMessage: async () => ({ ok: true, thread }),
+    }
+    const program = buildHomeProgram({
+      conversation: { mode: "sync", host, threads: [thread], activeThread: null },
+      coding: {
+        directory,
+        attentionSnapshot,
+        activeComposer: () => null,
+        clearSelection: async () => undefined,
+        selectSession: async () => null,
+        updateComposerText: async () => null,
+        pickComposerAttachments: async () => ({ status: "cancelled" }),
+      },
+    })
+    program.controller.selectDestination("attention")
+    await program.controller.selectAttention({
+      schema: MobileAttentionTargetSchemaVersion,
+      attentionRef: "interaction.approval.1",
+      threadRef: "thread.attention.1",
+      turnRef: "turn.attention.1",
+    })
+    const state = await Effect.runPromise(lastState(program))
+    const view = JSON.stringify(renderMobileControllerShell({ ...state, controllerDestination: "attention" }))
+    expect(opened).toEqual(["thread.attention.1"])
+    expect(state.activeThreadRef).toBe("thread.attention.1")
+    expect(view).toContain("Approval · thread.attention.1")
+    expect(view).not.toContain("private")
   })
 
   test("withheld authority exposes loss accounting but never controller rows", () => {

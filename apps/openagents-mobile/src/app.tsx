@@ -2,12 +2,13 @@ import { khalaTheme } from "@effect-native/tokens"
 import { randomUUID } from "expo-crypto"
 import { StatusBar } from "expo-status-bar"
 import * as Updates from "expo-updates"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Linking } from "react-native"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 import { Effect } from "effect"
 import type {
   ConfirmedPortableSessionSnapshot,
+  ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
 
 declare const require: (id: string) => unknown
@@ -54,11 +55,21 @@ import {
   openNativeCodingTargetDelivery,
   type NativeCodingTargetDelivery,
 } from "./coding/native-coding-target-delivery"
+import {
+  MobileAttentionTargetSchemaVersion,
+  type MobileAttentionTarget,
+} from "./attention/mobile-attention-target"
+import {
+  openNativeAttentionTargetDelivery,
+  type NativeAttentionTargetDelivery,
+} from "./attention/native-attention-target-delivery"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
   portableSnapshot: ConfirmedPortableSessionSnapshot | null
+  attentionSnapshot: ConfirmedRuntimeAttentionSnapshot | null
   watchPortable: (listener: (snapshot: ConfirmedPortableSessionSnapshot) => void) => () => void
+  watchAttention: (listener: (snapshot: ConfirmedRuntimeAttentionSnapshot) => void) => () => void
   requestPortableAction: (input: Readonly<{
     sessionRef: string
     action: MobilePortableControlAction
@@ -141,6 +152,10 @@ const selectAuthenticatedMobileExperience = async (
   const portableSnapshot = portable === null
     ? null
     : await Effect.runPromise(portable.snapshot())
+  const attention = syncHost.attention()
+  const attentionSnapshot = attention === null
+    ? null
+    : await Effect.runPromise(attention.snapshot())
   const executionTargets = executionTargetCatalog?.options ?? []
   const host = conversation.host
   let activeComposer: MobileCodingComposerSession | null = null
@@ -193,7 +208,9 @@ const selectAuthenticatedMobileExperience = async (
     coding: {
       directory,
       portableSnapshot,
+      attentionSnapshot,
       watchPortable: listener => syncHost.watchPortable(listener),
+      watchAttention: listener => syncHost.watchAttention(listener),
       requestPortableAction: async input => {
         if (portable === null) {
           return { state: "rejected", reason: "authority_unavailable", snapshot: null }
@@ -292,12 +309,21 @@ export const App = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
   const [conversationSelection, setConversationSelection] = useState<MobileConversationSelection | null>(null)
   const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
+  const [pendingAttentionTarget, setPendingAttentionTarget] = useState<MobileAttentionTarget | null>(null)
   const [conversationRevision, setConversationRevision] = useState(0)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
+  const attentionDeliveryRef = useRef<NativeAttentionTargetDelivery | null>(null)
+  const pendingAttentionTargetRef = useRef<MobileAttentionTarget | null>(null)
   const portableSubscriptionRef = useRef<(() => void) | null>(null)
+  const attentionSubscriptionRef = useRef<(() => void) | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
+  const consumeAttentionTarget = useCallback((): void => {
+    pendingAttentionTargetRef.current = null
+    setPendingAttentionTarget(null)
+    void attentionDeliveryRef.current?.flush()
+  }, [])
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
@@ -330,6 +356,8 @@ export const App = () => {
   const publishCodingBinding = (binding: MobileCodingHomeBinding | undefined): void => {
     portableSubscriptionRef.current?.()
     portableSubscriptionRef.current = null
+    attentionSubscriptionRef.current?.()
+    attentionSubscriptionRef.current = null
     codingBindingRef.current = binding
     setCodingBinding(binding)
     if (binding !== undefined) {
@@ -340,8 +368,17 @@ export const App = () => {
         codingBindingRef.current = updated
         setCodingBinding(updated)
       })
+      attentionSubscriptionRef.current = binding.watchAttention(snapshot => {
+        const current = codingBindingRef.current
+        if (current === undefined) return
+        const updated = { ...current, attentionSnapshot: snapshot }
+        codingBindingRef.current = updated
+        setCodingBinding(updated)
+        void attentionDeliveryRef.current?.flush()
+      })
     }
     if (binding !== undefined) void targetDeliveryRef.current?.flush()
+    if (binding !== undefined) void attentionDeliveryRef.current?.flush()
   }
   const sessionActions = useMemo(() => ({
     signIn: async () => {
@@ -374,6 +411,8 @@ export const App = () => {
       // a command that survives unlink and replays under a later session.
       try { syncHostRef.current?.unlinkAccount() } catch { /* remote revocation still runs */ }
       publishCodingBinding(undefined)
+      pendingAttentionTargetRef.current = null
+      setPendingAttentionTarget(null)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -394,6 +433,7 @@ export const App = () => {
     let linkSubscription: ReturnType<typeof Linking.addEventListener> | undefined
     let notificationSubscription: Readonly<{ remove: () => void }> | undefined
     let targetDelivery: NativeCodingTargetDelivery | undefined
+    let attentionDelivery: NativeAttentionTargetDelivery | undefined
     let experienceReconciler: MobileExperienceReconciler | undefined
     let localStoreReady = false
     try {
@@ -427,25 +467,57 @@ export const App = () => {
         },
       })
       targetDeliveryRef.current = targetDelivery
-      const enqueue = (candidate: Parameters<NativeCodingTargetDelivery["enqueue"]>[0]): void => {
+      attentionDelivery = openNativeAttentionTargetDelivery({
+        snapshot: () => codingBindingRef.current?.attentionSnapshot ?? null,
+        deliver: target => {
+          if (pendingAttentionTargetRef.current !== null) return false
+          pendingAttentionTargetRef.current = target
+          setPendingAttentionTarget(target)
+          return true
+        },
+      })
+      attentionDeliveryRef.current = attentionDelivery
+      const enqueueCoding = (candidate: Parameters<NativeCodingTargetDelivery["enqueue"]>[0]): void => {
         targetDelivery?.enqueue(candidate)
         void targetDelivery?.flush()
       }
+      const enqueueAttention = (candidate: Parameters<NativeAttentionTargetDelivery["enqueue"]>[0]): void => {
+        attentionDelivery?.enqueue(candidate)
+        void attentionDelivery?.flush()
+      }
+      const isAttentionUrl = (url: string): boolean => {
+        try {
+          const parsed = new URL(url)
+          return parsed.protocol === "openagents:" && parsed.hostname === "attention"
+        } catch {
+          return false
+        }
+      }
+      const isAttentionPayload = (payload: unknown): boolean =>
+        typeof payload === "object" && payload !== null && !Array.isArray(payload) &&
+        (payload as { schema?: unknown }).schema === MobileAttentionTargetSchemaVersion
       linkSubscription = Linking.addEventListener("url", event => {
-        enqueue({ source: "deep_link", url: event.url })
+        if (isAttentionUrl(event.url)) enqueueAttention({ source: "deep_link", url: event.url })
+        else enqueueCoding({ source: "deep_link", url: event.url })
       })
       void Linking.getInitialURL().then(url => {
-        if (url !== null) enqueue({ source: "deep_link", url })
+        if (url === null) return
+        if (isAttentionUrl(url)) enqueueAttention({ source: "deep_link", url })
+        else enqueueCoding({ source: "deep_link", url })
       })
       void Promise.resolve().then(async () => {
         const Notifications = require("expo-notifications") as typeof import("expo-notifications")
         if (stopped) return
         notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-          enqueue({ source: "notification", payload: response.notification.request.content.data })
+          const payload = response.notification.request.content.data
+          if (isAttentionPayload(payload)) enqueueAttention({ source: "notification", payload })
+          else enqueueCoding({ source: "notification", payload })
         })
         const initial = await Notifications.getLastNotificationResponseAsync()
         if (initial !== null) {
-          enqueue({ source: "notification", payload: initial.notification.request.content.data })
+          const payload = initial.notification.request.content.data
+          if (isAttentionPayload(payload)) enqueueAttention({ source: "notification", payload })
+          else enqueueCoding({ source: "notification", payload })
         }
       })
       localStoreReady = true
@@ -511,6 +583,7 @@ export const App = () => {
         phase === "must_refetch" || phase === "denied"
       ) setSyncPhase(phase)
       if (phase === "live") void targetDelivery?.flush()
+      if (phase === "live") void attentionDelivery?.flush()
       // Re-evaluate local vs sync once the scope reaches live: the pre-live
       // read fell back to local, and this upgrades it to the confirmed sync
       // surface (authority "sync", "Continue conversation") exactly once.
@@ -533,8 +606,12 @@ export const App = () => {
       notificationSubscription?.remove()
       targetDelivery?.close()
       targetDeliveryRef.current = null
+      attentionDelivery?.close()
+      attentionDeliveryRef.current = null
       portableSubscriptionRef.current?.()
       portableSubscriptionRef.current = null
+      attentionSubscriptionRef.current?.()
+      attentionSubscriptionRef.current = null
       syncHost?.close()
       syncHostRef.current = null
     }
@@ -550,6 +627,8 @@ export const App = () => {
           sessionActions={sessionActions}
           conversation={conversationSelection.mode === "sync" ? conversationSelection : undefined}
           coding={codingBinding}
+          pendingAttentionTarget={pendingAttentionTarget}
+          onAttentionTargetConsumed={consumeAttentionTarget}
         />
       )}
     </SafeAreaProvider>

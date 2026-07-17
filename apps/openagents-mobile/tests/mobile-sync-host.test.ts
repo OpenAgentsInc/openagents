@@ -240,6 +240,13 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       expect(host.conversation()).not.toBeNull()
       expect(host.interactions()).not.toBeNull()
       expect(host.portable()).not.toBeNull()
+      expect(host.attention()).not.toBeNull()
+      expect(await Effect.runPromise(host.attention()!.snapshot())).toEqual({
+        status: { phase: "live", cursor: 0 },
+        pending: [],
+        terminal: [],
+        issues: [],
+      })
       expect(await Effect.runPromise(host.portable()!.snapshot())).toMatchObject({
         status: { phase: "live", cursor: 0, pendingCommandCount: 0 },
         sessions: [],
@@ -285,6 +292,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       expect(host.conversation()).toBeNull()
       expect(host.interactions()).toBeNull()
       expect(host.portable()).toBeNull()
+      expect(host.attention()).toBeNull()
       expect(host.drafts()).not.toBeNull()
       expect(await host.coding().directory()).toMatchObject({
         authority: "withheld",

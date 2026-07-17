@@ -24,6 +24,7 @@ import {
   resolveLiveAgentGraphSelection,
   type ScopeSyncState,
   type ConfirmedPortableSessionSnapshot,
+  type ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
 import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
 
@@ -56,6 +57,11 @@ import type {
   MobileConversationThreadSummary,
   MobileRuntimeControlAction,
 } from "../conversation/mobile-conversation"
+import {
+  MobileAttentionTargetSchemaVersion,
+  resolveMobileAttentionTarget,
+  type MobileAttentionTarget,
+} from "../attention/mobile-attention-target"
 
 import {
   AgentRowSelected,
@@ -110,12 +116,14 @@ export interface HomeState {
   readonly controllerDestination: MobileControllerDestination
   readonly inspectedControllerSessionRef: string | null
   readonly portableSnapshot: ConfirmedPortableSessionSnapshot | null
+  readonly attentionSnapshot: ConfirmedRuntimeAttentionSnapshot | null
   readonly selectedPortableDestinationRef: string | null
   readonly portableSubmittingAction: MobilePortableControlAction | null
   readonly portableNotice: Readonly<{
     kind: "queued" | "rejected"
     message: string
   }> | null
+  readonly attentionNotice: string | null
   readonly codingComposer: MobileCodingComposerSession | null
   readonly codingExecutionTargets: ReadonlyArray<MobileExecutionTargetOption>
   readonly fleetRuns?: FleetRunClientProjection
@@ -241,9 +249,11 @@ export const initialHomeState: HomeState = {
   controllerDestination: "recent",
   inspectedControllerSessionRef: null,
   portableSnapshot: null,
+  attentionSnapshot: null,
   selectedPortableDestinationRef: null,
   portableSubmittingAction: null,
   portableNotice: null,
+  attentionNotice: null,
   codingComposer: null,
   codingExecutionTargets: [],
   codingExecutionTargetCatalogRequired: false,
@@ -286,6 +296,15 @@ export const ControllerDestinationSelected = defineIntent(
 export const ControllerSessionInspected = defineIntent(
   "ControllerSessionInspected",
   Schema.Struct({ sessionRef: Schema.String }),
+)
+export const ControllerAttentionSelected = defineIntent(
+  "ControllerAttentionSelected",
+  Schema.Struct({
+    schema: Schema.Literal(MobileAttentionTargetSchemaVersion),
+    attentionRef: Schema.String,
+    threadRef: Schema.String,
+    turnRef: Schema.String,
+  }),
 )
 export const PortableDestinationSelected = defineIntent(
   "PortableDestinationSelected",
@@ -344,6 +363,7 @@ export const homeIntentDefinitions = [
   CodingSessionSelected,
   ControllerDestinationSelected,
   ControllerSessionInspected,
+  ControllerAttentionSelected,
   PortableDestinationSelected,
   PortableControlRequested,
   CodingComposerAttachmentsRequested,
@@ -646,7 +666,7 @@ const controllerSessionDetail = (
 const controllerDestinationRows = (
   directory: MobileControllerDirectory,
   destination: MobileControllerDestination,
-  accessibility: MobileAccessibilityProfile,
+  state: HomeState,
 ): ReadonlyArray<View> => {
   if (destination === "repositories") {
     return directory.repositories.flatMap(repository => [
@@ -656,16 +676,70 @@ const controllerDestinationRows = (
         variant: "heading",
         color: "textPrimary",
       }),
-      ...repository.sessions.map(session => controllerSessionButton(session, accessibility)),
+      ...repository.sessions.map(session => controllerSessionButton(session, state.accessibility)),
     ])
   }
-  const sessions = destination === "attention" ? directory.attention : directory.recent
-  if (sessions.length > 0) return sessions.map(session => controllerSessionButton(session, accessibility))
+  if (destination === "attention") {
+    const snapshot = state.attentionSnapshot
+    const attentionRows: ReadonlyArray<View> = snapshot === null
+      ? [Text({
+          key: "controller-attention-authority-unavailable",
+          content: "Attention is unavailable until the confirmed personal inbox is live.",
+          variant: "body",
+          color: "textMuted",
+        })]
+      : snapshot.issues.length > 0
+        ? [Text({
+            key: "controller-attention-projection-invalid",
+            content: "Attention is withheld because the confirmed inbox needs reconciliation.",
+            variant: "body",
+            color: "danger",
+          })]
+        : [
+            ...snapshot.pending.map(item => Button({
+              key: `controller-attention-${item.attentionRef}`,
+              label: `${item.kind === "provider_question" ? "Question" : item.kind === "tool_approval" ? "Approval" : "Plan review"} · ${item.threadRef}`,
+              variant: "secondary",
+              onPress: IntentRef("ControllerAttentionSelected", StaticPayload({
+                schema: MobileAttentionTargetSchemaVersion,
+                attentionRef: item.attentionRef,
+                threadRef: item.threadRef,
+                turnRef: item.turnRef,
+              })),
+              a11y: { label: `Open pending ${item.kind.replaceAll("_", " ")} in ${item.threadRef}` },
+              style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
+            })),
+            ...(snapshot.terminal.length === 0 ? [] : [Text({
+              key: "controller-attention-terminal-count",
+              content: `${snapshot.terminal.length} recently resolved ${snapshot.terminal.length === 1 ? "request" : "requests"} · not actionable`,
+              variant: "caption",
+              color: "textMuted",
+            })]),
+          ]
+    return [
+      ...attentionRows,
+      ...(state.attentionNotice === null ? [] : [Text({
+        key: "controller-attention-notice",
+        content: state.attentionNotice,
+        variant: "caption",
+        color: "danger",
+      })]),
+      ...directory.attention.map(session => controllerSessionButton(session, state.accessibility)),
+      ...(snapshot?.pending.length === 0 && directory.attention.length === 0
+        ? [Text({
+            key: "controller-attention-empty",
+            content: "No sessions need attention.",
+            variant: "body",
+            color: "textMuted",
+          })]
+        : []),
+    ]
+  }
+  const sessions = directory.recent
+  if (sessions.length > 0) return sessions.map(session => controllerSessionButton(session, state.accessibility))
   return [Text({
     key: `controller-${destination}-empty`,
-    content: destination === "attention"
-      ? "No sessions need attention."
-      : "No confirmed coding sessions yet.",
+    content: "No confirmed coding sessions yet.",
     variant: "body",
     color: "textMuted",
   })]
@@ -678,10 +752,13 @@ export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<Vie
   const inspected = state.inspectedControllerSessionRef === null
     ? null
     : directory.recent.find(session => session.sessionRef === state.inspectedControllerSessionRef) ?? null
+  const confirmedAttentionCount = state.attentionSnapshot?.issues.length === 0
+    ? state.attentionSnapshot.pending.length
+    : 0
   return [
     Text({
       key: "controller-summary",
-      content: `${directory.summary.repositoryCount} ${directory.summary.repositoryCount === 1 ? "repository" : "repositories"} · ${directory.summary.sessionCount} ${directory.summary.sessionCount === 1 ? "session" : "sessions"} · ${directory.summary.attentionCount} need attention`,
+      content: `${directory.summary.repositoryCount} ${directory.summary.repositoryCount === 1 ? "repository" : "repositories"} · ${directory.summary.sessionCount} ${directory.summary.sessionCount === 1 ? "session" : "sessions"} · ${directory.summary.attentionCount + confirmedAttentionCount} need attention`,
       variant: "caption",
       color: "textMuted",
     }),
@@ -698,7 +775,7 @@ export const renderMobileControllerShell = (state: HomeState): ReadonlyArray<Vie
       style: { width: "full" },
     }),
     ...(inspected === null ? [] : [controllerSessionDetail(inspected, state)]),
-    ...controllerDestinationRows(directory, state.controllerDestination, state.accessibility),
+    ...controllerDestinationRows(directory, state.controllerDestination, state),
   ]
 }
 
@@ -894,6 +971,7 @@ export interface HomeProgramOptions {
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot?: ConfirmedPortableSessionSnapshot | null
+    attentionSnapshot?: ConfirmedRuntimeAttentionSnapshot | null
     requestPortableAction?: (input: Readonly<{
       sessionRef: string
       action: MobilePortableControlAction
@@ -1580,6 +1658,42 @@ export const makeHomeHandlers = (
             portableNotice: null,
           }
     }),
+    ControllerAttentionSelected: options.conversation === undefined || options.coding === undefined
+      ? () => Effect.void
+      : (target: MobileAttentionTarget) => Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          if (before.khala.pending || before.attentionSnapshot === null) return
+          const resolution = resolveMobileAttentionTarget(before.attentionSnapshot, {
+            source: "in_app",
+            target,
+          })
+          if (resolution.state !== "ready") {
+            yield* SubscriptionRef.update(state, current => ({
+              ...current,
+              attentionNotice: "That request is no longer actionable.",
+            }))
+            return
+          }
+          if (options.coding !== undefined) yield* Effect.promise(options.coding.clearSelection)
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            controllerDestination: "attention" as const,
+            drawerOpen: false,
+            codingComposer: null,
+            codingAttachmentPicking: false,
+            codingAttachmentStatus: null,
+            attentionNotice: null,
+            khala: { ...current.khala, pending: true },
+          }))
+          const thread = yield* Effect.promise(() =>
+            options.conversation!.host.openThread(resolution.target.threadRef))
+          yield* SubscriptionRef.update(state, current => thread === null
+            ? {
+                ...failedConversationState(current, "The confirmed attention target is still reconciling."),
+                attentionNotice: "The confirmed attention target is still reconciling.",
+              }
+            : withConfirmedThread(current, thread))
+        }),
     PortableDestinationSelected: targetRef => SubscriptionRef.update(state, current => {
       if (current.inspectedControllerSessionRef === null || current.portableSnapshot === null) return current
       const control = projectMobilePortableSessionControl(
@@ -1762,6 +1876,7 @@ export interface HomeProgramHandle {
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
     readonly inspectSession: (sessionRef: string) => void
+    readonly selectAttention: (target: MobileAttentionTarget) => Promise<void>
     readonly selectPortableDestination: (targetRef: string) => void
     readonly requestPortableControl: (action: MobilePortableControlAction) => void
   }
@@ -1791,6 +1906,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         ...baseInitialState,
         codingDirectory: options.coding?.directory ?? null,
         portableSnapshot: options.coding?.portableSnapshot ?? null,
+        attentionSnapshot: options.coding?.attentionSnapshot ?? null,
         codingComposer: activeComposer,
         codingExecutionTargets: options.coding?.executionTargets ?? [],
         ...(options.coding?.fleetRuns === undefined
@@ -1861,6 +1977,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     activeThreadRef: null,
                     codingComposer: null,
                     portableSnapshot: null,
+                    attentionSnapshot: null,
                     selectedPortableDestinationRef: null,
                     portableSubmittingAction: null,
                     portableNotice: null,
@@ -1880,6 +1997,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             "ControllerSessionInspected",
             StaticPayload({ sessionRef }),
           )),
+          selectAttention: target => Effect.runPromise(Effect.exit(registry.dispatch(resolveIntentRef(
+            IntentRef("ControllerAttentionSelected", StaticPayload(target)),
+          ))).pipe(Effect.asVoid)),
           selectPortableDestination: targetRef => fireText(
             IntentRef("PortableDestinationSelected", ComponentValueBinding()),
             targetRef,

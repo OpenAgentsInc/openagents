@@ -669,3 +669,32 @@ T3's duplicated UI stack, hosted-infrastructure choices, environment-local
 session model, weak containment posture, or lack of receipts. The result is the
 product the existing OpenAgents design already promises: a full mobile
 controller for any authorized coding session on any accepted host.
+
+## 11. Implementation update — MOBILE-PARITY-03
+
+The first bounded attention/return packet from phase 3 landed on 2026-07-17 as
+[#8950](https://github.com/OpenAgentsInc/openagents/issues/8950) with leaves
+[#8951](https://github.com/OpenAgentsInc/openagents/issues/8951),
+[#8952](https://github.com/OpenAgentsInc/openagents/issues/8952), and
+[#8953](https://github.com/OpenAgentsInc/openagents/issues/8953).
+
+The server now projects a body-free `runtime_attention` entity into the
+authenticated owner's personal Sync scope in the same transaction as the full
+thread-private interaction. The confirmed client inbox rejects malformed,
+cross-owner, and mismatched rows, separates pending from terminal state, and
+never promotes local optimistic data. Mobile resolves an exact
+attention/thread/turn tuple against that inbox before navigation.
+
+The authenticated mobile Sync host watches this inbox, and the Effect Native
+controller's Attention destination renders pending questions, approvals, and
+plan reviews without copying prompt bodies into the personal directory. An
+in-app row, `openagents://attention/...` deep link, and bounded notification
+payload all converge on the same registered `ControllerAttentionSelected`
+intent. Terminal or unknown attention cannot remain actionable; a successful
+selection opens the existing thread-scoped interaction detail.
+
+This closes only the deterministic source packet. Expo permission and token
+registration, server-side physical notification delivery, restart/device
+receipts, thread lifecycle/share controls, and the remaining phase-3 control
+breadth are still gaps. Nothing in this update proves installed-device push or
+the full T3 mobile controller journey.

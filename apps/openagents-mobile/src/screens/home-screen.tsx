@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AccessibilityInfo,
   KeyboardAvoidingView,
@@ -18,7 +18,9 @@ import type {
 import type { MobileExecutionTargetOption } from "../coding/mobile-execution-targets"
 import type {
   ConfirmedPortableSessionSnapshot,
+  ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
+import type { MobileAttentionTarget } from "../attention/mobile-attention-target"
 import type {
   MobilePortableControlAction,
   MobilePortableUnavailableReason,
@@ -41,7 +43,14 @@ import {
  */
 const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
 
-export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: {
+export const HomeScreen = ({
+  syncPhase,
+  sessionActions,
+  conversation,
+  coding,
+  pendingAttentionTarget,
+  onAttentionTargetConsumed,
+}: {
   readonly syncPhase: MobileSyncPhase
   readonly sessionActions: Readonly<{
     signIn: () => Promise<void>
@@ -51,6 +60,7 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
     portableSnapshot: ConfirmedPortableSessionSnapshot | null
+    attentionSnapshot: ConfirmedRuntimeAttentionSnapshot | null
     requestPortableAction: (input: Readonly<{
       sessionRef: string
       action: MobilePortableControlAction
@@ -82,9 +92,12 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
       session: MobileCodingComposerSession,
     ) => Promise<MobileCodingAttachmentUpdateResult>
   }>
+  readonly pendingAttentionTarget?: MobileAttentionTarget | null
+  readonly onAttentionTargetConsumed?: () => void
 }) => {
   const { fontScale } = useWindowDimensions()
   const [reduceMotion, setReduceMotion] = useState(false)
+  const attentionDispatchRef = useRef<string | null>(null)
   const accessibility = useMemo(
     () => normalizeMobileAccessibilityProfile({ fontScale, reduceMotion }),
     [fontScale, reduceMotion],
@@ -119,6 +132,15 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
   useEffect(() => {
     program.sync.setPhase(syncPhase)
   }, [program, syncPhase])
+  useEffect(() => {
+    if (pendingAttentionTarget === null || pendingAttentionTarget === undefined) return
+    if (attentionDispatchRef.current === pendingAttentionTarget.attentionRef) return
+    attentionDispatchRef.current = pendingAttentionTarget.attentionRef
+    void program.controller.selectAttention(pendingAttentionTarget).finally(() => {
+      attentionDispatchRef.current = null
+      onAttentionTargetConsumed?.()
+    })
+  }, [program, pendingAttentionTarget, onAttentionTargetConsumed])
 
   return (
     <RNView style={{ flex: 1, backgroundColor: khalaTheme.color.background }}>
