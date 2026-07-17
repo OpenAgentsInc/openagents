@@ -903,6 +903,15 @@ evidence, and Day 1 completion remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T15:10:19Z`
 
+### CLAIM-STATUS
+
+- implementation: added a new-file-only main-process transport that decodes an exact ref-only export receipt, verified-loads FF-D1-10 bytes, obtains a host-selected destination, and atomically publishes the owner-local JSON file
+- privacy/authority proof: callers supply neither bytes nor paths; broader/malformed receipts fail before load/picker; no-replace is exclusive and replace requires explicit selector authority; results contain no path, bytes, or native error
+- focused proof: all 16 transport/command/store tests passed; the new transport passes isolated strict TypeScript compilation
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, Sol checks 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10/11; the known AssuranceSpec environment-digest snapshot drift remains outside this packet
+- residual: IPC/preload wiring, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
