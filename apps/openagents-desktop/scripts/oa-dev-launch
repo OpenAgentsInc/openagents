@@ -91,6 +91,7 @@ if [[ -n "$managed_pid" ]]; then
 fi
 existing_pid=""
 owned_unmanaged_pid=""
+blocking_unmanaged_pid=""
 for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
   candidate_pgid="$(/bin/ps -o pgid= -p "$candidate" | tr -d '[:space:]')"
   if [[ -n "$managed_pgid" && "$candidate_pgid" == "$managed_pgid" ]]; then existing_pid="$candidate"; break; fi
@@ -101,6 +102,14 @@ for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
       exit 1
     fi
     owned_unmanaged_pid="$candidate"
+  elif [[ -n "$candidate_pgid" ]]; then
+    # Preview and smoke apps deliberately use OS-temporary profiles and may
+    # run beside the stable Dev app. Their process group carries that typed
+    # profile path on a Chromium child; they neither own nor read .oa-launch.
+    isolated_profile_group="$(/bin/ps -axo pgid=,command= | awk -v pgid="$candidate_pgid" '$1 == pgid { $1=""; print substr($0,2) }' | grep -E -- '--user-data-dir=.*/openagents-desktop-(smoke-|preview\.)' | head -1)"
+    if [[ -z "$isolated_profile_group" ]]; then
+      blocking_unmanaged_pid="$candidate"
+    fi
   fi
 done
 
@@ -155,7 +164,7 @@ if [[ -z "$managed_pid" && -n "$recorded_orphan_pgid" ]]; then
   echo "oa-dev: a recorded dev process group survived without a verifiable launcher-owned app; refusing to mutate the launch worktree" >&2
   exit 1
 fi
-if [[ -z "$managed_pid" && -n "$(pgrep -x 'OpenAgents Dev' 2>/dev/null)" ]]; then
+if [[ -z "$managed_pid" && -n "$blocking_unmanaged_pid" ]]; then
   echo "oa-dev: an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree" >&2
   exit 1
 fi

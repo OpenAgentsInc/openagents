@@ -124,6 +124,8 @@ describe("OpenAgents Desktop renderer dev loop", () => {
     expect(launcher).toContain('"$launch_repo/"*"/Electron.app/Contents/MacOS/Electron"')
     expect(launcher).toContain("recovered launcher ownership for OpenAgents Dev process")
     expect(launcher).toContain("renderer port 5734 is not ready; stopping the stale launcher-owned process group")
+    expect(launcher).toContain("openagents-desktop-(smoke-|preview\\.)")
+    expect(launcher).toContain('blocking_unmanaged_pid="$candidate"')
     expect(launcher).toContain("an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree")
   })
 })

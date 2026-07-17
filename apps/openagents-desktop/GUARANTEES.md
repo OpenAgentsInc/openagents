@@ -1073,7 +1073,11 @@ when the native executable is physically rooted in its dedicated launch
 worktree. It persists that recovered process-group identity before focusing or
 restarting the app. A foreign same-named process still fails closed, and a
 verified launcher-owned process whose renderer port is dead is stopped before
-the launch worktree can be synchronized.
+the launch worktree can be synchronized. The narrow exception is an Electron
+process group whose Chromium child proves an OS-temporary
+`openagents-desktop-smoke-*` or `openagents-desktop-preview.*` profile; those
+typed isolated verification apps may coexist because they do not own the
+stable profile or launch worktree.
 
 Contract and oracle: `src/dev-preview-contract.ts`, `vite.config.ts`,
 `src/renderer/dev-preview.ts`, and `tests/dev-server.test.ts`.

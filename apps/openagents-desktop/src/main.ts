@@ -6276,7 +6276,15 @@ const runSmoke = (window: BrowserWindow): void => {
     const ok = snapshot.disposed && active === 0
     console.log("[openagents-desktop smoke] lifecycle-teardown", JSON.stringify({ ok, active }))
     desktopCorrelationJournal.dispose()
-    if (smokeMode) rmSync(app.getPath("userData"), { recursive: true, force: true })
+    if (smokeMode) {
+      try {
+        rmSync(app.getPath("userData"), { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+      } catch {
+        // This is an OS-temporary smoke profile. Chromium may finish one last
+        // cache write after host teardown; cleanup cannot invalidate an
+        // otherwise green lifecycle receipt or crash the smoke coordinator.
+      }
+    }
     app.exit(ok ? code : 1)
   }
   const timeout = setTimeout(() => {

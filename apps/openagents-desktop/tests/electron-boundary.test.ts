@@ -145,6 +145,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(launcher).toContain("multiple launcher-owned OpenAgents Dev processes exist");
     expect(main).toContain("settingsIds.includes('settings-codex')");
     expect(main).toContain("const settingsBack");
+    expect(main).toContain("maxRetries: 5, retryDelay: 50");
     expect(restartSupervisor).toContain("coordinatorProcessGroupId === config.oldProcessGroupId");
     expect(restartSupervisor).toContain("process.kill(-config.oldProcessGroupId, signal)");
     expect(restartSupervisor).toContain("deps.syncLaunchWorktree()");
