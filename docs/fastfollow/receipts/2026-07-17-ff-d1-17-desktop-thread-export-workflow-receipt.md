@@ -3,12 +3,13 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_17.desktop_thread_export_workflow.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "implementation_ready_for_claim_release"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
 base_revision: "600fcb58e653878b35de1fe505590c5e572c9daf"
 claim_revision: "9b3e56b3ba372d036a0d4caa97999d71aad31f07"
+implementation_revision: "9954d78ca6d7685a3340d5e84a06db961f661193"
 proof_rung: "renderer_safe_canonical_export_create_then_write_workflow"
 observed_at: "2026-07-17T17:10:16Z"
 ---
@@ -31,6 +32,10 @@ Active work continues to own Desktop `main.ts` and broad renderer surfaces, so
 this packet touches neither. It advances Fast Follow ProductSpec `FF-AC-04`,
 `FF-AC-06`, and `FF-AC-12`; AssuranceSpec inventory remains proposed proof
 design rather than a provider-owned verdict.
+
+The tested implementation tree was landed unchanged on `origin/main` at
+`9954d78ca6d7685a3340d5e84a06db961f661193`. This documentation-only release
+annotation records that remote fact; it does not extend the implemented scope.
 
 ## Implemented packet
 

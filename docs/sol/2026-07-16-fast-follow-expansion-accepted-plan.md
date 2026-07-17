@@ -1312,6 +1312,14 @@ remain later packets.
 - reconciled baseline: disjoint landing `ea99862e52` repaired the prior Desktop lifecycle-schema drift and the rebased package typecheck passes; the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
 - residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `9b3e56b3ba372d036a0d4caa97999d71aad31f07`
+- implementation: `9954d78ca6d7685a3340d5e84a06db961f661193`
+- disposition: `bounded_packet_landed`
+- released_at: `2026-07-17T17:14:00Z`
+- residual: actual `main.ts` composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
