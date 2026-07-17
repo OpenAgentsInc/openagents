@@ -836,6 +836,73 @@ evidence, and Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: IPC/preload wiring, save-dialog or remote transport, Desktop pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-12 — Owner-selected canonical export file transport
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-11. Active
+Desktop main-process integration, history, shell, renderer, update, and release
+files remain excluded. The packet adds a new-file-only main-process transport
+that consumes an exact FF-D1-11 ref-only export receipt, obtains a destination
+only from a host-owned picker seam, verified-loads FF-D1-10 bytes, and writes
+the owner-selected JSON file without projecting its path.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-file-transport.ts`
+- `apps/openagents-desktop/src/thread-export-file-transport.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-12-desktop-thread-export-file-transport-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_receipt.v1`, the FF-D1-10 private
+artifact load boundary, owner-selected absolute destination authority, atomic
+same-directory file replacement, and ref-only transport outcomes. Existing
+Desktop IPC, main, preload, shell, renderer, Sync, provider, and disclosure
+audience contracts remain unchanged.
+
+Required behavior:
+
+- only a decoded owner-only `canonical_event_bundle` `export_created` receipt
+  can request transport; malformed, broader, other-format, pending, failed, or
+  visibility receipts fail before destination selection;
+- the transport proposes only a bounded sanitized `.json` filename and the
+  host-owned selector returns cancel or an absolute selected path plus explicit
+  replace authority;
+- the transport loads only the receipt's exact artifact ref/digest pair through
+  FF-D1-10 and never accepts bytes or a path from the caller;
+- bytes are staged mode-0600 in the selected directory and published atomically;
+  no-replace uses an exclusive same-directory link so a race cannot overwrite,
+  while replacement occurs only when the selector explicitly confirms it;
+- missing/corrupt artifacts, selector failure, invalid destinations, existing
+  targets without replace authority, and write failure return bounded typed
+  reasons with temporary files removed; and
+- success returns only artifact ref/digest and replacement fact, never the path,
+  bytes, raw evidence, provider verdict, broader disclosure, or release claim.
+
+Proof: focused transport/store tests; isolated transport TypeScript compile;
+Fast Follow, behavior-contract, ProductSpec, Sol, and repository-required
+checks. The known current-main Desktop lifecycle typecheck and AssuranceSpec
+environment-digest snapshot failures remain baseline collisions unless
+separately resolved on `main`.
+
+Close rule: this packet closes only an owner-selected local JSON file transport
+after canonical export creation and private persistence. IPC/preload wiring,
+Desktop pixels, broader disclosure adapters, remaining runtime/rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-12-20260717`
+- base: `fe8963884b6aba8a7c1a6ebdc1818c7a13302051`
+- worktree/branch: `openagents-ff-d1-12` / detached `origin/main`
+- scope: owner-selected local atomic JSON transport for exact privately stored canonical export artifacts
+- paths: the FF-D1-12 owned implementation paths above
+- hot files: new Desktop transport/test files; accepted-plan ledger and Sol manifest
+- hot contracts: exact ref/digest load, host-only absolute destination, explicit replacement authority, atomic publication, cleanup, and path-free result
+- dependencies: FF-D1-11 released; no relevant open issue or competing claim; active Desktop integration/rendering/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T15:10:19Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
