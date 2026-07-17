@@ -571,3 +571,14 @@ queue/stop remains `T3M-B2.3`.
 - close boundary: no binary runtime delivery or remote upload claim; slash and
   `@` discovery remain `T3M-B2.2`; queue/stop remains `T3M-B2.3`
 - verified_at: `2026-07-17T21:50:50Z`
+
+### CLAIM-RELEASE
+
+- landed: `baec3e49b1d3b61171a8c8d3780f20b2523ef791` on `main`
+- verification: post-rebase 90 focused composer attachment, canonical draft,
+  picker/delivery, authoritative Home, accessibility, local-first registry,
+  behavior-contract, and Sol tests; Khala Sync client and mobile typechecks;
+  pre-rebase `pnpm run check`
+- residual: `T3M-B2.1` is complete; `T3M-B2.2` typed slash-command and
+  repository-backed `@` context discovery is next; full mobile parity remains
+  open through `T3M-F2`
