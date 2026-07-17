@@ -2570,6 +2570,75 @@ completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-32-desktop-thread-export-host-runtime-receipt.md`
 - released_at: `2026-07-17T22:23:20Z`
 
+## FF-D1-33 — Desktop canonical-export Electron host adapter
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-32. The complete
+canonical-export resource graph exists, but the actual Electron host still has
+to bind its fixed IPC lifetime, owner-selected save destination, private
+`userData` store, confirmed timeline, receipt identity, observation time, and
+digest production. Active work owns Desktop `main.ts`, preload, renderer,
+installed-runtime, mobile, and teardown surfaces; authoritative named-group
+membership and supersession/reversion facts remain unavailable. This packet
+therefore adds only a new-file Electron-shaped adapter and its tests, leaving
+the collided call site and rendered surface for later packets.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-electron-host.ts`
+- `apps/openagents-desktop/src/thread-export-electron-host.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-33-desktop-thread-export-electron-host-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-32's close-only host runtime, fixed create/write IPC
+channels, the existing trusted-renderer predicate, target-owned confirmed
+timeline snapshots, native save-dialog selection, private `userData` custody,
+and path-free renderer results. Electron imports, `main.ts`, preload, renderer,
+export schemas, store/transport/handler internals, Sync contracts, named-group
+authority, and server publication remain unchanged.
+
+Required behavior:
+
+- derive exactly one private artifact directory beneath the supplied Desktop
+  `userData` root and never expose it through the returned lifetime or handler
+  results;
+- bind fixed-channel handler installation/removal through the supplied Electron
+  IPC seam, preserving FF-D1-32 atomic rollback plus reverse-ordered,
+  idempotent close;
+- map one native save-dialog result into cancelled or explicitly selected JSON
+  destination authority, treating a selected existing file as replacement
+  authority only after the dialog returns it and rejecting malformed results;
+- bind confirmed timeline reads, trusted-renderer checks, receipt UUIDs, UTC
+  observation time, and SHA-256 using explicit host primitives without
+  provider, credential, path, shell, or renderer authority; and
+- prove one exact confirmed create-then-write journey through the adapter plus
+  fail-closed untrusted, malformed-dialog, and registration-failure paths.
+
+Proof: focused Electron-host, host-runtime, command, store, transport, handler,
+compiler, authority, and Sync timeline tests; Desktop typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only the Electron-shaped dependency adapter for
+one later host acquisition. Authoritative supersession/reversion evidence,
+named-group authority/publication, the actual `main.ts` call site, renderer
+command/pixels, installed/runtime-rendered evidence, and Day 1 completion
+remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-33-20260717`
+- base: `5f921616751fbc2bf8663027f9eb38315a113cb0`
+- worktree/branch: `openagents-ff-d1-33` / detached `origin/main`
+- scope: bind FF-D1-32's canonical-export resource graph to explicit Electron IPC, save-dialog, private-storage, timeline, identity, time, and digest primitives
+- paths: the FF-D1-33 owned implementation paths above
+- hot files: two new Desktop Electron-host/test files; accepted-plan ledger and Sol manifest
+- hot contracts: fixed-channel registration lifetime, owner-selected JSON replacement authority, private `userData` custody, confirmed timeline input, and path-free results
+- dependencies: FF-D1-32 released; no relevant open bug issue or competing claim; active `main.ts`, preload, renderer, installed-runtime, mobile, teardown, and Full Auto work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T22:37:55Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
