@@ -2263,6 +2263,30 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     )
   })
 
+  test("repeated Command-K activation stays open until an explicit dismissal", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const toggle = resolveIntentRef(IntentRef("DesktopCommandPaletteToggled"), null)
+
+        // The Electron menu accelerator and renderer keydown fallback may both
+        // deliver the same physical chord during one render cycle.
+        yield* registry.dispatch(toggle)
+        yield* registry.dispatch(toggle)
+        expect((yield* SubscriptionRef.get(state)).commandPaletteOpen).toBe(true)
+
+        yield* registry.dispatch(
+          resolveIntentRef(IntentRef("DesktopCommandPaletteDismissed"), null),
+        )
+        expect((yield* SubscriptionRef.get(state)).commandPaletteOpen).toBe(false)
+      }),
+    )
+  })
+
   test("Settings dock action toggles only Settings and leaves Command-K closed", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

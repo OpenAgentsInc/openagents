@@ -3297,7 +3297,10 @@ export const makeDesktopShellHandlers = (
   DesktopNavigationBackRequested: () => traverseNavigation("back"),
   DesktopNavigationForwardRequested: () => traverseNavigation("forward"),
   DesktopCommandPaletteToggled: () =>
-    SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
+    // Electron's native accelerator and the renderer keydown fallback can both
+    // observe the same Command-K chord. Treat activation as an idempotent open
+    // so the later delivery cannot immediately close the palette again.
+    SubscriptionRef.update(state, (current) => withCommandPalette(current, true)),
   DesktopCommandPaletteDismissed: () =>
     SubscriptionRef.update(state, (current) => withCommandPalette(current, false)),
   DesktopHistoryShortcutHintsChanged: (visible) =>
