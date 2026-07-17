@@ -32,6 +32,37 @@ export const ChatMessageBody = S.String.check(
 )
 export type ChatMessageBody = typeof ChatMessageBody.Type
 
+const PLACEHOLDER_CHAT_TITLES = new Set([
+  "new chat",
+  "new session",
+  "untitled",
+  "untitled chat",
+  "untitled codex chat",
+  "untitled session",
+])
+
+/**
+ * One deterministic title policy shared by optimistic clients and the
+ * authoritative server mutator. Existing user/native names always win; only
+ * known empty-thread placeholders are replaced by authored message text.
+ */
+export const titleChatThreadFromMessage = (
+  currentTitle: string,
+  messageBody: string,
+): string => {
+  if (!PLACEHOLDER_CHAT_TITLES.has(currentTitle.trim().toLowerCase())) {
+    return currentTitle
+  }
+  const authored = messageBody.trim()
+  if (
+    (authored.startsWith("<environment_context>") && authored.endsWith("</environment_context>")) ||
+    authored.startsWith("<recommended_plugins>") ||
+    (authored.startsWith("# AGENTS.md instructions for ") && authored.includes("\n<INSTRUCTIONS>\n"))
+  ) return currentTitle
+  const title = authored.replace(/\s+/g, " ").slice(0, 80)
+  return title === "" ? currentTitle : title
+}
+
 export const CHAT_MESSAGE_IMAGE_COUNT_LIMIT = 4
 export const CHAT_MESSAGE_IMAGE_BYTES_LIMIT = 2 * 1024 * 1024
 

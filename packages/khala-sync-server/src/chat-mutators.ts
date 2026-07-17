@@ -11,6 +11,7 @@ import {
   MutationResult,
   MutatorName,
   personalScope,
+  titleChatThreadFromMessage,
   threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
@@ -447,6 +448,7 @@ export const chatAppendMessageMutator: MutatorDefinition =
         UPDATE khala_sync_chat_threads
         SET message_count = message_count + 1,
             last_message_at = ${nowIso},
+            title = ${titleChatThreadFromMessage(thread.title, args.body)},
             updated_at = ${nowIso}
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,

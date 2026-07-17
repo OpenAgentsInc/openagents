@@ -10,6 +10,18 @@ oracle runs in the normal test sweep.
 
 ## Current UX guarantees
 
+### Durable automatic conversation titles
+
+A genuinely empty conversation may say New chat. Its first authored message
+atomically replaces that placeholder with bounded, normalized text in both the
+private local store and Khala Sync, so the sidebar and active header update
+without waiting for a successful model turn and the title survives restart.
+Manual and Codex-native names take precedence. Unnamed Codex history uses the
+app-server's first-user preview, while environment, plugin, and AGENTS metadata
+can never become a title.
+
+Contract: `openagents_desktop.chat.durable_automatic_titles.v1`.
+
 ### Durable local chat rename
 
 Right-clicking an app-local chat row opens an accessible context menu with a

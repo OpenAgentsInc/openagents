@@ -55,6 +55,33 @@ describe("H2 local thread fork persistence", () => {
     }
   })
 
+  test("upsert derives and persists the first authored title without overwriting a rename", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-title-"))
+    const file = path.join(root, "threads.json")
+    try {
+      const store = makeThreadStore(file)
+      const thread = store.newThread()
+      const titled = store.upsert(thread.id, {
+        key: "turn.1-user",
+        role: "user",
+        text: "  Diagnose   the sidebar title pipeline  ",
+        timestamp: "10:00",
+      })
+      expect(titled?.title).toBe("Diagnose the sidebar title pipeline")
+      expect(makeThreadStore(file).open(thread.id)?.title).toBe("Diagnose the sidebar title pipeline")
+
+      expect(store.rename(thread.id, "Owner title")?.title).toBe("Owner title")
+      expect(store.upsert(thread.id, {
+        key: "turn.2-user",
+        role: "user",
+        text: "Do not replace the owner title",
+        timestamp: "10:01",
+      })?.title).toBe("Owner title")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("renames a local thread durably and refuses blank titles without mutation", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-rename-"))
     const file = path.join(root, "threads.json")

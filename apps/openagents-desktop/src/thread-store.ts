@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { titleChatThreadFromMessage } from "@openagentsinc/khala-sync"
 import { Schema } from "@effect-native/core/effect"
 
 import { decode, DesktopThreadSchema, type DesktopMessage, type DesktopThread } from "./chat-contract.ts"
@@ -73,7 +74,7 @@ export const makeThreadStore = (file: string) => {
       if (!found) return null
       const next: DesktopThread = {
         ...found,
-        title: found.title === "New chat" && message.role === "user" ? titleFor(message.text) : found.title,
+        title: message.role === "user" ? titleChatThreadFromMessage(found.title, message.text) : found.title,
         updatedAt: new Date().toISOString(),
         notes: [...found.notes, message].slice(-maxNotes),
       }
@@ -90,6 +91,7 @@ export const makeThreadStore = (file: string) => {
         : found.notes.map((note, noteIndex) => noteIndex === index ? message : note)
       const next: DesktopThread = {
         ...found,
+        title: message.role === "user" ? titleChatThreadFromMessage(found.title, message.text) : found.title,
         updatedAt: new Date().toISOString(),
         notes,
       }

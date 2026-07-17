@@ -373,9 +373,11 @@ test("same-thread streaming transcript updates cannot close the live agent sideb
   const graphed = withLiveAgentGraph(baseState, testThread.id, agentGraphFixture)
   const streaming = withChatSelected(graphed, {
     ...testThread,
+    title: "Derived title",
     notes: [{ key: "streaming", role: "assistant", text: "Working…", timestamp: "18:05" }],
   })
   expect(streaming.agentGraph?.graphRef).toBe(agentGraphFixture.graphRef)
+  expect(streaming.threads.find(thread => thread.id === testThread.id)?.title).toBe("Derived title")
   expect(nodeByKey(desktopShellView(streaming), "chat-context-split")).toBeDefined()
   expect(nodeByKey(desktopShellView(streaming), "runtime-agent-graph")).toBeDefined()
 

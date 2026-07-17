@@ -27,7 +27,12 @@ const iso = (value: unknown): string | null => {
   return text !== null && Number.isFinite(Date.parse(text)) ? text : null
 }
 const displayTime = (value: string): string => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-const titleFor = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled Codex chat"
+export const codexAuthoredTitle = (value: string): string | null => {
+  if (reservedTransportTitle(value)) return null
+  const title = value.replace(/\s+/g, " ").trim().slice(0, 80)
+  return title === "" ? null : title
+}
+const titleFor = (value: string): string => codexAuthoredTitle(value) ?? "Untitled Codex chat"
 type CodexUserRecordKind = "authored" | "agent_metadata" | "plugin_metadata" | "environment_context"
 const codexUserRecordKind = (role: string | null, value: string): CodexUserRecordKind => {
   if (role !== "user") return "authored"

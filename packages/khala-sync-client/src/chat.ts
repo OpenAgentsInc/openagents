@@ -8,6 +8,7 @@ import {
   encodeChatThreadEntity,
   MutatorName,
   personalScope,
+  titleChatThreadFromMessage,
   threadScope,
   type ChatMessageEntity,
   type ChatMessageImageAttachment,
@@ -188,6 +189,7 @@ export const chatAppendMessageClientMutator = (
         ...current,
         lastMessageAt: now,
         messageCount: current.messageCount + 1,
+        title: titleChatThreadFromMessage(current.title, args.body),
         updatedAt: now,
       })),
       {

@@ -4307,6 +4307,65 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "Desktop focused ProviderLane/capability/composer suites, behavior-contract registry validation, and Desktop typecheck.",
       },
       {
+        contractId: "openagents_desktop.chat.durable_automatic_titles.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "conversation sidebar titles",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-16" },
+        statement:
+          "Non-empty chats in the Desktop sidebar must have useful durable titles instead of remaining New chat or untitled; show Codex-native names when available and otherwise derive a safe title automatically.",
+        authorityBoundary:
+          "One bounded deterministic policy replaces only known placeholders with normalized authored message text. The local atomic store and the existing chat.appendMessage Sync transaction apply the same policy, so a failed or long-running model turn cannot strand the row and confirmed clients converge without a new mutation or schema. Existing manual/native names always win. App-server Thread.name remains authoritative for Codex history; only a missing name falls back to the bounded first-user preview, and transport envelopes are excluded. Live confirmed metadata updates replace the existing row in place without inventing recency, renderer title authority, cloud-task credentials, or prompt logging.",
+        evidenceRefs: [
+          "packages/khala-sync/src/chat.ts",
+          "packages/khala-sync-client/src/chat.ts",
+          "packages/khala-sync-server/src/chat-mutators.ts",
+          "apps/openagents-desktop/src/thread-store.ts",
+          "apps/openagents-desktop/src/codex-thread-lifecycle.ts",
+          "apps/openagents-desktop/src/renderer/runtime-conversation.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8940",
+        ],
+        oracles: [
+          {
+            id: "automatic_titles.shared_atomic_policy",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/khala-sync/src/chat.test.ts",
+            description:
+              "Proves placeholder recognition, whitespace normalization, the title bound, explicit-title precedence, and rejection of environment/plugin transport envelopes.",
+          },
+          {
+            id: "automatic_titles.local_restart_persistence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/thread-store.test.ts",
+            description:
+              "Persists a first authored title through the real upsert path and reopen while preserving a later owner rename.",
+          },
+          {
+            id: "automatic_titles.codex_native_preview_precedence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-thread-lifecycle.test.ts",
+            description:
+              "Projects an unnamed app-server thread with its bounded first-user preview while existing native names retain precedence.",
+          },
+          {
+            id: "automatic_titles.live_sidebar_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Merges confirmed same-thread title metadata into the rail/header row in place during a live projection.",
+          },
+        ],
+        verification:
+          "Shared Sync policy/client/server tests, Desktop store/lifecycle/runtime/shell tests, behavior-contract registry validation, Desktop typecheck/build, and built Electron smoke.",
+      },
+      {
         contractId: "openagents_desktop.chat.local_title_rename.v1",
         state: "enforced",
         surface: "openagents-desktop",

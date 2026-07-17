@@ -482,6 +482,49 @@ describe.skipIf(!hasLocalPostgres())(
       expect(Number(threads[0]!.count)).toBe(1)
     })
 
+    test("append replaces a placeholder title but preserves an explicit title", async () => {
+      const client = freshClient()
+      const threadId = "chat-thread.auto-title.1"
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, { threadId, title: "New chat" }),
+          envelope(2, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+            body: "  Explain   the title pipeline  ",
+            messageId: "chat-message.auto-title.1",
+            threadId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(response.results.map(result => result.status)).toEqual(["applied", "applied"])
+      const rows: Array<{ title: string }> = await sql`
+        SELECT title FROM khala_sync_chat_threads WHERE thread_id = ${threadId}
+      `
+      expect(rows[0]?.title).toBe("Explain the title pipeline")
+
+      const explicitThreadId = "chat-thread.explicit-title.1"
+      const explicitClient = freshClient()
+      await executePush({
+        registry,
+        request: pushRequest(explicitClient, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, { threadId: explicitThreadId, title: "Owner title" }),
+          envelope(2, CHAT_APPEND_MESSAGE_MUTATOR_NAME, {
+            body: "Do not replace the owner title",
+            messageId: "chat-message.explicit-title.1",
+            threadId: explicitThreadId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: explicitClient.userId,
+      })
+      const explicitRows: Array<{ title: string }> = await sql`
+        SELECT title FROM khala_sync_chat_threads WHERE thread_id = ${explicitThreadId}
+      `
+      expect(explicitRows[0]?.title).toBe("Owner title")
+    })
+
     test("bad args reject in-band without echoing raw private values", async () => {
       const client = freshClient()
       const response = await executePush({

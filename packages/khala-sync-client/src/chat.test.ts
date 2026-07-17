@@ -69,6 +69,37 @@ describe("shared canonical chat client", () => {
     }
   })
 
+  test("atomically replaces only placeholder titles when a message is appended", () => {
+    const store = openKhalaSyncStore(":memory:")
+    try {
+      const mutators = createChatClientMutators({ ownerUserId: OWNER, now: () => NOW })
+      const overlay = Effect.runSync(createOverlay(store, Object.values(mutators)))
+      Effect.runSync(overlay.mutate(mutators.createThread, { threadId: THREAD, title: "New chat" }))
+      Effect.runSync(overlay.mutate(mutators.appendMessage, {
+        threadId: THREAD,
+        messageId: "message.chat-client.title",
+        body: "  Repair   durable sidebar titles  ",
+      }))
+      const thread = Effect.runSync(overlay.read(personalScope(OWNER)))
+      expect(JSON.parse(thread.list("chat_thread")[0]!.postImageJson)).toMatchObject({
+        title: "Repair durable sidebar titles",
+      })
+
+      Effect.runSync(overlay.mutate(mutators.renameThread, { threadId: THREAD, title: "Owner title" }))
+      Effect.runSync(overlay.mutate(mutators.appendMessage, {
+        threadId: THREAD,
+        messageId: "message.chat-client.title.2",
+        body: "Do not overwrite the owner title",
+      }))
+      const renamed = Effect.runSync(overlay.read(personalScope(OWNER)))
+      expect(JSON.parse(renamed.list("chat_thread")[0]!.postImageJson)).toMatchObject({
+        title: "Owner title",
+      })
+    } finally {
+      Effect.runSync(store.close())
+    }
+  })
+
   test("projects confirmed refs, versions and cursors without owner identity", () => {
     const store = openKhalaSyncStore(":memory:")
     try {

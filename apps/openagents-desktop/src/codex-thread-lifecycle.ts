@@ -11,7 +11,7 @@ import {
 import type { DesktopThread } from "./chat-contract.ts"
 import type { CodexHistoryRequest } from "./codex-history-host.ts"
 import type { CodexHistoryAgent, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage, CodexHistorySearchResponse } from "./codex-history-contract.ts"
-import { redactCodexHistoryText } from "./codex-history.ts"
+import { codexAuthoredTitle, redactCodexHistoryText } from "./codex-history.ts"
 import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 
 type ObjectValue = Readonly<Record<string, unknown>>
@@ -34,6 +34,7 @@ export type CodexThreadLimitation = "ephemeral_history" | "transient_gap" | "exp
 export type CodexLifecycleThread = Readonly<{
   id: string
   name: string | null
+  preview: string | null
   status: string
   createdAt: string
   updatedAt: string
@@ -120,6 +121,7 @@ const projectThread = (raw: unknown, inheritedLimitations: ReadonlyArray<CodexTh
   return {
     id,
     name: string(row.name) ?? string(row.title),
+    preview: string(row.preview),
     status,
     createdAt: iso(row.createdAt ?? row.created_at),
     updatedAt: iso(row.updatedAt ?? row.updated_at ?? row.createdAt ?? row.created_at),
@@ -296,6 +298,8 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
     if (["idle", "notStarted"].includes(status)) return "pending"
     return "unknown"
   }
+  const titleForThread = (thread: CodexLifecycleThread): string =>
+    (thread.name?.trim() || codexAuthoredTitle(thread.preview ?? "") || "Untitled Codex chat").slice(0, 160)
   const agents = (threads: ReadonlyArray<CodexLifecycleThread>): ReadonlyArray<CodexHistoryAgent> => {
     const children = new Map<string, number>()
     for (const thread of threads) if (thread.parentThreadId !== null) children.set(thread.parentThreadId, (children.get(thread.parentThreadId) ?? 0) + 1)
@@ -305,7 +309,7 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
       return count
     }
     return threads.map(thread => ({
-      threadRef: thread.id, parentThreadRef: thread.parentThreadId, title: (thread.name ?? "Untitled Codex chat").slice(0, 160), status: agentStatus(thread.status),
+      threadRef: thread.id, parentThreadRef: thread.parentThreadId, title: titleForThread(thread), status: agentStatus(thread.status),
       createdAt: thread.createdAt, updatedAt: thread.updatedAt, depth: depth(thread), descendantCount: children.get(thread.id) ?? 0,
       model: thread.model, role: null, nickname: null, agentPath: null, sourceVersion: null, reasoning: null, source: "codex" as const,
     }))
@@ -374,7 +378,7 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
     if (request.kind === "history_search") {
       const matches = await (async () => { try { return await (paged("thread/search", { searchTerm: request.query }, "threads", request.limit ?? 40)) } catch { return [] } })()
       const threads = matches.flatMap(raw => projectThread(raw) ?? [])
-      const response: CodexHistorySearchResponse = { query: request.query.slice(0, 200), results: threads.slice(0, request.limit ?? 40).map(thread => ({ threadRef: thread.id, rootThreadRef: thread.parentThreadId ?? thread.id, source: "codex", title: (thread.name ?? "Untitled Codex chat").slice(0, 160), matchKind: "title", matchItemRef: null, matchSequence: null, snippet: (thread.name ?? "Untitled Codex chat").slice(0, 240), updatedAt: thread.updatedAt, score: 1 })), indexedSessions: threads.length, truncated: false }
+      const response: CodexHistorySearchResponse = { query: request.query.slice(0, 200), results: threads.slice(0, request.limit ?? 40).map(thread => ({ threadRef: thread.id, rootThreadRef: thread.parentThreadId ?? thread.id, source: "codex", title: titleForThread(thread), matchKind: "title", matchItemRef: null, matchSequence: null, snippet: titleForThread(thread).slice(0, 240), updatedAt: thread.updatedAt, score: 1 })), indexedSessions: threads.length, truncated: false }
       return response
     }
     if (request.kind === "list") {
@@ -382,13 +386,13 @@ export const makeCodexThreadLifecycle = (options: Readonly<{ lease: CodexAppServ
       return Promise.all(threads.map(async thread => {
         const page = await historyPage(thread.id, 0, 100)
         const notes = (page?.items ?? []).flatMap(item => item.kind === "user_message" || item.kind === "assistant_message" ? [{ key: item.itemRef, role: item.kind === "user_message" ? "user" as const : "assistant" as const, text: item.summary, timestamp: item.timestamp }] : [])
-        return { id: thread.id, title: thread.name ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, ...(thread.cwd === null ? {} : { cwd: thread.cwd }), ...(thread.model === null ? {} : { model: thread.model }), notes } satisfies DesktopThread
+        return { id: thread.id, title: titleForThread(thread), createdAt: thread.createdAt, updatedAt: thread.updatedAt, ...(thread.cwd === null ? {} : { cwd: thread.cwd }), ...(thread.model === null ? {} : { model: thread.model }), notes } satisfies DesktopThread
       }))
     }
     const thread = state.threads.find(value => value.id === request.id) ?? await read(request.id)
     const page = await historyPage(thread.id, 0, request.messageLimit ?? 100)
     if (page === null) return null
-    return { id: thread.id, title: thread.name ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, ...(thread.cwd === null ? {} : { cwd: thread.cwd }), ...(thread.model === null ? {} : { model: thread.model }), notes: page.items.flatMap(item => item.kind === "user_message" || item.kind === "assistant_message" ? [{ key: item.itemRef, role: item.kind === "user_message" ? "user" as const : "assistant" as const, text: item.summary, timestamp: item.timestamp }] : []) } satisfies DesktopThread
+    return { id: thread.id, title: titleForThread(thread), createdAt: thread.createdAt, updatedAt: thread.updatedAt, ...(thread.cwd === null ? {} : { cwd: thread.cwd }), ...(thread.model === null ? {} : { model: thread.model }), notes: page.items.flatMap(item => item.kind === "user_message" || item.kind === "assistant_message" ? [{ key: item.itemRef, role: item.kind === "user_message" ? "user" as const : "assistant" as const, text: item.summary, timestamp: item.timestamp }] : []) } satisfies DesktopThread
   }
   const removeNotification = options.lease.subscribe(notification => {
     if (notification.generation > state.generation) void reconcile(notification.generation)

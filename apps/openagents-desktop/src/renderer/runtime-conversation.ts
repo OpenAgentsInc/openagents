@@ -314,6 +314,8 @@ export const makeRuntimeConversationChatHost = (
                 : [],
             })
             const signature = JSON.stringify({
+              title: current.title,
+              updatedAt: current.updatedAt,
               notes: current.notes.map(note => [note.key, note.role, note.text, note.question?.status, note.question?.decisionRef]),
               graph: current.agentGraph ?? null,
             })

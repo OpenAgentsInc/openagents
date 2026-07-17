@@ -9,13 +9,13 @@ import { makeCodexThreadLifecycle } from "./codex-thread-lifecycle.ts"
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
-const fakeLease = (options: Readonly<{ experimentalPagination?: boolean; extraItems?: ReadonlyArray<Record<string, unknown>> }> = {}) => {
+const fakeLease = (options: Readonly<{ experimentalPagination?: boolean; extraItems?: ReadonlyArray<Record<string, unknown>>; unnamedPreview?: string }> = {}) => {
   let generation = 1
   const requests: Array<{ method: string; params: unknown }> = []
   const listeners = new Set<(notification: CodexAppServerNotification) => void>()
   const visible = new Set<string>()
   const threads = new Map<string, Record<string, unknown>>([
-    ["thread-1", { id: "thread-1", name: "One", status: { type: "idle" }, createdAt: 1_700_000_000, updatedAt: 1_700_000_001, ephemeral: false, parentThreadId: null, goal: { text: "ship" }, settings: { mode: "pair" }, memoryMode: "auto", metadata: { private: "memory-only" }, turns: [
+    ["thread-1", { id: "thread-1", name: options.unnamedPreview === undefined ? "One" : null, preview: options.unnamedPreview ?? "First prompt", status: { type: "idle" }, createdAt: 1_700_000_000, updatedAt: 1_700_000_001, ephemeral: false, parentThreadId: null, goal: { text: "ship" }, settings: { mode: "pair" }, memoryMode: "auto", metadata: { private: "memory-only" }, turns: [
       { id: "turn-1", status: "completed", items: [{ id: "item-1", turnId: "turn-1", type: "userMessage", status: "completed" }] },
       { id: "turn-2", status: "inProgress", items: [{ id: "item-2", turnId: "turn-2", type: "agentMessage", status: "inProgress" }, ...(options.extraItems ?? [])] },
     ] }],
@@ -87,6 +87,24 @@ describe("Codex app-server thread lifecycle", () => {
     const recent = await lifecycle.runHistory({ kind: "list", sessionsRoot: "/unused", limit: 1 }) as Array<{ id: string; notes: unknown[] }>
     expect(recent[0]).toMatchObject({ id: "thread-1" })
     expect(recent[0]?.notes).toHaveLength(2)
+    lifecycle.close()
+  })
+
+  test("uses the app-server first-user preview when a native thread name is absent", async () => {
+    const fake = fakeLease({ unnamedPreview: "  Diagnose   untitled Codex history  " })
+    const lifecycle = makeCodexThreadLifecycle({ lease: fake.lease })
+    await lifecycle.initialize()
+    const catalog = await lifecycle.runHistory({
+      kind: "history_catalog",
+      sessionsRoot: "/unused",
+    }) as { roots: Array<{ title: string }> }
+    expect(catalog.roots[0]?.title).toBe("Diagnose untitled Codex history")
+    const recent = await lifecycle.runHistory({
+      kind: "list",
+      sessionsRoot: "/unused",
+      limit: 1,
+    }) as Array<{ title: string }>
+    expect(recent[0]?.title).toBe("Diagnose untitled Codex history")
     lifecycle.close()
   })
 

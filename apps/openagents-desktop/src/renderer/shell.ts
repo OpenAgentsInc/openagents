@@ -1009,6 +1009,12 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
     (state.activeThreadId === thread.id ? state.meter ?? undefined : undefined)
   return {
     ...state,
+    // Live projections own confirmed metadata as well as transcript notes.
+    // Replace in place so a title-only update reaches the rail/header without
+    // manufacturing recency or moving the row.
+    threads: state.threads.map(existing => existing.id === thread.id
+      ? { ...existing, ...thread, agentGraph }
+      : existing),
     input: changedThread ? state.composerDraftsByThread[thread.id] ?? "" : state.input,
     pending: changedThread ? state.pendingByThread[thread.id] ?? false : state.pending,
     runtimeFailure: changedThread ? state.runtimeFailureByThread[thread.id] ?? null : state.runtimeFailure,

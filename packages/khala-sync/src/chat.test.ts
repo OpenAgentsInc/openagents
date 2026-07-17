@@ -9,6 +9,7 @@ import {
   encodeChatThreadCodexContinuityPin,
   encodeChatThreadEntity,
   encodeChatThreadRepoBinding,
+  titleChatThreadFromMessage,
 } from "./index.js"
 
 const baseThreadJson = {
@@ -21,6 +22,22 @@ const baseThreadJson = {
   title: "My thread",
   updatedAt: "2026-07-06T00:00:00.000Z",
 }
+
+describe("chat thread automatic titles", () => {
+  test("replaces known placeholders with bounded normalized authored text", () => {
+    expect(titleChatThreadFromMessage("New chat", "  Repair   sidebar titles  ")).toBe("Repair sidebar titles")
+    expect(titleChatThreadFromMessage("Untitled Codex chat", "x".repeat(100))).toBe("x".repeat(80))
+  })
+
+  test("preserves explicit titles and rejects transport envelopes", () => {
+    expect(titleChatThreadFromMessage("Owner title", "Replace me")).toBe("Owner title")
+    expect(titleChatThreadFromMessage("New chat", "   ")).toBe("New chat")
+    expect(titleChatThreadFromMessage("New chat", "<environment_context>\n<cw>/private</cw>\n</environment_context>"))
+      .toBe("New chat")
+    expect(titleChatThreadFromMessage("New chat", "<recommended_plugins>\nprivate\n</recommended_plugins>"))
+      .toBe("New chat")
+  })
+})
 
 describe("ChatThreadRepoBinding (MM-B2, #8472)", () => {
   test("decodes and encodes a valid binding", () => {
