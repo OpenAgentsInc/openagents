@@ -28,6 +28,7 @@ import {
   makeMobileSelectedThreadLeaseController,
   renderContentView,
   renderDrawerView,
+  renderHomeView,
 } from "../src/screens/home-core"
 
 const now = "2026-07-10T20:15:00.000Z"
@@ -601,8 +602,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       status: "done",
     })
     const content = JSON.stringify(renderContentView(program.initialState))
-    expect(content).toContain('"content":"Synced"')
-    expect(content).toContain("1 message · 0 events")
+    const home = JSON.stringify(renderHomeView(program.initialState))
+    expect(home).toContain('"content":"Synced"')
+    expect(content).not.toContain("1 message · 0 events")
     expect(content).not.toContain('"senderLabel":"YOU"')
     const drawer = JSON.stringify(renderDrawerView(program.initialState))
     expect(drawer).toContain("drawer-thread-thread.synced.1")
@@ -635,9 +637,10 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       conversation: { ...selection(host), threads: [attachmentThread], activeThread: attachmentThread },
     })
     const content = JSON.stringify(renderContentView(program.initialState))
+    const home = JSON.stringify(renderHomeView(program.initialState))
 
-    expect(content).toContain('"content":"Mobile parity plan"')
-    expect(content).toContain("1 of 3 messages · 0 events")
+    expect(home).toContain('"content":"Mobile parity plan"')
+    expect(content).toContain("1 of 3 messages")
     expect(content).toContain('"_tag":"Image"')
     expect(content).toContain('"alt":"parity-map.png"')
     expect(content).toContain("data:image/png;base64,iVBORw0KGgo")

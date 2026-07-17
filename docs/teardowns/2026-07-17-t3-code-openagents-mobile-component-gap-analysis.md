@@ -6,6 +6,16 @@
 **Scope:** implemented mobile UI first, functional depth second; designed-only
 OpenAgents capabilities are called out separately from rendered components.
 
+## Implementation update — compact T3-style header navigation
+
+OpenAgents mobile now replaces the full-width pill toolbar and oversized
+in-content thread heading with T3's compact navigation grammar: a standalone
+glass thread-list control, centered bold thread identity, optional confirmed
+repository/worktree subtitle, and a shared glass compose/settings action
+cluster. Surface switching remains available in the drawer instead of turning
+the thread title into a mode button. Truncated-history accounting appears only
+when it is actionable rather than occupying every ordinary thread header.
+
 ## Executive conclusion
 
 OpenAgents has closed the most visible first-order gap: its ordinary transcript
@@ -53,7 +63,7 @@ polish after the workflow is whole.
 
 | Component                 | T3 mobile                                                                                         | OpenAgents mobile now                                                                      | Remaining gap                                                                                                                                  | Status    | Priority |
 | ------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------- | -------- |
-| Top navigation            | Native header items, contextual thread actions, and direct Files/Git/Terminal entry points        | Glass toolbar with menu, surface-mode pill, and new-chat action                            | Replace the generic global toolbar with route-aware titles and thread actions; keep account/controller switching out of the primary chat title | Primitive | P1       |
+| Top navigation            | Native header items, contextual thread actions, and direct Files/Git/Terminal entry points        | Compact T3-style glass thread-list control, centered title/context, and grouped compose/settings actions | Add Files/Git/Terminal items only as their authoritative routes land; promote the current in-flow header to native-stack chrome | Aligned/Shallow | P2       |
 | Phone navigation          | Sidebar route with header actions, filters, project/thread rows, and platform-specific treatment  | Full-screen drawer built from generic buttons and captions                                 | Add a true navigation list with search/filter, section headers, status metadata, row menus, swipe actions, and stable back/close behavior      | Shallow   | P1       |
 | Tablet layout             | `AdaptiveWorkspaceLayout` supports sidebar, detail, inspector panes, dividers, and pane animation | Same single-column tree at all widths                                                      | Add compact/regular breakpoints and persistent sidebar/detail/inspector composition                                                            | Missing   | P1       |
 | Empty and loading routes  | Purpose-built home, empty detail, connection, placeholder, and retry states                       | Text-led empty, refresh, unavailable, and cache-withheld states                            | Preserve OpenAgents' honest authority copy but give each state a concise illustration/icon, primary action, skeleton, and retry placement      | Primitive | P2       |
@@ -74,7 +84,7 @@ polish after the workflow is whole.
 
 | Component          | T3 mobile                                                                                                 | OpenAgents mobile now                                                                                             | Remaining gap                                                                                                                                   | Status          | Priority |
 | ------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | -------- |
-| Thread identity    | Contextual navigation title plus repository/Git/worktree actions                                          | Large in-content title and message/event count subtitle                                                           | Use a compact sticky header with project/worktree context; move counts and authority diagnostics to an info sheet                               | Primitive       | P1       |
+| Thread identity    | Contextual navigation title plus repository/Git/worktree actions                                          | Centered compact title with confirmed repository/worktree context; ordinary message/event counts removed from the feed | Add repository/Git/worktree actions and an authority info sheet as their routes land                                                            | Aligned/Shallow | P2       |
 | User messages      | Blue rounded bubble, constrained width, timestamp, image attachments, and message affordances             | T3-like blue bubble, constrained width, and timestamp                                                             | Add long-press/copy actions, attachment viewer, delivery/queue state, and accessible action announcements                                       | Aligned/Shallow | P2       |
 | Assistant messages | Full-width rich Markdown with links, highlighted code, review comments, attachments, and copy affordances | Full-width assistant row, but body content is primarily plain text lowered through the shared transcript renderer | Add native Markdown typography, selectable text, links, syntax-highlighted code blocks, copy buttons, file references, and review-comment cards | Shallow         | P1       |
 | Runtime activity   | `ThreadWorkLog` groups and collapses tool activity separately from conversational prose                   | Runtime timeline events become system-like transcript entries or separate generic controls                        | Introduce typed work groups with running/success/failure states, elapsed time, summaries, expandable details, and causal agent identity         | Primitive       | P1       |

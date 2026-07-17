@@ -701,33 +701,24 @@ export const renderKhalaSurface = (
       style: { width: "full", height: "full" },
     },
     [
-      Spacer({ key: "khala-top-space", size: "2" }),
-      Text({
-        key: "khala-title",
-        content: authority === "sync"
-          ? state.threadHistory?.title ?? "OpenAgents"
-          : "Khala",
-        variant: "title",
-        color: "textPrimary",
-      }),
-      Text({
-        key: "khala-subtitle",
-        content: authority === "sync"
-          ? historyAvailability === "unavailable"
-            ? "Confirmed history is unavailable until sync resumes."
-            : state.threadHistory === null
-              ? state.pending
-                ? "Loading confirmed history…"
-                : "Select a chat to see its confirmed history."
-              : `${historyAvailability === "refreshing" ? "Refreshing · " : ""}${
-                  state.threadHistory.retainedMessageCount < state.threadHistory.totalMessageCount
-                    ? `${state.threadHistory.retainedMessageCount} of ${state.threadHistory.totalMessageCount} messages`
-                    : `${state.threadHistory.retainedMessageCount} ${state.threadHistory.retainedMessageCount === 1 ? "message" : "messages"}`
-                } · ${state.threadHistory.retainedEventCount} ${state.threadHistory.retainedEventCount === 1 ? "event" : "events"}`
-          : "One conversation, routed by the OpenAgents orchestrator.",
-        variant: "body",
-        color: "textMuted",
-      }),
+      ...(authority === "sync" && historyAvailability === "unavailable"
+        ? [Text({
+            key: "khala-history-unavailable",
+            content: "Confirmed history is unavailable until sync resumes.",
+            variant: "caption",
+            color: "warning",
+          })]
+        : []),
+      ...(authority === "sync" && state.threadHistory !== null &&
+          (historyAvailability === "refreshing" ||
+            state.threadHistory.retainedMessageCount < state.threadHistory.totalMessageCount)
+        ? [Text({
+            key: "khala-history-accounting",
+            content: `${historyAvailability === "refreshing" ? "Refreshing · " : ""}${state.threadHistory.retainedMessageCount} of ${state.threadHistory.totalMessageCount} messages`,
+            variant: "caption",
+            color: "textMuted",
+          })]
+        : []),
       ...agentStackViews(state, accessibility),
       ...(authority === "sync" && state.threadHistory !== null && state.entries.length === 0
         ? [Text({

@@ -64,9 +64,10 @@ describe("contract openagents_mobile.seam.accessibility_core_flows.v1", () => {
     const toolbar = homeNodes.find(node => node.key === "home-toolbar")
     const controls = [...homeNodes, ...drawerNodes].filter(node =>
       node.key === "home-navigation" ||
-      node.key === "home-surface-mode" ||
       node.key === "home-new-chat" ||
+      node.key === "home-more" ||
       node.key === "drawer-new-chat" ||
+      node.key === "drawer-openagents" ||
       node.key === "drawer-khala" ||
       node.key === "drawer-settings")
 

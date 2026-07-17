@@ -6,8 +6,10 @@ import {
   buildHomeProgram,
   chromeProps,
   initialHomeState,
+  mobileHeaderProps,
   renderContentView,
   renderDrawerView,
+  renderHomeView,
   syncStatusCopy,
   surfaceModeOptions,
 } from "../src/screens/home-core"
@@ -29,6 +31,31 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(surfaceModeOptions.map((option) => option.id)).toEqual(["openagents", "khala"])
     expect(JSON.stringify(surfaceModeOptions)).not.toContain("Sarah")
     expect(chromeProps(initialHomeState).glassComposerVisible).toBe(true)
+    expect(mobileHeaderProps(initialHomeState)).toEqual({ title: "Khala", subtitle: null })
+  })
+
+  test("projects T3-style thread identity into compact header chrome", () => {
+    const state = {
+      ...initialHomeState,
+      conversationAuthority: "sync" as const,
+      activeThreadRef: "thread.header.1",
+      conversationThreads: [{
+        threadRef: "thread.header.1",
+        title: "Header parity",
+        status: "active" as const,
+        messageCount: 2,
+        lastMessageAt: "2026-07-17T12:00:00.000Z",
+        updatedAt: "2026-07-17T12:00:00.000Z",
+        version: 1,
+      }],
+    }
+    const serialized = JSON.stringify(renderHomeView(state))
+    expect(mobileHeaderProps(state)).toEqual({ title: "Header parity", subtitle: null })
+    expect(serialized).toContain('"key":"home-header-title"')
+    expect(serialized).toContain('"key":"home-header-actions"')
+    expect(serialized).toContain('"icon":"Menu"')
+    expect(serialized).toContain('"icon":"Ellipsis"')
+    expect(serialized).not.toContain('"key":"home-surface-mode"')
   })
 
   test("the content has exactly one Effect Native composer", () => {

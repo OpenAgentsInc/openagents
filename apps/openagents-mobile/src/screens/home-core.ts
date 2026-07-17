@@ -446,6 +446,33 @@ export interface ChromeProps {
   readonly sending: boolean
 }
 
+export interface MobileHeaderProps {
+  readonly title: string
+  readonly subtitle: string | null
+}
+
+/**
+ * T3-style compact thread identity for the native mobile header. The header
+ * stays projection-only: titles and repository/worktree context come from the
+ * already-confirmed conversation/composer state and never become navigation
+ * authority of their own.
+ */
+export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.surfaceMode === "openagents") {
+    return { title: "OpenAgents", subtitle: syncStatusCopy(state.syncPhase).title }
+  }
+
+  const selectedTitle = state.khala.threadHistory?.title ??
+    state.conversationThreads.find(thread => thread.threadRef === state.activeThreadRef)?.title
+  const composer = state.codingComposer
+  return {
+    title: selectedTitle ?? (state.conversationAuthority === "sync" ? "OpenAgents" : "Khala"),
+    subtitle: composer === null
+      ? null
+      : `${composer.repositoryLabel} · ${composer.worktreeLabel}`,
+  }
+}
+
 export const chromeProps = (state: HomeState): ChromeProps => ({
   pillLabel: state.conversationAuthority === "sync" && state.surfaceMode === "khala"
     ? "OpenAgents"
@@ -854,7 +881,7 @@ export const renderHomeView = (state: HomeState): View =>
     {
       key: "home-application-root",
       direction: "column",
-      gap: "2",
+      gap: "0",
       padding: "2",
       a11y: {
         role: "region",
@@ -867,35 +894,78 @@ export const renderHomeView = (state: HomeState): View =>
         {
           key: "home-toolbar",
           placement: "top",
-          surface: "glass",
-          style: { width: "full", minHeight: state.accessibility.minTouchTarget },
+          style: {
+            width: "full",
+            minHeight: state.accessibility.minTouchTarget,
+            padding: "0",
+            gap: "1",
+            borderWidth: 0,
+            borderRadius: "none",
+            backgroundColor: "background",
+          },
         },
         [
           IconButton({
             key: "home-navigation",
             icon: "Menu",
-            accessibilityLabel: state.drawerOpen ? "Close navigation" : "Open navigation",
+            accessibilityLabel: state.drawerOpen ? "Close threads list" : "Go to threads list",
             onPress: IntentRef("DrawerToggled", StaticPayload({})),
+            surface: "glass",
             style: mobileInteractiveStyle(state.accessibility),
           }),
-          Button({
-            key: "home-surface-mode",
-            label: chromeProps(state).pillLabel,
-            variant: "ghost",
-            onPress: IntentRef(
-              "SurfaceModeSelected",
-              StaticPayload({ mode: state.surfaceMode === "khala" ? "openagents" : "khala" }),
-            ),
-            style: mobileInteractiveStyle(state.accessibility),
-          }),
-          Spacer({ key: "home-toolbar-space", size: "1", style: { flex: 1 } }),
-          IconButton({
-            key: "home-new-chat",
-            icon: "Compose",
-            accessibilityLabel: "New chat",
-            onPress: IntentRef("NewChatPressed", StaticPayload({})),
-            style: mobileInteractiveStyle(state.accessibility),
-          }),
+          Stack(
+            {
+              key: "home-header-identity",
+              direction: "column",
+              gap: "0",
+              align: "center",
+              justify: "center",
+              style: { flex: 1, minHeight: state.accessibility.minTouchTarget },
+            },
+            [
+              Text({
+                key: "home-header-title",
+                content: mobileHeaderProps(state).title,
+                variant: "title",
+                color: "textPrimary",
+                style: { width: "full", textAlign: "center", fontWeight: "bold" },
+              }),
+              ...(mobileHeaderProps(state).subtitle === null
+                ? []
+                : [Text({
+                    key: "home-header-subtitle",
+                    content: mobileHeaderProps(state).subtitle!,
+                    variant: "caption",
+                    color: "textMuted",
+                    style: { width: "full", textAlign: "center" },
+                  })]),
+            ],
+          ),
+          Stack(
+            {
+              key: "home-header-actions",
+              direction: "row",
+              gap: "0.5",
+              align: "center",
+              style: { surface: "glass", borderRadius: "full" },
+            },
+            [
+              IconButton({
+                key: "home-new-chat",
+                icon: "Compose",
+                accessibilityLabel: "New chat",
+                onPress: IntentRef("NewChatPressed", StaticPayload({})),
+                style: mobileInteractiveStyle(state.accessibility),
+              }),
+              IconButton({
+                key: "home-more",
+                icon: "Ellipsis",
+                accessibilityLabel: "Open settings",
+                onPress: IntentRef("SettingsPressed", StaticPayload({})),
+                style: mobileInteractiveStyle(state.accessibility),
+              }),
+            ],
+          ),
         ],
       ),
       state.drawerOpen ? renderDrawerView(state) : renderContentView(state),
@@ -1105,6 +1175,7 @@ export const renderDrawerView = (state: HomeState): View =>
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
+      drawerRow({ key: "drawer-openagents", label: "OpenAgents", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "openagents" })), selected: state.surfaceMode === "openagents" }, state.accessibility),
       drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }, state.accessibility),
       ...(state.fleetRuns?.runs ?? []).flatMap(run => [
         Text({
