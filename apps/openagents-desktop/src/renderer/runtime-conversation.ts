@@ -9,6 +9,10 @@ import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
+import {
+  makeComposerInterruptIntent,
+  makeComposerInterruptOutcome,
+} from "../composer-admission.ts"
 import type { ChatHost } from "./shell.ts"
 import {
   openDesktopRuntimeLiveThread,
@@ -24,6 +28,7 @@ export type RuntimeConversationOptions = Readonly<{
   request: RuntimeConversationRequest
   subscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   randomId?: () => string
+  now?: () => Date
   liveTimeoutMs?: number
 }>
 
@@ -215,6 +220,7 @@ export const makeRuntimeConversationChatHost = (
   options: RuntimeConversationOptions,
 ): ChatHost => {
   const randomId = options.randomId ?? (() => globalThis.crypto.randomUUID())
+  const now = options.now ?? (() => new Date())
   const liveTimeoutMs = options.liveTimeoutMs ?? 30_000
 
   /**
@@ -570,12 +576,12 @@ export const makeRuntimeConversationChatHost = (
         await observer?.close()
       }
     },
-    interruptActive: async threadRef => {
+    interruptActiveControl: async threadRef => {
       // Stop acts only on the exact durable send this renderer has in flight.
       // Admission truth only: the confirmed canceled terminal (not this
       // acknowledgement) is what finalizes the turn and reverts the composer.
       const send = activeSend
-      if (send === null || (threadRef !== undefined && send.threadRef !== threadRef)) return false
+      if (send === null || (threadRef !== undefined && send.threadRef !== threadRef)) return null
       const run = send.observer !== null
         ? send.observer.timeline()?.run ?? null
         : await (async () => {
@@ -586,23 +592,65 @@ export const makeRuntimeConversationChatHost = (
             })
             return timeline.kind === "conversation_timeline" ? timeline.run : null
           })()
-      if (run === null || run.runRef !== send.runRef) return false
-      if (run.status === "completed" || run.status === "failed" || run.status === "canceled") return false
+      if (run === null || run.runRef !== send.runRef) return null
+      if (run.status === "completed" || run.status === "failed" || run.status === "canceled") return null
+      const createdAt = now().toISOString()
+      const control = makeComposerInterruptIntent({
+        threadRef: send.threadRef,
+        turnRef: send.runRef,
+        intentRef: `desktop.interrupt.${send.runRef}`,
+        createdAt,
+        targetGeneration: { state: "known", value: run.version },
+      })
       const lane = laneForConfirmedRun(run.runtime, send.harness)
       const outcome = await options.request({
         kind: "command",
         commandId: `renderer-conversation-interrupt-${++requestSequence}`,
         command: {
           id: "conversation.interrupt",
-          commandRef: `desktop.interrupt.${send.runRef}`,
+          commandRef: control.intentRef,
           threadRef: send.threadRef,
           runRef: send.runRef,
           ...(lane === null ? {} : { lane }),
           expectedVersion: run.version,
         },
       })
-      return outcome.kind === "runtime_command_outcome" &&
-        (outcome.status === "accepted" || outcome.status === "unknown_pending_reconcile")
+      const observedAt = now().toISOString()
+      if (outcome.kind !== "runtime_command_outcome") {
+        return makeComposerInterruptOutcome({
+          control,
+          observedAt,
+          admission: { status: "rejected", reasonRef: "reason.invalid_outcome" },
+          delivery: { status: "failed", reasonRef: "reason.invalid_outcome" },
+        })
+      }
+      if (outcome.status === "accepted") {
+        return makeComposerInterruptOutcome({
+          control,
+          observedAt,
+          admission: { status: "accepted", acceptedAt: observedAt },
+          delivery: { status: "pending" },
+        })
+      }
+      if (outcome.status === "unknown_pending_reconcile") {
+        return makeComposerInterruptOutcome({
+          control,
+          observedAt,
+          admission: { status: "pending" },
+          delivery: { status: "pending" },
+        })
+      }
+      const reasonRef = outcome.status === "unavailable"
+        ? "reason.adapter_unavailable"
+        : "reason.adapter_rejected"
+      return makeComposerInterruptOutcome({
+        control,
+        observedAt,
+        admission: { status: "rejected", reasonRef },
+        delivery: outcome.status === "unavailable"
+          ? { status: "unsupported", reasonRef }
+          : { status: "failed", reasonRef },
+      })
     },
     queueFollowup: async input => {
       const send = activeSend
@@ -777,6 +825,7 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
       },
     }),
     interruptActive: async () => active?.interruptActive?.() ?? false,
+    interruptActiveControl: async () => active?.interruptActiveControl?.() ?? null,
     steerChild: async value => active?.steerChild?.(value) ?? { ok: false, outcome: "not_found" },
     queueFollowup: async value => active?.queueFollowup?.(value) ?? { ok: false, queued: false },
   }

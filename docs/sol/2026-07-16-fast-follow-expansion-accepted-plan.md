@@ -136,6 +136,14 @@ adapters, rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T05:00:27Z`
 
+### CLAIM-STATUS
+
+- implementation: foreground local and durable-conversation ChatHost adapters lower exact active Stop targets into `turn.interrupt` and return typed control outcomes
+- focused proof: 239 tests passed with 11 skipped across the packet and existing capability/boundary suites; Desktop typecheck passed
+- authority proof: Fast Follow 7/7, behavior contracts 36/36, and ProductSpec 104/104 passed
+- repository check: `pnpm run check` passed
+- residual: durable outcome persistence/replay, Queue/Steer outcomes, additional adapters, and rendered evidence remain unclaimed later packets
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

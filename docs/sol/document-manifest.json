@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "84a60026c404896c3ef1ffef8f5e4dc5937bebdf02298457b822013d7231d635",
+  "sourceTreeSha256": "34ff76c5ac0d14d52314b8680c5b5dae84342401ec005bb53d39e6f9c1fc568c",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1778,7 +1778,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "6ee581e0d7d8f405308b4f2a7747a349d4d88c46c2cc70643fffc51ca1a87bca",
+      "sha256": "4d67538368f446758a8960e29a018a265400f729404cd917855cecd4394089f0",
       "status": "active",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1786,10 +1786,11 @@
       "inboundLinks": [
         "docs/fastfollow/README.md",
         "docs/fastfollow/receipts/2026-07-16-fast-follow-expansion-admission-and-ff-d1-01-receipt.md",
+        "docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 4,
+      "inboundSourceCount": 5,
       "issueLinks": []
     },
     {

@@ -33,6 +33,10 @@ import {
 } from "../fable-local-contract.ts"
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
 import {
+  makeComposerInterruptIntent,
+  makeComposerInterruptOutcome,
+} from "../composer-admission.ts"
+import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
   codexLocalModelNoteText,
   type CodexLocalAvailability,
@@ -583,6 +587,28 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
     }
   }
 
+  const interruptActiveControl: NonNullable<ChatHost["interruptActiveControl"]> = async threadRef => {
+    const active = activeTurn
+    if (active === null || (threadRef !== undefined && active.threadRef !== threadRef)) return null
+    const createdAt = now().toISOString()
+    const control = makeComposerInterruptIntent({
+      threadRef: active.threadRef,
+      turnRef: active.turnRef,
+      intentRef: `intent.desktop.interrupt.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`,
+      createdAt,
+    })
+    const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
+    const observedAt = now().toISOString()
+    return makeComposerInterruptOutcome({
+      control,
+      observedAt,
+      admission: { status: "accepted", acceptedAt: createdAt },
+      delivery: raw === true
+        ? { status: "applied", appliedAt: observedAt }
+        : { status: "failed", reasonRef: "reason.adapter_refused" },
+    })
+  }
+
   return {
     ...input.base,
     /**
@@ -590,12 +616,9 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
      * frozen interrupt channel by the exact active turnRef; the runtime aborts
      * and emits a typed `interrupted` failure that finalizes the turn.
      */
-    interruptActive: async threadRef => {
-      const active = activeTurn
-      if (active === null || (threadRef !== undefined && active.threadRef !== threadRef)) return false
-      const raw = await active.bridge.interrupt({ turnRef: active.turnRef })
-      return raw === true
-    },
+    interruptActive: async threadRef =>
+      (await interruptActiveControl(threadRef))?.delivery.status === "applied",
+    interruptActiveControl,
     /**
      * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).
      * Signals the active lane's frozen steer-child channel by exact ref (only

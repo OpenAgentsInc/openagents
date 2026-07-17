@@ -1055,7 +1055,10 @@ describe("durable runtime turn controls (CUT-16)", () => {
    * `running` (with an exact provider runtime) until the test terminalizes it,
    * so Stop and queue-until-idle can be exercised mid-flight.
    */
-  const makeDurableControlFixture = (runtime: "claude_code" | "codex" | undefined) => {
+  const makeDurableControlFixture = (
+    runtime: "claude_code" | "codex" | undefined,
+    interruptStatus: "accepted" | "unknown_pending_reconcile" | "rejected" | "unavailable" = "unknown_pending_reconcile",
+  ) => {
     const threadRef = "thread.control.1"
     const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
     const commands: Array<Record<string, unknown>> = []
@@ -1177,7 +1180,7 @@ describe("durable runtime turn controls (CUT-16)", () => {
         return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef, runRef: String(command.runRef), messageRef: String(command.messageRef), status: "accepted", mutationId: commands.length }
       }
       if (command.id === "conversation.interrupt") {
-        return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef, runRef: String(command.runRef), status: "unknown_pending_reconcile", mutationId: commands.length }
+        return { kind: "runtime_command_outcome", commandId: value.commandId!, threadRef, runRef: String(command.runRef), status: interruptStatus, mutationId: commands.length }
       }
       throw new Error(`unexpected command ${String(command.id)}`)
     }
@@ -1189,6 +1192,7 @@ describe("durable runtime turn controls (CUT-16)", () => {
         return () => listeners.delete(listener)
       },
       randomId: () => `control-${++nextId}`,
+      now: () => new Date("2026-07-16T20:00:00.000Z"),
       liveTimeoutMs: 4000,
     })
     return {
@@ -1214,9 +1218,15 @@ describe("durable runtime turn controls (CUT-16)", () => {
     await until(() => fixture.commands.length >= 3)
     await new Promise(resolve => setTimeout(resolve, 5))
 
-    expect(await fixture.chat.interruptActive!("another-thread")).toBe(false)
+    expect(await fixture.chat.interruptActiveControl!("another-thread")).toBeNull()
     expect(fixture.commands.some(command => command.id === "conversation.interrupt")).toBe(false)
-    expect(await fixture.chat.interruptActive!(fixture.threadRef)).toBe(true)
+    expect(await fixture.chat.interruptActiveControl!(fixture.threadRef)).toMatchObject({
+      schema: "openagents.runtime_control_outcome.v1",
+      intentRef: `desktop.interrupt.${fixture.startedRunRefs()[0]!}`,
+      admission: { status: "pending" },
+      delivery: { status: "pending" },
+      terminal: { status: "pending" },
+    })
     const interrupt = fixture.commands.find(command => command.id === "conversation.interrupt")
     const runRef = fixture.startedRunRefs()[0]!
     expect(interrupt).toEqual({
@@ -1233,14 +1243,32 @@ describe("durable runtime turn controls (CUT-16)", () => {
     const result = await sendPromise
     expect(result.ok).toBe(true)
     // The send is settled, so Stop no longer has an in-flight durable target.
-    expect(await fixture.chat.interruptActive!()).toBe(false)
+    expect(await fixture.chat.interruptActiveControl!()).toBeNull()
     expect(fixture.commands.filter(command => command.id === "conversation.interrupt")).toHaveLength(1)
   })
 
   test("Stop without an in-flight durable send is a no-op that sends nothing", async () => {
     const fixture = makeDurableControlFixture("codex")
-    expect(await fixture.chat.interruptActive!()).toBe(false)
+    expect(await fixture.chat.interruptActiveControl!()).toBeNull()
     expect(fixture.commands).toEqual([])
+  })
+
+  test("an unavailable durable Stop adapter returns typed unsupported without rerouting", async () => {
+    const fixture = makeDurableControlFixture("codex", "unavailable")
+    const sendPromise = fixture.chat.sendMessage({ id: fixture.threadRef, message: "First", harness: "codex" })
+    await until(() => fixture.commands.some(command => command.id === "conversation.start"))
+    await until(() => fixture.commands.length >= 3)
+
+    expect(await fixture.chat.interruptActiveControl!(fixture.threadRef)).toMatchObject({
+      admission: { status: "rejected", reasonRef: "reason.adapter_unavailable" },
+      delivery: { status: "unsupported", reasonRef: "reason.adapter_unavailable" },
+      terminal: { status: "pending" },
+    })
+    expect(fixture.commands.filter(command => command.id === "conversation.interrupt")).toHaveLength(1)
+    expect(fixture.commands.filter(command => command.id === "conversation.start")).toHaveLength(1)
+
+    fixture.terminalize("canceled")
+    await sendPromise
   })
 
   test("queue-until-idle promotes the follow-up only at the confirmed terminal on the same lane", async () => {

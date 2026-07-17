@@ -55,6 +55,7 @@ import {
   idleComposerAdmission,
   makeComposerSubmitIntent,
   type ComposerAdmission,
+  type ComposerInterruptOutcome,
 } from "../composer-admission.ts"
 import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
 import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
@@ -1411,13 +1412,17 @@ export type ChatHost = Readonly<{
     failureKind?: DesktopRuntimeFailureKind
   }>>
   /**
-   * Interrupt the currently-streaming turn (EP250 Stop button). Resolves true
-   * when an active turn was signalled through the lane's interrupt IPC path,
-   * false when no turn is active or the host cannot interrupt. Optional: a host
-   * without a local streaming lane (e.g. the read-only runtime adapter) omits
-   * it and the Stop intent no-ops.
+   * Legacy provider-specific Stop acknowledgement retained for existing
+   * capability consumers. New Desktop control paths use
+   * `interruptActiveControl` below.
    */
   interruptActive?: (threadRef?: string) => Promise<boolean>
+  /**
+   * Provider-neutral Stop acknowledgement. A compatible host lowers the exact
+   * active thread/turn into the shared ref-only control envelope and keeps the
+   * later terminal event independent. Null means no exact target existed.
+   */
+  interruptActiveControl?: (threadRef?: string) => Promise<ComposerInterruptOutcome | null>
   /**
    * Interrupt a running delegate child of the active turn (EP250 wave-2 G4).
    * Resolves the runtime's typed outcome; a host with no active local lane
@@ -2663,7 +2668,14 @@ export const makeDesktopShellHandlers = (
       // handler never fabricates that terminal state itself.
       const current = yield* SubscriptionRef.get(state)
       if (current.pending) {
-        yield* Effect.promise(() => chat.interruptActive?.(current.activeThreadId ?? undefined) ?? Promise.resolve(false))
+        yield* Effect.promise(async () => {
+          const threadRef = current.activeThreadId ?? undefined
+          if (chat.interruptActiveControl !== undefined) {
+            await chat.interruptActiveControl(threadRef)
+          } else {
+            await chat.interruptActive?.(threadRef)
+          }
+        })
         return
       }
       // FA-H4 (#8877): non-pending but main reports a BACKGROUND Full Auto

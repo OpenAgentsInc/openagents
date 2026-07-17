@@ -1265,7 +1265,7 @@ describe("desktopShellView (state -> component tree)", () => {
       newThread: async () => null,
       openThread: async () => testThread,
       sendMessage: async () => ({ ok: false as const, error: "unused" }),
-      interruptActive: async () => { activeInterrupts += 1; return true },
+      interruptActive: async () => { activeInterrupts += 1; return false },
     }
     const fullAutoHost = {
       set: async () => ({ ok: true }),
@@ -2559,7 +2559,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           newThread: async () => null,
           openThread: async () => null,
           sendMessage: async () => ({ ok: false, error: "unused in this test" }),
-          interruptActive: async (threadRef?: string) => { interruptedThreads.push(threadRef); return true },
+          interruptActiveControl: async (threadRef?: string) => { interruptedThreads.push(threadRef); return null },
         }
         // Idle: the Stop control is not even rendered, but a stray dispatch must
         // still no-op (the handler is guarded on pending).

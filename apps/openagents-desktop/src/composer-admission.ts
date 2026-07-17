@@ -1,6 +1,8 @@
 import {
   decodeRuntimeControlIntent,
+  decodeRuntimeControlOutcome,
   type RuntimeControlIntent,
+  type RuntimeControlOutcome,
 } from "@openagentsinc/agent-runtime-schema"
 
 /** Shared composer truth consumed by Desktop now and lowered by web/mobile later. */
@@ -77,6 +79,51 @@ type ComposerIntentBase = Readonly<{
 export type ComposerSubmitIntent =
   | (ComposerIntentBase & Readonly<{ kind: "steer_current"; expectedTurnId: string }>)
   | (ComposerIntentBase & Readonly<{ kind: "queue_next" }>)
+
+export type ComposerInterruptIntent = Extract<RuntimeControlIntent, { kind: "turn.interrupt" }>
+export type ComposerInterruptOutcome = RuntimeControlOutcome
+
+export const makeComposerInterruptIntent = (input: Readonly<{
+  threadRef: string
+  turnRef: string
+  intentRef: string
+  createdAt: string
+  targetGeneration?: RuntimeControlIntent["targetGeneration"]
+}>): ComposerInterruptIntent => {
+  const expiresAt = new Date(new Date(input.createdAt).getTime() + 5 * 60_000).toISOString()
+  return decodeRuntimeControlIntent({
+    schema: "openagents.runtime_control_intent.v2",
+    kind: "turn.interrupt",
+    intentRef: input.intentRef,
+    idempotencyKey: input.intentRef,
+    threadRef: input.threadRef,
+    turnRef: input.turnRef,
+    targetGeneration: input.targetGeneration ?? {
+      state: "unknown",
+      reason: "not_observed",
+    },
+    orderingKey: `order:${input.threadRef}`,
+    createdAt: input.createdAt,
+    expiresAt,
+    origin: { surface: "desktop", lane: "owner_local" },
+  }) as ComposerInterruptIntent
+}
+
+export const makeComposerInterruptOutcome = (input: Readonly<{
+  control: ComposerInterruptIntent
+  observedAt: string
+  admission: RuntimeControlOutcome["admission"]
+  delivery: RuntimeControlOutcome["delivery"]
+}>): RuntimeControlOutcome => decodeRuntimeControlOutcome({
+  schema: "openagents.runtime_control_outcome.v1",
+  outcomeRef: `outcome.${input.control.intentRef}`,
+  intentRef: input.control.intentRef,
+  idempotencyKey: input.control.idempotencyKey,
+  observedAt: input.observedAt,
+  admission: input.admission,
+  delivery: input.delivery,
+  terminal: { status: "pending" },
+})
 
 export const makeComposerSubmitIntent = (input: Readonly<{
   admission: ComposerAdmission

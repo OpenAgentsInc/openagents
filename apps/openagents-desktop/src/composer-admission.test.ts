@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vite-plus/test"
-import { composerActionPresentation, makeComposerSubmitIntent, type ComposerAdmissionState } from "./composer-admission.ts"
+import {
+  composerActionPresentation,
+  makeComposerInterruptIntent,
+  makeComposerInterruptOutcome,
+  makeComposerSubmitIntent,
+  type ComposerAdmissionState,
+} from "./composer-admission.ts"
 
 describe("composer admission matrix", () => {
   const states: ReadonlyArray<ComposerAdmissionState> = ["idle", "active_steerable", "active_nonsteerable", "interrupting", "repairing", "queued", "offline", "blocked", "incompatible"]
@@ -38,6 +44,34 @@ describe("composer admission matrix", () => {
         messageRef: "user-1",
         targetGeneration: { state: "unknown", reason: "not_observed" },
       },
+    })
+  })
+
+  test("interrupt binds the exact thread and turn and keeps terminal observation pending", () => {
+    const control = makeComposerInterruptIntent({
+      threadRef: "thread-1",
+      turnRef: "turn-provider-7",
+      intentRef: "intent-interrupt-1",
+      createdAt: "2026-07-16T20:00:00.000Z",
+    })
+    expect(control).toMatchObject({
+      kind: "turn.interrupt",
+      threadRef: "thread-1",
+      turnRef: "turn-provider-7",
+      targetGeneration: { state: "unknown", reason: "not_observed" },
+      expiresAt: "2026-07-16T20:05:00.000Z",
+    })
+
+    expect(makeComposerInterruptOutcome({
+      control,
+      observedAt: "2026-07-16T20:00:01.000Z",
+      admission: { status: "accepted", acceptedAt: "2026-07-16T20:00:01.000Z" },
+      delivery: { status: "applied", appliedAt: "2026-07-16T20:00:01.000Z" },
+    })).toMatchObject({
+      intentRef: "intent-interrupt-1",
+      admission: { status: "accepted" },
+      delivery: { status: "applied" },
+      terminal: { status: "pending" },
     })
   })
 })

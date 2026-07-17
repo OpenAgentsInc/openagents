@@ -36,6 +36,7 @@ type Harness = {
   host: ChatHost
   legacySends: Array<unknown>
   startCalls: Array<unknown>
+  interruptCalls: Array<unknown>
   steerCalls: Array<unknown>
   currentSteerCalls: Array<unknown>
   queueCalls: Array<unknown>
@@ -51,6 +52,7 @@ const makeHarness = (input?: {
 }): Harness => {
   const legacySends: Array<unknown> = []
   const startCalls: Array<unknown> = []
+  const interruptCalls: Array<unknown> = []
   const steerCalls: Array<unknown> = []
   const currentSteerCalls: Array<unknown> = []
   const queueCalls: Array<unknown> = []
@@ -79,7 +81,7 @@ const makeHarness = (input?: {
         resolveStart = resolve
       })
     },
-    interrupt: async () => true,
+    interrupt: async value => { interruptCalls.push(value); return true },
     steerChild: async value => {
       steerCalls.push(value)
       return { ok: true, outcome: "interrupted" }
@@ -107,6 +109,7 @@ const makeHarness = (input?: {
         ? { state: "unavailable", reason: "no_claude_account" }
         : { state: "available", accountRef: "claude-pylon-b" },
     randomId: () => "fixed",
+    now: () => new Date("2026-07-16T20:00:00.000Z"),
     scheduleProjection: input?.scheduleProjection ?? (flush => {
       let active = true
       queueMicrotask(() => { if (active) flush() })
@@ -117,6 +120,7 @@ const makeHarness = (input?: {
     host,
     legacySends,
     startCalls,
+    interruptCalls,
     steerCalls,
     currentSteerCalls,
     queueCalls,
@@ -127,6 +131,31 @@ const makeHarness = (input?: {
 }
 
 describe("makeLocalHarnessChatHost", () => {
+  test("Stop lowers the exact active local turn into a typed control outcome", async () => {
+    const harness = makeHarness()
+    const pending = harness.host.sendMessage({
+      id: "thread-1",
+      message: "hello fable",
+      harness: "fable",
+    })
+    await settle()
+
+    expect(await harness.host.interruptActiveControl!("wrong-thread")).toBeNull()
+    expect(harness.interruptCalls).toEqual([])
+    expect(await harness.host.interruptActiveControl!("thread-1")).toMatchObject({
+      schema: "openagents.runtime_control_outcome.v1",
+      intentRef: "intent.desktop.interrupt.fixed",
+      admission: { status: "accepted" },
+      delivery: { status: "applied" },
+      terminal: { status: "pending" },
+    })
+    expect(harness.interruptCalls).toEqual([{ turnRef: "turn.fable.fixed" }])
+
+    harness.resolveStart({ ok: false, reason: "interrupted", error: "Turn interrupted." })
+    await pending
+    expect(await harness.host.interruptActiveControl!()).toBeNull()
+  })
+
   test("fable send streams: progressive text, tool trace lines, finalized thread", async () => {
     const harness = makeHarness()
     const updates: DesktopThread[] = []
