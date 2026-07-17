@@ -78,7 +78,7 @@ import {
 } from "#components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
-import { capabilityForHarness, desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
+import { capabilityForActiveLane, desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
@@ -888,7 +888,7 @@ export const WorkbenchShell = ({ state, report }: {
         </div> : null}
         header={<ConversationHeader state={state} report={report} />}
         notices={<StatusNotices state={state} report={report} />}
-        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
+        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForActiveLane(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
       />} />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">

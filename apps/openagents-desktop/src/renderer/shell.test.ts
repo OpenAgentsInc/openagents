@@ -45,6 +45,11 @@ import {
   withWorkspace,
   withCommandPalette,
   withHarnessLanes,
+  withProviderLaneCapabilities,
+  capabilityForActiveLane,
+  selectableProviderLanes,
+  nextSelectableProviderLane,
+  type SelectableProviderLane,
   withNote,
   withPending,
   withQuestionSelection,
@@ -61,6 +66,7 @@ import {
   type CommandBindingHost,
   type HarnessLanes,
 } from "./shell.ts"
+import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
 import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspace-browser.ts"
 import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
@@ -3646,6 +3652,172 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
         expect(next.pending).toBe(false)
       }),
     )
+  })
+})
+
+describe("first-class provider picker admits real ACP lanes (#8977)", () => {
+  const codexCapability: ProviderLaneComposerProjection = {
+    laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted",
+    reason: null, models: ["gpt-5.6-sol"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    permissionModes: ["owner_full"], approvals: "host_mediated", questions: true, skills: false,
+    images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant",
+  }
+  const fableCapability: ProviderLaneComposerProjection = {
+    laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted",
+    reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
+    permissionModes: ["owner_full", "plan_only"], approvals: "provider_native", questions: true, skills: true,
+    images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant",
+  }
+  const admittedGrok: ProviderLaneComposerProjection = {
+    laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", admission: "admitted",
+    reason: null, models: ["grok-4"], reasoningEfforts: [],
+    permissionModes: ["owner_full"], approvals: "provider_native", questions: true, skills: false,
+    images: false, fullAuto: true, interrupt: true, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant",
+  }
+  const quarantinedCursor: ProviderLaneComposerProjection = {
+    laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent", admission: "quarantined",
+    reason: "Cursor Agent is not installed or has not passed its executable probe.",
+    models: [], reasoningEfforts: [], permissionModes: [], approvals: "none", questions: false, skills: false,
+    images: false, fullAuto: false, interrupt: false, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant",
+  }
+
+  test("selectableProviderLanes lists native lanes plus only ADMITTED ACP peers, in stable order", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok, quarantinedCursor])
+    const lanes = selectableProviderLanes(state)
+    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local", "acp:grok-cli"])
+    expect(lanes.find(lane => lane.laneRef === "acp:grok-cli")?.displayName).toBe("Grok CLI")
+    // The quarantined peer never appears -- no more, no less than the real
+    // evidence-derived admission truth main already computed.
+    expect(lanes.some(lane => lane.laneRef === "acp:cursor-agent")).toBe(false)
+  })
+
+  test("an unrecognized/unknown lane ref never appears in the picker", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability])
+    const lanes = selectableProviderLanes(state)
+    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local"])
+    expect(lanes.some(lane => lane.laneRef === "acp:grok-cli")).toBe(false)
+  })
+
+  test("nextSelectableProviderLane cycles codex -> fable -> admitted ACP peer -> back to codex, skipping quarantined peers", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok, quarantinedCursor])
+    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("fable-local")
+    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("acp:grok-cli")
+    expect(nextSelectableProviderLane(state, "acp:grok-cli")?.laneRef).toBe("codex-local")
+  })
+
+  test("nextSelectableProviderLane falls back to the plain codex<->fable toggle when no ACP lane is admitted (no regression)", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability])
+    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("fable-local")
+    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("codex-local")
+  })
+
+  test("nextSelectableProviderLane still respects HarnessLanes probe-verified unavailability for the native pair", () => {
+    const state = withHarnessLanes(
+      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
+      { fable: { available: false, reason: "Fable — unavailable: no linked Claude account" }, codex: { available: true, reason: null } },
+    )
+    // fable-local is unavailable, so codex cycles straight to the admitted ACP peer.
+    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("acp:grok-cli")
+  })
+
+  test("capabilityForActiveLane resolves the REAL bound lane, including an admitted ACP peer", () => {
+    const state: DesktopShellState = {
+      ...withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
+      activeLaneRef: "acp:grok-cli",
+      selectedHarness: "fable",
+    }
+    expect(capabilityForActiveLane(state)?.displayName).toBe("Grok CLI")
+    expect(capabilityForActiveLane(state)?.laneRef).toBe("acp:grok-cli")
+  })
+
+  test("DesktopProviderLaneSelected switches the active thread to an admitted ACP lane via chat.selectLane, and syncs selectedHarness+activeLaneRef", async () => {
+    const selectCalls: Array<{ threadRef: string; laneRef: string }> = []
+    const chatHost: ChatHost = {
+      listThreads: async () => [], newThread: async () => null, openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused" }),
+      selectLane: async (threadRef, laneRef) => { selectCalls.push({ threadRef, laneRef }); return { ok: true } },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
+      withProviderLaneCapabilities({ ...baseState, activeLaneRef: "fable-local", selectedHarness: "fable" }, [codexCapability, fableCapability, admittedGrok]),
+    ))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:grok-cli")))))
+    expect(selectCalls).toEqual([{ threadRef: testThread.id, laneRef: "acp:grok-cli" }])
+    const next = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(next.activeLaneRef).toBe("acp:grok-cli")
+    expect(next.selectedHarness).toBe("fable")
+  })
+
+  test("DesktopProviderLaneSelected refuses an unadmitted/unknown lane ref: no chat.selectLane call, no state change", async () => {
+    const selectCalls: Array<{ threadRef: string; laneRef: string }> = []
+    const chatHost: ChatHost = {
+      listThreads: async () => [], newThread: async () => null, openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused" }),
+      selectLane: async (threadRef, laneRef) => { selectCalls.push({ threadRef, laneRef }); return { ok: true } },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
+      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, quarantinedCursor]),
+    ))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    // Quarantined -- must not switch.
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:cursor-agent")))))
+    // Never registered at all -- must not switch.
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:unknown-peer")))))
+    expect(selectCalls).toEqual([])
+    const next = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(next.activeLaneRef).toBe("codex-local")
+    expect(next.selectedHarness).toBe("codex")
+  })
+
+  test("main's selectLane refusal (e.g. missing_auth) is honored: DesktopProviderLaneSelected does not move activeLaneRef", async () => {
+    const chatHost: ChatHost = {
+      listThreads: async () => [], newThread: async () => null, openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused" }),
+      selectLane: async () => ({ ok: false, reason: "missing_auth", message: "That provider lane has no verified authentication." }),
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
+      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
+    ))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:grok-cli")))))
+    const next = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(next.activeLaneRef).toBe("codex-local")
+  })
+
+  test("opening a thread bound to an admitted ACP lane hydrates activeLaneRef+selectedHarness to the REAL lane, not a codex/fable stand-in", async () => {
+    const acpThread = { id: "acp-thread", title: "Grok session", updatedAt: "2026-07-17T12:00:00.000Z", notes: [] } as const
+    const chatHost: ChatHost = {
+      listThreads: async () => [acpThread], newThread: async () => null,
+      openThread: async (id: string) => (id === acpThread.id ? acpThread : null),
+      sendMessage: async () => ({ ok: false, error: "unused" }),
+      laneForThread: async (threadRef: string) => (threadRef === acpThread.id ? "acp:grok-cli" : "codex-local"),
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
+      withProviderLaneCapabilities({ ...baseState, threads: [testThread, acpThread] }, [codexCapability, fableCapability, admittedGrok]),
+    ))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(acpThread.id)))))
+    const next = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(next.activeLaneRef).toBe("acp:grok-cli")
+    // ACP lanes ride the fable transport (FableLocalStartChannel resolves the
+    // real lane server-side); selectedHarness must never stay stale "codex".
+    expect(next.selectedHarness).toBe("fable")
+  })
+
+  test("a fresh thread honors a pre-selected admitted ACP lane instead of collapsing to fable-local", async () => {
+    const newThreadCalls: Array<string | undefined> = []
+    const acpThread = { id: "acp-new-thread", title: "Grok session", updatedAt: "2026-07-17T12:00:00.000Z", notes: [] } as const
+    const chatHost: ChatHost = {
+      listThreads: async () => [], newThread: async (laneRef?: string) => { newThreadCalls.push(laneRef); return acpThread },
+      openThread: async () => null,
+      sendMessage: async () => ({ ok: false, error: "unused" }),
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
+      withProviderLaneCapabilities({ ...baseState, activeThreadId: null, activeLaneRef: "acp:grok-cli", selectedHarness: "fable" }, [codexCapability, fableCapability, admittedGrok]),
+    ))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNewChat", StaticPayload(null)))))
+    expect(newThreadCalls).toEqual(["acp:grok-cli"])
   })
 })
 

@@ -70,11 +70,16 @@ afterEach(async () => {
 
 const fixtureState = (extra: Partial<DesktopShellState> = {}): DesktopShellState => {
   const base = initialDesktopShellState("electron/darwin");
+  const selectedHarness = extra.selectedHarness ?? "codex";
   return {
     ...base,
     activeThreadId: "thread-1",
     threads: [{ id: "thread-1", title: "Test", updatedAt: "2026-07-14T12:00:00.000Z", notes: [] }],
-    selectedHarness: "codex",
+    selectedHarness,
+    // Mirrors the pre-#8977 implicit assumption that activeLaneRef always
+    // matched selectedHarness's codex/fable mapping; a test exercising an
+    // ACP-bound lane overrides `activeLaneRef` explicitly via `extra`.
+    activeLaneRef: selectedHarness === "codex" ? "codex-local" : "fable-local",
     harnessLanes: { ...base.harnessLanes, codex: { available: true, reason: null } },
     ...extra,
   };
@@ -613,6 +618,94 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     expect((container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement).disabled).toBe(true);
     expect(container.textContent).toContain("Lane capability over-claim quarantined");
+  });
+
+  test("#8977: an admitted ACP lane is a real selectable first-class provider through the SAME shell-provider-select chip", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const codex = {
+      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
+      reason: null, models: ["gpt-5.6-sol"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
+      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
+      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
+    };
+    const claude = {
+      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
+      reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
+      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
+      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
+    };
+    const grok = {
+      laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", admission: "admitted" as const,
+      reason: null, models: ["grok-4"], reasoningEfforts: [],
+      permissionModes: ["owner_full"] as const, approvals: "provider_native" as const, questions: true, skills: false,
+      images: false, fullAuto: true, interrupt: true, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant" as const,
+    };
+    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
+    await render(root, <ReactComposer state={fixtureState({
+      selectedHarness: "fable", activeLaneRef: "fable-local", providerLaneCapabilities: [codex, claude, grok], harnessLanes: lanes,
+    })} report={report} />);
+    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe("Claude");
+    expect(button.getAttribute("aria-label")).toBe("Provider: Claude. Switch to Grok CLI");
+    await interact(() => button.click());
+    expect(received).toContainEqual({ name: "DesktopProviderLaneSelected", payload: "acp:grok-cli" });
+  });
+
+  test("#8977: a quarantined/unadmitted ACP lane is never offered by the picker -- cycle falls back to the other native lane", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const codex = {
+      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
+      reason: null, models: ["gpt-5.6-sol"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
+      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
+      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
+    };
+    const claude = {
+      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
+      reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
+      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
+      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
+    };
+    const cursor = {
+      laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent", admission: "quarantined" as const,
+      reason: "Cursor Agent is not installed or has not passed its executable probe.",
+      models: [], reasoningEfforts: [], permissionModes: [], approvals: "none" as const, questions: false, skills: false,
+      images: false, fullAuto: false, interrupt: false, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant" as const,
+    };
+    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
+    await render(root, <ReactComposer state={fixtureState({
+      selectedHarness: "fable", activeLaneRef: "fable-local", providerLaneCapabilities: [codex, claude, cursor], harnessLanes: lanes,
+    })} report={report} />);
+    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
+    expect(button.getAttribute("aria-label")).toBe("Provider: Claude. Switch to Codex");
+    await interact(() => button.click());
+    // The SAME DesktopHarnessSelected intent Shift+Tab dispatches -- unchanged
+    // for the native pair -- and never the quarantined Cursor Agent lane.
+    expect(received).toContainEqual({ name: "DesktopHarnessSelected", payload: "codex" });
+    expect(received.some(event => event.name === "DesktopProviderLaneSelected")).toBe(false);
+  });
+
+  test("#8977: with no ACP lane admitted, the picker is exactly the prior codex<->fable toggle (no regression)", async () => {
+    const { container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
+    await render(root, <ReactComposer state={fixtureState({ harnessLanes: lanes })} report={report} />);
+    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
+    expect(button.textContent).toBe("Codex");
+    // Pre-existing quirk retained verbatim: with no providerLaneCapabilities
+    // evidence at all, the aria-label falls back to the raw selectedHarness
+    // value ("codex"), unlike the button's own capitalized text fallback.
+    expect(button.getAttribute("aria-label")).toBe("Provider: codex. Switch to Claude");
+    await interact(() => button.click());
+    expect(received).toContainEqual({ name: "DesktopHarnessSelected", payload: "fable" });
   });
 });
 

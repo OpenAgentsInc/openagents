@@ -81,7 +81,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForHarness, formatRelativeTimestamp, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForActiveLane, formatRelativeTimestamp, nextSelectableProviderLane, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -118,7 +118,7 @@ const questionKind = (
 const commandAvailable = (command: DesktopCommand, state: DesktopShellState): boolean => {
   const note = activeQuestionNote(state);
   const kind = note === null ? null : questionKind(note);
-  const capabilities = capabilityForHarness(state);
+  const capabilities = capabilityForActiveLane(state);
   if (command.id.startsWith("interaction.question"))
     return kind === "provider_question" && state.questionAnswerHostAvailable && (capabilities?.questions ?? true);
   if (command.id.startsWith("interaction.approval"))
@@ -212,7 +212,7 @@ export const projectComposerDiscoveryItems = (
           pathRef: entry.pathRef,
           pathKind: entry.kind,
         }));
-  const skills: ReadonlyArray<ComposerDiscoveryItem> = (capabilityForHarness(state)?.skills ?? false)
+  const skills: ReadonlyArray<ComposerDiscoveryItem> = (capabilityForActiveLane(state)?.skills ?? false)
     ? state.settings.plugins.plugins
         .filter(plugin => plugin.enabled && plugin.readiness === "ready")
         .flatMap(plugin => plugin.skills.map(skill => ({ plugin, skill })))
@@ -458,16 +458,21 @@ export const ReactComposer = ({
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
-  const capabilities = capabilityForHarness(state);
+  // #8977: reflects the REAL bound lane (which may be an admitted ACP peer),
+  // not a codex/fable stand-in -- this drives the chip label, model list,
+  // reasoning-effort control, and image-support gating below.
+  const capabilities = capabilityForActiveLane(state);
   const capabilityAdmitted = capabilities === null || capabilities.admission === "admitted";
   const selectedModel = state.selectedHarness === "codex" ? state.codexModel : state.claudeModel;
   const visibleModels = capabilities?.models ?? [selectedModel];
   const selectedModelIndex = Math.max(0, visibleModels.indexOf(selectedModel));
   const nextModel = visibleModels[(selectedModelIndex + 1) % visibleModels.length] ?? selectedModel;
-  const otherHarness = state.selectedHarness === "codex" ? "fable" : "codex";
-  const otherCapabilities = capabilityForHarness(state, otherHarness);
-  const canSwitchHarness = !state.pending && !activeFullAutoTurnRunning(state) && state.harnessLanes[otherHarness].available &&
-    (otherCapabilities === null || otherCapabilities.admission === "admitted");
+  // First-class provider picker (#8977): cycles through the native
+  // codex/fable pair AND every admitted ACP peer lane (e.g. Grok, Cursor),
+  // reusing selectableProviderLanes' exact evidence-derived admission truth.
+  // No admitted lane is left unreachable, and no unadmitted lane is offered.
+  const nextProviderLane = nextSelectableProviderLane(state, state.activeLaneRef);
+  const canSwitchProvider = !state.pending && !activeFullAutoTurnRunning(state) && nextProviderLane !== null;
   // FA-H4 (#8877): main reports a BACKGROUND Full Auto turn running on the
   // active thread (renderer non-pending — no live events reach it). Renders
   // the running badge and the Stop control; the send handler fences manual
@@ -721,9 +726,22 @@ export const ReactComposer = ({
         <DesktopComposerButton
           data-en-key="shell-provider-select"
           kind="action"
-          disabled={!canSwitchHarness}
-          onClick={() => dispatch(report, "DesktopHarnessSelected", otherHarness)}
-          aria-label={`Provider: ${capabilities?.displayName ?? state.selectedHarness}. ${canSwitchHarness ? `Switch to ${otherCapabilities?.displayName ?? otherHarness}` : "No other admitted provider is available"}`}
+          disabled={!canSwitchProvider}
+          onClick={() => {
+            if (nextProviderLane === null) return;
+            // The native codex-local/fable-local pair keeps dispatching the
+            // SAME DesktopHarnessSelected intent Shift+Tab uses
+            // (composer-shortcuts.ts), so that owner-stated binary toggle is
+            // unchanged; an admitted ACP peer lane uses the new ref-based
+            // intent DesktopHarnessSelected's codex/fable-only payload cannot
+            // express.
+            if (nextProviderLane.laneRef === "codex-local" || nextProviderLane.laneRef === "fable-local") {
+              dispatch(report, "DesktopHarnessSelected", nextProviderLane.harness);
+            } else {
+              dispatch(report, "DesktopProviderLaneSelected", nextProviderLane.laneRef);
+            }
+          }}
+          aria-label={`Provider: ${capabilities?.displayName ?? state.selectedHarness}. ${canSwitchProvider ? `Switch to ${nextProviderLane?.displayName}` : "No other admitted provider is available"}`}
           title={`Provider: ${capabilities?.displayName ?? state.selectedHarness}`}
         >
           {capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}
@@ -916,7 +934,7 @@ export const DecisionSurface = ({
   if (note === null || card === undefined) return null;
   const interaction: QuestionCardInteraction | undefined = state.questionCards[card.questionRef];
   const kind = questionKind(note);
-  const providerName = capabilityForHarness(state)?.displayName ??
+  const providerName = capabilityForActiveLane(state)?.displayName ??
     (state.selectedHarness === "codex" ? "Codex" : "Claude");
   const title = decisionTitle(kind, providerName);
   const answered = interaction?.answered === true;

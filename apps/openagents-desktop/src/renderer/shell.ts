@@ -386,6 +386,16 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
+  /**
+   * The exact provider lane bound to the active thread (#8977): "codex-local",
+   * "fable-local", or an admitted ACP peer lane ref such as "acp:grok-cli".
+   * `selectedHarness` stays the coarse codex/fable TRANSPORT choice (which IPC
+   * channel a turn rides); this field is the real first-class provider truth
+   * used to resolve displayed capabilities and gate sends against exactly the
+   * bound lane's admitted evidence, never a codex/fable stand-in for an ACP
+   * lane. Kept in lockstep with `selectedHarness` by every writer.
+   */
+  activeLaneRef: string
   /** While streaming, submit either steers the active turn or queues the next. */
   pendingSubmitMode: "steer" | "queue"
   /** Main/app-server-derived composer authority; renderer component state is never authority. */
@@ -558,6 +568,7 @@ export const initialDesktopShellState = (
   composerPreviewContext: null,
   notes: [],
   selectedHarness: "codex",
+  activeLaneRef: "codex-local",
   pendingSubmitMode: "queue",
   composerAdmission: idleComposerAdmission(),
   composerAdmissionByThread: {},
@@ -742,6 +753,15 @@ export const DesktopHarnessSelected = defineIntent(
   "DesktopHarnessSelected",
   Schema.Literals(desktopHarnessNames),
 )
+/**
+ * Selects a real first-class provider lane by ref (#8977), including an
+ * admitted ACP peer lane that `DesktopHarnessSelected`'s codex/fable-only
+ * payload cannot express. Used by the provider picker's cycle for any target
+ * beyond the native codex-local/fable-local pair, which keeps dispatching the
+ * SAME `DesktopHarnessSelected` intent Shift+Tab uses (composer-shortcuts.ts),
+ * preserving that owner-stated binary toggle unchanged.
+ */
+export const DesktopProviderLaneSelected = defineIntent("DesktopProviderLaneSelected", Schema.String)
 export const DesktopCodexReasoningSelected = defineIntent(
   "DesktopCodexReasoningSelected",
   Schema.Literals(["low", "medium", "high", "xhigh"]),
@@ -893,6 +913,7 @@ export const desktopShellIntents = [
   DesktopSidebarCollapsedChanged,
   DesktopSessionSearchDisclosureChanged,
   DesktopHarnessSelected,
+  DesktopProviderLaneSelected,
   DesktopCodexReasoningSelected,
   DesktopFullAutoToggled,
   DesktopModelSelected,
@@ -1480,6 +1501,75 @@ export const capabilityForHarness = (
   state.providerLaneCapabilities.find(
     lane => lane.laneRef === (harness === "codex" ? "codex-local" : "fable-local"),
   ) ?? null
+
+/**
+ * The capability projection for the REAL bound lane (#8977), which may be an
+ * admitted ACP peer -- `capabilityForHarness`'s codex/fable-only mapping can
+ * never resolve one. Composer display and send-gating must use this, not the
+ * coarse harness mapping, or an ACP-bound thread silently shows/gates against
+ * the wrong lane's evidence.
+ */
+export const capabilityForActiveLane = (state: DesktopShellState): ProviderLaneComposerProjection | null =>
+  state.providerLaneCapabilities.find(lane => lane.laneRef === state.activeLaneRef) ?? null
+
+/** One first-class provider-picker choice: a real lane ref, its transport, and display name. */
+export type SelectableProviderLane = Readonly<{
+  laneRef: string
+  harness: DesktopHarnessName
+  displayName: string
+}>
+
+/**
+ * The real first-class provider picker order (#8977): the two native harness
+ * lanes first (their selectability stays governed by the existing
+ * probe-verified `HarnessLanes` evidence, unchanged), then every ACP peer
+ * lane the main-provided `ProviderLaneComposerProjection` currently admits.
+ * A quarantined or unrecognized ACP peer is never offered here -- admission is
+ * the exact evidence-derived truth main already computed (provider capability
+ * report intersected with the pinned peer profile), not re-inferred in the
+ * renderer. No provider becomes selectable because an adapter merely exists.
+ */
+export const selectableProviderLanes = (state: DesktopShellState): ReadonlyArray<SelectableProviderLane> => {
+  const displayNameFor = (laneRef: string, fallback: string): string =>
+    state.providerLaneCapabilities.find(lane => lane.laneRef === laneRef)?.displayName ?? fallback
+  const admittedAcpLanes = state.providerLaneCapabilities.filter(
+    lane => lane.laneRef.startsWith("acp:") && lane.admission === "admitted",
+  )
+  return [
+    { laneRef: "codex-local", harness: "codex" as const, displayName: displayNameFor("codex-local", "Codex") },
+    { laneRef: "fable-local", harness: "fable" as const, displayName: displayNameFor("fable-local", "Claude") },
+    ...admittedAcpLanes.map(lane => ({ laneRef: lane.laneRef, harness: "fable" as const, displayName: lane.displayName })),
+  ]
+}
+
+const selectableProviderLaneAvailable = (state: DesktopShellState, lane: SelectableProviderLane): boolean => {
+  if (lane.laneRef === "codex-local" || lane.laneRef === "fable-local") {
+    if (!state.harnessLanes[lane.harness].available) return false
+    const capability = state.providerLaneCapabilities.find(entry => entry.laneRef === lane.laneRef)
+    return capability === undefined || capability.admission === "admitted"
+  }
+  // ACP entries in `selectableProviderLanes` are already admission-filtered;
+  // authentication/thread-bind failures still surface honestly through the
+  // existing provider-switch-refused system note at send time.
+  return true
+}
+
+/** The next selectable lane after `fromLaneRef`, skipping unavailable entries and wrapping; null when there is nowhere else to go. */
+export const nextSelectableProviderLane = (
+  state: DesktopShellState,
+  fromLaneRef: string,
+): SelectableProviderLane | null => {
+  const lanes = selectableProviderLanes(state)
+  if (lanes.length === 0) return null
+  const fromIndex = Math.max(0, lanes.findIndex(lane => lane.laneRef === fromLaneRef))
+  for (let step = 1; step <= lanes.length; step++) {
+    const candidate = lanes[(fromIndex + step) % lanes.length]
+    if (candidate !== undefined && candidate.laneRef !== fromLaneRef && selectableProviderLaneAvailable(state, candidate)) {
+      return candidate
+    }
+  }
+  return null
+}
 
 export type ChatHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<DesktopThread>>
@@ -2385,7 +2475,9 @@ export const makeDesktopShellHandlers = (
     // accept the action — the composer keeps the draft and the caption
     // already names the reason. Never substitute another lane silently.
     if (!current.harnessLanes[current.selectedHarness].available) return
-    const laneCapabilities = capabilityForHarness(current)
+    // #8977: gate against the REAL bound lane's evidence (which may be an
+    // admitted ACP peer), not the codex/fable-only mapping.
+    const laneCapabilities = capabilityForActiveLane(current)
     if (laneCapabilities !== null && laneCapabilities.admission !== "admitted") return
     if (laneCapabilities !== null && current.composerImages.length > 0 && !laneCapabilities.images) return
     // Capability I1: a turn is submittable with text OR ≥1 image; an empty
@@ -2403,7 +2495,9 @@ export const makeDesktopShellHandlers = (
     // submission instead of dropping the user's first message.
     if (current.activeThreadId === null) {
       const admittedSelectionRevision = selectionRevision
-      const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
+      // #8977: a fresh thread must honor a pre-selected admitted ACP lane
+      // (activeLaneRef), not collapse back to the codex/fable transport pair.
+      const thread = yield* Effect.promise(() => chat.newThread(current.activeLaneRef))
       if (thread === null || admittedSelectionRevision !== selectionRevision) return
       const draft = current.input
       const draftImages = current.composerImages
@@ -2597,9 +2691,14 @@ export const makeDesktopShellHandlers = (
     yield* hydrateFullAuto(canonicalThreadRef)
     if (chat.laneForThread !== undefined) {
       const laneRef = yield* Effect.promise(() => chat.laneForThread!(canonicalThreadRef))
-      if (laneRef === "codex-local" || laneRef === "fable-local") {
+      // #8977: an ACP-bound thread (e.g. one Full Auto created on an admitted
+      // acp:* lane) must not silently keep whatever harness was previously
+      // selected -- both fields move together so the picker and send-gating
+      // reflect the thread's REAL bound lane, not a codex/fable stand-in.
+      if (laneRef !== null) {
         yield* SubscriptionRef.update(state, current => ({
           ...current,
+          activeLaneRef: laneRef,
           selectedHarness: laneRef === "codex-local" ? "codex" as const : "fable" as const,
         }))
       }
@@ -3096,7 +3195,9 @@ export const makeDesktopShellHandlers = (
   DesktopNewChat: () => Effect.gen(function* () {
     const revision = ++selectionRevision
     const current = yield* SubscriptionRef.get(state)
-    const thread = yield* Effect.promise(() => chat.newThread(current.selectedHarness === "codex" ? "codex-local" : "fable-local"))
+    // #8977: honor a pre-selected admitted ACP lane instead of collapsing
+    // back to the codex/fable transport pair.
+    const thread = yield* Effect.promise(() => chat.newThread(current.activeLaneRef))
     if (thread === null || revision !== selectionRevision) return
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
     yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "New session" })
@@ -3104,14 +3205,36 @@ export const makeDesktopShellHandlers = (
   DesktopHarnessSelected: (harness) => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.selectedHarness === harness) return
+    const laneRef = harness === "codex" ? "codex-local" : "fable-local"
     if (current.activeThreadId !== null && chat.selectLane !== undefined) {
-      const selected = yield* Effect.promise(() => chat.selectLane!(
-        current.activeThreadId!,
-        harness === "codex" ? "codex-local" : "fable-local",
-      ))
+      const selected = yield* Effect.promise(() => chat.selectLane!(current.activeThreadId!, laneRef))
       if (!selected.ok) return
     }
-    yield* SubscriptionRef.update(state, value => ({ ...value, selectedHarness: harness }))
+    yield* SubscriptionRef.update(state, value => ({ ...value, selectedHarness: harness, activeLaneRef: laneRef }))
+  }),
+  /**
+   * Selects an admitted provider lane by ref (#8977) -- the composer picker's
+   * cycle uses this for any target beyond the native codex-local/fable-local
+   * pair (which keeps going through `DesktopHarnessSelected` above,
+   * unchanged). Re-checks admission here too: a stale/adversarial laneRef
+   * from the renderer must never move `activeLaneRef` without exact evidence,
+   * even though main's own `selectLane` IPC handler independently refuses an
+   * unadmitted lane.
+   */
+  DesktopProviderLaneSelected: (laneRef) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.activeLaneRef === laneRef) return
+    const capability = current.providerLaneCapabilities.find(lane => lane.laneRef === laneRef)
+    if (capability === undefined || capability.admission !== "admitted") return
+    if (current.activeThreadId !== null && chat.selectLane !== undefined) {
+      const selected = yield* Effect.promise(() => chat.selectLane!(current.activeThreadId!, laneRef))
+      if (!selected.ok) return
+    }
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      activeLaneRef: laneRef,
+      selectedHarness: laneRef === "codex-local" ? "codex" as const : "fable" as const,
+    }))
   }),
   DesktopCodexReasoningSelected: (reasoningEffort) =>
     SubscriptionRef.update(state, (current) => ({ ...current, codexReasoningEffort: reasoningEffort })),
