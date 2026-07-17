@@ -11,9 +11,12 @@ import {
   SafeReactMarkdown,
   formatReactTimelineTimestamp,
   deriveReactTimelineTurns,
+  deriveReactTimelineDisplayRows,
   deriveAssistantMetaKeys,
+  formatReactTimelineDuration,
   projectLocalTimelineRecords,
   projectReactTimelineRecords,
+  resolveReactTimelineVirtualWindow,
   shouldCollapseUserMessage,
   type ReactTimelineRecord,
 } from "./react-timeline.tsx"
@@ -438,6 +441,52 @@ describe("React typed timeline projection", () => {
 })
 
 describe("React timeline scroll contract", () => {
+  test("folds settled turn activity with elapsed duration while leaving the live turn expanded", () => {
+    const user = { ...record("user", 0), kind: "user_message" as const, label: "You", timestamp: "2026-07-17T12:00:00.000Z" }
+    const commentary = { ...record("commentary", 1), timestamp: "2026-07-17T12:00:03.000Z" }
+    const tool = { ...record("tool", 2), kind: "tool_call" as const, timestamp: "2026-07-17T12:00:07.000Z" }
+    const answer = { ...record("answer", 3), timestamp: "2026-07-17T12:00:12.000Z" }
+    const collapsed = deriveReactTimelineDisplayRows([user, commentary, tool, answer], new Set(), false)
+    expect(collapsed.map(row => row.id)).toEqual(["user", "turn-fold:user", "answer"])
+    expect(collapsed[1]).toMatchObject({ kind: "turn-fold", fold: { label: "Worked for 12s", hiddenCount: 2, expanded: false } })
+    const expanded = deriveReactTimelineDisplayRows([user, commentary, tool, answer], new Set(["user"]), false)
+    expect(expanded.map(row => row.id)).toEqual(["user", "turn-fold:user", "commentary", "tool", "answer"])
+    expect(deriveReactTimelineDisplayRows([user, commentary, tool, answer], new Set(), true).map(row => row.id))
+      .toEqual(["user", "commentary", "tool", "answer"])
+    expect(formatReactTimelineDuration(73_200)).toBe("1m 13s")
+  })
+
+  test("keeps actionable plans, approvals, and notices outside settled activity folds", () => {
+    const user = { ...record("user", 0), kind: "user_message" as const, label: "You" }
+    const commentary = record("commentary", 1)
+    const plan = { ...record("plan", 2), kind: "plan" as const }
+    const approval = { ...record("approval", 3), kind: "approval" as const }
+    const notice = { ...record("notice", 4), kind: "system_message" as const }
+    const answer = record("answer", 5)
+    expect(deriveReactTimelineDisplayRows([user, commentary, plan, approval, notice, answer], new Set(), false).map(row => row.id))
+      .toEqual(["user", "turn-fold:user", "plan", "approval", "notice", "answer"])
+  })
+
+  test("toggles a settled turn fold without flattening the terminal response", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    const user = { ...record("user", 0), kind: "user_message" as const, label: "You", timestamp: "2026-07-17T12:00:00.000Z" }
+    const commentary = { ...record("commentary", 1), timestamp: "2026-07-17T12:00:03.000Z" }
+    const answer = { ...record("answer", 2), timestamp: "2026-07-17T12:00:09.000Z" }
+    root.render(<ReactTimeline sessionKey="turn-fold" records={[user, commentary, answer]}
+      loadedItemCount={3} offset={0} totalItems={3} loadingEdge={null} report={report} />)
+    await settle()
+    const toggle = container.querySelector<HTMLButtonElement>('.oa-react-turn-fold button')
+    expect(toggle?.textContent).toContain("Worked for 9s")
+    expect(container.querySelector('[data-timeline-key="commentary"]')).toBeNull()
+    expect(container.querySelector('[data-timeline-key="answer"]')).not.toBeNull()
+    toggle?.click()
+    await settle()
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true")
+    expect(container.querySelector('[data-timeline-key="commentary"]')).not.toBeNull()
+    root.unmount()
+  })
+
   test("keeps completed reasoning in the primary trace while settled tools remain foldable", async () => {
     const { container } = installDom()
     const root = createRoot(container)
@@ -577,6 +626,32 @@ describe("React timeline scroll contract", () => {
     root.unmount()
   })
 
+  test("anchors a newly-authored turn, then yields permanently to manual free-scroll", async () => {
+    const { window, container } = installDom()
+    const root = createRoot(container)
+    const user = (key: string, sequence: number): ReactTimelineRecord => ({
+      ...record(key, sequence), kind: "user_message", label: "You",
+    })
+    const first = [user("user-1", 0), record("answer-1", 1)]
+    root.render(<ReactTimeline sessionKey="reader-mode" records={first}
+      loadedItemCount={2} offset={0} totalItems={2} loadingEdge={null} report={report} />)
+    await settle()
+    const viewport = container.querySelector<HTMLElement>('.oa-react-timeline-scroll')
+    if (viewport !== null) Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 500 })
+    await flushResizeObservers()
+    root.render(<ReactTimeline sessionKey="reader-mode" records={[...first, user("user-2", 2)]}
+      loadedItemCount={3} offset={0} totalItems={3} loadingEdge={null} working report={report} />)
+    await settle()
+    const region = container.querySelector<HTMLElement>('.oa-react-timeline-region')
+    expect(region?.dataset.readerMode).toBe("anchored")
+    expect(container.querySelector('.oa-react-timeline-anchor-space')).not.toBeNull()
+    viewport?.dispatchEvent(new window.Event("wheel", { bubbles: true }) as unknown as Event)
+    await settle()
+    expect(region?.dataset.readerMode).toBe("free")
+    expect(container.querySelector('.oa-react-timeline-anchor-space')).toBeNull()
+    root.unmount()
+  })
+
   test("requests typed older and newer pages from the measured scroll edges", async () => {
     const { window, container } = installDom()
     const received: Array<string> = []
@@ -657,23 +732,36 @@ describe("React timeline performance corpus", () => {
     expect(elapsed).toBeLessThan(50)
   })
 
-  test("renders and stream-updates the 500-item bound, then tears every row down", async () => {
+  test("measures and virtualizes the 500-item bound, stream-updates the mounted tail, then tears down", async () => {
     const { container } = installDom()
     const root = createRoot(container)
     const corpus = Array.from({ length: 500 }, (_, index) => record(`perf-${index}`, index))
     const started = performance.now()
     root.render(<ReactTimeline sessionKey="perf" records={corpus} loadedItemCount={500} offset={0} totalItems={500} loadingEdge={null} report={report} />)
     await settle()
-    expect(container.querySelectorAll("[data-timeline-key]")).toHaveLength(500)
+    expect(container.querySelectorAll("[data-timeline-key]").length).toBeLessThanOrEqual(40)
+    expect(container.querySelector('[data-virtual-spacer="top"]')).not.toBeNull()
+    expect(container.querySelector('[data-timeline-key="perf-499"]')).not.toBeNull()
     root.render(<ReactTimeline sessionKey="perf" records={[
       ...corpus.slice(0, -1),
       { ...corpus.at(-1)!, body: "streamed terminal update" },
     ]} loadedItemCount={500} offset={0} totalItems={500} loadingEdge={null} report={report} />)
     await settle()
-    expect(container.querySelectorAll("[data-timeline-key]")).toHaveLength(500)
+    expect(container.querySelectorAll("[data-timeline-key]").length).toBeLessThanOrEqual(40)
+    expect(container.querySelector('[data-timeline-key="perf-499"]')?.textContent).toContain("streamed terminal update")
     expect(performance.now() - started).toBeLessThan(2_000)
     root.unmount()
     expect(container.querySelectorAll("[data-timeline-key]")).toHaveLength(0)
+  })
+
+  test("resolves a bounded measured window around the viewport", () => {
+    const rowIds = Array.from({ length: 500 }, (_, index) => `row-${index}`)
+    const measured = new Map(rowIds.map(id => [id, 40]))
+    const window = resolveReactTimelineVirtualWindow({ rowIds, measuredHeights: measured, scrollTop: 10_000, viewportHeight: 600 })
+    expect(window.start).toBeGreaterThan(200)
+    expect(window.end - window.start).toBeLessThan(50)
+    expect(window.top).toBeGreaterThan(0)
+    expect(window.bottom).toBeGreaterThan(0)
   })
 })
 

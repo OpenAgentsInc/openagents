@@ -53,7 +53,7 @@ Every material capability identified by the Amp gap analysis is approved;
 none is optional or policy-blocked. Day 1 thread fabric is first; later packets
 continue adapters, supersession, visibility/export, routing, review, placement,
 remote control, generated clients, and signed plugins until the port is
-complete. Work packets sequence implementation and proof, not scope. The owner also approved the complete pinned T3 Code UI inventory through this [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md); T3UI-01/02 make transcript messages, typed rows, folds, scrolling, virtualization, anchoring, and navigation solid before composer, shell, panels, settings, remote/mobile, and installed proof.
+complete. Work packets sequence implementation and proof, not scope. The owner also approved the complete pinned T3 Code UI inventory through this [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md); T3UI-01/02 now make transcript messages, typed rows, duration folds, measured 500-row virtualization, anchored/free/following scroll modes, recovery, and minimap navigation solid before composer, shell, panels, settings, remote/mobile, and installed proof. The T3UI-02 receipt is [`2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md).
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 

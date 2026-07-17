@@ -22,7 +22,7 @@ import {
   type WorkbenchDispatchItem,
 } from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode, RefObject } from "react"
-import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
+import { Component, createElement, memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CheckIcon, ChevronRight, CopyIcon, Folder, FolderPen } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
@@ -782,6 +782,126 @@ export type ReactTimelineTurn = Readonly<{
   assistantPreview: string | null
 }>
 
+export type ReactTimelineTurnFold = Readonly<{
+  id: string
+  turnId: string
+  label: string
+  expanded: boolean
+  hiddenCount: number
+}>
+
+type TimelineDisplayRow =
+  | Readonly<{ kind: "record"; id: string; record: ReactTimelineRecord }>
+  | Readonly<{ kind: "work-group"; id: string; records: ReadonlyArray<ReactTimelineRecord> }>
+  | Readonly<{ kind: "turn-fold"; id: string; fold: ReactTimelineTurnFold }>
+
+const parseTimelineTimestamp = (value: string): number | null => {
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** T3's compact elapsed-time vocabulary, kept stable for fold labels. */
+export const formatReactTimelineDuration = (durationMs: number): string => {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "0ms"
+  if (durationMs < 1_000) return `${Math.max(1, Math.round(durationMs))}ms`
+  if (durationMs < 10_000) return `${Math.round(durationMs / 100) / 10}s`
+  if (durationMs < 60_000) return `${Math.round(durationMs / 1_000)}s`
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1_000)
+  return seconds === 60 ? `${minutes + 1}m` : seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`
+}
+
+const turnFoldLabel = (records: ReadonlyArray<ReactTimelineRecord>): string => {
+  const times = records.flatMap(record => {
+    const timestamp = parseTimelineTimestamp(record.timestamp)
+    return timestamp === null ? [] : [timestamp]
+  })
+  const duration = times.length < 2 ? null : formatReactTimelineDuration(Math.max(...times) - Math.min(...times))
+  const stopped = records.some(record => ["canceled", "cancelled", "interrupted", "turn_interrupted"].includes(record.status ?? ""))
+  if (stopped) return duration === null ? "You stopped this response" : `You stopped after ${duration}`
+  return duration === null ? "Worked" : `Worked for ${duration}`
+}
+
+const groupDisplayWorkRows = (rows: ReadonlyArray<TimelineDisplayRow>): ReadonlyArray<TimelineDisplayRow> => {
+  const result: TimelineDisplayRow[] = []
+  for (let index = 0; index < rows.length;) {
+    const row = rows[index]!
+    if (row.kind !== "record" || !isFoldableWorkRecord(row.record)) {
+      result.push(row)
+      index += 1
+      continue
+    }
+    const records: ReactTimelineRecord[] = []
+    while (index < rows.length) {
+      const candidate = rows[index]!
+      if (candidate.kind !== "record" || !isFoldableWorkRecord(candidate.record)) break
+      records.push(candidate.record)
+      index += 1
+    }
+    result.push(records.length === 1
+      ? { kind: "record", id: records[0]!.key, record: records[0]! }
+      : { kind: "work-group", id: `work:${records[0]!.key}`, records })
+  }
+  return result
+}
+
+const isTurnFoldableActivity = (record: ReactTimelineRecord): boolean =>
+  (isMessageRecord(record) && !isUserRecord(record)) ||
+  ["reasoning", "tool_call", "tool_result", "collaboration"].includes(record.kind)
+
+/**
+ * Settled user turns keep the authored prompt and terminal answer visible and
+ * fold intermediate commentary/tool activity into one duration row. The live
+ * turn never folds. This is presentation-only; every source record remains in
+ * the bounded history authority and returns under the same stable key.
+ */
+export const deriveReactTimelineDisplayRows = (
+  records: ReadonlyArray<ReactTimelineRecord>,
+  expandedTurnIds: ReadonlySet<string>,
+  working: boolean,
+): ReadonlyArray<TimelineDisplayRow> => {
+  const rows: TimelineDisplayRow[] = []
+  const userIndexes = records.flatMap((record, index) => isUserRecord(record) ? [index] : [])
+  const firstUserIndex = userIndexes[0] ?? records.length
+  for (const record of records.slice(0, firstUserIndex)) rows.push({ kind: "record", id: record.key, record })
+
+  userIndexes.forEach((start, turnIndex) => {
+    const end = userIndexes[turnIndex + 1] ?? records.length
+    const segment = records.slice(start, end)
+    const user = segment[0]
+    if (user === undefined) return
+    rows.push({ kind: "record", id: user.key, record: user })
+
+    const latestLiveTurn = working && turnIndex === userIndexes.length - 1
+    let terminalIndex = -1
+    for (let index = 1; index < segment.length; index += 1) {
+      const record = segment[index]!
+      if (isMessageRecord(record) && !isUserRecord(record) && record.body.trim() !== "") terminalIndex = index
+    }
+    const hiddenIndexes = new Set(segment.flatMap((record, index) =>
+      index > 0 && index !== terminalIndex && isTurnFoldableActivity(record) ? [index] : []))
+    const hidden = segment.filter((_, index) => hiddenIndexes.has(index))
+    if (latestLiveTurn || hidden.length === 0) {
+      for (const record of segment.slice(1)) rows.push({ kind: "record", id: record.key, record })
+      return
+    }
+
+    const turnId = user.key
+    const expanded = expandedTurnIds.has(turnId)
+    rows.push({
+      kind: "turn-fold",
+      id: `turn-fold:${turnId}`,
+      fold: { id: `turn-fold:${turnId}`, turnId, label: turnFoldLabel(segment), expanded, hiddenCount: hidden.length },
+    })
+    for (let index = 1; index < segment.length; index += 1) {
+      const record = segment[index]!
+      if (hiddenIndexes.has(index) && !expanded) continue
+      rows.push({ kind: "record", id: record.key, record })
+    }
+  })
+  return groupDisplayWorkRows(rows)
+}
+
 const minimapPreview = (value: string): string => {
   const compacted = value.replaceAll(/\s+/gu, " ").trim()
   return compacted.length <= 72 ? compacted : `${compacted.slice(0, 69)}…`
@@ -825,10 +945,11 @@ export const deriveAssistantMetaKeys = (
   return result
 }
 
-const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent }: {
+const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent, onSelectVirtualTurn }: {
   readonly turns: ReadonlyArray<ReactTimelineTurn>
   readonly viewportRef: RefObject<HTMLDivElement | null>
   readonly releaseReaderIntent: () => void
+  readonly onSelectVirtualTurn: (turnId: string) => void
 }): ReactElement | null => {
   if (turns.length < 2) return null
   const select = (turn: ReactTimelineTurn): void => {
@@ -836,8 +957,11 @@ const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent }: {
     if (viewport === null) return
     const target = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')]
       .find(element => element.dataset.messageId === turn.id)
-    if (target === undefined) return
     releaseReaderIntent()
+    if (target === undefined) {
+      onSelectVirtualTurn(turn.id)
+      return
+    }
     const reducedMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
     target.scrollIntoView?.({ block: "start", behavior: reducedMotion ? "auto" : "smooth" })
   }
@@ -846,6 +970,8 @@ const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent }: {
       {turns.map((turn, index) => <li key={turn.id}>
         <button
           type="button"
+          data-in-view="false"
+          data-turn-id={turn.id}
           aria-label={`Jump to turn ${index + 1}: ${turn.userPreview}`}
           title={`${turn.userPreview}${turn.assistantPreview === null ? "" : `\n${turn.assistantPreview}`}`}
           onClick={() => select(turn)}
@@ -853,6 +979,20 @@ const TimelineMinimap = ({ turns, viewportRef, releaseReaderIntent }: {
       </li>)}
     </ol>
   </nav>
+}
+
+const TurnFoldDisclosure = ({ fold, onToggle }: {
+  readonly fold: ReactTimelineTurnFold
+  readonly onToggle: (turnId: string, row: HTMLElement | null) => void
+}): ReactElement => {
+  const rowRef = useRef<HTMLDivElement>(null)
+  return <div ref={rowRef} className="oa-react-turn-fold" data-turn-fold={fold.turnId}>
+    <button type="button" aria-expanded={fold.expanded} onClick={() => onToggle(fold.turnId, rowRef.current)}>
+      <span>{fold.label}</span>
+      <small>{fold.hiddenCount} {fold.hiddenCount === 1 ? "activity" : "activities"}</small>
+      <ChevronRight aria-hidden="true" data-icon-name="ChevronRight" data-expanded={fold.expanded ? "true" : "false"} />
+    </button>
+  </div>
 }
 
 const WorkGroupDisclosure = ({ groupKey, folded, visible, running, report }: {
@@ -884,57 +1024,177 @@ const WorkGroupDisclosure = ({ groupKey, folded, visible, running, report }: {
   </div>
 }
 
-const TimelineRecords = ({ records, report }: {
-  readonly records: ReadonlyArray<ReactTimelineRecord>
+const TimelineDisplayRowContent = ({ row, assistantMetaKeys, report, onToggleTurn }: {
+  readonly row: TimelineDisplayRow
+  readonly assistantMetaKeys: ReadonlySet<string>
   readonly report: IntentReporter
+  readonly onToggleTurn: (turnId: string, row: HTMLElement | null) => void
 }): ReactElement => {
-  const output: Array<ReactElement> = []
-  const assistantMetaKeys = deriveAssistantMetaKeys(records)
   const presented = (record: ReactTimelineRecord): ReactTimelineRecord => isMessageRecord(record) && !isUserRecord(record)
     ? { ...record, showAssistantMeta: assistantMetaKeys.has(record.key) }
     : record
-  for (let index = 0; index < records.length;) {
-    const record = records[index]!
-    if (!isFoldableWorkRecord(record)) {
-      output.push(<MessageScrollerItem key={record.key} messageId={record.key} scrollAnchor={isUserRecord(record)}>
-        <MemoTimelineItemBoundary record={presented(record)} report={report} />
-      </MessageScrollerItem>)
-      index += 1
-      continue
-    }
-    const group: Array<ReactTimelineRecord> = []
-    while (index < records.length && isFoldableWorkRecord(records[index]!)) group.push(records[index++]!)
-    if (group.length === 1) {
-      output.push(<MessageScrollerItem key={group[0]!.key} messageId={group[0]!.key}>
-        <MemoTimelineItemBoundary record={presented(group[0]!)} report={report} />
-      </MessageScrollerItem>)
-      continue
-    }
-    const running = group.some(entry => entry.status === "running")
-    const visible = running ? group.slice(-1) : []
-    const folded = running ? group.slice(0, -1) : group
-    // The first work record is the stable group identity. Appending streaming
-    // work must not remount the disclosure and discard the reader's choice.
-    const groupKey = `work:${group[0]!.key}`
-    output.push(<MessageScrollerItem key={groupKey} messageId={groupKey}>
-      <WorkGroupDisclosure groupKey={groupKey} folded={folded} visible={visible} running={running} report={report} />
-    </MessageScrollerItem>)
+  if (row.kind === "turn-fold") return <TurnFoldDisclosure fold={row.fold} onToggle={onToggleTurn} />
+  if (row.kind === "record") return <MemoTimelineItemBoundary record={presented(row.record)} report={report} />
+  const running = row.records.some(entry => entry.status === "running")
+  const visible = running ? row.records.slice(-1) : []
+  const folded = running ? row.records.slice(0, -1) : row.records
+  return <WorkGroupDisclosure groupKey={row.id} folded={folded} visible={visible} running={running} report={report} />
+}
+
+const TIMELINE_VIRTUALIZE_AFTER = 80
+const TIMELINE_ESTIMATED_ROW_HEIGHT = 116
+const TIMELINE_OVERSCAN_PX = 640
+
+type TimelineVirtualWindow = Readonly<{
+  start: number
+  end: number
+  top: number
+  bottom: number
+}>
+
+/** Pure measured-window calculation used by runtime and the 500-row proof. */
+export const resolveReactTimelineVirtualWindow = (input: Readonly<{
+  rowIds: ReadonlyArray<string>
+  measuredHeights: ReadonlyMap<string, number>
+  scrollTop: number
+  viewportHeight: number
+}>): TimelineVirtualWindow => {
+  const count = input.rowIds.length
+  if (count <= TIMELINE_VIRTUALIZE_AFTER) return { start: 0, end: count, top: 0, bottom: 0 }
+  const sizes = input.rowIds.map(id => input.measuredHeights.get(id) ?? TIMELINE_ESTIMATED_ROW_HEIGHT)
+  const offsets: number[] = [0]
+  for (const size of sizes) offsets.push(offsets[offsets.length - 1]! + size)
+  const total = offsets[offsets.length - 1] ?? 0
+  if (input.viewportHeight <= 0) {
+    const start = Math.max(0, count - 40)
+    return { start, end: count, top: offsets[start] ?? 0, bottom: 0 }
   }
-  return <>{output}</>
+  const windowStart = Math.max(0, input.scrollTop - TIMELINE_OVERSCAN_PX)
+  const windowEnd = Math.min(total, input.scrollTop + input.viewportHeight + TIMELINE_OVERSCAN_PX)
+  let start = 0
+  while (start < count && (offsets[start + 1] ?? total) < windowStart) start += 1
+  let end = start
+  while (end < count && (offsets[end] ?? total) <= windowEnd) end += 1
+  end = Math.max(start + 1, Math.min(count, end))
+  return { start, end, top: offsets[start] ?? 0, bottom: Math.max(0, total - (offsets[end] ?? total)) }
+}
+
+const MeasuredTimelineRow = ({ row, index, virtualized, onMeasure, children }: {
+  readonly row: TimelineDisplayRow
+  readonly index: number
+  readonly virtualized: boolean
+  readonly onMeasure: (id: string, index: number, height: number) => void
+  readonly children: ReactNode
+}): ReactElement => {
+  const measureRef = useCallback((element: HTMLDivElement | null) => {
+    if (element === null || !virtualized) return
+    const measure = (): void => {
+      const height = element.getBoundingClientRect().height
+      if (Number.isFinite(height) && height > 0) onMeasure(row.id, index, height)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [index, onMeasure, row.id, virtualized])
+  return <MessageScrollerItem
+    ref={measureRef}
+    messageId={row.id}
+    scrollAnchor={row.kind === "record" && isUserRecord(row.record)}
+    data-virtual-index={virtualized ? index : undefined}
+  >{children}</MessageScrollerItem>
+}
+
+const TimelineDisplayRows = ({ rows, window, assistantMetaKeys, report, onToggleTurn, onMeasure }: {
+  readonly rows: ReadonlyArray<TimelineDisplayRow>
+  readonly window: TimelineVirtualWindow
+  readonly assistantMetaKeys: ReadonlySet<string>
+  readonly report: IntentReporter
+  readonly onToggleTurn: (turnId: string, row: HTMLElement | null) => void
+  readonly onMeasure: (id: string, index: number, height: number) => void
+}): ReactElement => {
+  const virtualized = rows.length > TIMELINE_VIRTUALIZE_AFTER
+  const visible = rows.slice(window.start, window.end)
+  return <>
+    {window.top > 0 ? <div className="oa-react-timeline-virtual-spacer" data-virtual-spacer="top" style={{ height: window.top }} /> : null}
+    {visible.map((row, relativeIndex) => <MeasuredTimelineRow key={row.id} row={row}
+      index={window.start + relativeIndex} virtualized={virtualized} onMeasure={onMeasure}>
+      <TimelineDisplayRowContent row={row} assistantMetaKeys={assistantMetaKeys} report={report} onToggleTurn={onToggleTurn} />
+    </MeasuredTimelineRow>)}
+    {window.bottom > 0 ? <div className="oa-react-timeline-virtual-spacer" data-virtual-spacer="bottom" style={{ height: window.bottom }} /> : null}
+  </>
 }
 
 const TimelineScroller = (props: TimelineProps): ReactElement => {
   const viewportRef = useRef<HTMLDivElement>(null)
   const turns = useMemo(() => deriveReactTimelineTurns(props.records), [props.records])
+  const assistantMetaKeys = useMemo(() => deriveAssistantMetaKeys(props.records), [props.records])
+  const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [readerMode, setReaderMode] = useState<"following" | "anchored" | "free">("following")
+  const readerModeRef = useRef(readerMode)
+  const updateReaderMode = useCallback((mode: "following" | "anchored" | "free"): void => {
+    readerModeRef.current = mode
+    setReaderMode(mode)
+  }, [])
+  const [scrollMetrics, setScrollMetrics] = useState({ top: 0, height: 0 })
+  const measuredHeights = useRef(new Map<string, number>())
+  const [measurementVersion, setMeasurementVersion] = useState(0)
+  const displayRows = useMemo(
+    () => deriveReactTimelineDisplayRows(props.records, expandedTurnIds, props.working === true),
+    [expandedTurnIds, props.records, props.working],
+  )
+  const virtualWindow = useMemo(() => resolveReactTimelineVirtualWindow({
+    rowIds: displayRows.map(row => row.id),
+    measuredHeights: measuredHeights.current,
+    scrollTop: scrollMetrics.top,
+    viewportHeight: scrollMetrics.height,
+  }), [displayRows, measurementVersion, scrollMetrics.height, scrollMetrics.top])
+  const virtualStartRef = useRef(virtualWindow.start)
+  virtualStartRef.current = virtualWindow.start
   const requestedEdge = useRef<"top" | "bottom" | null>(null)
   const previousLoadingEdge = useRef(props.loadingEdge)
   useEffect(() => {
     if (previousLoadingEdge.current !== props.loadingEdge && props.loadingEdge === null) requestedEdge.current = null
     previousLoadingEdge.current = props.loadingEdge
   }, [props.loadingEdge])
+  useEffect(() => {
+    const element = viewportRef.current
+    if (element === null) return
+    const measure = (): void => setScrollMetrics(current => {
+      const next = { top: element.scrollTop, height: element.clientHeight }
+      return current.top === next.top && current.height === next.height ? current : next
+    })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  const updateMinimapViewportState = (element: HTMLElement): void => {
+    for (const button of element.parentElement?.querySelectorAll<HTMLButtonElement>('.oa-react-timeline-minimap button') ?? []) {
+      const turnId = button.dataset.turnId
+      const target = turnId === undefined ? null : [...element.querySelectorAll<HTMLElement>('[data-message-id]')]
+        .find(candidate => candidate.dataset.messageId === turnId) ?? null
+      if (target === null) {
+        button.dataset.inView = "false"
+        continue
+      }
+      const viewportRect = element.getBoundingClientRect()
+      const rowRect = target.getBoundingClientRect()
+      button.dataset.inView = rowRect.bottom > viewportRect.top && rowRect.top < viewportRect.bottom ? "true" : "false"
+    }
+  }
+
   const onScroll = (): void => {
     const element = viewportRef.current
-    if (element === null || props.loadingEdge !== null || requestedEdge.current !== null) return
+    if (element === null) return
+    setScrollMetrics(current => {
+      const next = { top: element.scrollTop, height: element.clientHeight }
+      return current.top === next.top && current.height === next.height ? current : next
+    })
+    updateMinimapViewportState(element)
+    if (element.scrollHeight - element.scrollTop - element.clientHeight <= 2 && readerModeRef.current !== "anchored") updateReaderMode("following")
+    if (props.loadingEdge !== null || requestedEdge.current !== null) return
     if (props.offset > 0 && element.scrollTop < element.clientHeight * 1.5) {
       requestedEdge.current = "top"
       dispatch(props.report, "HistoryOlderRequested")
@@ -946,18 +1206,69 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
       dispatch(props.report, "HistoryNewerRequested")
     }
   }
-  const releaseReaderIntent = (): void => {
+  const releaseReaderIntent = useCallback((): void => {
     const element = viewportRef.current
     if (element === null) return
-    const event = typeof WheelEvent === "function"
-      ? new WheelEvent("wheel", { bubbles: true, deltaY: 0 })
-      : new Event("wheel", { bubbles: true })
-    element.dispatchEvent(event)
+    updateReaderMode("free")
+  }, [updateReaderMode])
+
+  const onToggleTurn = useCallback((turnId: string, row: HTMLElement | null): void => {
+    togglePreservingReaderPosition(row, () => setExpandedTurnIds(existing => {
+      const next = new Set(existing)
+      if (next.has(turnId)) next.delete(turnId)
+      else next.add(turnId)
+      return next
+    }))
+  }, [])
+
+  const onMeasure = useCallback((id: string, index: number, height: number): void => {
+    const previous = measuredHeights.current.get(id) ?? TIMELINE_ESTIMATED_ROW_HEIGHT
+    if (Math.abs(previous - height) < 0.5) return
+    measuredHeights.current.set(id, height)
+    const viewport = viewportRef.current
+    if (viewport !== null && index < virtualStartRef.current && readerMode === "free") viewport.scrollTop += height - previous
+    setMeasurementVersion(version => version + 1)
+  }, [readerMode])
+
+  const scrollToVirtualTurn = useCallback((turnId: string): void => {
+    const viewport = viewportRef.current
+    const index = displayRows.findIndex(row => row.id === turnId)
+    if (viewport === null || index < 0) return
+    let top = 0
+    for (let cursor = 0; cursor < index; cursor += 1) {
+      const row = displayRows[cursor]!
+      top += measuredHeights.current.get(row.id) ?? TIMELINE_ESTIMATED_ROW_HEIGHT
+    }
+    viewport.scrollTo({ top: Math.max(0, top - 24), behavior: "auto" })
+  }, [displayRows])
+
+  const latestUserKey = useMemo(() => [...props.records].reverse().find(isUserRecord)?.key ?? null, [props.records])
+  const previousUserKey = useRef(latestUserKey)
+  if (latestUserKey !== previousUserKey.current) {
+    previousUserKey.current = latestUserKey
+    if (latestUserKey !== null && props.working === true && readerMode !== "anchored") updateReaderMode("anchored")
   }
-  return <MessageScroller className="oa-react-timeline-region" aria-label="Conversation timeline">
+  useEffect(() => {
+    if (readerMode !== "anchored" || props.working !== true || latestUserKey === null) return
+    const view = viewportRef.current?.ownerDocument.defaultView
+    if (view === undefined || view === null) return
+    const frame = view.requestAnimationFrame(() => {
+      const target = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])]
+        .find(candidate => candidate.dataset.messageId === latestUserKey)
+      if (target !== null && target !== undefined) target.scrollIntoView({ block: "start", behavior: "auto" })
+      else scrollToVirtualTurn(latestUserKey)
+    })
+    return () => view.cancelAnimationFrame(frame)
+  }, [displayRows, latestUserKey, props.working, readerMode, scrollToVirtualTurn])
+  useEffect(() => {
+    if (props.working !== true && readerMode === "anchored") updateReaderMode("following")
+  }, [props.working, readerMode, updateReaderMode])
+
+  const anchoredEndSpace = readerMode === "anchored" ? Math.max(0, scrollMetrics.height - 160) : 0
+  return <MessageScroller className="oa-react-timeline-region" aria-label="Conversation timeline" data-reader-mode={readerMode}>
     <MessageScrollerViewport ref={viewportRef} className="oa-react-timeline-scroll"
       data-timeline-session={props.sessionKey} onScroll={onScroll}
-      onPointerDownCapture={releaseReaderIntent} onSelect={releaseReaderIntent}
+      onPointerDownCapture={releaseReaderIntent} onWheelCapture={releaseReaderIntent} onSelect={releaseReaderIntent}
       aria-label={`${props.records.length} loaded conversation items of ${props.totalItems}`}>
       <MessageScrollerContent className="oa-react-timeline-content" aria-busy={props.working === true}>
         {props.loadingEdge === "top"
@@ -965,18 +1276,22 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
           : props.offset > 0
             ? <p className="oa-react-timeline-position">Showing items {props.offset + 1}–{props.offset + props.loadedItemCount} of {props.totalItems}</p>
             : null}
-        <TimelineRecords records={props.records} report={props.report} />
+        <TimelineDisplayRows rows={displayRows} window={virtualWindow} assistantMetaKeys={assistantMetaKeys}
+          report={props.report} onToggleTurn={onToggleTurn} onMeasure={onMeasure} />
         {props.waitingForAnswer ? <MessageScrollerItem messageId="waiting-for-answer-indicator"><div className="oa-react-waiting" role="status" aria-label="Waiting for your answer">
           <span>Waiting for your answer</span>
         </div></MessageScrollerItem> : null}
         {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label={`${props.agentName ?? "Codex"} is working`}>
           <span>Working</span><i /><i /><i />
         </div></MessageScrollerItem> : null}
+        {anchoredEndSpace > 0 ? <div className="oa-react-timeline-anchor-space" aria-hidden="true" style={{ height: anchoredEndSpace }} /> : null}
         {props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
       </MessageScrollerContent>
     </MessageScrollerViewport>
-    <MessageScrollerButton className="oa-react-new-activity" behavior="auto" aria-label="Jump to latest" title="Jump to latest" />
-    <TimelineMinimap turns={turns} viewportRef={viewportRef} releaseReaderIntent={releaseReaderIntent} />
+    <MessageScrollerButton className="oa-react-new-activity" behavior="auto" aria-label="Jump to latest" title="Jump to latest"
+      onClick={() => updateReaderMode("following")} />
+    <TimelineMinimap turns={turns} viewportRef={viewportRef} releaseReaderIntent={releaseReaderIntent}
+      onSelectVirtualTurn={scrollToVirtualTurn} />
   </MessageScroller>
 }
 

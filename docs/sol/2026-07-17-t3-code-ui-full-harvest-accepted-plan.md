@@ -113,11 +113,12 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-01
+## Active packet — T3UI-02
 
-Outcome: make the primary transcript read and behave like T3 before expanding
-side panels: complete the ordinary user/assistant message composition and keep
-reader position stable when variable-height transcript details open or close.
+Outcome: make long conversations remain fast, navigable, and position-stable
+before expanding the composer or any side panel. Settled turns collapse their
+intermediate work without hiding the terminal answer; the active turn remains
+open and anchored until the reader takes manual control.
 
 Owned paths:
 
@@ -128,54 +129,53 @@ Owned paths:
 
 Required behavior:
 
-- user rows keep T3's right-aligned 80% bubble and hover/focus metadata row;
-- prompts beyond eight lines or 600 characters collapse with fade and an
-  accessible `Show full message` / `Show less` control;
-- settled assistant rows expose copy, timestamp, and exact history details in a
-  quiet hover/focus metadata row, while streaming rows do not offer a stale copy;
-- opening/closing long prompts and settled work groups preserves the reader's
-  visual position when they are away from the live edge;
-- live-edge following, manual-scroll hold, Jump to latest, prepend anchoring,
-  typed older/newer paging, same-key streaming replacement, stable item keys,
-  `content-visibility`, and the existing 500-row budget remain proved;
-- two or more user turns expose a compact keyboard-operable minimap whose
-  labels include user and assistant previews and whose navigation releases
-  live-edge following without stealing focus; and
-- typed plan, reasoning, command, file, tool, agent, approval, notice, refusal,
-  redaction, working, and waiting rows remain distinct rather than flattening
-  into assistant prose.
+- settled user-turn segments show one accessible `Worked for …` or stopped
+  disclosure, keep the authored prompt and terminal assistant answer visible,
+  and restore every intermediate typed row under its stable key when expanded;
+- the newest working turn never folds, and a new authored turn enters anchored
+  mode with measured end space until completion or explicit reader navigation;
+- wheel, pointer selection, and minimap navigation enter free-scroll mode;
+  Jump to latest and turn completion restore ordinary following;
+- the turn minimap marks mounted turns intersecting the viewport and can reach
+  virtualized turns by measured/estimated offset without requiring their DOM;
+- pages above 80 presentation rows use variable-height measured windowing with
+  bounded overscan, stable top/bottom spacers, resize correction, and no more
+  than a small mounted subset of the admitted 500-row history page;
+- history prepend retention, typed older/newer paging, same-key streaming
+  replacement, session-key recovery, focus retention, and scroll-stable
+  disclosures remain proved; and
+- typed message, plan, reasoning, command, file, tool, agent, approval, notice,
+  refusal, redaction, working, and waiting rows remain semantically distinct.
 
-Proof: focused transcript projection/rendering/scroll/performance tests,
-Desktop typecheck, the Sol document guards, production build/fixture smoke where
-available, and rendered short/long/streaming/long-thread visual inspection.
+Proof: pure fold/duration/window tests; mounted fold, reader-mode, pagination,
+prepend, streaming, session-replacement, and 500-row tests; Desktop typecheck,
+full serial suite, production build, Electron fixture smokes, Sol guards, and a
+long-thread visual receipt.
 
-Close rule: this packet closes ordinary message composition, scroll-stable
-variable-height disclosure, and basic turn minimap navigation only. Turn
-folds/duration, measured full virtualization, rich contexts/images/revert,
-all-component harvest, installed journey, signed release, and T3 parity remain.
+Close rule: this packet closes turn folding/duration, measured 500-row
+virtualization, anchored/following/free reader modes, virtualized minimap
+navigation, and the existing history recovery contract. Rich user contexts,
+images/revert, composer parity, all-component harvest, installed journey,
+signed release, and T3 parity remain later packets.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-01-20260717`
-- base: `544bb2a2e00421984d415fc1d81d70e530bef05f`
+- actor/session: `codex-t3ui-02-20260717`
+- base: `97a95f2af9d1d55db1187acbd9d225b5983dbcc8`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: transcript message composition and scroll-stable disclosures
+- scope: transcript navigation, turn folding, reader modes, and measured scale
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: long-prompt collapse, terminal-assistant metadata,
-  scroll-stable prompt/work disclosure, and basic turn minimap are mounted
-- focused proof: 48 transcript tests and 19 Sol document tests passed; shared
-  UI typecheck and Desktop production build passed
-- visual proof: 16 states captured; 10 passed the checked-in threshold and six
-  exposed stale transcript/composer baseline pixels, which were not rewritten
-- Desktop typecheck passed after reconciliation with the landed conversation-
-  catalog status fix; the final full sweep passed 1,989 with 39 skipped
-- receipt: [`2026-07-17-t3ui-01-transcript-message-composition-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-01-transcript-message-composition-receipt.md)
-- residual: exact turn folds/duration, measured full virtualization, anchored
-  new-turn space, minimap viewport state, rich contexts/images/revert, and
-  installed long-thread evidence remain T3UI-02 work
+- implementation: turn folds/duration, measured presentation-row windowing,
+  anchored/following/free reader modes, virtual minimap fallback, and resize/
+  prepend correction are mounted
+- focused proof: 53 transcript tests are included in the rebased 205-file
+  Desktop sweep with 1,999 passed and 39 skipped before final acceptance
+- receipt: [`2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-02-transcript-navigation-scale-receipt.md)
+- residual: rich contexts/images/revert and installed signed-build evidence
+  remain later packet work; this is not T3 parity
 
 ## Explicit non-authority
 

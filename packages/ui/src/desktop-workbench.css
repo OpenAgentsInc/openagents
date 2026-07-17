@@ -858,17 +858,86 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-timeline-minimap button > span {
-  width: 10px;
+  width: 16px;
   height: 2px;
   border-radius: var(--en-radius-sm);
   background: var(--en-color-borderStrong);
-  transition: width var(--en-motion-fast) var(--en-ease-basic), background var(--en-motion-fast) var(--en-ease-basic);
+  transform: scaleX(0.625);
+  transform-origin: right center;
+  transition: transform var(--en-motion-fast) var(--en-ease-basic), background var(--en-motion-fast) var(--en-ease-basic);
 }
 
 .oa-react-timeline-minimap button:hover > span,
-.oa-react-timeline-minimap button:focus-visible > span {
-  width: 16px;
+.oa-react-timeline-minimap button:focus-visible > span,
+.oa-react-timeline-minimap button[data-in-view="true"] > span {
+  transform: scaleX(1);
   background: var(--en-color-accent);
+}
+
+.oa-react-timeline-virtual-spacer,
+.oa-react-timeline-anchor-space {
+  width: 100%;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.oa-react-turn-fold {
+  width: min(720px, 100%);
+  margin: 0 auto var(--en-spacing-4);
+  padding-bottom: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-turn-fold > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  min-height: 28px;
+  padding: 0 var(--en-spacing-1);
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textSecondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.oa-react-turn-fold > button:hover {
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-turn-fold > button:focus-visible {
+  outline: 2px solid var(--en-color-focus);
+  outline-offset: 2px;
+}
+
+.oa-react-turn-fold small {
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+
+.oa-react-turn-fold svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--en-motion-fast) var(--en-ease-basic);
+}
+
+.oa-react-turn-fold svg[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+.oa-react-timeline-region[data-reader-mode="anchored"] .oa-react-new-activity {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-turn-fold svg,
+  .oa-react-timeline-minimap button > span {
+    transition: none;
+  }
 }
 
 @media (pointer: fine) {
