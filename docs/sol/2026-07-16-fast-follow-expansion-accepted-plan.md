@@ -2233,6 +2233,73 @@ remain later packets.
 - released_at: `2026-07-17T21:21:31Z`
 - residual: workspace-members retry, named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-29 — Desktop workspace-share idempotent retry transport
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-28. The existing
+workspace-members publication transport still sends only one attempt even
+though FF-D1-27 now supplies authenticated owner-scoped idempotency and exact
+first-create/replay evidence. Active work continues to own Desktop `main.ts`
+and renderer surfaces, while named-group publication still lacks authoritative
+membership. This packet therefore adds one bounded idempotent retry only to
+the existing already-authorized workspace-members adapter.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-workspace-publication-transport.ts`
+- `apps/openagents-desktop/src/thread-visibility-workspace-publication-transport.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-29-desktop-workspace-share-idempotent-retry-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the exact applied workspace-members visibility receipt,
+FF-D1-23 owner/workspace-member authorization, exact team scope and source,
+FF-D1-27 authenticated owner-scoped `Idempotency-Key`, same-key semantic
+replay, `201` first creation, `200` replay, exact bounded audience response,
+credential custody, and ref-only request/response privacy. Server routes,
+schemas, migrations, public/named-group adapters, `main.ts`, preload, renderer,
+provider, and Sync contracts remain unchanged.
+
+Required behavior:
+
+- derive one bounded visible-ASCII publication key from the exact disclosure
+  receipt identity without exposing raw content, credentials, paths, team
+  names, or provider data;
+- validate the complete receipt, authorization, team scope/source, and bounded
+  team name before reading the host-custodied token, then send at most two
+  identical authenticated ref-only create requests with the same key and body;
+- retry exactly once only for transport failure, retryable or ambiguous HTTP
+  status, unreadable body, or malformed, unsafe, or wrong-audience success
+  evidence;
+- accept only `201` with `Idempotency-Replayed: false` or `200` with
+  `Idempotency-Replayed: true`, plus the existing bounded active same-origin
+  response carrying the exact expected TeamMembers audience label; and
+- never retry definitive authentication, authorization, malformed-request, or
+  idempotency-conflict refusal, and keep exhausted ambiguity typed unknown.
+
+Proof: focused workspace-publication, disclosure, authorization, Sync-authority,
+and FF-D1-27 server-contract tests; Desktop typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only bounded workspace-members client retry and
+reconciliation. Named-group authority/publication, canonical-export evidence
+authority, actual `main.ts` composition, renderer command/pixels,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-29-20260717`
+- base: `6631bcba080ec4005030f9ad1d5bcfee4d890a18`
+- worktree/branch: `openagents-ff-d1-29` / detached `origin/main`
+- scope: one bounded same-key retry and exact replay acceptance for Desktop workspace-members visibility publication
+- paths: the FF-D1-29 owned implementation paths above
+- hot files: existing workspace-publication transport/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact receipt-derived key, exact team audience, at-most-two identical attempts, FF-D1-27 201/200 replay distinction, definitive refusal, exhausted unknown, and unchanged credential/content boundary
+- dependencies: FF-D1-28 released; no relevant open bug issue or competing claim; all audited worktrees leave these two Desktop transport paths unmodified; active Desktop host/UI, teardown, T3, and Full Auto files explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T21:25:23Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
