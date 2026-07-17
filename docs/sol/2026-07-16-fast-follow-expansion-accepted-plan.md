@@ -1399,6 +1399,70 @@ completion remain later packets.
 - released_at: `2026-07-17T17:37:38Z`
 - residual: actual `main.ts` call-site composition, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-19 — Restart-stable Desktop thread-visibility policy store
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-18. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only private main-process store that applies the
+already-landed explicit visibility intent with optimistic version checks and
+restart-stable receipts, without publishing thread content or rendering pixels.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-policy-store.ts`
+- `apps/openagents-desktop/src/thread-visibility-policy-store.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-19-desktop-thread-visibility-policy-store-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_disclosure_receipt.v1`, explicit audience and administrator
+access axes, optimistic visibility versioning, replay identity, and the private
+Desktop user-data boundary. Existing shared schemas, `main.ts`, preload,
+renderer, export, Sync, provider, publication, and transport contracts remain
+unchanged.
+
+Required behavior:
+
+- the store accepts only a decoded ref-only `thread.visibility.set` intent and
+  rejects malformed, raw-content-bearing, export, or contradictory policy
+  input before persistence;
+- first observation accepts either an explicit version-zero expectation or the
+  bounded `not_observed` expectation, while subsequent mutation requires the
+  exact current version and advances it monotonically by one;
+- exact intent/idempotency replay returns the identical stored receipt without
+  advancing version, while conflicting identity reuse and stale expectations
+  fail closed;
+- policy and receipt state persist atomically under a private Desktop directory,
+  reconstruct identically after reopen, and reject corrupt or cross-thread
+  records without overwriting them; and
+- applying policy records intent and receipt evidence only: it grants no content
+  publication, membership, administrator, network, provider, deployment,
+  release, or acceptance authority.
+
+Proof: focused visibility-store and shared disclosure tests; Desktop TypeScript
+check; Fast Follow, behavior-contract, ProductSpec, Sol, AssuranceSpec baseline,
+and repository-required checks.
+
+Close rule: this packet closes only private restart-stable visibility policy
+application and receipt evidence. Main-process composition, preload/renderer
+commands and pixels, actual audience authorization/publication adapters,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-19-20260717`
+- base: `a86ffc74992137c8ddafacfa201fa37dd6665dbd`
+- worktree/branch: `openagents-ff-d1-19` / detached `origin/main`
+- scope: restart-stable private Desktop thread-visibility policy application and receipt evidence
+- paths: the FF-D1-19 owned implementation paths above
+- hot files: new Desktop visibility store/test; accepted-plan ledger and Sol manifest
+- hot contracts: existing disclosure intent/receipt literals, explicit audience/admin axes, optimistic version, replay identity, and private persistence
+- dependencies: FF-D1-18 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T17:42:11Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
