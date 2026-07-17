@@ -1143,6 +1143,15 @@ remain later packets.
 - verification: focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T16:20:53Z`
 
+### CLAIM-STATUS
+
+- implementation: added a fixed canonical-export creation channel and exposed one exact owner-only intent/result method through sandboxed preload
+- privacy/authority proof: malformed, broader, raw-content-bearing, and envelope-smuggled requests fail before IPC; exact result decoding binds the ref-only receipt to the requested intent and rejects path/error leakage
+- focused proof: all 21 create-bridge/bridge/command tests passed; the production contract passes isolated strict TypeScript compilation; the Desktop production build contains the fixed creation channel and method
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, focused ProductSpec 104/104, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: the Desktop package typecheck retains only the pre-existing lifecycle-schema failures recorded by FF-D1-10 through FF-D1-14; the known AssuranceSpec environment-digest snapshot drift remains 189/190 and outside this packet
+- residual: main-process creation-handler registration, actual `main.ts` composition, renderer create-then-write command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
