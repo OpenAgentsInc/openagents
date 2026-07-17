@@ -674,6 +674,69 @@ Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: artifact persistence/transport, Desktop command consumption and pixels, broader disclosure adapters, remaining runtime/rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-10 — Private atomic canonical export store
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-09. Active
+Desktop history, shell, renderer, main-process integration, update, and release
+files remain excluded. The packet adds a new-file-only Desktop main-process
+store that persists and reloads FF-D1-09 owner-only canonical event bundles
+without granting renderer access, save-dialog transport, broader disclosure,
+or command authority.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-artifact-store.ts`
+- `apps/openagents-desktop/src/thread-export-artifact-store.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-10-desktop-thread-export-store-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_intent.v1`,
+`openagents.thread_disclosure_receipt.v1`,
+`openagents.thread_export_artifact.v1`, Desktop private `userData` storage,
+and exact SHA-256 identity. Existing Desktop IPC, command, shell, renderer,
+Sync, provider, and visibility contracts remain unchanged.
+
+Required behavior:
+
+- only an exact decoded owner-only `thread.export.create` intent and matching
+  FF-D1-09 compilation can enter the store;
+- the store verifies UTF-8 bytes, canonical encoded equality, artifact schema,
+  intent/thread/format/audience identity, byte bound, and SHA-256 before write;
+- artifacts are addressed only by their SHA-256, written atomically beneath a
+  private mode-0700 directory as mode-0600 files, and exact retry is idempotent;
+- reopening can load only an exact artifact ref/digest pair and revalidates
+  stored bytes, digest, schema, and owner-only audience before returning bytes
+  inside the main-process module;
+- corruption, mismatched identity, invalid receipt metadata, persistence
+  failure, and conflicting existing bytes fail closed without overwrite; and
+- successful persistence returns a schema-valid ref-only export-created
+  receipt, never a path, transcript projection, broader audience grant,
+  renderer capability, provider verdict, or release claim.
+
+Proof: focused store/reopen/corruption/privacy tests; Desktop typecheck; Fast
+Follow, behavior-contract, ProductSpec, Sol, and repository-required checks.
+
+Close rule: this packet closes only private Desktop main-process persistence
+and verified reload of owner-only canonical export artifacts. IPC/command
+wiring, save-dialog or remote transport, Desktop pixels, broader disclosure
+adapters, remaining runtime/rendered evidence, and Day 1 completion remain
+later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-10-20260717`
+- base: `6ea8e81b0b057fad3d4d080b310cfc1756e2bc57`
+- worktree/branch: `openagents-ff-d1-10` / detached `origin/main`
+- scope: private atomic Desktop persistence and verified reload for exact owner-only canonical export bytes
+- paths: the FF-D1-10 owned implementation paths above
+- hot files: new Desktop store/test files; accepted-plan ledger and Sol manifest
+- hot contracts: exact bytes/digest identity, owner-only artifact audience, atomic private storage, ref-only receipt, and corruption refusal
+- dependencies: FF-D1-09 released; current mobile/Sync lifecycle work reconciled; active Desktop integration/rendering/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T14:40:11Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
