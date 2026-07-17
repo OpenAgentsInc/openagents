@@ -2488,6 +2488,73 @@ evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T22:11:59Z`
 - residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-32 — Desktop canonical-export host runtime composition
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-31. The private
+artifact store, settled confirmed-timeline command, local file transport, and
+atomic two-handler composition all exist, but the host still has to reconstruct
+their shared authority graph. Authoritative supersession/reversion and named-
+group membership remain unavailable, while active work owns `main.ts`, preload,
+renderer, installed-runtime, mobile, and teardown surfaces. This packet adds
+one new-file-only Effect resource composing the existing main-process pieces
+behind a single bounded lifetime.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-host-runtime.ts`
+- `apps/openagents-desktop/src/thread-export-host-runtime.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-32-desktop-thread-export-host-runtime-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: one private artifact-store directory, FF-D1-31's confirmed-
+timeline command, FF-D1-12's local destination transport, FF-D1-18's atomic
+handler lifetime, exact trusted-sender and fixed-channel registration, and
+path-free renderer results. Export schemas, store/transport/handler internals,
+IPC/preload, `main.ts`, renderer, provider, named-group, server, and Sync
+contracts remain unchanged.
+
+Required behavior:
+
+- construct one private artifact store and share its exact `persist`/`load`
+  authority only with the existing command and file transport respectively;
+- bind the confirmed timeline, receipt identity, observation time, digest,
+  destination selection, trusted-sender, and fixed-channel registration as
+  explicit host dependencies without defaults or new authority;
+- acquire both existing handlers through the atomic main composition so create
+  registration failure rolls back write registration and close remains reverse-
+  ordered and idempotent;
+- carry one valid exact-thread create through confirmed evidence, deterministic
+  private persistence, receipt-only handoff, selected local write, and path-free
+  result while untrusted or malformed calls fail before host effects; and
+- expose only the existing close-only lifetime resource so a later `main.ts`
+  packet performs one bounded acquisition and cannot reach store bytes or paths.
+
+Proof: focused host-runtime, command composition, store, transport, handler,
+compiler, authority, and Sync timeline tests; Desktop typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only the main-process canonical-export resource
+graph behind one host acquisition. Authoritative supersession/reversion
+evidence, named-group authority/publication, the actual `main.ts` call site,
+renderer command/pixels, installed/runtime-rendered evidence, and Day 1
+completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-32-20260717`
+- base: `7a71022edb76cb18201c10b061bb02c96e7ff03f`
+- worktree/branch: `openagents-ff-d1-32-impl` / detached `origin/main`
+- scope: compose the existing private store, confirmed export command, file transport, and atomic handlers into one close-only host resource
+- paths: the FF-D1-32 owned implementation paths above
+- hot files: two new Desktop host-runtime/test files; accepted-plan ledger and Sol manifest
+- hot contracts: one shared private store, exact confirmed authority, receipt-only handoff, fixed channels, atomic rollback/cleanup, and no host-path projection
+- dependencies: FF-D1-31 released; no relevant open bug issue or competing claim; all audited worktrees leave the new paths unclaimed; active Desktop host/UI, mobile, Full Auto, teardown, and release files explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T22:15:37Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
