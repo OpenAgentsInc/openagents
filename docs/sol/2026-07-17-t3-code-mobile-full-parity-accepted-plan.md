@@ -1310,3 +1310,20 @@ open.
   receipt
 - exclusions: live paired endpoint and installed mutation evidence
   (`T3M-F1/F2`), terminal/connections/release (`T3M-E2`–`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `ea8c6e2d5e16f9da3ad69fe13fc808c4bdff4fe5` on `main`
+- verification: pre-rebase 246 mobile tests, 36 behavior-contract tests,
+  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 24
+  Git/environment/Sol tests, mobile typecheck, and the 141-document Sol
+  manifest check
+- authority note: status and all mutations are exact session/repository/
+  worktree/status/HEAD fenced. Checkout, commit, and push each require explicit
+  confirmation and idempotency identity; typed failures mint no receipt, and
+  only decoded receipts replace visible status while the transcript remains
+  unchanged
+- close boundary: `T3M-E1` is complete in application code. Live paired Git
+  endpoint provisioning and installed mutation evidence remain explicit
+  `T3M-F1/F2`; ordered work advances to `T3M-E2`
+- verified_at: `2026-07-17T23:24:58Z`
