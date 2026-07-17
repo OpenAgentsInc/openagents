@@ -483,3 +483,13 @@ commands, `@` context, attachment editing, and active-run queue/stop remain
 - close boundary: no slash-command, `@` context, attachment editing, or
   active-run queue/stop claim; those remain `T3M-B2`
 - verified_at: `2026-07-17T21:42:38Z`
+
+### CLAIM-RELEASE
+
+- landed: `9cc111a8ee5a07a369c24752411d9828e181d9d3` on `main`
+- verification: post-rebase 81 focused composer-toolbar, authoritative Home,
+  accessibility, local-first registry, behavior-contract, and Sol tests;
+  mobile typecheck; pre-rebase `pnpm run check` and manifest generation
+- residual: `T3M-B1` is complete; `T3M-B2` slash commands, `@` context,
+  attachment editing, and active-run queue/stop is the next ordered packet;
+  full mobile parity remains open through `T3M-F2`
