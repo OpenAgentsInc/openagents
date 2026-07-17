@@ -253,6 +253,19 @@ describe("CUT-26 macOS artifact contract", () => {
       });
       expect(JSON.stringify(receipt)).not.toContain(fixture);
       expect(JSON.stringify(receipt)).not.toContain("fixture-codex");
+      const x64Executable = packagedCodexPath(fixture, "darwin", "x64");
+      mkdirSync(path.dirname(x64Executable), { recursive: true });
+      writeFileSync(x64Executable, "fixture-codex-x64", { mode: 0o755 });
+      chmodSync(x64Executable, 0o755);
+      expect(
+        verifyPackagedCodexRuntime({
+          appPath: fixture,
+          platform: "darwin",
+          arch: "x64",
+          exec: (file) =>
+            file === "/usr/bin/file" ? "Mach-O 64-bit executable x86_64" : "codex-cli 0.144.1",
+        }),
+      ).toMatchObject({ state: "ready", arch: "x64" });
       expect(() =>
         verifyPackagedCodexRuntime({
           appPath: fixture,

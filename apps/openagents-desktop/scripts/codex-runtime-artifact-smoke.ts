@@ -64,7 +64,8 @@ export const verifyPackagedCodexRuntime = (input: Readonly<{
   accessSync(executable, constants.X_OK)
   const exec = input.exec ?? defaultExec
   const architecture = exec("/usr/bin/file", ["-b", executable], { encoding: "utf8", timeout: 5_000 })
-  if (!architecture.includes(input.arch)) throw new Error(`packaged Codex has wrong architecture: expected ${input.arch}`)
+  const fileArchitecture = input.arch === "x64" ? "x86_64" : "arm64"
+  if (!architecture.includes(fileArchitecture)) throw new Error(`packaged Codex has wrong architecture: expected ${input.arch}`)
   if (input.requireSignature === true) {
     exec("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", executable], { encoding: "utf8", timeout: 10_000 })
   }
