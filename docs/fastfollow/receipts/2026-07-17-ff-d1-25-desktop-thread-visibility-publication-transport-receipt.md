@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "e2a38a225e8df469c0d5a8ff24d9a171a06b6424"
 claim_revision: "1fd8c5913573998a33fd7badfda7b8e5b4fca626"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "f449d6200f3acfa30f484c612c1469b589d82c5a"
 proof_rung: "desktop_thread_visibility_owner_publication_transport"
 observed_at: "2026-07-17T19:57:33Z"
 ---
@@ -25,6 +25,10 @@ admitted this packet after FF-D1-24 released. Current `origin/main`, prior Day
 ProductSpec and AssuranceSpec obligations, repository invariants, open issues,
 known baselines, Git configuration, and active worktrees were reconciled before
 mutation.
+
+The tested implementation tree was landed on current `origin/main` at
+`f449d6200f3acfa30f484c612c1469b589d82c5a`. This documentation-only release
+annotation records that remote fact; it does not extend scope.
 
 No target-authoritative named-group membership source exists, and active work
 continues to own Desktop `main.ts` and broad renderer surfaces. This packet

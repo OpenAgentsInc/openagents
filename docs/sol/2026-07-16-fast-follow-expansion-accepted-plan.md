@@ -1955,14 +1955,22 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T19:49:51Z`
 
-### IMPLEMENTATION OUTCOME
+### CLAIM-STATUS
 
-- status: tested implementation ready for remote landing
+- implementation: added an Effect transport that binds exact applied public visibility and exact owner authorization to one ref-only call into the existing redacted share builder
+- privacy/authority proof: request validation precedes host credential access; only source identity and public audience cross the boundary; responses are bounded and same-origin; ambiguous delivery is never retried or mislabeled definitive
+- focused proof: 26/26 publication-transport, audience-authorization, disclosure, and share-contract tests passed; Desktop package typecheck passed
+- authority proof: Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline collisions: AssuranceSpec environment-digest drift remains 189/190; root Fast Follow teardown coverage remains 6/7 because the separately owned seed update is not committed on `main`
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-25-desktop-thread-visibility-publication-transport-receipt.md`
-- implementation: pending exact remote commit
-- disposition: bounded packet implementation complete; claim remains held until the exact remote tree and receipt are verified
-- authority proof: focused transport/cross-contract tests 26/26, Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
-- known baselines: targeted AssuranceSpec reproduced only the environment digest mismatch at 189/190; root Fast Follow reproduced only the separately owned teardown seed at 6/7
+- residual: named-group/workspace publication authority, ambiguous-create reconciliation, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
+### CLAIM-RELEASE
+
+- claim: `1fd8c5913573998a33fd7badfda7b8e5b4fca626`
+- implementation: `f449d6200f3acfa30f484c612c1469b589d82c5a`
+- disposition: `bounded_packet_landed`
+- released_at: `2026-07-17T19:59:19Z`
 - residual: named-group/workspace publication authority, ambiguous-create reconciliation, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
 ## Explicit non-authority
