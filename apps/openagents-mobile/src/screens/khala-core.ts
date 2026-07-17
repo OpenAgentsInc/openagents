@@ -5,7 +5,6 @@ import {
   Button,
   ComponentValueBinding,
   Image,
-  IconButton,
   IntentRef,
   Stack,
   Spacer,
@@ -765,74 +764,43 @@ export const renderKhalaSurface = (
         accessibility,
         executionTargets,
       ),
-      Stack(
-        {
-          key: "khala-composer-bar",
-          direction: "row",
-          gap: "2",
-          align: "center",
-          padding: "2",
-          style: {
-            width: "full",
-            minHeight: Math.max(54, accessibility.minTouchTarget),
-            borderRadius: "full",
-            surface: "glass",
-          },
-        },
-        [
-          IconButton({
-            key: "khala-new-chat",
-            icon: "Plus",
-            accessibilityLabel: codingComposer === null
-              ? "New chat"
-              : codingAttachmentPicking
-                ? "Choosing files or images"
-                : "Add file or image",
-            disabled: state.pending || codingAttachmentPicking,
-            onPress: IntentRef(
-              codingComposer === null
-                ? "NewChatPressed"
-                : "CodingComposerAttachmentsRequested",
-              StaticPayload({}),
-            ),
-            surface: "glass",
-            style: mobileInteractiveStyle(accessibility),
-          }),
-          Composer({
-            key: "khala-composer",
-            doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
-            mode: "normal",
-            placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
-            ...(codingComposer === null ? {} : {
-              attachments: codingComposer.draft.doc.attachments.map(attachment => ({
-                id: attachment.id,
-                name: attachment.name,
-                mimeType: attachment.mime,
-                size: attachment.sizeBytes,
-              })),
+      Composer({
+        key: "khala-composer",
+        doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
+        mode: "normal",
+        placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
+        ...(codingComposer === null ? {} : {
+          attachments: codingComposer.draft.doc.attachments.map(attachment => ({
+            id: attachment.id,
+            name: attachment.name,
+            mimeType: attachment.mime,
+            size: attachment.sizeBytes,
+          })),
+        }),
+        submitting: state.pending,
+        clearOnSubmit: true,
+        a11y: { label: "Coding message" },
+        onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
+        ...(codingComposer === null ? {} : {
+          onAttachmentRequest: IntentRef(
+            "CodingComposerAttachmentsRequested",
+            StaticPayload({}),
+          ),
+        }),
+        ...(codingComposer !== null && codingComposer.draft.target.readiness !== "ready"
+          ? {}
+          : {
+              onSubmit: IntentRef(
+                KhalaTurnSubmitted,
+                ComponentValueBinding(),
+              ),
             }),
-            submitting: state.pending,
-            clearOnSubmit: true,
-            a11y: { label: "Coding message" },
-            onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
-            ...(codingComposer !== null &&
-                codingComposer.draft.target.readiness !== "ready"
-              ? {}
-              : {
-                  onSubmit: IntentRef(
-                    KhalaTurnSubmitted,
-                    ComponentValueBinding(),
-                  ),
-                }),
-            style: {
-              flex: 1,
-              minHeight: accessibility.minTouchTarget,
-              borderWidth: 0,
-              surface: "glass",
-            },
-          }),
-        ],
-      ),
+        style: {
+          width: "full",
+          minHeight: Math.max(54, accessibility.minTouchTarget),
+          surface: "glass",
+        },
+      }),
     ],
   )
 

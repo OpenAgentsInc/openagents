@@ -556,6 +556,31 @@ describe("React Native renderer host boundaries", () => {
     expect(structure).toContain('"disabled":true')
   })
 
+  test("keeps the T3-style collapsed composer quiet until it has content", () => {
+    const element = renderReactNativeView(
+      Composer({
+        key: "composer-empty",
+        doc: [],
+        mode: "normal",
+        placeholder: "Message",
+        onChange: IntentRef("Changed"),
+        onSubmit: IntentRef("Submitted"),
+        onAttachmentRequest: IntentRef("AttachmentRequested")
+      }),
+      {
+        React: { createElement },
+        ReactNative: { ...reactNative, Platform: { OS: "android", Version: 35 } }
+      },
+      () => Effect.succeed(undefined),
+      { platform: "android" }
+    )
+    const structure = JSON.stringify(element)
+    expect(structure).toContain('"accessibilityLabel":"Add attachment"')
+    expect(structure).toContain('"accessibilityLabel":"Send message"')
+    expect(structure).toContain('"disabled":true')
+    expect(structure).toContain('"backgroundColor":"rgba(44,44,46,0.96)"')
+  })
+
   test("keeps a failing intent callback total while executing its effect", async () => {
     const attempted: Array<string> = []
     const report: IntentReporter = (ref) =>

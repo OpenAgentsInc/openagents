@@ -778,3 +778,29 @@ This closes presentation parity for ordinary text rows, not the broader mobile
 controller gap. T3's copy/revert affordances, rich Markdown and code surfaces,
 activity folding, attachment viewer, Files, Changes, Terminal, Preview, push,
 and installed-device acceptance remain separate work.
+
+## 15. Implementation update — MOBILE-PARITY-03G
+
+The mobile composer-chrome parity slice landed on 2026-07-17 as
+[#8966](https://github.com/OpenAgentsInc/openagents/issues/8966).
+
+OpenAgents mobile no longer nests an Effect Native composer inside a second
+glass bar or carries a separate leading plus circle. The collapsed composer is
+now the same single-surface pattern as T3 Code mobile: a 54px native capsule,
+18px leading inset, 5px trailing and vertical insets, a 44px circular send
+control, and an honestly disabled empty-draft state. The non-native fallback
+uses T3's dark material, hairline border, radius, and shadow values; iOS 26 uses
+the native SwiftUI glass lowering with the same geometry and blue-tinted send
+action.
+
+Focus morphs the iOS control into the 20px expanded editor and action row.
+Attachment picking moved from the deleted outer plus button to a typed
+`onAttachmentRequest` composer contract, with React Native, SwiftUI, and DOM
+lowerings. This preserves the coding-session attachment capability while
+keeping the collapsed state visually identical to T3's.
+
+Core, DOM, React Native, and mobile TypeScript checks pass. Fifty-six focused
+contract tests and Expo Go inspection on the iOS 26.5 iPhone 17 Pro Simulator
+cover the implementation. Model/runtime/interaction selectors, rich attachment
+previews, command popovers, and the remaining controller surfaces are still
+separate parity work.

@@ -2624,6 +2624,8 @@ export interface ComposerView extends NodeBase {
   // Fires with the normalized plaintext value of the document.
   readonly onChange?: IntentRef
   readonly onSubmit?: IntentRef
+  /** Requests the host attachment picker from the focused composer toolbar. */
+  readonly onAttachmentRequest?: IntentRef
   // Fires with one of composerKeyCommands as the payload.
   readonly onKeyCommand?: IntentRef
   // Fires with bounded dropped-item metadata (DnD from the interaction algebra).
@@ -4528,6 +4530,7 @@ export const ComposerSchema: Schema.Codec<ComposerView, ComposerView> = Schema.T
   clearOnSubmit: Schema.Boolean.pipe(Schema.optionalKey),
   onChange: IntentRefSchema.pipe(Schema.optionalKey),
   onSubmit: IntentRefSchema.pipe(Schema.optionalKey),
+  onAttachmentRequest: IntentRefSchema.pipe(Schema.optionalKey),
   onKeyCommand: IntentRefSchema.pipe(Schema.optionalKey),
   onAttachmentDrop: IntentRefSchema.pipe(Schema.optionalKey),
   style: TextFieldStyleSchema.pipe(Schema.optionalKey)

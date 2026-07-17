@@ -346,7 +346,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(initial).toContain("openagents · main")
     expect(initial).toContain("Claude · provider.claude · Model not selected · Account not selected")
     expect(initial).toContain("screen.png")
-    expect(initial).toContain("Add file or image")
+    expect(initial).toContain('"onAttachmentRequest":{"name":"CodingComposerAttachmentsRequested"')
 
     program.coding.pickAttachments()
     await Effect.runPromise(settle)

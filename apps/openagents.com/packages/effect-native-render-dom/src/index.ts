@@ -3914,6 +3914,19 @@ const renderComposer = (view: ComposerView, state: DomRendererState, report: Int
 
   const children: Array<HTMLElement> = [editor]
 
+  if (view.onAttachmentRequest !== undefined) {
+    const attachmentRequest = document.createElement("button")
+    attachmentRequest.type = "button"
+    attachmentRequest.setAttribute("data-en-role", "attachment-request")
+    attachmentRequest.setAttribute("aria-label", "Add attachment")
+    attachmentRequest.textContent = "+"
+    const onAttachmentRequest = view.onAttachmentRequest
+    state.addListener(attachmentRequest, "click", () => {
+      runReportedIntent(report, onAttachmentRequest)
+    })
+    children.push(attachmentRequest)
+  }
+
   if (view.attachments !== undefined && view.attachments.length > 0) {
     const tray = document.createElement("div")
     tray.setAttribute("data-en-role", "attachments")

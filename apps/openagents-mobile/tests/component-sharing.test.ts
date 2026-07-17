@@ -92,6 +92,11 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     expect(renderer).toContain('submitBehavior: "blurAndSubmit"')
     expect(renderer).toContain('returnKeyType: "send"')
     expect(renderer).toContain('testID: "en-composer-input"')
+    expect(renderer).toContain('backgroundColor: "rgba(44,44,46,0.96)"')
+    expect(renderer).toContain("paddingLeft: 18")
+    expect(renderer).toContain("paddingRight: 5")
+    expect(renderer).toContain("borderRadius: 999")
+    expect(renderer).toContain('tint: "#0a84ff"')
   })
 
   test("CUT-16 interaction controls share keyboard, screen-reader, and reduced-motion semantics across native hosts", () => {

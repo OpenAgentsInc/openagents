@@ -3056,7 +3056,10 @@ const renderComposer = (
     },
     style: {
       flex: 1,
-      minHeight: 44,
+      height: 44,
+      paddingVertical: 6,
+      paddingHorizontal: 0,
+      fontSize: 16,
       color: colorValue(theme, "textPrimary")
     },
     ...(view.onChange === undefined ? {} : {
@@ -3073,7 +3076,10 @@ const renderComposer = (
     }
   })
   const submitDisabled = view.disabled === true || view.submitting === true ||
-    view.onSubmit === undefined
+    view.onSubmit === undefined || (
+      composerPlainText(view.doc).trim().length === 0 &&
+      (view.attachments?.length ?? 0) === 0
+    )
   const submit = createElement(
     dependencies,
     dependencies.ReactNative.Pressable,
@@ -3089,8 +3095,12 @@ const renderComposer = (
       style: {
         width: 44,
         height: 44,
+        borderRadius: 999,
         alignItems: "center",
-        justifyContent: "center"
+        justifyContent: "center",
+        backgroundColor: submitDisabled
+          ? colorValue(theme, "surfaceRaised")
+          : "#0a84ff"
       },
       ...(submitDisabled || view.onSubmit === undefined ? {} : {
         onPress: () => runReportedIntent(report, view.onSubmit!, composerPlainText(view.doc))
@@ -3099,15 +3109,43 @@ const renderComposer = (
     createElement(
       dependencies,
       dependencies.ReactNative.Text,
-      { style: { color: colorValue(theme, submitDisabled ? "textMuted" : "accent") } },
+      { style: { color: submitDisabled ? colorValue(theme, "textMuted") : "#ffffff", fontSize: 18, fontWeight: "600" } },
       view.submitting === true ? "…" : "↑"
     )
   )
+  const attachment = view.onAttachmentRequest === undefined
+    ? undefined
+    : createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          key: "attachment-request",
+          testID: "en-composer-attachment-request",
+          accessibilityRole: "button",
+          accessibilityLabel: "Add attachment",
+          onPress: () => runReportedIntent(report, view.onAttachmentRequest!),
+          style: {
+            width: 44,
+            height: 44,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colorValue(theme, "surfaceRaised")
+          }
+        },
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          { style: { color: colorValue(theme, "textPrimary"), fontSize: 22 } },
+          "+"
+        )
+      )
   const children: Array<ReactElementLike> = [
     createElement(
       dependencies,
       dependencies.ReactNative.View,
-      { key: "input-row", style: { flexDirection: "row", alignItems: "center" } },
+      { key: "input-row", style: { flexDirection: "row", alignItems: "center", minWidth: 0 } },
+      ...(attachment === undefined ? [] : [attachment]),
       input,
       submit
     )
@@ -3156,11 +3194,46 @@ const renderComposer = (
       )
     )
   }
+  const outerProps = baseProps(view, viewStyleWithoutSurface(view, options))
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), testID: `en-composer:${view.mode}` },
-    ...children
+    {
+      ...outerProps,
+      testID: `en-composer:${view.mode}`,
+      style: [
+        outerProps.style,
+        {
+          borderRadius: 999,
+          shadowColor: "#000000",
+          shadowOpacity: 0.35,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 10
+        }
+      ]
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        key: "surface",
+        style: {
+          width: "100%",
+          flexDirection: "column",
+          justifyContent: "center",
+          overflow: "hidden",
+          borderRadius: 999,
+          paddingLeft: 18,
+          paddingRight: 5,
+          paddingVertical: 5,
+          backgroundColor: "rgba(44,44,46,0.96)",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.08)"
+        }
+      },
+      ...children
+    )
   )
 }
 
@@ -5200,6 +5273,7 @@ interface ExpoUiNativeComposerProps {
 
 interface ExpoUiTextFieldRef {
   readonly clear: () => Promise<void>
+  readonly focus?: () => Promise<void>
 }
 
 interface ExpoUiPendingComposerClear {
@@ -5233,6 +5307,7 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
   // emission is acknowledged without writing it back into the focused field.
   const [nativeEdit] = useState<ExpoUiNativeComposerEdit>(() => ({ current: null }))
   const [textFieldRef] = useState<{ current: ExpoUiTextFieldRef | null }>(() => ({ current: null }))
+  const [isFocused, setIsFocused] = useState(false)
   const clearNativeText = (): void => {
     textState.set("")
     const clear = textFieldRef.current?.clear()
@@ -5264,8 +5339,16 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
       textState.set(controlledValue)
     }
   }, [controlledValue, nativeEdit, pendingClear, textFieldRef, textState])
+  useEffect(() => {
+    if (!isFocused) return
+    const focus = textFieldRef.current?.focus?.()
+    if (focus !== undefined) void focus.catch(() => undefined)
+  }, [isFocused, textFieldRef])
   const submitDisabled = view.disabled === true || view.submitting === true ||
-    view.onSubmit === undefined
+    view.onSubmit === undefined || (
+      composerPlainText(view.doc).trim().length === 0 &&
+      (view.attachments?.length ?? 0) === 0
+    )
   const submit = (): void => {
     if (submitDisabled || view.onSubmit === undefined) return
     const value = textState.get()
@@ -5275,26 +5358,15 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
       clearNativeText()
     }
   }
-  return createElement(
-    dependencies,
-    expoUi.HStack,
-    {
-      spacing: spacingValue(theme, "2"),
-      modifiers: [
-        expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 }),
-        expoUi.modifiers.glassEffect({
-          glass: { variant: "regular", interactive: true },
-          shape: "capsule"
-        })
-      ]
-    },
-    createElement(dependencies, expoUi.TextField, {
+  const field = createElement(dependencies, expoUi.TextField, {
       key: "control",
       ref: textFieldRef,
       text: textState,
       placeholder: view.placeholder,
       axis: "vertical",
+      autoFocus: isFocused,
       accessibilityLabel: view.placeholder,
+      onFocusChange: (focused: boolean) => { setIsFocused(focused) },
       onTextChange: (value: string) => {
         const submittedValue = pendingClear.current
         // Native delivery is asynchronous. Ignore both the clear event and a
@@ -5313,9 +5385,11 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         nativeEdit.current = value
         runReportedIntent(report, view.onChange, value)
       },
-      modifiers: [expoUi.modifiers.frame({ minHeight: 44, maxWidth: 100000 })]
-    }),
-    createElement(
+      modifiers: [expoUi.modifiers.frame(isFocused
+        ? { minHeight: 80, maxHeight: 160, maxWidth: 100000 }
+        : { height: 44, maxWidth: 100000 })]
+    })
+  const send = createElement(
       dependencies,
       expoUi.Button,
       {
@@ -5326,6 +5400,12 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         onPress: submit,
         modifiers: [
           expoUi.modifiers.frame({ width: 44, height: 44 }),
+          expoUi.modifiers.glassEffect({
+            glass: submitDisabled
+              ? { variant: "regular", interactive: false }
+              : { variant: "regular", interactive: true, tint: "#0a84ff" },
+            shape: "circle"
+          }),
           ...(submitDisabled && expoUi.modifiers.disabled !== undefined
             ? [expoUi.modifiers.disabled(true)]
             : [])
@@ -5334,9 +5414,77 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
       createElement(dependencies, expoUi.Image, {
         systemName: view.submitting === true ? "ellipsis" : "arrow.up",
         size: 17,
-        color: colorValue(theme, submitDisabled ? "textMuted" : "accent")
+        color: submitDisabled ? colorValue(theme, "textMuted") : "#ffffff"
       })
     )
+  if (!isFocused) {
+    return createElement(
+      dependencies,
+      expoUi.HStack,
+      {
+        spacing: 0,
+        modifiers: [
+          expoUi.modifiers.frame({ minHeight: 54, maxWidth: 100000 }),
+          ...(expoUi.modifiers.padding === undefined
+            ? []
+            : [expoUi.modifiers.padding({ leading: 18, trailing: 5, top: 5, bottom: 5 })]),
+          expoUi.modifiers.glassEffect({
+            glass: { variant: "regular", interactive: true },
+            shape: "capsule"
+          })
+        ]
+      },
+      field,
+      send
+    )
+  }
+  const toolbarChildren: Array<ReactElementLike> = []
+  if (view.onAttachmentRequest !== undefined) {
+    toolbarChildren.push(createElement(
+      dependencies,
+      expoUi.Button,
+      {
+        key: "attachment-request",
+        accessibilityLabel: "Add attachment",
+        onPress: () => runReportedIntent(report, view.onAttachmentRequest!),
+        modifiers: [
+          expoUi.modifiers.frame({ width: 44, height: 44 }),
+          expoUi.modifiers.glassEffect({
+            glass: { variant: "regular", interactive: true },
+            shape: "circle"
+          })
+        ]
+      },
+      createElement(dependencies, expoUi.Image, {
+        systemName: "plus",
+        size: 17,
+        color: colorValue(theme, "textPrimary")
+      })
+    ))
+  }
+  toolbarChildren.push(createElement(dependencies, expoUi.Spacer, { key: "toolbar-space" }), send)
+  return createElement(
+    dependencies,
+    expoUi.VStack,
+    {
+      spacing: spacingValue(theme, "2"),
+      modifiers: [
+        expoUi.modifiers.frame({ maxWidth: 100000 }),
+        ...(expoUi.modifiers.padding === undefined
+          ? []
+          : [expoUi.modifiers.padding({ leading: 14, trailing: 14, top: 12, bottom: 12 })]),
+        expoUi.modifiers.glassEffect({
+          glass: { variant: "regular", interactive: true },
+          shape: "roundedRectangle",
+          cornerRadius: 20
+        })
+      ]
+    },
+    field,
+    createElement(dependencies, expoUi.HStack, {
+      spacing: spacingValue(theme, "2"),
+      modifiers: [expoUi.modifiers.frame({ maxWidth: 100000 })]
+    }, ...toolbarChildren)
   )
 }
 
