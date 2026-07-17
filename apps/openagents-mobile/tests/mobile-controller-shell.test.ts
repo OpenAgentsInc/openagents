@@ -144,7 +144,7 @@ describe("contract openagents_mobile.controller_shell.v1", () => {
       sendMessage: async () => ({ ok: true, thread }),
     }
     const program = buildHomeProgram({
-      conversation: { mode: "sync", host, threads: [thread], activeThread: null },
+      conversation: { mode: "sync", host, threads: [thread], archivedThreads: [], activeThread: null },
       coding: {
         directory,
         attentionSnapshot,

@@ -15,6 +15,7 @@ import {
   Stack,
   StaticPayload,
   Text,
+  TextField,
   Toolbar,
   type View,
 } from "@effect-native/core"
@@ -111,7 +112,15 @@ export interface HomeState {
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
+  readonly archivedConversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
+  readonly threadLifecycle: Readonly<{
+    editingThreadRef: string | null
+    renameDraft: string
+    deleteConfirmThreadRef: string | null
+    pendingAction: "archive" | "delete" | "rename" | "restore" | null
+    notice: Readonly<{ kind: "confirmed" | "rejected"; message: string }> | null
+  }>
   readonly codingDirectory: MobileCodingDirectory | null
   readonly controllerDestination: MobileControllerDestination
   readonly inspectedControllerSessionRef: string | null
@@ -244,7 +253,15 @@ export const initialHomeState: HomeState = {
   syncPhase: "unconfigured",
   conversationAuthority: "local",
   conversationThreads: [],
+  archivedConversationThreads: [],
   activeThreadRef: null,
+  threadLifecycle: {
+    editingThreadRef: null,
+    renameDraft: "",
+    deleteConfirmThreadRef: null,
+    pendingAction: null,
+    notice: null,
+  },
   codingDirectory: null,
   controllerDestination: "recent",
   inspectedControllerSessionRef: null,
@@ -280,6 +297,41 @@ export const SurfaceModeSelected = defineIntent(
 export const ConversationThreadSelected = defineIntent(
   "ConversationThreadSelected",
   Schema.Struct({ threadRef: Schema.String }),
+)
+export const ConversationThreadRenameStarted = defineIntent(
+  "ConversationThreadRenameStarted",
+  Schema.Struct({ threadRef: Schema.String }),
+)
+export const ConversationThreadRenameChanged = defineIntent(
+  "ConversationThreadRenameChanged",
+  Schema.String,
+)
+export const ConversationThreadRenameSubmitted = defineIntent(
+  "ConversationThreadRenameSubmitted",
+  EmptyPayload,
+)
+export const ConversationThreadRenameCancelled = defineIntent(
+  "ConversationThreadRenameCancelled",
+  EmptyPayload,
+)
+export const ConversationThreadLifecycleRequested = defineIntent(
+  "ConversationThreadLifecycleRequested",
+  Schema.Struct({
+    action: Schema.Literals(["archive", "restore"]),
+    threadRef: Schema.String,
+  }),
+)
+export const ConversationThreadDeleteRequested = defineIntent(
+  "ConversationThreadDeleteRequested",
+  Schema.Struct({ threadRef: Schema.String }),
+)
+export const ConversationThreadDeleteConfirmed = defineIntent(
+  "ConversationThreadDeleteConfirmed",
+  EmptyPayload,
+)
+export const ConversationThreadDeleteCancelled = defineIntent(
+  "ConversationThreadDeleteCancelled",
+  EmptyPayload,
 )
 export const CodingSessionSelected = defineIntent(
   "CodingSessionSelected",
@@ -360,6 +412,14 @@ export const homeIntentDefinitions = [
   OpenAgentsSignOutPressed,
   SurfaceModeSelected,
   ConversationThreadSelected,
+  ConversationThreadRenameStarted,
+  ConversationThreadRenameChanged,
+  ConversationThreadRenameSubmitted,
+  ConversationThreadRenameCancelled,
+  ConversationThreadLifecycleRequested,
+  ConversationThreadDeleteRequested,
+  ConversationThreadDeleteConfirmed,
+  ConversationThreadDeleteCancelled,
   CodingSessionSelected,
   ControllerDestinationSelected,
   ControllerSessionInspected,
@@ -896,6 +956,144 @@ const codingOfflineCacheAccountingRows = (state: HomeState): ReadonlyArray<View>
       ]
     : []
 
+const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
+  if (state.conversationAuthority !== "sync") return []
+  const pending = state.threadLifecycle.pendingAction !== null
+  const selected = state.conversationThreads.find(thread => thread.threadRef === state.activeThreadRef)
+  const deleting = [...state.conversationThreads, ...state.archivedConversationThreads]
+    .find(thread => thread.threadRef === state.threadLifecycle.deleteConfirmThreadRef)
+  const rows: Array<View> = []
+  if (selected !== undefined) {
+    rows.push(Text({
+      key: "drawer-thread-controls-title",
+      content: "Manage selected chat",
+      variant: "caption",
+      color: "textMuted",
+    }))
+    if (state.threadLifecycle.editingThreadRef === selected.threadRef) {
+      rows.push(TextField({
+        key: "drawer-thread-rename-field",
+        value: state.threadLifecycle.renameDraft,
+        label: "Chat title",
+        placeholder: "Chat title",
+        disabled: pending,
+        onChange: IntentRef("ConversationThreadRenameChanged", ComponentValueBinding()),
+        onSubmit: IntentRef("ConversationThreadRenameSubmitted", StaticPayload({})),
+        variant: "outline",
+        size: "md",
+        style: { width: "full" },
+      }))
+      rows.push(Stack({ key: "drawer-thread-rename-actions", direction: "row", gap: "2" }, [
+        Button({
+          key: "drawer-thread-rename-save",
+          label: pending ? "Saving…" : "Save",
+          variant: "primary",
+          disabled: pending || state.threadLifecycle.renameDraft.trim() === "",
+          onPress: IntentRef("ConversationThreadRenameSubmitted", StaticPayload({})),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+        Button({
+          key: "drawer-thread-rename-cancel",
+          label: "Cancel",
+          variant: "ghost",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadRenameCancelled", StaticPayload({})),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+      ]))
+    } else {
+      rows.push(Stack({ key: "drawer-thread-active-actions", direction: "row", gap: "2" }, [
+        Button({
+          key: "drawer-thread-rename",
+          label: "Rename",
+          variant: "ghost",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadRenameStarted", StaticPayload({ threadRef: selected.threadRef })),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+        Button({
+          key: "drawer-thread-archive",
+          label: pending && state.threadLifecycle.pendingAction === "archive" ? "Archiving…" : "Archive",
+          variant: "secondary",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadLifecycleRequested", StaticPayload({ action: "archive", threadRef: selected.threadRef })),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+        Button({
+          key: "drawer-thread-delete",
+          label: "Delete",
+          tone: "danger",
+          variant: "soft",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadDeleteRequested", StaticPayload({ threadRef: selected.threadRef })),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+      ]))
+    }
+  }
+  if (state.archivedConversationThreads.length > 0) {
+    rows.push(Text({ key: "drawer-archived-title", content: "Archived chats", variant: "caption", color: "textMuted" }))
+    for (const thread of state.archivedConversationThreads) {
+      rows.push(Text({ key: `drawer-archived-${thread.threadRef}`, content: thread.title, variant: "body", color: "textPrimary" }))
+      rows.push(Stack({ key: `drawer-archived-actions-${thread.threadRef}`, direction: "row", gap: "2" }, [
+        Button({
+          key: `drawer-restore-${thread.threadRef}`,
+          label: pending && state.threadLifecycle.pendingAction === "restore" ? "Restoring…" : "Restore",
+          variant: "secondary",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadLifecycleRequested", StaticPayload({ action: "restore", threadRef: thread.threadRef })),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+        Button({
+          key: `drawer-delete-archived-${thread.threadRef}`,
+          label: "Delete",
+          tone: "danger",
+          variant: "soft",
+          disabled: pending,
+          onPress: IntentRef("ConversationThreadDeleteRequested", StaticPayload({ threadRef: thread.threadRef })),
+          style: mobileInteractiveStyle(state.accessibility),
+        }),
+      ]))
+    }
+  }
+  if (deleting !== undefined) {
+    rows.push(Text({
+      key: "drawer-thread-delete-confirm-copy",
+      content: `Delete “${deleting.title}”? This removes it from every synced device and cannot be undone.`,
+      variant: "body",
+      color: "danger",
+    }))
+    rows.push(Stack({ key: "drawer-thread-delete-confirm-actions", direction: "row", gap: "2" }, [
+      Button({
+        key: "drawer-thread-delete-confirm",
+        label: pending ? "Deleting…" : "Delete permanently",
+        tone: "danger",
+        variant: "solid",
+        disabled: pending,
+        onPress: IntentRef("ConversationThreadDeleteConfirmed", StaticPayload({})),
+        style: mobileInteractiveStyle(state.accessibility),
+      }),
+      Button({
+        key: "drawer-thread-delete-cancel",
+        label: "Cancel",
+        variant: "ghost",
+        disabled: pending,
+        onPress: IntentRef("ConversationThreadDeleteCancelled", StaticPayload({})),
+        style: mobileInteractiveStyle(state.accessibility),
+      }),
+    ]))
+  }
+  if (state.threadLifecycle.notice !== null) {
+    rows.push(Text({
+      key: "drawer-thread-lifecycle-notice",
+      content: state.threadLifecycle.notice.message,
+      variant: "caption",
+      color: state.threadLifecycle.notice.kind === "confirmed" ? "success" : "danger",
+    }))
+  }
+  return rows
+}
+
 export const renderDrawerView = (state: HomeState): View =>
   Stack(
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
@@ -953,6 +1151,7 @@ export const renderDrawerView = (state: HomeState): View =>
         onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
         selected: state.activeThreadRef === thread.threadRef,
       }, state.accessibility)),
+      ...threadLifecycleRows(state),
       ...codingOfflineCacheAccountingRows(state),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
@@ -1193,6 +1392,7 @@ export const initialHomeStateForConversation = (
         syncPhase: "live",
         conversationAuthority: "sync",
         conversationThreads: selection.threads,
+        archivedConversationThreads: selection.archivedThreads,
         activeThreadRef: selection.activeThread?.threadRef ?? null,
         codingDirectory: null,
         khala: confirmedKhalaState(
@@ -1208,7 +1408,71 @@ const makeSyncedConversationHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
   host: MobileConversationHost,
   coding: HomeProgramOptions["coding"],
-) => ({
+) => {
+  const reconcileLifecycle = (
+    action: "archive" | "delete" | "rename" | "restore",
+    threadRef: string,
+    title?: string,
+  ) => Effect.gen(function* () {
+    if (host.updateThread === undefined) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      threadLifecycle: { ...current.threadLifecycle, pendingAction: action, notice: null },
+    }))
+    const result = yield* Effect.promise(() => host.updateThread!({
+      action,
+      threadRef,
+      ...(title === undefined ? {} : { title }),
+    }))
+    yield* SubscriptionRef.update(state, current => {
+      if (!result.ok) return {
+        ...current,
+        threadLifecycle: {
+          ...current.threadLifecycle,
+          pendingAction: null,
+          notice: { kind: "rejected" as const, message: result.error },
+        },
+      }
+      const activeWithout = current.conversationThreads.filter(thread => thread.threadRef !== threadRef)
+      const archivedWithout = current.archivedConversationThreads.filter(thread => thread.threadRef !== threadRef)
+      const remainsActive = result.thread.status === "active"
+      const remainsArchived = result.thread.status === "archived"
+      const activeRemoved = current.activeThreadRef === threadRef && !remainsActive
+      return {
+        ...current,
+        conversationThreads: remainsActive ? [result.thread, ...activeWithout] : activeWithout,
+        archivedConversationThreads: remainsArchived ? [result.thread, ...archivedWithout] : archivedWithout,
+        activeThreadRef: activeRemoved ? null : current.activeThreadRef,
+        codingComposer: activeRemoved ? null : current.codingComposer,
+        threadLifecycle: {
+          editingThreadRef: null,
+          renameDraft: "",
+          deleteConfirmThreadRef: null,
+          pendingAction: null,
+          notice: {
+            kind: "confirmed" as const,
+            message: action === "rename"
+              ? "Chat title confirmed."
+              : action === "archive"
+                ? "Chat archived on every synced device."
+                : action === "restore"
+                  ? "Chat restored."
+                  : "Chat deleted from synced navigation.",
+          },
+        },
+        khala: activeRemoved
+          ? confirmedKhalaState(
+              null,
+              current.khala.turnCounter,
+              current.khala.interactionActionsAvailable,
+              current.khala.runtimeControlActionsAvailable,
+            )
+          : current.khala,
+      }
+    })
+  })
+
+  return ({
   NewChatPressed: () => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     if (before.khala.pending) return
@@ -1253,6 +1517,65 @@ const makeSyncedConversationHandlers = (
       ? failedConversationState(current, "Conversation is still pending reconciliation.")
       : withConfirmedThread(current, thread))
   }),
+  ConversationThreadRenameStarted: (payload: { readonly threadRef: string }) =>
+    SubscriptionRef.update(state, current => {
+      const thread = current.conversationThreads.find(item => item.threadRef === payload.threadRef)
+      return thread === undefined || current.threadLifecycle.pendingAction !== null
+        ? current
+        : {
+            ...current,
+            threadLifecycle: {
+              ...current.threadLifecycle,
+              editingThreadRef: thread.threadRef,
+              renameDraft: thread.title,
+              deleteConfirmThreadRef: null,
+              notice: null,
+            },
+          }
+    }),
+  ConversationThreadRenameChanged: (text: string) =>
+    SubscriptionRef.update(state, current => ({
+      ...current,
+      threadLifecycle: { ...current.threadLifecycle, renameDraft: text.slice(0, 160) },
+    })),
+  ConversationThreadRenameSubmitted: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const threadRef = current.threadLifecycle.editingThreadRef
+    const title = current.threadLifecycle.renameDraft.trim()
+    if (threadRef === null || title === "" || current.threadLifecycle.pendingAction !== null) return
+    yield* reconcileLifecycle("rename", threadRef, title)
+  }),
+  ConversationThreadRenameCancelled: () => SubscriptionRef.update(state, current => ({
+    ...current,
+    threadLifecycle: { ...current.threadLifecycle, editingThreadRef: null, renameDraft: "" },
+  })),
+  ConversationThreadLifecycleRequested: (payload: Readonly<{
+    action: "archive" | "restore"
+    threadRef: string
+  }>) => reconcileLifecycle(payload.action, payload.threadRef),
+  ConversationThreadDeleteRequested: (payload: { readonly threadRef: string }) =>
+    SubscriptionRef.update(state, current => current.threadLifecycle.pendingAction !== null
+      ? current
+      : {
+          ...current,
+          threadLifecycle: {
+            ...current.threadLifecycle,
+            editingThreadRef: null,
+            renameDraft: "",
+            deleteConfirmThreadRef: payload.threadRef,
+            notice: null,
+          },
+        }),
+  ConversationThreadDeleteConfirmed: () => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (current.threadLifecycle.deleteConfirmThreadRef === null ||
+        current.threadLifecycle.pendingAction !== null) return
+    yield* reconcileLifecycle("delete", current.threadLifecycle.deleteConfirmThreadRef)
+  }),
+  ConversationThreadDeleteCancelled: () => SubscriptionRef.update(state, current => ({
+    ...current,
+    threadLifecycle: { ...current.threadLifecycle, deleteConfirmThreadRef: null },
+  })),
   KhalaDraftChanged: (text: string) => Effect.gen(function* () {
     const bounded = text.length > 4_000 ? `${text.slice(0, 4_000)}…` : text
     const before = yield* SubscriptionRef.get(state)
@@ -1535,7 +1858,8 @@ const makeSyncedConversationHandlers = (
           },
         })
   }),
-})
+  })
+}
 
 export const makeHomeHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
@@ -1787,6 +2111,14 @@ export const makeHomeHandlers = (
         },
       })),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
+    ConversationThreadRenameStarted: synced?.ConversationThreadRenameStarted ?? (() => Effect.void),
+    ConversationThreadRenameChanged: synced?.ConversationThreadRenameChanged ?? (() => Effect.void),
+    ConversationThreadRenameSubmitted: synced?.ConversationThreadRenameSubmitted ?? (() => Effect.void),
+    ConversationThreadRenameCancelled: synced?.ConversationThreadRenameCancelled ?? (() => Effect.void),
+    ConversationThreadLifecycleRequested: synced?.ConversationThreadLifecycleRequested ?? (() => Effect.void),
+    ConversationThreadDeleteRequested: synced?.ConversationThreadDeleteRequested ?? (() => Effect.void),
+    ConversationThreadDeleteConfirmed: synced?.ConversationThreadDeleteConfirmed ?? (() => Effect.void),
+    ConversationThreadDeleteCancelled: synced?.ConversationThreadDeleteCancelled ?? (() => Effect.void),
     RuntimeInteractionOptionToggled: synced?.RuntimeInteractionOptionToggled ?? (() => Effect.void),
     RuntimeInteractionDecisionSubmitted: synced?.RuntimeInteractionDecisionSubmitted ?? (() => Effect.void),
     RuntimeTurnControlRequested: synced?.RuntimeTurnControlRequested ?? (() => Effect.void),
@@ -1975,7 +2307,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     ...current,
                     syncPhase: phase,
                     conversationThreads: [],
+                    archivedConversationThreads: [],
                     activeThreadRef: null,
+                    threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
                     portableSnapshot: null,
                     attentionSnapshot: null,

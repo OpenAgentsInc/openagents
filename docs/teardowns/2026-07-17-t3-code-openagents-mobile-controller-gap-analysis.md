@@ -698,3 +698,33 @@ registration, server-side physical notification delivery, restart/device
 receipts, thread lifecycle/share controls, and the remaining phase-3 control
 breadth are still gaps. Nothing in this update proves installed-device push or
 the full T3 mobile controller journey.
+
+## 12. Implementation update — MOBILE-PARITY-03D
+
+The remaining confirmed thread-lifecycle slice of phase 3 landed on 2026-07-17
+as [#8954](https://github.com/OpenAgentsInc/openagents/issues/8954), with
+authority, reconciliation, and Effect Native leaves
+[#8955](https://github.com/OpenAgentsInc/openagents/issues/8955),
+[#8956](https://github.com/OpenAgentsInc/openagents/issues/8956), and
+[#8957](https://github.com/OpenAgentsInc/openagents/issues/8957).
+
+Chat threads now carry explicit `active`, `archived`, and terminal `deleted`
+states. The server admits only active-to-archived, archived-to-active, and
+active/archived-to-deleted transitions against the exact confirmed status and
+`updatedAt` baseline. Non-active threads cannot accept new messages, repository
+bindings, or continuity changes. Delete retains an owner-private metadata
+tombstone; it does not copy message bodies into the personal directory.
+
+The mobile adapter separates active and archived confirmed catalogs and waits
+for a newer matching personal-scope post-image before reporting completion.
+An overlay-only mutation, stale baseline, or reconnect timeout remains pending
+or conflicted. The Effect Native drawer exposes inline rename, archive, restore,
+and a deliberate two-step permanent-delete control with disabled pending states
+and local conflict feedback. Confirmed archive/delete removes the active thread
+and composer from navigation.
+
+This closes the lifecycle-controls part of phase 3, not all mobile parity.
+Share/quick actions, physical push registration and delivery, installed-device
+acceptance, the remaining command breadth, and phase 4 repository Files remain
+explicit gaps. The next honest epic is phase 4 Files/repository onboarding
+unless the remaining share/push work is deliberately reprioritized first.

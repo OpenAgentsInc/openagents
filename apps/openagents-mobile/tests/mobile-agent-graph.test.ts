@@ -114,6 +114,7 @@ const selection = (
   mode: "sync",
   host,
   threads: [activeThread],
+  archivedThreads: [],
   activeThread,
 })
 

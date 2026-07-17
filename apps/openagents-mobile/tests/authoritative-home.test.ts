@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 import { Effect, Stream } from "@effect-native/core/effect"
+import { IntentRef, StaticPayload } from "@effect-native/core"
 import {
   composerAttachmentId,
   composerBlockId,
@@ -62,6 +63,7 @@ const selection = (host: MobileConversationHost): Extract<MobileConversationSele
   mode: "sync",
   host,
   threads: [initialThread],
+  archivedThreads: [],
   activeThread: initialThread,
 })
 
@@ -759,6 +761,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       mode: "sync",
       host,
       threads: [running],
+      archivedThreads: [],
       activeThread: running,
     } })
 
@@ -862,5 +865,62 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(denied.activeThreadRef).toBeNull()
     expect(denied.conversationThreads).toEqual([])
     expect(denied.khala.entries).toEqual([])
+  })
+
+  test("renders confirmed lifecycle controls and requires a second delete intent", async () => {
+    const calls: string[] = []
+    let summary = { ...initialThread }
+    const host: MobileConversationHost = {
+      listThreads: async () => summary.status === "active" ? [summary] : [],
+      listArchivedThreads: async () => summary.status === "archived" ? [summary] : [],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+      updateThread: async input => {
+        calls.push(input.action)
+        summary = {
+          ...summary,
+          title: input.action === "rename" ? input.title! : summary.title,
+          status: input.action === "archive"
+            ? "archived"
+            : input.action === "restore"
+              ? "active"
+              : input.action === "delete"
+                ? "deleted"
+                : summary.status,
+          version: summary.version + 1,
+        }
+        return { ok: true, thread: summary }
+      },
+    }
+    const program = buildHomeProgram({ conversation: selection(host) })
+    expect(JSON.stringify(renderDrawerView(program.initialState))).toContain("Manage selected chat")
+
+    const report = async (name: string, payload: string | Record<string, string> = {}) => {
+      await Effect.runPromise(program.report(IntentRef(name, StaticPayload(payload))) as Effect.Effect<unknown>)
+      await Effect.runPromise(settle)
+    }
+    await report("ConversationThreadRenameStarted", { threadRef: initialThread.threadRef })
+    await report("ConversationThreadRenameChanged", "Controller chat")
+    await report("ConversationThreadRenameSubmitted")
+    expect((await Effect.runPromise(lastState(program))).conversationThreads[0]?.title).toBe("Controller chat")
+
+    await report("ConversationThreadLifecycleRequested", { action: "archive", threadRef: initialThread.threadRef })
+    const archived = await Effect.runPromise(lastState(program))
+    expect(archived.activeThreadRef).toBeNull()
+    expect(archived.archivedConversationThreads[0]).toMatchObject({ status: "archived" })
+
+    await report("ConversationThreadLifecycleRequested", { action: "restore", threadRef: initialThread.threadRef })
+    expect((await Effect.runPromise(lastState(program))).conversationThreads[0]).toMatchObject({ status: "active" })
+    await report("ConversationThreadLifecycleRequested", { action: "archive", threadRef: initialThread.threadRef })
+    await report("ConversationThreadDeleteRequested", { threadRef: initialThread.threadRef })
+    expect(calls).toEqual(["rename", "archive", "restore", "archive"])
+    expect(JSON.stringify(renderDrawerView(await Effect.runPromise(lastState(program)))))
+      .toContain("Delete permanently")
+    await report("ConversationThreadDeleteConfirmed")
+    const deleted = await Effect.runPromise(lastState(program))
+    expect(calls.at(-1)).toBe("delete")
+    expect(deleted.conversationThreads).toEqual([])
+    expect(deleted.archivedConversationThreads).toEqual([])
   })
 })

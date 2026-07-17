@@ -128,6 +128,7 @@ export type MobileConversationSelection =
       mode: "sync"
       host: MobileConversationHost
       threads: ReadonlyArray<MobileConversationThreadSummary>
+      archivedThreads: ReadonlyArray<MobileConversationThreadSummary>
       activeThread: MobileConversationThread | null
     }>
 
@@ -907,7 +908,10 @@ export const selectMobileConversation = async (input: Readonly<{
     ...input.adapter,
   })
   try {
-    const threads = await host.listThreads()
+    const [threads, archivedThreads] = await Promise.all([
+      host.listThreads(),
+      host.listArchivedThreads?.() ?? Promise.resolve([]),
+    ])
     const preferred = input.preferredThreadRef === undefined
       ? undefined
       : threads.find(thread => thread.threadRef === input.preferredThreadRef)
@@ -916,7 +920,7 @@ export const selectMobileConversation = async (input: Readonly<{
       ? null
       : await host.openThread(activeSummary.threadRef)
     return threads.length === 0 || activeThread !== null
-      ? { mode: "sync", host, threads, activeThread }
+      ? { mode: "sync", host, threads, archivedThreads, activeThread }
       : { mode: "local" }
   } catch {
     return { mode: "local" }
