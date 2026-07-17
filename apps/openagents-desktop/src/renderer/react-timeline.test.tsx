@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client"
 
 import type { CodexHistoryItem } from "../codex-history-contract.ts"
 import {
+  ConversationTimeline,
   ReactTimeline,
   SafeReactMarkdown,
   projectLocalTimelineRecords,
@@ -118,6 +119,28 @@ const record = (key: string, sequence: number): ReactTimelineRecord => ({
 })
 
 const report: IntentReporter = () => Effect.void
+
+describe("conversation empty state", () => {
+  test("uses the selected agent name and a compact icon-only directory action", async () => {
+    const { container } = installDom()
+    const root = createRoot(container)
+    root.render(<ConversationTimeline
+      page={null}
+      notes={[]}
+      loadingEdge={null}
+      workingDirectory="/Users/test/work"
+      agentName="Claude"
+      report={report}
+    />)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(container.querySelector("h2")?.textContent).toBe("Start a conversation with Claude")
+    const change = container.querySelector<HTMLButtonElement>('[aria-label="Change working directory"]')
+    expect(change?.textContent).toBe("")
+    expect(change?.querySelector('[data-icon-name="FolderPen"]')).not.toBeNull()
+    root.unmount()
+  })
+})
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
 describe("React typed timeline projection", () => {

@@ -171,6 +171,14 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
     expect(rule(".oa-react-command-output")).toContain("font-family: var(--oa-font-mono)")
   })
 
+  test("the empty conversation occupies the flexible body row and keeps its directory action compact", () => {
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
+    const rule = (selector: string): string =>
+      css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]+)\\}`))?.[1] ?? ""
+    expect(css).toContain(".oa-react-timeline-empty {\n  display: grid;\n  grid-row: 2;")
+    expect(rule(".oa-react-empty-working-directory .oa-react-empty-directory-change")).toContain("width: 24px")
+  })
+
   test("chat markdown restores semantic list markers after Tailwind preflight", () => {
     const css = readFileSync(sharedWorkbenchCssPath, "utf8")
     expect(css).toContain(".oa-react-markdown ul { list-style: disc outside; }")

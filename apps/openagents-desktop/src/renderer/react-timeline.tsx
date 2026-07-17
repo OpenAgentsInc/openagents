@@ -22,7 +22,7 @@ import {
 } from "@openagentsinc/ui/desktop-workbench"
 import type { ReactElement, ReactNode } from "react"
 import { Component, createElement, memo, useEffect, useMemo, useRef, useState } from "react"
-import { ChevronRight, Folder } from "lucide-react"
+import { ChevronRight, Folder, FolderPen } from "lucide-react"
 
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
 import {
@@ -594,6 +594,7 @@ type TimelineProps = Readonly<{
   totalItems: number
   loadingEdge: "top" | "bottom" | null
   working?: boolean
+  agentName?: string
   report: IntentReporter
 }>
 
@@ -702,7 +703,7 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
             ? <p className="oa-react-timeline-position">Showing items {props.offset + 1}–{props.offset + props.loadedItemCount} of {props.totalItems}</p>
             : null}
         <TimelineRecords records={props.records} report={props.report} />
-        {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label="Codex is working">
+        {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label={`${props.agentName ?? "Codex"} is working`}>
           <span>Working</span><i /><i /><i />
         </div></MessageScrollerItem> : null}
         {props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
@@ -717,28 +718,31 @@ export const ReactTimeline = (props: TimelineProps): ReactElement =>
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 
-export const ConversationTimeline = ({ page, notes, loadingEdge, working, workingDirectory, report }: {
+export const ConversationTimeline = ({ page, notes, loadingEdge, working, workingDirectory, agentName, report }: {
   readonly page: CodexHistoryPage | null
   readonly notes: ReadonlyArray<DesktopNoteEntry>
   readonly loadingEdge: "top" | "bottom" | null
   readonly working?: boolean
   readonly workingDirectory: string | null
+  readonly agentName: string
   readonly report: IntentReporter
 }): ReactElement => {
   if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation">
     <div className="oa-react-empty-conversation">
-      <h2>Start a conversation with Codex</h2>
+      <h2>Start a conversation with {agentName}</h2>
       <div className="oa-react-empty-working-directory" aria-label={workingDirectory === null ? "Working directory unavailable" : `Working directory: ${workingDirectory}`}>
         <Folder aria-hidden="true" data-icon-name="Folder" />
         <code title={workingDirectory ?? undefined}>{workingDirectory ?? "Working directory unavailable"}</code>
-        <Button type="button" variant="ghost" size="sm"
+        <Button className="oa-react-empty-directory-change" type="button" variant="ghost" size="icon-sm"
           aria-label="Change working directory" title="Change working directory"
-          onClick={() => dispatch(report, "DesktopWorkspacePickerRequested")}>Change</Button>
+          onClick={() => dispatch(report, "DesktopWorkspacePickerRequested")}>
+          <FolderPen aria-hidden="true" data-icon-name="FolderPen" />
+        </Button>
       </div>
     </div>
   </section>
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}
-    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} working={working} report={report} />
+    totalItems={page?.totalItems ?? records.length} loadingEdge={loadingEdge} working={working} agentName={agentName} report={report} />
 }

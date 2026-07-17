@@ -296,7 +296,7 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-codex-update-notice")).toBeNull()
   })
 
-  test("centers the empty conversation path and dispatches its accessible Change action only while empty", async () => {
+  test("centers the empty conversation, follows the selected agent, and dispatches its compact directory action only while empty", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     const received: Array<{ name: string; payload: unknown }> = []
@@ -311,9 +311,14 @@ describe("React workbench shell", () => {
     expect(empty?.textContent).toContain("/Users/example/project")
     expect(empty?.querySelector('[data-icon-name="Folder"]')).not.toBeNull()
     const change = empty?.querySelector<HTMLButtonElement>('[aria-label="Change working directory"]')
-    expect(change?.textContent).toBe("Change")
+    expect(change?.textContent).toBe("")
+    expect(change?.querySelector('[data-icon-name="FolderPen"]')).not.toBeNull()
     await interact(() => change?.click())
     expect(received).toContainEqual({ name: "DesktopWorkspacePickerRequested", payload: null })
+
+    await render(root, <WorkbenchShell state={{ ...state, selectedHarness: "fable" }} report={report} />)
+    expect(container.querySelector(".oa-react-timeline-empty h2")?.textContent).toBe("Start a conversation with Claude")
+    expect(container.querySelector('[data-en-key="shell-provider-select"]')?.textContent).toBe("Claude")
 
     await render(root, <WorkbenchShell state={{
       ...state,

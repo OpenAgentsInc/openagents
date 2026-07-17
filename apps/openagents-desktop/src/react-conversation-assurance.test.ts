@@ -28,7 +28,7 @@ describe("revision 3 conversation-first assurance gates", () => {
     expect(timeline).toContain('tone={isUserRecord(record) ? "user" : "assistant"}')
     expect(timeline).toContain('<DesktopWorkEntry')
     expect(timeline).toContain('"Worked"')
-    expect(timeline).toContain('aria-label="Codex is working"')
+    expect(timeline).toContain('aria-label={`${props.agentName ?? "Codex"} is working`}')
     expect(timeline).not.toContain('oa-react-message-meta')
     expect(styles).not.toContain('.oa-react-message-meta')
     expect(transcriptHoverGeometryViolations(styles)).toEqual([])
