@@ -1259,3 +1259,19 @@ remain `T3M-F1`/`T3M-F2`; Git, terminal, connections, and release remain open.
   receipts, navigation fencing, tests, behavior contract, and Sol receipt
 - exclusions: live paired endpoint and installed-device evidence (`T3M-F1/F2`),
   Git/terminal/connections/release (`T3M-E1`–`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `dadc663647aaab6f88a39794353e50af6dac2f19` on `main`
+- verification: pre-rebase 243 mobile tests, 21 RN renderer tests, mobile and
+  RN typechecks, 36 behavior-contract tests, repository lint/format, and 19 Sol
+  tests; post-rebase 45 review/environment/RN/Sol tests, mobile typecheck, and
+  the 141-document Sol manifest check
+- authority note: every status, diff, and review operation is exact-scope,
+  bounded, revision- and epoch-fenced; native row selection mints no authority,
+  and only an exact recorded receipt becomes visible. Late receipts after route
+  dismissal are ignored while transcript state remains unchanged
+- close boundary: `T3M-D2` is complete in application code. Live paired
+  endpoint provisioning and installed writeback remain explicit `T3M-F1/F2`
+  evidence; ordered work advances to `T3M-E1`
+- verified_at: `2026-07-17T23:17:18Z`
