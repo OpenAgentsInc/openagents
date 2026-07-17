@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_06.desktop_stop_outcome_replay.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
@@ -57,6 +57,10 @@ fabrication, deployment, or release behavior.
 | Behavior-contract checks | PASS — 36/36 |
 | ProductSpec package test | PASS — 104/104 |
 | Sol document checks | PASS — 19/19 plus manifest check |
+| Enforced Desktop gate | PASS — both passes completed with 1,942 passed, 39 skipped; production builds, compatibility Electron smokes, and React Electron smoke passed |
+
+The packet implementation landed on `main` as
+`d26025e18596918144cc815ee03c798f7b01fc28`.
 
 ## Honest boundary and next packet
 
