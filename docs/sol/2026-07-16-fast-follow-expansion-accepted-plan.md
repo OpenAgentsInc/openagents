@@ -2480,6 +2480,14 @@ evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-31-desktop-confirmed-timeline-export-command-receipt.md`
 - residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim: `bde5519d5a6ce713912d6faad98bab7f9eb8ccc7`
+- implementation: `efe0477078f5fea85ab11585922df4d4c7d9c1f4`
+- disposition: bounded FF-D1-31 confirmed-timeline export-command composition landed, verified, and receipted; release only this packet's claim
+- released_at: `2026-07-17T22:11:59Z`
+- residual: authoritative supersession/reversion export evidence, named-group authority/publication, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

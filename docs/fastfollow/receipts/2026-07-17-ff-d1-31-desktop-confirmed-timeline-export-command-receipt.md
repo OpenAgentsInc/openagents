@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "c478f1449c298716c18993ba0733a48d7a9767d2"
 claim_revision: "bde5519d5a6ce713912d6faad98bab7f9eb8ccc7"
-implementation_revision: "pending"
+implementation_revision: "efe0477078f5fea85ab11585922df4d4c7d9c1f4"
 proof_rung: "desktop_confirmed_timeline_export_command_composition"
 observed_at: "2026-07-17T22:10:25Z"
 ---
@@ -76,5 +76,6 @@ publication, register the composition in `main.ts`, connect renderer commands,
 render pixels, or prove an installed runtime journey. Those residuals, owner
 acceptance, and Day 1 completion remain unclaimed.
 
-The exact tested implementation revision is recorded by the documentation-only
-claim release after the implementation tree lands on `origin/main`.
+The exact tested implementation tree landed on `origin/main` at
+`efe0477078f5fea85ab11585922df4d4c7d9c1f4` before this documentation-only
+claim release.
