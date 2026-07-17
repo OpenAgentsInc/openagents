@@ -4298,6 +4298,24 @@ const renderDiffView = (
           )
         )
       }
+      if (row.id !== undefined && view.onLineComment !== undefined) {
+        const onLineComment = view.onLineComment
+        const rowId = row.id
+        rowParts.push(
+          createElement(
+            dependencies,
+            dependencies.ReactNative.Pressable,
+            {
+              key: "comment",
+              testID: `en-diff-comment:${rowId}`,
+              accessibilityRole: "button",
+              accessibilityLabel: `Comment on diff row ${rowId}`,
+              onPress: () => runReportedIntent(report, onLineComment, { rowId })
+            },
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "t" }, "Comment")
+          )
+        )
+      }
       children.push(
         createElement(
           dependencies,

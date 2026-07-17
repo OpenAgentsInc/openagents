@@ -5,8 +5,49 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.16",
+    version: "2026-07-17.17",
     contracts: [
+      {
+        contractId: "openagents_mobile.repository_changes_review.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile repository changes and review",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "A coding session can open its exact worktree changes, inspect a bounded native diff, select a current row, record a precise review instruction, see the authoritative receipt, and return to the unchanged conversation.",
+        authorityBoundary:
+          "Status, diff, and review requests and responses are bound to the exact session, repository, worktree, status, path, source, revision, row, and request epoch. Foreign, duplicate, traversal, stale, malformed, unmerged, binary, unsupported, and oversized projections fail closed. Review submission accepts only a selected row in the currently decoded diff, sends a bounded nonempty instruction through the authenticated native-host environment client, and displays only an exact recorded receipt. Live paired endpoint and installed-device evidence remain T3M-F1/F2.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/coding/mobile-repository-review.ts",
+          "apps/openagents-mobile/src/coding/mobile-repository-environment-client.ts",
+          "apps/openagents-mobile/src/screens/mobile-changes-view.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents.com/packages/effect-native-render-rn/src/index.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-d2",
+        ],
+        oracles: [
+          {
+            id: "mobile_repository_changes_review_journey",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-review.test.ts",
+            description:
+              "Proves exact bounded status/diff/receipt decoding, stale and foreign refusal, current-row-only review writeback, visible receipt, and unchanged transcript state.",
+          },
+          {
+            id: "mobile_repository_review_transport_and_native_row_action",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-repository-environment-client.test.ts",
+            description:
+              "Proves authenticated exact status/diff/review endpoints; the paired RN renderer oracle proves exact diff-row comment selection.",
+          },
+        ],
+        verification:
+          "Repository review, authenticated environment, authoritative Home/mobile, native DiffView renderer, behavior-contract, mobile/RN typechecks, and repository checks; live paired endpoint and installed iOS/Android evidence remain T3M-F1/F2.",
+      },
       {
         contractId: "openagents_mobile.repository_files_workbench.v1",
         state: "enforced",

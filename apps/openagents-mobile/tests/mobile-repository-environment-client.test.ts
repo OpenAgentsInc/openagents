@@ -1,8 +1,11 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import {
+  MOBILE_REPOSITORY_DIFF_ENDPOINT,
   MOBILE_REPOSITORY_READ_ENDPOINT,
+  MOBILE_REPOSITORY_REVIEW_ENDPOINT,
   MOBILE_REPOSITORY_SEARCH_ENDPOINT,
+  MOBILE_REPOSITORY_STATUS_ENDPOINT,
   MOBILE_REPOSITORY_TREE_ENDPOINT,
   createAuthenticatedMobileRepositoryEnvironment,
 } from "../src/coding/mobile-repository-environment-client"
@@ -32,11 +35,31 @@ describe("T3M-D1.2 authenticated repository environment client", () => {
     await client.tree({ ...scope, directoryRef: "", cursor: null, limit: 100 })
     await client.read({ ...scope, pathRef: "README.md", expectedRevisionRef: "revision.readme" })
     await client.search({ repositoryRef: scope.repositoryRef, worktreeRef: scope.worktreeRef, query: "readme", limit: 20 })
+    await client.status(scope)
+    await client.diff({
+      ...scope,
+      statusRef: "status.mobile.1",
+      pathRef: "README.md",
+      source: "unstaged",
+      expectedRevisionRef: "revision.readme",
+    })
+    await client.submitReview({
+      ...scope,
+      statusRef: "status.mobile.1",
+      pathRef: "README.md",
+      rowRef: "row.mobile.1",
+      expectedRevisionRef: "revision.readme",
+      comment: "Keep this exact.",
+      idempotencyRef: "review.mobile.1",
+    })
 
     expect(requests.map(request => new URL(request.url).pathname)).toEqual([
       MOBILE_REPOSITORY_TREE_ENDPOINT,
       MOBILE_REPOSITORY_READ_ENDPOINT,
       MOBILE_REPOSITORY_SEARCH_ENDPOINT,
+      MOBILE_REPOSITORY_STATUS_ENDPOINT,
+      MOBILE_REPOSITORY_DIFF_ENDPOINT,
+      MOBILE_REPOSITORY_REVIEW_ENDPOINT,
     ])
     for (const request of requests) {
       expect(request.method).toBe("POST")

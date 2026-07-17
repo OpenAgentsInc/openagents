@@ -1228,3 +1228,34 @@ those release proofs early.
   registration/pairing/health and installed live endpoint evidence remain
   explicitly `T3M-F1`/`T3M-F2`; ordered work advances to `T3M-D2`
 - verified_at: `2026-07-17T23:08:02Z`
+
+## Active packet — T3M-D2
+
+Outcome: add a transcript-preserving Changes route that projects the exact
+selected worktree status, renders bounded native diffs, and records a review
+instruction against one current diff row through authoritative writeback.
+
+Required behavior: status, diff, and review traffic is bound to the exact
+session/repository/worktree/status/path/source/revision/row identity and request
+epoch. Bounded decoders reject foreign, duplicate, traversal, stale, malformed,
+binary, unmerged, unsupported, and oversized data. Only a current selectable
+row may open the instruction editor; only a nonempty bounded instruction may be
+submitted; and success appears only from an exact recorded receipt. Opening,
+closing, refreshing, and hardware dismissal preserve the conversation state and
+invalidate stale workbench requests.
+
+Close rule: this closes the D2 mobile contract, Changes state machine, native
+diff/comment affordance, and authenticated provider seam in application code.
+Live paired endpoint provisioning and installed iOS/Android writeback evidence
+remain `T3M-F1`/`T3M-F2`; Git, terminal, connections, and release remain open.
+
+### CLAIM
+
+- packet: `T3M-D2`
+- base: `7dbc81dc1761e4a1d225fa69fbcb0c62111681b9`
+- claimed_at: `2026-07-17T23:14:19Z`
+- scope: exact changed-files/diff/review contracts, Changes route and state
+  machine, native row-comment selection, authenticated writeback, visible
+  receipts, navigation fencing, tests, behavior contract, and Sol receipt
+- exclusions: live paired endpoint and installed-device evidence (`T3M-F1/F2`),
+  Git/terminal/connections/release (`T3M-E1`–`T3M-F2`)

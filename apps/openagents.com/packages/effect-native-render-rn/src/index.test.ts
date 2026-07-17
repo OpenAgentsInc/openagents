@@ -3,6 +3,7 @@ import {
   Button,
   ComponentValueBinding,
   Composer,
+  DiffView,
   Image,
   IntentRef,
   Markdown,
@@ -186,6 +187,43 @@ describe("React Native renderer host boundaries", () => {
       "AttachmentOpened",
     ])
     expect(reported.every(item => item.runtimeValue === null)).toBe(true)
+  })
+
+  test("reports an exact diff-row comment selection from the native affordance", () => {
+    const reported: Array<{ readonly name: string; readonly runtimeValue: unknown }> = []
+    const element = renderReactNativeView(
+      DiffView({
+        key: "review-diff",
+        language: "typescript",
+        hunks: [{
+          header: "@@ -1 +1 @@",
+          rows: [{
+            id: "row.review.1",
+            kind: "add",
+            newLine: 1,
+            tokens: [{ kind: "plain", text: "const exact = true" }],
+          }],
+        }],
+        onLineComment: IntentRef("RepositoryReviewRowSelected", ComponentValueBinding()),
+      }),
+      { React: { createElement }, ReactNative: reactNative },
+      (ref, runtimeValue) => {
+        reported.push({ name: ref.name, runtimeValue })
+        return Effect.void
+      },
+    )
+    const children = element.props.children as ReadonlyArray<ReactElementLike>
+    const row = children.find(child => child.props.testID === "en-diff-row:row.review.1")
+    if (row === undefined) throw new Error("expected rendered diff row")
+    const rowParts = row.props.children as ReadonlyArray<ReactElementLike>
+    const comment = rowParts.find(child => child.props.testID === "en-diff-comment:row.review.1")
+    if (comment === undefined) throw new Error("expected native comment affordance")
+    ;(comment.props.onPress as () => void)()
+
+    expect(reported).toEqual([{
+      name: "RepositoryReviewRowSelected",
+      runtimeValue: { rowId: "row.review.1" },
+    }])
   })
 
   test("preserves keyed transcript anchors and reports real end-pin transitions", () => {

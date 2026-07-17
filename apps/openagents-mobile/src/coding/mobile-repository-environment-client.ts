@@ -1,14 +1,18 @@
 import type { MobileComposerPathSearchPort } from "./mobile-composer-path-context"
 import type { MobileRepositoryFilesPort } from "./mobile-repository-files"
+import type { MobileRepositoryReviewPort } from "./mobile-repository-review"
 
 export const MOBILE_REPOSITORY_TREE_ENDPOINT = "/api/mobile/coding/repository/tree"
 export const MOBILE_REPOSITORY_READ_ENDPOINT = "/api/mobile/coding/repository/read"
 export const MOBILE_REPOSITORY_SEARCH_ENDPOINT = "/api/mobile/coding/repository/search"
+export const MOBILE_REPOSITORY_STATUS_ENDPOINT = "/api/mobile/coding/repository/status"
+export const MOBILE_REPOSITORY_DIFF_ENDPOINT = "/api/mobile/coding/repository/diff"
+export const MOBILE_REPOSITORY_REVIEW_ENDPOINT = "/api/mobile/coding/repository/reviews"
 
 const MAX_METADATA_RESPONSE_BYTES = 256 * 1024
 const MAX_CONTENT_RESPONSE_BYTES = 14 * 1024 * 1024
 
-export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & Readonly<{
+export type MobileRepositoryEnvironmentPort = MobileRepositoryFilesPort & MobileRepositoryReviewPort & Readonly<{
   search: MobileComposerPathSearchPort["search"]
 }>
 
@@ -70,5 +74,8 @@ export const createAuthenticatedMobileRepositoryEnvironment = (input: Readonly<{
     tree: request => post(MOBILE_REPOSITORY_TREE_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
     read: request => post(MOBILE_REPOSITORY_READ_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
     search: request => post(MOBILE_REPOSITORY_SEARCH_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    status: request => post(MOBILE_REPOSITORY_STATUS_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
+    diff: request => post(MOBILE_REPOSITORY_DIFF_ENDPOINT, request, MAX_CONTENT_RESPONSE_BYTES),
+    submitReview: request => post(MOBILE_REPOSITORY_REVIEW_ENDPOINT, request, MAX_METADATA_RESPONSE_BYTES),
   }
 }

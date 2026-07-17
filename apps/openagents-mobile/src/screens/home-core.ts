@@ -68,6 +68,15 @@ import {
   type MobileRepositoryScope,
 } from "../coding/mobile-repository-files"
 import {
+  decodeMobileChangeSummary,
+  decodeMobileFileDiff,
+  decodeMobileReviewReceipt,
+  initialMobileRepositoryReviewState,
+  MOBILE_REVIEW_COMMENT_MAX,
+  type MobileRepositoryReviewPort,
+  type MobileRepositoryReviewState,
+} from "../coding/mobile-repository-review"
+import {
   projectMobilePortableSessionControl,
   type MobilePortableControlAction,
   type MobilePortableSessionControl,
@@ -103,6 +112,7 @@ import {
 } from "./mobile-adaptive-workspace"
 import type { MobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
 import { renderMobileFilesView } from "./mobile-files-view"
+import { renderMobileChangesView } from "./mobile-changes-view"
 
 import {
   AgentRowSelected,
@@ -177,8 +187,9 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
-  readonly workbenchRoute: "conversation" | "files"
+  readonly workbenchRoute: "conversation" | "files" | "changes"
   readonly repositoryBrowser: MobileRepositoryBrowserState
+  readonly repositoryReview: MobileRepositoryReviewState
   readonly modeMenuOpen: boolean
   readonly syncPhase: MobileSyncPhase
   readonly conversationAuthority: "local" | "sync"
@@ -340,6 +351,7 @@ export const initialHomeState: HomeState = {
   surfaceMode: "khala",
   workbenchRoute: "conversation",
   repositoryBrowser: initialMobileRepositoryBrowserState,
+  repositoryReview: initialMobileRepositoryReviewState,
   modeMenuOpen: false,
   syncPhase: "unconfigured",
   conversationAuthority: "local",
@@ -547,6 +559,20 @@ export const CodingComposerPathSelected = defineIntent(
   "CodingComposerPathSelected",
   Schema.String,
 )
+export const ChangesRouteOpened = defineIntent("ChangesRouteOpened", EmptyPayload)
+export const WorkbenchConversationOpened = defineIntent("WorkbenchConversationOpened", EmptyPayload)
+export const RepositoryChangesRefreshed = defineIntent("RepositoryChangesRefreshed", EmptyPayload)
+export const RepositoryChangedFileSelected = defineIntent("RepositoryChangedFileSelected", Schema.Struct({
+  pathRef: Schema.String,
+  source: Schema.Literals(["staged", "unstaged", "untracked"]),
+  revisionRef: Schema.String,
+}))
+export const RepositoryReviewRowSelected = defineIntent(
+  "RepositoryReviewRowSelected",
+  Schema.Struct({ rowId: Schema.String }),
+)
+export const RepositoryReviewCommentChanged = defineIntent("RepositoryReviewCommentChanged", Schema.String)
+export const RepositoryReviewSubmitted = defineIntent("RepositoryReviewSubmitted", EmptyPayload)
 export const FilesRouteOpened = defineIntent("FilesRouteOpened", EmptyPayload)
 export const FilesRouteClosed = defineIntent("FilesRouteClosed", EmptyPayload)
 export const RepositoryDirectoryToggled = defineIntent(
@@ -679,6 +705,13 @@ export const homeIntentDefinitions = [
   CodingComposerSlashCommandSelected,
   CodingComposerPathQueryChanged,
   CodingComposerPathSelected,
+  ChangesRouteOpened,
+  WorkbenchConversationOpened,
+  RepositoryChangesRefreshed,
+  RepositoryChangedFileSelected,
+  RepositoryReviewRowSelected,
+  RepositoryReviewCommentChanged,
+  RepositoryReviewSubmitted,
   FilesRouteOpened,
   FilesRouteClosed,
   RepositoryDirectoryToggled,
@@ -726,6 +759,10 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "changes") {
+    const scope = state.repositoryReview.scope
+    return { title: "Changes", subtitle: scope === null ? "Review workbench" : `${scope.repositoryRef} · ${scope.worktreeRef}` }
+  }
   if (state.workbenchRoute === "files") {
     const scope = state.repositoryBrowser.scope
     return {
@@ -788,7 +825,9 @@ export const renderContentView = (state: HomeState): View =>
       direction: "column",
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
-    state.workbenchRoute === "files"
+    state.workbenchRoute === "changes"
+      ? [renderMobileChangesView(state.repositoryReview, state.accessibility)]
+      : state.workbenchRoute === "files"
       ? [renderMobileFilesView(state.repositoryBrowser, state.accessibility)]
       : state.surfaceMode === "khala"
       ? [renderKhalaSurface(
@@ -1273,6 +1312,17 @@ export const renderHomeView = (state: HomeState): View =>
                       : "Open repository files",
                     onPress: IntentRef(
                       state.workbenchRoute === "files" ? "FilesRouteClosed" : "FilesRouteOpened",
+                      StaticPayload({}),
+                    ),
+                    style: mobileInteractiveStyle(state.accessibility),
+                  }), IconButton({
+                    key: "home-changes",
+                    icon: state.workbenchRoute === "changes" ? "Chats" : "Compare",
+                    accessibilityLabel: state.workbenchRoute === "changes"
+                      ? "Return to conversation"
+                      : "Open repository changes",
+                    onPress: IntentRef(
+                      state.workbenchRoute === "changes" ? "WorkbenchConversationOpened" : "ChangesRouteOpened",
                       StaticPayload({}),
                     ),
                     style: mobileInteractiveStyle(state.accessibility),
@@ -1792,6 +1842,7 @@ export interface HomeProgramOptions {
     ) => Promise<MobileCodingAttachmentUpdateResult>
     searchComposerPaths?: MobileComposerPathSearchPort["search"]
     repositoryFiles?: MobileRepositoryFilesPort
+    repositoryReview?: MobileRepositoryReviewPort
     removeComposerAttachment?: (
       session: MobileCodingComposerSession,
       attachmentId: string,
@@ -2294,6 +2345,7 @@ const makeSyncedConversationHandlers = (
       surfaceMode: "khala" as const,
       workbenchRoute: "conversation" as const,
       repositoryBrowser: initialMobileRepositoryBrowserState,
+      repositoryReview: initialMobileRepositoryReviewState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2338,6 +2390,7 @@ const makeSyncedConversationHandlers = (
       workspaceFocusTarget: "transcript" as const,
       workbenchRoute: "conversation" as const,
       repositoryBrowser: initialMobileRepositoryBrowserState,
+      repositoryReview: initialMobileRepositoryReviewState,
       codingComposer: null,
       codingComposerTargetPickerOpen: false,
       codingComposerTargetSearch: "",
@@ -2819,6 +2872,43 @@ export const makeHomeHandlers = (
           }
     })
   })
+  const loadRepositoryChanges = () => Effect.gen(function* () {
+    const before = yield* SubscriptionRef.get(state)
+    const scope = repositoryScope(before.codingComposer)
+    const epoch = before.repositoryReview.requestEpoch + 1
+    if (scope === null || options.coding?.repositoryReview === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        workbenchRoute: "changes" as const,
+        repositoryReview: {
+          ...initialMobileRepositoryReviewState,
+          scope,
+          state: "unavailable" as const,
+          requestEpoch: epoch,
+          message: scope === null
+            ? "Select an exact coding worktree before reviewing changes."
+            : "Connect the paired worktree environment to review changes.",
+        },
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      workbenchRoute: "changes" as const,
+      drawerOpen: false,
+      repositoryReview: { ...initialMobileRepositoryReviewState, scope, state: "loading" as const, requestEpoch: epoch, message: null },
+    }))
+    let raw: unknown
+    try { raw = yield* Effect.promise(() => options.coding!.repositoryReview!.status(scope)) } catch { raw = null }
+    const summary = decodeMobileChangeSummary(raw, scope)
+    yield* SubscriptionRef.update(state, current =>
+      current.workbenchRoute !== "changes" || current.repositoryReview.requestEpoch !== epoch ||
+        current.repositoryReview.scope?.sessionRef !== scope.sessionRef
+        ? current
+        : summary === null
+          ? { ...current, repositoryReview: { ...current.repositoryReview, state: "failed" as const, message: "The environment returned an invalid or unavailable change summary." } }
+          : { ...current, repositoryReview: { ...current.repositoryReview, state: "ready" as const, summary, message: null } })
+  })
   const mutateComposerAttachment = (
     attachmentId: string,
     action: "remove" | "retry",
@@ -2986,7 +3076,7 @@ export const makeHomeHandlers = (
           drawerOpen: false,
           workspaceFocusTarget: "transcript" as const,
         }
-        if (command === "dismiss" && current.workbenchRoute === "files") return {
+        if (command === "dismiss" && current.workbenchRoute !== "conversation") return {
           ...current,
           drawerOpen: false,
           workbenchRoute: "conversation" as const,
@@ -2994,6 +3084,10 @@ export const makeHomeHandlers = (
           repositoryBrowser: {
             ...current.repositoryBrowser,
             requestEpoch: current.repositoryBrowser.requestEpoch + 1,
+          },
+          repositoryReview: {
+            ...current.repositoryReview,
+            requestEpoch: current.repositoryReview.requestEpoch + 1,
           },
         }
         if (current.threadLifecycle.pendingAction !== null) return current
@@ -3106,6 +3200,7 @@ export const makeHomeHandlers = (
         surfaceMode: "khala" as const,
         workbenchRoute: "conversation" as const,
         repositoryBrowser: initialMobileRepositoryBrowserState,
+        repositoryReview: initialMobileRepositoryReviewState,
         codingComposer: null,
         codingComposerTargetPickerOpen: false,
         codingComposerTargetSearch: "",
@@ -3324,6 +3419,78 @@ export const makeHomeHandlers = (
           },
         }
       })
+    }),
+    ChangesRouteOpened: loadRepositoryChanges,
+    RepositoryChangesRefreshed: loadRepositoryChanges,
+    WorkbenchConversationOpened: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      workbenchRoute: "conversation" as const,
+      repositoryReview: { ...current.repositoryReview, requestEpoch: current.repositoryReview.requestEpoch + 1 },
+      workspaceFocusTarget: "transcript" as const,
+    })),
+    RepositoryChangedFileSelected: payload => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const review = before.repositoryReview
+      const scope = review.scope
+      const file = review.summary?.files.find(item => item.pathRef === payload.pathRef &&
+        item.source === payload.source && item.revisionRef === payload.revisionRef)
+      if (before.workbenchRoute !== "changes" || scope === null || file === undefined ||
+        file.source === "untracked" || file.binary || file.status === "unmerged" ||
+        options.coding?.repositoryReview === undefined || review.summary === null) return
+      const epoch = review.requestEpoch + 1
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        repositoryReview: { ...current.repositoryReview, requestEpoch: epoch, diff: null, selectedRowRef: null, commentDraft: "", message: null },
+      }))
+      const request = { ...scope, statusRef: review.summary.statusRef, pathRef: file.pathRef, source: file.source, expectedRevisionRef: file.revisionRef }
+      let raw: unknown
+      try { raw = yield* Effect.promise(() => options.coding!.repositoryReview!.diff(request)) } catch { raw = null }
+      const diff = decodeMobileFileDiff(raw, request)
+      yield* SubscriptionRef.update(state, current =>
+        current.workbenchRoute !== "changes" || current.repositoryReview.requestEpoch !== epoch
+          ? current
+          : diff === null
+            ? { ...current, repositoryReview: { ...current.repositoryReview, message: "That diff is stale, unsafe, or unavailable." } }
+            : { ...current, repositoryReview: { ...current.repositoryReview, diff, message: null } })
+    }),
+    RepositoryReviewRowSelected: payload => SubscriptionRef.update(state, current => {
+      const row = current.repositoryReview.diff?.hunks.flatMap(hunk => hunk.rows).find(item => item.rowRef === payload.rowId)
+      return current.workbenchRoute !== "changes" || row === undefined
+        ? current
+        : { ...current, repositoryReview: { ...current.repositoryReview, selectedRowRef: row.rowRef, commentDraft: "", message: null } }
+    }),
+    RepositoryReviewCommentChanged: (comment: string) => SubscriptionRef.update(state, current =>
+      current.repositoryReview.selectedRowRef === null || current.repositoryReview.submitting
+        ? current
+        : { ...current, repositoryReview: { ...current.repositoryReview, commentDraft: comment.slice(0, MOBILE_REVIEW_COMMENT_MAX) } }),
+    RepositoryReviewSubmitted: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const review = before.repositoryReview
+      const scope = review.scope
+      const diff = review.diff
+      const rowRef = review.selectedRowRef
+      const comment = review.commentDraft.trim()
+      if (before.workbenchRoute !== "changes" || scope === null || diff === null || rowRef === null || comment === "" ||
+        review.submitting || options.coding?.repositoryReview === undefined ||
+        !diff.hunks.some(hunk => hunk.rows.some(row => row.rowRef === rowRef))) return
+      const epoch = review.requestEpoch + 1
+      const idempotencyRef = `review.mobile.${Date.now().toString(36)}.${review.receipts.length}`
+      const request = { ...scope, statusRef: diff.statusRef, pathRef: diff.pathRef, rowRef, expectedRevisionRef: diff.revisionRef, comment, idempotencyRef }
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        repositoryReview: { ...current.repositoryReview, requestEpoch: epoch, submitting: true, message: null },
+      }))
+      let raw: unknown
+      try { raw = yield* Effect.promise(() => options.coding!.repositoryReview!.submitReview(request)) } catch { raw = null }
+      const receipt = decodeMobileReviewReceipt(raw, request)
+      yield* SubscriptionRef.update(state, current =>
+        current.workbenchRoute !== "changes" || current.repositoryReview.requestEpoch !== epoch ||
+          current.repositoryReview.scope?.sessionRef !== scope.sessionRef || current.repositoryReview.diff?.revisionRef !== diff.revisionRef ||
+          current.repositoryReview.selectedRowRef !== rowRef
+          ? current
+          : receipt === null
+            ? { ...current, repositoryReview: { ...current.repositoryReview, submitting: false, message: "The review instruction was not recorded." } }
+            : { ...current, repositoryReview: { ...current.repositoryReview, submitting: false, selectedRowRef: null, commentDraft: "", receipts: [...current.repositoryReview.receipts, receipt], message: null } })
     }),
     RuntimeTurnStopConfirmationRequested: payload =>
       SubscriptionRef.update(state, current => {
@@ -3690,6 +3857,7 @@ export const makeHomeHandlers = (
             workspaceFocusTarget: "transcript" as const,
             workbenchRoute: "conversation" as const,
             repositoryBrowser: initialMobileRepositoryBrowserState,
+            repositoryReview: initialMobileRepositoryReviewState,
             codingComposerTargetPickerOpen: false,
             codingComposerTargetSearch: "",
             codingPathDiscovery: { state: "idle" as const },
@@ -3809,6 +3977,11 @@ export interface HomeProgramHandle {
   }
   readonly coding: {
     readonly selectSession: (target: MobileCodingTarget) => void
+    readonly openChanges: () => void
+    readonly selectChangedFile: (pathRef: string, source: "staged" | "unstaged" | "untracked", revisionRef: string) => void
+    readonly selectReviewRow: (rowId: string) => void
+    readonly changeReviewComment: (comment: string) => void
+    readonly submitReview: () => void
     readonly openFiles: () => void
     readonly closeFiles: () => void
     readonly refreshFiles: () => void
@@ -3991,6 +4164,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     activeThreadRef: null,
                     workbenchRoute: "conversation" as const,
                     repositoryBrowser: initialMobileRepositoryBrowserState,
+                    repositoryReview: initialMobileRepositoryReviewState,
                     threadLifecycle: initialHomeState.threadLifecycle,
                     codingComposer: null,
                     codingComposerTargetPickerOpen: false,
@@ -4062,6 +4236,20 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             sessionRef: target.sessionRef,
             threadRef: target.threadRef,
           }))),
+          openChanges: fire("ChangesRouteOpened"),
+          selectChangedFile: (pathRef, source, revisionRef) => fireRef(IntentRef(
+            "RepositoryChangedFileSelected",
+            StaticPayload({ pathRef, source, revisionRef }),
+          )),
+          selectReviewRow: rowId => fireRef(IntentRef(
+            "RepositoryReviewRowSelected",
+            StaticPayload({ rowId }),
+          )),
+          changeReviewComment: comment => fireText(
+            IntentRef("RepositoryReviewCommentChanged", ComponentValueBinding()),
+            comment,
+          ),
+          submitReview: fire("RepositoryReviewSubmitted"),
           openFiles: fire("FilesRouteOpened"),
           closeFiles: fire("FilesRouteClosed"),
           refreshFiles: fire("RepositoryFilesRefreshed"),
