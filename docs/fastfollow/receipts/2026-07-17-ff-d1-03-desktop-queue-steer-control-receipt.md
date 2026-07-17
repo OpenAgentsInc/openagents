@@ -59,7 +59,11 @@ envelope.
 | Behavior-contract checks | PASS — 36/36 |
 | ProductSpec package test | PASS — 104/104 |
 | Sol document checks | PASS — 19/19 plus manifest check |
+| Enforced Desktop pre-push gate | PASS — 1,917 passed, 39 skipped; build, fixture visual smoke, React smoke, and built Electron smoke passed |
 | `pnpm run check` | PASS |
+
+Implementation landed on `main` as
+`09e17243209b40f246e7f1a08025ea91dfebf8d9`.
 
 ## Honest boundary and next packet
 

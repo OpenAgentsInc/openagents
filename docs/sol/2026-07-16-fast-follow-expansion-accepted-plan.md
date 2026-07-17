@@ -216,6 +216,12 @@ replay reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day
 - repository check: `pnpm run check` passed
 - residual: durable outcome persistence/replay, Sync/mobile/Pylon adapters, rendered evidence, and Day 1 completion remain unclaimed later packets
 
+### CLAIM-RELEASE
+
+- landed: `09e17243209b40f246e7f1a08025ea91dfebf8d9` on `main`
+- verification: focused packet/capability tests 244 passed and 11 skipped; Desktop typecheck; Fast Follow 7/7; behavior contracts 36/36; ProductSpec 104/104; Sol checks 19/19; `pnpm run check`; enforced Desktop gate 1,917 passed and 39 skipped plus build, fixture visual smoke, React smoke, and built Electron smoke
+- residual: durable outcome persistence/replay, Sync/mobile/Pylon adapters, thread search/share/export/supersession surfaces, real rendered runtime evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
