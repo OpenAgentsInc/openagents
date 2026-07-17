@@ -81,6 +81,7 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
+import { ReactFilesSurface, ReactReviewSurface } from "./react-workspace-surfaces.tsx"
 import {
   decodeDesktopSurfaceLayout,
   defaultDesktopSurfaceLayout,
@@ -392,33 +393,13 @@ export const ConversationHeader = ({ state, report }: {
 
 const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : "Review"
 
-const SurfacePanelContent = ({ state, surface }: {
+const SurfacePanelContent = ({ state, surface, report }: {
   readonly state: DesktopShellState
   readonly surface: DesktopSurfaceKind
-}): ReactElement => {
-  if (surface === "files") {
-    const entries = state.workspaceBrowser.pages[""]?.entries ?? []
-    return <section className="oa-react-surface-empty" aria-label="Files surface">
-      <Files aria-hidden="true" />
-      <h2>Files</h2>
-      {state.workspaceBrowser.phase === "loading" ? <p role="status">Loading workspace files…</p>
-        : state.workspaceBrowser.phase === "unavailable" ? <p role="alert">{state.workspaceBrowser.reason ?? "Files are unavailable for this workspace."}</p>
-        : <p>{entries.length === 0 ? "No root entries are available." : `${entries.length} root ${entries.length === 1 ? "entry" : "entries"} ready.`}</p>}
-    </section>
-  }
-  const changed = state.git.status === null ? 0 : new Set([
-    ...state.git.status.staged,
-    ...state.git.status.unstaged,
-    ...state.git.status.untracked,
-  ].map(file => file.path)).size
-  return <section className="oa-react-surface-empty" aria-label="Review surface">
-    <FileDiff aria-hidden="true" />
-    <h2>Review</h2>
-    {state.git.phase === "loading" ? <p role="status">Loading repository changes…</p>
-      : state.git.phase === "unavailable" ? <p role="alert">{state.git.reason ?? "Review is unavailable for this workspace."}</p>
-      : <p>{changed === 0 ? "No changed files." : `${changed} changed ${changed === 1 ? "file" : "files"} on ${state.git.status?.branch ?? "the current branch"}.`}</p>}
-  </section>
-}
+  readonly report: IntentReporter
+}): ReactElement => surface === "files"
+  ? <ReactFilesSurface state={state} report={report} />
+  : <ReactReviewSurface state={state} report={report} />
 
 export const DesktopSurfaceManager = ({ state, report, conversation }: {
   readonly state: DesktopShellState
@@ -511,7 +492,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
             {(["files", "review"] as const).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button">{surface === "files" ? <Files aria-hidden="true" /> : <FileDiff aria-hidden="true" />}{surfaceLabel(surface)}</button>)}
           </div>}
         </header>
-        <SurfacePanelContent state={state} surface={active} />
+        <SurfacePanelContent state={state} surface={active} report={report} />
       </aside>
     </>}
   </div>

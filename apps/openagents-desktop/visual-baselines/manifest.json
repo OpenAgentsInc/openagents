@@ -50,7 +50,14 @@
     {
       "name": "surface-tabs",
       "file": "surface-tabs.png",
-      "sha256": "9295d652cd9d9ed1527781e55e77c03fab423bfebcdb64fbe28a0b2f1bdc7649",
+      "sha256": "f807bdcb70c77667d6ca8c79bd892e3c062920097ab3fb088aa0e9a8c3327b9a",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "files-rich-diff",
+      "file": "files-rich-diff.png",
+      "sha256": "95e211e5cbfc02792d87af140e3851a2e7a7daf3a99e899b6fd92ba426529ac0",
       "width": 1280,
       "height": 800
     },

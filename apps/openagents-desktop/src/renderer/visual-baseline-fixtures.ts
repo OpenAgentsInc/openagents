@@ -193,6 +193,16 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
     }
     case "surface-tabs": {
       const state = selected(fixtureBase(), planThread());
+      const document = {
+        grantRef: "grant.visual.surface",
+        pathRef: "src/receipt.ts",
+        content: "export const receipt = 'exact'\n",
+        revisionRef: "revision.visual.receipt",
+        languageMode: "typescript" as const,
+        encoding: "utf-8" as const,
+        lineEnding: "lf" as const,
+        sizeBytes: 31,
+      };
       return {
         ...state,
         workspace: "files",
@@ -220,6 +230,63 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
           ...state.workspaceBrowser,
           phase: "ready",
           grantRef: "grant.visual.surface",
+          pages: {
+            "": {
+              state: "available",
+              grantRef: "grant.visual.surface",
+              directoryRef: "",
+              entries: [
+                { name: "src", pathRef: "src", kind: "directory", expandable: true, sizeBytes: null, revisionRef: "revision.visual.src" },
+                { name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 2_048, revisionRef: "revision.visual.readme" },
+              ],
+              nextOffset: null,
+              cache: { key: "cache.visual.root", epoch: 1, freshness: "current" },
+            },
+          },
+        },
+        workspaceEditor: {
+          ...state.workspaceEditor,
+          activePathRef: document.pathRef,
+          tabs: [{ pathRef: document.pathRef, phase: "ready", document, externalDocument: null, draft: document.content, selection: { start: 0, end: 0 }, selectionVersion: 0, undo: [], redo: [], saveState: "idle", reason: null, findQuery: "", findMatches: [], findIndex: 0 }],
+        },
+      };
+    }
+    case "files-rich-diff": {
+      const state = visualBaselineShellState("surface-tabs");
+      return {
+        ...state,
+        workspace: "review",
+        git: {
+          ...state.git,
+          phase: "ready",
+          status: {
+            ok: true,
+            op: "status",
+            branch: "feature/t3-ui",
+            upstream: "origin/feature/t3-ui",
+            detached: false,
+            ahead: 1,
+            behind: 0,
+            staged: [{ path: "src/receipt.ts", status: "modified" }],
+            unstaged: [{ path: "src/ledger.ts", status: "modified" }],
+            untracked: [],
+            truncated: false,
+            repositoryRef: "repository.visual",
+            statusRef: "status.visual",
+            headRef: "head.visual",
+          },
+          diff: {
+            ok: true,
+            op: "diff",
+            repositoryRef: "repository.visual",
+            statusRef: "status.visual",
+            path: "src/receipt.ts",
+            source: "staged",
+            causalItemRef: null,
+            content: "@@ -1 +1 @@\n-export const receipt = 'draft'\n+export const receipt = 'exact'",
+            hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "-export const receipt = 'draft'\n+export const receipt = 'exact'" }],
+            truncated: false,
+          },
         },
       };
     }

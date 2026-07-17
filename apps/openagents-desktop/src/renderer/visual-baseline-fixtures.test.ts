@@ -24,6 +24,7 @@ describe("visual-baseline fixture states", () => {
       "reasoning-disclosure",
       "full-auto-running",
       "surface-tabs",
+      "files-rich-diff",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",

@@ -313,6 +313,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "react-review.tsx",
     "react-sensitive-text.tsx",
     "react-timeline.tsx",
+    "react-workspace-surfaces.tsx",
     "visual-baseline-workbench.tsx",
   ]);
   const rendererSources = readdirSync(rendererDir)

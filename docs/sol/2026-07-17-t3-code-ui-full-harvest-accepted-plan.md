@@ -113,17 +113,16 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-05
+## Active packet — T3UI-06
 
-Outcome: mount T3's panel/tab lifecycle around the transcript while exposing
-only already-admitted OpenAgents workspace capabilities.
+Outcome: fill the admitted Files and Review tabs with grant-scoped file/editor
+flows and exact read-only rich Diff while keeping the transcript mounted.
 
 Owned paths:
 
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
-- `apps/openagents-desktop/src/renderer/surface-layout.ts`
-- `apps/openagents-desktop/src/renderer/surface-layout.test.ts`
+- `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
 - `apps/openagents-desktop/src/visual-baseline-contract.ts`
@@ -133,38 +132,39 @@ Owned paths:
 
 Required behavior:
 
-- the transcript remains mounted and primary while a right panel opens;
-- add, activate, close, close-others, close-right, close-all, maximize/restore,
-  pointer/keyboard resize, and width reset are deterministic;
-- bounded versioned presentation state persists per exact coding-session ref;
-- only Files and read-only Review tabs activate, through the existing typed
-  workspace intent; and
-- narrow layouts overlay the panel without destroying transcript state.
+- file tree, expansion, selection, refresh, name/content search, paging bounds,
+  and typed unavailable states use existing relative-ref authorities;
+- document tabs, editing, save, undo/redo, find, close confirmation, and
+  external-change conflict resolution use existing editor intents;
+- changed files and exact fenced hunks render without Git mutation affordances;
+- diff close/attachment use existing typed intents and line notes remain local;
+  and
+- the transcript stays mounted behind the T3UI-05 workbench panel.
 
-Proof: pure layout transition/decoder tests, mounted lifecycle/persistence and
-exact-intent tests, dedicated 17th visual state, Desktop typecheck, full serial
-suite, production build, Electron fixture smokes, Sol guards, and publishing.
+Proof: mounted file/tree/editor/diff exact-intent tests, rich Files and Diff
+visual fixtures, Desktop typecheck, full serial suite, production build,
+Electron fixture smokes, Sol guards, and publishing.
 
-Close rule: this packet closes the generic mounted panel/tab lifecycle and
-per-session presentation persistence gap. Rich Files/Diff content, terminal,
-preview, settings, installed journey, signed release, and T3 parity remain later.
+Close rule: this packet closes the current rich Files/editor and exact read-only
+Diff gap. Terminal, preview, settings, installed journey, signed release, and
+T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-05-20260717`
-- base: `6b8ca94e0b`
+- actor/session: `codex-t3ui-06-20260717`
+- base: `2009c27e09`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: transcript-preserving capability surface manager and tab lifecycle
+- scope: grant-scoped Files/editor and exact read-only rich Diff
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: bounded persisted layout, capability tabs, full close
-  lifecycle, maximize, resize, responsive overlay, and compact header are mounted
-- focused proof: the layout/adapter set passes 30 tests and a dedicated mounted
-  visual state is admitted before final full acceptance
-- receipt: [`2026-07-17-t3ui-05-surface-manager-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-05-surface-manager-receipt.md)
-- residual: rich surface contents and later packets remain; this is not T3 parity
+- implementation: relative tree/search, document tabs/editor/conflicts, changed
+  files, exact hunks, local annotations, and composer attachment are mounted
+- focused proof: the combined shell/fixture set passes 36 tests and two rich
+  surface visual states are admitted before final full acceptance
+- receipt: [`2026-07-17-t3ui-06-files-rich-diff-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-06-files-rich-diff-receipt.md)
+- residual: terminal and later packets remain; this is not T3 parity
 
 ## Explicit non-authority
 

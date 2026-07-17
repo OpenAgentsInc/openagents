@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "f73be44ddc796f1b84ca244ae3237de74cfbbf58b2eb07f1aa45feaac9106ea8",
+  "sourceTreeSha256": "53295b35b87a55f8160aa214a188e78aa416592a3920e78f87f68c780954538b",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1965,7 +1965,7 @@
       "owner": "Sol T3 Code UI full harvest",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "de1003c73950fdc6c23df21f3809b5aa3a66ef51c2978fb7eaf26ae8254eadc3",
+      "sha256": "ec76d85b5acd50ed658549afc8fd18e912993df0eb6a5e56fbe9eabf733c5ca4",
       "status": "active",
       "snapshot": "2026-07-17",
       "reviewedAt": "2026-07-12",
@@ -1976,10 +1976,11 @@
         "docs/fastfollow/receipts/2026-07-17-t3ui-03-composer-parity-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-t3ui-05-surface-manager-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-t3ui-06-files-rich-diff-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 7,
+      "inboundSourceCount": 8,
       "issueLinks": []
     },
     {
@@ -2069,7 +2070,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "52ccdda221ae4c52360d91577a065b890f250957fdd966d4d048f61cc7096be1",
+      "sha256": "cd690eb7f8bfa887235422536d3310cecc33a8912370179810d9a6ec83352ce7",
       "status": "canonical OpenAgents implementation roadmap",
       "snapshot": "2026-07-17",
       "reviewedAt": "2026-07-12",

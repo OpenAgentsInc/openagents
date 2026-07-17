@@ -782,6 +782,52 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
   })
 
+  test("mounts grant-scoped file tabs and exact read-only rich diff actions", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const document = { grantRef: "grant-1", pathRef: "src/app.ts", content: "export const app = true\n", revisionRef: "revision-1", languageMode: "typescript" as const, encoding: "utf-8" as const, lineEnding: "lf" as const, sizeBytes: 24 }
+    const filesState: DesktopShellState = {
+      ...base,
+      workspace: "files",
+      codingCatalog: { ...base.codingCatalog, selectedSessionRef: "session-rich" },
+      workspaceBrowser: {
+        ...base.workspaceBrowser,
+        phase: "ready",
+        grantRef: "grant-1",
+        pages: { "": { state: "available", grantRef: "grant-1", directoryRef: "", entries: [
+          { name: "src", pathRef: "src", kind: "directory", expandable: true, sizeBytes: null, revisionRef: "revision-src" },
+          { name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 32, revisionRef: "revision-readme" },
+        ], nextOffset: null, cache: { key: "cache-1", epoch: 1, freshness: "current" } } },
+      },
+      workspaceEditor: { ...base.workspaceEditor, activePathRef: "src/app.ts", tabs: [{ pathRef: "src/app.ts", phase: "ready", document, externalDocument: null, draft: document.content, selection: { start: 0, end: 0 }, selectionVersion: 0, undo: [], redo: [], saveState: "idle", reason: null, findQuery: "", findMatches: [], findIndex: 0 }] },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={filesState} report={report} />)
+    expect(container.querySelector('[aria-label="Workspace files"]')?.textContent).toContain("srcREADME.md")
+    expect(container.querySelector('[aria-label="Editor for src/app.ts"]')).not.toBeNull()
+    await interact(() => (container.querySelector('[role="treeitem"][aria-selected="false"]') as HTMLButtonElement).click())
+    expect(received).toContainEqual({ name: "WorkspaceBrowserTreeToggled", payload: "src" })
+
+    const status = { ok: true as const, op: "status" as const, branch: "main", upstream: "origin/main", detached: false, ahead: 0, behind: 0, staged: [{ path: "src/app.ts", status: "modified" as const }], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1" }
+    const reviewState: DesktopShellState = {
+      ...filesState,
+      workspace: "review",
+      git: { ...base.git, phase: "ready", status, diff: { ok: true, op: "diff", repositoryRef: "repository-1", statusRef: "status-1", path: "src/app.ts", source: "staged", causalItemRef: null, content: "@@ -1 +1 @@\n-export const app = false\n+export const app = true", hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "-export const app = false\n+export const app = true" }], truncated: false } },
+    }
+    await render(root, <WorkbenchShell state={reviewState} report={report} />)
+    expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain("src/app.ts")
+    expect(container.querySelector('[aria-label="Rich diff"]')?.textContent).toContain("-export const app = false")
+    expect(container.querySelector('[aria-label="Rich diff"]')?.textContent).toContain("+export const app = true")
+    const addContext = [...container.querySelectorAll(".oa-react-rich-diff button")].find(button => button.textContent === "Add to composer") as HTMLButtonElement
+    await interact(() => addContext.click())
+    expect(received).toContainEqual({ name: "GitPanelContextAttached", payload: null })
+    const annotate = container.querySelector('[aria-label="Annotate line 1"]') as HTMLButtonElement
+    await interact(() => annotate.click())
+    expect(container.querySelector('[aria-label="Comment on line 1"]')).not.toBeNull()
+  })
+
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {
     const { container } = installDom()
     const report: IntentReporter = () => Effect.void
