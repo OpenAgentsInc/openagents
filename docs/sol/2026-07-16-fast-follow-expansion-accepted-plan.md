@@ -2318,6 +2318,76 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T21:33:55Z`
 - residual: named-group authority/publication, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-30 — Desktop confirmed-timeline canonical-export evidence adapter
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-29. Named-group
+publication still lacks authoritative membership, and active work continues to
+own Desktop `main.ts` and renderer surfaces. The target-owned Khala Sync client
+now exposes a bounded server-confirmed agent timeline for an exact thread, but
+the canonical-export command still has only an abstract evidence seam. This
+packet adds a new-file-only Effect adapter from that confirmed timeline to the
+existing FF-D1-11 evidence snapshot without treating provider history,
+optimistic state, or a projection default as accepted-event authority.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-evidence.ts`
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-evidence.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-30-desktop-confirmed-timeline-export-evidence-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the target-owned server-confirmed agent timeline, exact thread
+lookup, live settled Sync state, bounded current run/events, strict canonical
+export event identity, deterministic accepted-relation identity, and the
+existing FF-D1-11 `{ status, threadRef, events, relations }` evidence seam.
+Provider history, event-authority schemas, export compiler/store/IPC, `main.ts`,
+preload, renderer, named-group, server, and Sync contracts remain unchanged.
+
+Required behavior:
+
+- read only one exact thread through the injected confirmed-timeline
+  `snapshotForThread` authority and return unavailable when the source throws,
+  is absent, non-live, cursorless, has pending optimistic mutations, or lacks a
+  current confirmed run;
+- accept at most 500 exact server-confirmed events, require every event to bind
+  the current run, and fail closed on malformed, duplicate, non-canonical, or
+  cross-run identity/sequence/timestamp data;
+- project each confirmed event into one bounded canonical export event whose
+  data is the exact decoded target-owned confirmed event projection and one
+  deterministic ref-only `accepted` relation bound to its thread/event/version;
+- never synthesize superseded or reverted relations from a source that does not
+  carry those facts, never consume provider-native history, and never expose
+  credentials, paths, native payloads, or host authority; and
+- produce only the existing bounded FF-D1-11 evidence snapshot or the exact
+  `{ status: "unavailable" }` refusal.
+
+Proof: focused confirmed-timeline adapter, export command/compiler,
+event-authority, and Khala Sync confirmed-timeline tests; Desktop typecheck;
+Fast Follow, behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and
+repository-required checks.
+
+Close rule: this packet closes only current accepted-event evidence for owner-
+only export from the target-owned confirmed timeline. Supersession/reversion
+evidence remains unavailable until an authoritative source carries it;
+named-group authority/publication, actual `main.ts` composition, renderer
+command/pixels, installed/runtime-rendered evidence, and Day 1 completion
+remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-30-20260717`
+- base: `eae0c55d660812bdb630017bae5599c08a09ce0d`
+- worktree/branch: `openagents-ff-d1-30` / detached `origin/main`
+- scope: fail-closed canonical-export evidence from one exact settled server-confirmed thread timeline
+- paths: the FF-D1-30 owned implementation paths above
+- hot files: two new Desktop evidence adapter/test files; accepted-plan ledger and Sol manifest
+- hot contracts: confirmed-only target authority, exact thread/run/event binding, deterministic accepted relations, no inferred supersession/reversion, and the unchanged FF-D1-11 evidence seam
+- dependencies: FF-D1-29 released; confirmed Sync timeline authority exists; no relevant open bug issue or competing claim; all audited worktrees leave the new paths unclaimed; active Desktop host/UI, T3, Full Auto, teardown, and release files explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T21:46:50Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
