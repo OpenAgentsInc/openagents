@@ -2,7 +2,8 @@ import {
   decodeThreadDisclosureReceipt,
   type ThreadDisclosureReceipt,
 } from "@openagentsinc/agent-runtime-schema";
-import { Effect, Schema as S } from "effect";
+import { createHash } from "node:crypto";
+import { Effect, Schedule, Schema as S } from "effect";
 
 import type { DesktopThreadVisibilityAuthorizationDecision } from "./thread-visibility-audience-authorization.ts";
 
@@ -64,6 +65,11 @@ const ShareResponse = S.Struct({
   audienceLabel: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
   status: S.Literal("active"),
 });
+
+class PublicationOutcomeAmbiguous extends S.TaggedErrorClass<PublicationOutcomeAmbiguous>()(
+  "PublicationOutcomeAmbiguous",
+  {},
+) {}
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
@@ -232,6 +238,96 @@ const decodePublishedResponse = (
   }
 };
 
+const publicationIdempotencyKey = (receipt: ThreadDisclosureReceipt): string =>
+  `desktop-workspace-share.${createHash("sha256")
+    .update(
+      JSON.stringify([
+        receipt.schema,
+        receipt.receiptRef,
+        receipt.intentRef,
+        receipt.idempotencyKey,
+        receipt.threadRef,
+        receipt.kind,
+        receipt.result,
+      ]),
+    )
+    .digest("hex")}`;
+
+type PublicationAttemptResult =
+  | Readonly<{ status: "published"; share: typeof ShareResponse.Type }>
+  | Readonly<{
+      status: "rejected";
+      reason:
+        | "authentication_required"
+        | "publication_forbidden"
+        | "publication_rejected";
+    }>;
+
+const publishOnce = Effect.fn(
+  "DesktopThreadVisibilityWorkspacePublicationTransport.publishOnce",
+)(function* (
+  dependencies: DesktopThreadVisibilityWorkspacePublicationDependencies,
+  origin: URL,
+  token: string,
+  idempotencyKey: string,
+  body: string,
+  expectedAudienceLabel: string,
+) {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      (dependencies.fetch ?? fetch)(
+        new URL(DesktopThreadVisibilityWorkspacePublicationPath, origin),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+          },
+          body,
+          signal,
+        },
+      ),
+    catch: () => new PublicationOutcomeAmbiguous(),
+  });
+
+  if (response.status === 401) {
+    return { status: "rejected", reason: "authentication_required" } as const;
+  }
+  if (response.status === 403) {
+    return { status: "rejected", reason: "publication_forbidden" } as const;
+  }
+  if (
+    response.status === 408 ||
+    response.status === 425 ||
+    response.status === 429 ||
+    response.status >= 500
+  ) {
+    return yield* new PublicationOutcomeAmbiguous();
+  }
+  if (!response.ok) {
+    return { status: "rejected", reason: "publication_rejected" } as const;
+  }
+
+  const expectedReplayHeader =
+    response.status === 201 ? "false" : response.status === 200 ? "true" : null;
+  if (
+    expectedReplayHeader === null ||
+    response.headers.get("Idempotency-Replayed") !== expectedReplayHeader
+  ) {
+    return yield* new PublicationOutcomeAmbiguous();
+  }
+
+  const text = yield* Effect.tryPromise({
+    try: () => response.text(),
+    catch: () => new PublicationOutcomeAmbiguous(),
+  });
+  const published = decodePublishedResponse(text, origin.origin, expectedAudienceLabel);
+  return published === null
+    ? yield* new PublicationOutcomeAmbiguous()
+    : ({ status: "published", share: published } as const);
+});
+
 /**
  * Publish an already-applied workspace visibility through the existing server
  * share builder. The server remains authoritative for source access and live
@@ -260,64 +356,35 @@ export const publishDesktopThreadWorkspaceVisibility = Effect.fn(
     return { status: "rejected", reason: "authentication_required" } as const;
   }
 
-  const response = yield* Effect.tryPromise({
-    try: () =>
-      (dependencies.fetch ?? fetch)(
-        new URL(DesktopThreadVisibilityWorkspacePublicationPath, origin),
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            source: request.source,
-            audience: {
-              _tag: "TeamMembers",
-              teamId: request.teamId,
-              teamName: request.teamName,
-            },
-          }),
-        },
-      ),
-    catch: () => null,
-  }).pipe(Effect.match({ onFailure: () => null, onSuccess: (value) => value }));
-  if (response === null) {
-    return { status: "rejected", reason: "publication_outcome_unknown" } as const;
-  }
-  if (response.status === 401) {
-    return { status: "rejected", reason: "authentication_required" } as const;
-  }
-  if (response.status === 403) {
-    return { status: "rejected", reason: "publication_forbidden" } as const;
-  }
-  if (
-    response.status === 408 ||
-    response.status === 425 ||
-    response.status === 429 ||
-    response.status >= 500 ||
-    (response.ok && response.status !== 201)
-  ) {
-    return { status: "rejected", reason: "publication_outcome_unknown" } as const;
-  }
-  if (!response.ok) {
-    return { status: "rejected", reason: "publication_rejected" } as const;
-  }
-
-  const body = yield* Effect.tryPromise({
-    try: () => response.text(),
-    catch: () => null,
-  }).pipe(Effect.match({ onFailure: () => null, onSuccess: (value) => value }));
+  const idempotencyKey = publicationIdempotencyKey(request.receipt);
+  const body = JSON.stringify({
+    source: request.source,
+    audience: {
+      _tag: "TeamMembers",
+      teamId: request.teamId,
+      teamName: request.teamName,
+    },
+  });
   const expectedAudienceLabel = `Shared with members of ${request.teamName}`;
-  const published =
-    body === null ? null : decodePublishedResponse(body, origin.origin, expectedAudienceLabel);
-  if (published === null) {
+  const attempt: PublicationAttemptResult | null = yield* publishOnce(
+    dependencies,
+    origin,
+    token,
+    idempotencyKey,
+    body,
+    expectedAudienceLabel,
+  ).pipe(
+    Effect.retry(Schedule.recurs(1)),
+    Effect.match({ onFailure: () => null, onSuccess: (value) => value }),
+  );
+  if (attempt === null) {
     return { status: "rejected", reason: "publication_outcome_unknown" } as const;
   }
+  if (attempt.status === "rejected") return attempt;
   return {
     status: "published",
-    shareRef: published.id,
-    url: published.url,
+    shareRef: attempt.share.id,
+    url: attempt.share.url,
     receiptRef: request.receipt.receiptRef,
     threadRef: request.receipt.threadRef,
     visibilityVersion: request.receipt.result.visibilityVersion,
