@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "0f872ea5cf9bfb585c7006abe6689c2f3d71ce942c0171f13db573c45a05fd3a",
+  "sourceTreeSha256": "5eb16ededadff94fe9443e895819daff931b52a9da171be9120fed93726e74b2",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1779,7 +1779,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "3fe832a8021d4152dc2efc4f7202b2dd40e5d524e5287484b95f3a25a1c0b0b6",
+      "sha256": "9231199075c49fb3b4aceb2a3bf0b4b518a7457432625f554179dbc2dd9e99b9",
       "status": "active",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1919,6 +1919,23 @@
         8902,
         8911
       ]
+    },
+    {
+      "path": "docs/sol/2026-07-17-full-auto-resume-stall-work-packet.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "84df35a7ab6897daf9ef711389fc09afac45c71cf49afd0145c5d9faa842931c",
+      "status": "accepted, implemented, verified, and landed on `main`",
+      "snapshot": "`b82742da3afeb1725760e89456ce6fd1ed77781e`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": []
     },
     {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
@@ -3284,7 +3301,7 @@
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "9c248bf4369bb2bbfbfc14f6a641c1a05493bcf44f046a3b5fc9b6cdf5a406c7",
+      "sha256": "fe51e0c4fa623e210cecf232b0225cac33686e987df0dbc9f2ed177cfd3a1a55",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",

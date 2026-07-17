@@ -290,6 +290,7 @@ and Day 1 completion remain later packets.
 - convergence: exact retry is idempotent; pending evidence advances monotonically; cross-identity and conflicting terminal evidence fail closed
 - focused proof: 164 tests passed with 11 skipped across the store, shell, and converging host; Desktop typecheck passed
 - authority proof: Fast Follow 7/7, behavior contracts 36/36, ProductSpec 104/104, and repository check passed
+- landed: `7a5066e2db` on `main`; enforced Desktop gate passed 1,934 tests with 39 skipped plus production build, compatibility smoke, React smoke, and repeated built Electron smoke
 - residual: lost-ACK replay/reconciliation, Sync/mobile/Pylon adapters, rendered evidence, and Day 1 completion remain unclaimed later packets
 
 ## Explicit non-authority

@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_04.desktop_control_outcome_ledger.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_verified"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 4
@@ -54,9 +54,12 @@ this evidence ledger.
 | Behavior-contract checks | PASS — 36/36 |
 | ProductSpec package test | PASS — 104/104 |
 | `pnpm run check` | PASS |
+| Enforced Desktop main gate | PASS — 1,934 passed, 39 skipped; production build, compatibility smoke, React smoke, and repeated built Electron smoke passed |
 
 Local implementation commit before final main integration:
 `0e6ca0b6b107d0079aa8efd2943120ecc02f5885`.
+The rebased implementation landed on `main` as `7a5066e2db` within the
+recovered stack ending at `503fbaf617`.
 
 ## Honest boundary and next packet
 

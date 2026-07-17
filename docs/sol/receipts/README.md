@@ -69,6 +69,7 @@ scope, and rung. Live issue state and the
 
 | Evidence snapshot | Proof rung | Final disposition / use |
 | --- | --- | --- |
+| [`2026-07-17-full-auto-resume-stall-work-packet.md`](../2026-07-17-full-auto-resume-stall-work-packet.md) | canonical resumed identity + main-owned background progress and follow-up queue | Landed recovery evidence for the owner-reported duplicate/stalled Full Auto conversation; broader Full Auto release claims remain separate |
 | [`2026-07-12-android-emulator-receipts.md`](../2026-07-12-android-emulator-receipts.md) | supporting device evidence | First CUT Android-emulator evidence and later acceptance chronology; does not reopen closed CUTs or create a physical-Android gate |
 | [`2026-07-12-new-chat-live-sync-false-completion-after-action.md`](../2026-07-12-new-chat-live-sync-false-completion-after-action.md) | failure/after-action | Retained counterexample for false completion and unreachable fallback; not a success receipt |
 | [`2026-07-12-clean-agent-reading-receipt.md`](../2026-07-12-clean-agent-reading-receipt.md) | deterministic documentation-policy proof | Bounded README-to-authority reading contract passes and remains a regression gate |
