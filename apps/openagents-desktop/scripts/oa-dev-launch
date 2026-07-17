@@ -7,6 +7,20 @@ source_repo="$HOME/work/openagents"
 launch_repo="$HOME/work/.oa-launch"
 node24_bin="$HOME/.nvm/versions/node/v24.13.1/bin"
 owner_launch_cwd="$PWD"
+restart_requested=false
+
+if [[ "${1:-}" == "--restart" ]]; then
+  restart_requested=true
+  shift
+  if (( $# != 0 )); then
+    echo "oa-dev: --restart does not accept dev-server arguments" >&2
+    exit 64
+  fi
+fi
+if [[ "${1:-}" == "--restart-supervisor" ]]; then
+  echo "oa-dev: internal restart supervision is launchd-owned; use oa-dev --restart" >&2
+  exit 64
+fi
 
 if [[ -x "$node24_bin/node" ]]; then
   export PATH="$node24_bin:$PATH"
@@ -34,6 +48,132 @@ else
 fi
 
 existing_pid="$(pgrep -x 'OpenAgents Dev' | head -1)"
+if $restart_requested && [[ -n "$existing_pid" ]]; then
+  if [[ ! -e "$launch_repo/.git" ]]; then
+    echo "oa-dev: cannot supervise restart because the managed launch worktree is missing" >&2
+    exit 1
+  fi
+  target_sha="$(git -C "$source_repo" rev-parse origin/main)" || exit 1
+  old_sha="$(git -C "$launch_repo" rev-parse HEAD 2>/dev/null)" || old_sha="unknown"
+  old_pgid="$(/bin/ps -o pgid= -p "$existing_pid" | tr -d '[:space:]')"
+  if [[ -z "$old_pgid" || "$old_pgid" != <-> ]]; then
+    echo "oa-dev: could not identify the running OpenAgents Dev process group" >&2
+    exit 1
+  fi
+  restart_root="$HOME/Library/Logs/OpenAgents/oa-dev-restarts"
+  lock_dir="$restart_root/active.lock"
+  mkdir -p "$restart_root" || exit 1
+  chmod 700 "$restart_root" || exit 1
+  request_ref="restart-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  receipt_path="$restart_root/$request_ref.json"
+  log_path="$restart_root/$request_ref.log"
+  supervisor_path="$restart_root/$request_ref-supervisor.mjs"
+  label="com.openagents.desktop.dev-restart.$$.${target_sha[1,10]}"
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    active_receipt="$(cat "$lock_dir/receipt" 2>/dev/null)"
+    active_owner_pid="$(cat "$lock_dir/owner-pid" 2>/dev/null)"
+    active_label="$(cat "$lock_dir/launchd-label" 2>/dev/null)"
+    active_coordinator_pid="$(node -e 'try { process.stdout.write(String(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).coordinatorPid ?? "")) } catch {}' "$active_receipt")"
+    restart_active=false
+    if [[ -n "$active_owner_pid" ]] && kill -0 "$active_owner_pid" 2>/dev/null; then restart_active=true; fi
+    if [[ -n "$active_coordinator_pid" ]] && kill -0 "$active_coordinator_pid" 2>/dev/null; then restart_active=true; fi
+    if [[ -n "$active_label" ]] && /bin/launchctl print "gui/$UID/$active_label" >/dev/null 2>&1; then restart_active=true; fi
+    if $restart_active; then
+      echo "oa-dev: a supervised restart is already active${active_receipt:+; receipt: $active_receipt}" >&2
+      exit 75
+    fi
+    echo "oa-dev: recovering an abandoned restart lock${active_receipt:+; prior receipt: $active_receipt}"
+    rm -rf "$lock_dir"
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+      echo "oa-dev: restart lock recovery raced another request; retry" >&2
+      exit 75
+    fi
+  fi
+  printf '%s\n' "$receipt_path" > "$lock_dir/receipt"
+  printf '%s\n' "$$" > "$lock_dir/owner-pid"
+  printf '%s\n' "$label" > "$lock_dir/launchd-label"
+  chmod 600 "$lock_dir/receipt" "$lock_dir/owner-pid" "$lock_dir/launchd-label"
+  if ! git -C "$source_repo" show "$target_sha:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs" > "$supervisor_path"; then
+    rm -rf "$lock_dir" "$supervisor_path"
+    echo "oa-dev: target commit does not contain the restart supervisor" >&2
+    exit 1
+  fi
+  chmod 500 "$supervisor_path"
+  requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  pnpm_path="$(command -v pnpm)"
+  if [[ -z "$pnpm_path" ]]; then
+    rm -rf "$lock_dir" "$supervisor_path"
+    echo "oa-dev: pnpm is required" >&2
+    exit 1
+  fi
+  config_json="$(node -e '
+    const value = {
+      requestRef: process.argv[1], requestedAt: process.argv[2], oldCommit: process.argv[3],
+      targetSha: process.argv[4], oldAppPid: Number(process.argv[5]), oldProcessGroupId: Number(process.argv[6]),
+      sourceRepo: process.argv[7], launchRepo: process.argv[8], receiptPath: process.argv[9], lockDir: process.argv[10],
+      logPath: process.argv[11], ownerLaunchCwd: process.argv[12], nodePath: process.argv[13], pnpmPath: process.argv[14], rendererPort: 5734,
+      graceMs: 15000, quitTimeoutMs: 20000, groupTerminateTimeoutMs: 5000, forceQuitTimeoutMs: 5000,
+      portReleaseTimeoutMs: 10000, readinessTimeoutMs: 60000,
+    };
+    process.stdout.write(Buffer.from(JSON.stringify(value)).toString("base64url"));
+  ' "$request_ref" "$requested_at" "$old_sha" "$target_sha" "$existing_pid" "$old_pgid" "$source_repo" "$launch_repo" "$receipt_path" "$lock_dir" "$log_path" "$owner_launch_cwd" "$node24_bin/node" "$pnpm_path")" || {
+    rm -rf "$lock_dir" "$supervisor_path"
+    exit 1
+  }
+  if ! node -e '
+    const fs = require("node:fs"); const path = require("node:path");
+    const receiptPath = process.argv[1]; const next = `${receiptPath}.next-${process.pid}`;
+    const document = {
+      schemaVersion: "openagents.desktop.dev_restart_receipt.v1", coordinatorVersion: 1, state: "scheduled",
+      requestRef: process.argv[2], requestedAt: process.argv[3], oldCommit: process.argv[4], targetCommit: process.argv[5],
+      oldAppPid: Number(process.argv[6]), oldProcessGroupId: Number(process.argv[7]), receiptPath,
+    };
+    fs.writeFileSync(next, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
+    const file = fs.openSync(next, "r"); fs.fsyncSync(file); fs.closeSync(file); fs.renameSync(next, receiptPath);
+    const parent = fs.openSync(path.dirname(receiptPath), "r"); fs.fsyncSync(parent); fs.closeSync(parent);
+  ' "$receipt_path" "$request_ref" "$requested_at" "$old_sha" "$target_sha" "$existing_pid" "$old_pgid"; then
+    rm -rf "$lock_dir" "$supervisor_path"
+    exit 1
+  fi
+  mark_restart_failed() {
+    node -e '
+      const fs = require("node:fs"); const path = require("node:path"); const receiptPath = process.argv[1];
+      const document = { ...JSON.parse(fs.readFileSync(receiptPath, "utf8")), state: "failed", ready: false,
+        failedAt: new Date().toISOString(), error: process.argv[2], recoveryCommand: "oa-dev" };
+      const next = `${receiptPath}.next-${process.pid}`; fs.writeFileSync(next, `${JSON.stringify(document, null, 2)}\n`, { mode: 0o600 });
+      const file = fs.openSync(next, "r"); fs.fsyncSync(file); fs.closeSync(file); fs.renameSync(next, receiptPath);
+      const parent = fs.openSync(path.dirname(receiptPath), "r"); fs.fsyncSync(parent); fs.closeSync(parent);
+    ' "$receipt_path" "$1"
+  }
+  if ! /bin/launchctl submit -l "$label" -o "$log_path" -e "$log_path" -- \
+      /usr/bin/env "PATH=$PATH" "$node24_bin/node" "$supervisor_path" supervise "$config_json"; then
+    mark_restart_failed "launchd refused restart handoff; the running app was preserved"
+    rm -rf "$lock_dir" "$supervisor_path"
+    echo "oa-dev: launchd refused restart handoff; the running app was preserved" >&2
+    exit 1
+  fi
+  handoff_owned=false
+  for _ in {1..100}; do
+    receipt_state="$(node -e 'try { process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).state ?? "") } catch {}' "$receipt_path")"
+    if [[ "$receipt_state" == "handoff_owned" || "$receipt_state" == "synchronizing" || "$receipt_state" == "ready" ]]; then
+      handoff_owned=true
+      break
+    fi
+    sleep 0.1
+  done
+  if ! $handoff_owned; then
+    /bin/launchctl remove "$label" >/dev/null 2>&1 || true
+    mark_restart_failed "launchd did not acknowledge restart ownership; the running app was preserved"
+    rm -rf "$lock_dir"
+    echo "oa-dev: launchd did not acknowledge restart ownership; the running app was preserved" >&2
+    echo "oa-dev: inspect $receipt_path" >&2
+    exit 1
+  fi
+  echo "oa-dev: supervised restart accepted by launchd"
+  echo "oa-dev: current app PID $existing_pid will exit after a 15s handoff grace"
+  echo "oa-dev: target ${target_sha[1,10]} receipt $receipt_path"
+  exit 0
+fi
 if [[ -n "$existing_pid" ]]; then
   echo "oa-dev: OpenAgents Dev is already running as process $existing_pid"
   if [[ -e "$launch_repo/.git" ]]; then

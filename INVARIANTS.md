@@ -352,6 +352,28 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
+## Desktop Development Restart Authority
+
+- The managed `.oa-launch` checkout and its running OpenAgents Dev process tree
+  are one immutable launch generation. A new source revision cannot be applied
+  by mutating that checkout beneath the live app or by asking an in-app agent to
+  kill its own host and relaunch afterward.
+- `oa-dev --restart` is the sole supported apply-main restart transaction. It
+  pins one exact `origin/main` commit and hands the transaction to a distinct
+  launchd-owned coordinator before any shutdown. The coordinator must prove it
+  is outside the old process group, drain that complete group, observe the
+  renderer port released, and only then synchronize `.oa-launch` and start a
+  replacement in a fresh process group.
+- Restart requests are single-flight. Every accepted request writes a private,
+  atomic durable receipt that binds old and target commits, old process
+  identity/outcome, coordinator identity, replacement identities, readiness or
+  bounded failure, and the `oa-dev` recovery command. Handoff or relaunch
+  failure preserves an owner-visible receipt; expected supervised SIGTERM/143
+  is lifecycle evidence, not an unexplained crash.
+- This boundary is enforced by
+  `apps/openagents-desktop/tests/oa-dev-supervisor.test.ts` and the launcher
+  assertions in `apps/openagents-desktop/tests/electron-boundary.test.ts`.
+
 ## Desktop Release Artifact Authority
 
 - Khala Code Desktop public distribution is not a code-complete claim until the

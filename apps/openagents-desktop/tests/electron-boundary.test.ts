@@ -42,7 +42,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   test("keeps production identity stable while isolating development safeStorage", () => {
     const manifest = JSON.parse(read("package.json")) as { productName?: string };
     const html = read("index.html");
-    expect(main).toContain('const desktopPreviewMode = !app.isPackaged');
+    expect(main).toContain("const desktopPreviewMode = !app.isPackaged");
     expect(main).toContain('? "OpenAgents"');
     expect(main).toContain("OpenAgents Preview");
     expect(main).toContain(': "OpenAgents Dev"');
@@ -126,8 +126,23 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
 
   test("the dev launcher skips workspace lifecycle hooks and repairs Electron explicitly", () => {
     const launcher = read("scripts/oa-dev-launch");
+    const restartSupervisor = read("scripts/oa-dev-supervisor.mjs");
     expect(launcher).toContain("pnpm install --frozen-lockfile --ignore-scripts");
     expect(launcher).toContain('node "$electron_package/install.js"');
+    expect(launcher).toContain('if [[ "${1:-}" == "--restart" ]]');
+    expect(launcher).toContain("/bin/launchctl submit");
+    expect(launcher).toContain(
+      'git -C "$source_repo" show "$target_sha:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs"',
+    );
+    expect(launcher).toContain("a supervised restart is already active");
+    expect(restartSupervisor).toContain("coordinatorProcessGroupId === config.oldProcessGroupId");
+    expect(restartSupervisor).toContain("process.kill(-config.oldProcessGroupId, signal)");
+    expect(restartSupervisor).toContain("deps.syncLaunchWorktree()");
+    expect(restartSupervisor.indexOf("if (!stopped) throw")).toBeLessThan(
+      restartSupervisor.indexOf("deps.syncLaunchWorktree()"),
+    );
+    expect(restartSupervisor).toContain("detached: true");
+    expect(restartSupervisor).toContain("schemaVersion: receiptSchema");
   });
 
   test("main exposes fixed validated channels rather than arbitrary command authority", () => {

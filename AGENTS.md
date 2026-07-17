@@ -696,7 +696,15 @@ and deterministic Effect tests. Do not skip it merely because
   must use the frozen pnpm lockfile with lifecycle scripts disabled, because a
   normal app launch may not run all 80 workspace projects' `prepare` hooks.
   The launcher verifies and repairs Electron's required runtime explicitly
-  after dependency materialization.
+  after dependency materialization. A running OpenAgents Dev process and its
+  `.oa-launch` worktree are one live generation: agents must never manually
+  fast-forward/reset/clean that worktree or directly kill its pnpm, dev-server,
+  Electron, or app process tree. Apply a new main-process generation only with
+  `oa-dev --restart`, whose launchd-owned coordinator pins `origin/main`, takes
+  durable ownership before shutdown, drains the old process group, synchronizes
+  the worktree only after it is empty, and records replacement readiness. With
+  unrestricted host authority this is an agent policy and canonical-tool
+  boundary, not a claim that arbitrary `/bin/kill` can be intercepted.
 - Read `INVARIANTS.md` before changing authority, routing, payment,
   projection, or public-claim surfaces.
 - **One completion gate:** `pnpm run check` is the repository definition of
