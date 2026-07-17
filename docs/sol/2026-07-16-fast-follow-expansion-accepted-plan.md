@@ -2047,6 +2047,16 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T20:07:00Z`
 
+### IMPLEMENTATION OUTCOME
+
+- status: tested implementation ready for remote landing
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-26-desktop-thread-visibility-workspace-publication-transport-receipt.md`
+- implementation: pending exact remote commit
+- disposition: bounded packet implementation complete; claim remains held until the exact remote tree and receipt are verified
+- authority proof: focused workspace/cross-contract tests 58/58, Fast Follow package 13/13, behavior contracts 36/36, focused ProductSpec 104/104, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- known baselines: targeted AssuranceSpec reproduced only the environment digest mismatch at 189/190; root Fast Follow reproduced only the separately owned teardown seed at 6/7
+- residual: named-group authority/publication, ambiguous-create reconciliation, canonical-export evidence authority, actual `main.ts` composition, renderer command/pixels, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
