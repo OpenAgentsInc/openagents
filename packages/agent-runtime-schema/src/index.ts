@@ -5,6 +5,7 @@ export * from "./live-agent-graph-adapters.js";
 export * from "./thread-control.js";
 export * from "./thread-disclosure.js";
 export * from "./thread-event-authority.js";
+export * from "./thread-event-search.js";
 export * from "./thread-export-artifact.js";
 
 export const AgentRuntimeRunId = S.String;

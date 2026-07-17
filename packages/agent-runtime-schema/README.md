@@ -18,6 +18,13 @@ contains refs rather than raw prompt content. The outcome keeps admission,
 delivery, and terminal observation separate so a queued or accepted command is
 never misreported as applied or completed.
 
+The same program's rebuildable canonical search projection consumes only
+owner-local `openagents.thread_export_artifact.v1` bundles. It returns exact
+original thread/event refs with their accepted, superseded, or reverted state,
+uses bounded deterministic text filtering only after the search route is
+selected, and reports index/result truncation explicitly. It is not transcript,
+acceptance, persistence, disclosure, transport, or renderer authority.
+
 For Khala Code's AI SDK-shaped runtime work, the package also defines:
 
 - `openagents.khala_runtime_event.v1` for canonical text, reasoning, step,
