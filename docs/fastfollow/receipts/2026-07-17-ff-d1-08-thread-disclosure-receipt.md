@@ -3,7 +3,7 @@ artifact_schema: "openagents.fastfollow.implementation_receipt.v0"
 artifact_id: "openagents.fastfollow.receipt.ff_d1_08.thread_disclosure.20260717"
 class: "implementation_receipt"
 status: "implemented"
-disposition: "bounded_packet_implemented"
+disposition: "bounded_packet_landed"
 directive_id: "amp.day1_thread_fabric_surfaces"
 stage: "implementation"
 fast_follow_revision: 3
@@ -63,6 +63,9 @@ authority.
 | ProductSpec package test          | PASS — 104/104                   |
 | Sol document checks               | PASS — 19/19 plus manifest check |
 | `pnpm run check` and `check:fast` | PASS                             |
+
+The packet implementation landed on `main` as
+`9582538eb287cb77f1c50ad50c69965ef65d839c` with an exact remote tree match.
 
 ## Honest boundary and next packet
 
