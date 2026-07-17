@@ -995,6 +995,68 @@ evidence, and Day 1 completion remain later packets.
 - remote proof: the fetched remote implementation tree exactly matched the fully checked local tree
 - residual: main-process handler registration, renderer command/pixels, broader disclosure adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-14 — Canonical-export main-process handler seam
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-13. Active
+work still owns Desktop `main.ts`, history, shell, renderer, update, and release
+surfaces. The packet therefore adds a new-file-only main-process registration
+seam that binds FF-D1-13's fixed decoded channel to FF-D1-12's path-free file
+transport while leaving actual `main.ts` composition and pixels untouched.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-main-handler.ts`
+- `apps/openagents-desktop/src/thread-export-main-handler.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-14-desktop-thread-export-main-handler-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: the fixed `openagents:thread-export:write` channel, exact
+FF-D1-13 request/result decoders, trusted Desktop sender authority, handler
+registration lifecycle, and FF-D1-12's path-free transport result. Existing
+Desktop `main.ts`, preload, renderer, history, shell, Sync, provider, and
+disclosure-audience contracts remain unchanged.
+
+Required behavior:
+
+- registration accepts exactly the fixed channel and returns one idempotent
+  host-owned cleanup for the registered handler;
+- an untrusted sender or malformed/broader/non-canonical request fails before
+  transport invocation with the bounded `invalid_request` result;
+- a trusted exact request passes only its decoded ref-only receipt to the
+  transport, never renderer-supplied bytes, channel, destination, filesystem,
+  process, or provider authority;
+- valid cancelled, written, and rejected transport outcomes pass through the
+  shared decoder, while thrown or malformed outcomes collapse to
+  `transport_unavailable`; and
+- no result exposes a destination path, artifact bytes, native error, raw
+  evidence, broader disclosure, deployment, release, or acceptance claim.
+
+Proof: focused handler/bridge/command/store tests; isolated TypeScript compile;
+Fast Follow, behavior-contract, ProductSpec, Sol, and repository-required
+checks. Known current-main Desktop lifecycle typecheck and AssuranceSpec
+environment-digest snapshot failures remain baseline collisions unless
+separately resolved on `main`.
+
+Close rule: this packet closes only the tested main-process handler and
+registration lifecycle seam. Actual `main.ts` composition, renderer
+command/pixels, broader disclosure adapters, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-14-20260717`
+- base: `88c24ec985469ef4a434a96ade59f074bf40bb4e`
+- worktree/branch: `openagents-ff-d1-14` / detached `origin/main`
+- scope: fixed trusted-sender canonical-export main-process handler registration seam
+- paths: the FF-D1-14 owned implementation paths above
+- hot files: new Desktop handler/test; accepted-plan ledger and Sol manifest
+- hot contracts: fixed channel, exact request/result decoding, trusted sender gate, handler cleanup, and path-free transport delegation
+- dependencies: FF-D1-13 released; no relevant feature issue or competing claim; active Desktop main/history/shell/renderer/update/release work explicitly excluded
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T16:00:04Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
