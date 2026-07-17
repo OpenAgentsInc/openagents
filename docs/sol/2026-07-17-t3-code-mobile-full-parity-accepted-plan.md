@@ -1436,3 +1436,19 @@ receipts remain `T3M-F2`.
 - residual: `T3M-F2` complete component census, layout/motion/haptic and
   screen-reader finish, installed iOS/Android journeys, signed distribution,
   and owner acceptance; this is not a full-parity claim
+
+### CLAIM-RELEASE
+
+- landed: `dc1658917fbf08f0a26ec8fd9ca5af777d55e98a` on `main`
+- verification: pre-rebase 254 mobile tests, 36 behavior-contract tests,
+  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 17
+  settings/Home tests, mobile typecheck, and the 141-document Sol manifest
+  check
+- authority note: credentials and native push registration stay in the host;
+  permission is explicit-only; environment pairing/reconnect becomes visible
+  only from exact receipts; and reviewed share intake changes composer draft,
+  never transcript history or submission state
+- close boundary: `T3M-F1` is complete in application code. Installed live
+  environment observation, physical iOS/Android journeys, packaged native
+  modules, signed distribution, and owner acceptance remain `T3M-F2`
+- verified_at: `2026-07-18T00:46:02Z`
