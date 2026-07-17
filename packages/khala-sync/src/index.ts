@@ -20,6 +20,11 @@ export const KHALA_SYNC_PROTOCOL_VERSION = 1
 export * from "./fleet.js"
 export * from "./fleet-run-client-projection.js"
 
+// FA-RUN-05 (#8981): the public-safe FullAutoRun mobile projection --
+// consumed by Desktop (publish) and OpenAgents mobile (fetch, #8982) via
+// khala-sync-client, mirroring the FleetRunClientProjection pattern above.
+export * from "./full-auto-run-client-projection.js"
+
 // Capacity-aware dispatch account selection (#8389/#8388): pure selector
 // over FleetAccountEntity, shared by khala-sync-server and the published
 // Pylon runtime dispatch consumer (see its own doc header for why it lives

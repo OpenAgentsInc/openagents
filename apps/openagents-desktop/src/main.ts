@@ -322,6 +322,10 @@ import {
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
 import {
+  makeFullAutoRunProjectionPublisher,
+  wrapFullAutoRunRegistryWithProjectionPublish,
+} from "./full-auto-run-projection-publisher.ts"
+import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
   DesktopCodingCatalogDeleteChannel,
@@ -1147,8 +1151,33 @@ const fullAutoRegistry = openFullAutoRegistry(
 )
 /** FA-RUN-01 (#8969): the durable FullAutoRun objective/lifecycle store,
  * layered on top of the unchanged `fullAutoRegistry` above. */
-const fullAutoRunRegistry = openFullAutoRunRegistry(
+const fullAutoRunRegistryRaw = openFullAutoRunRegistry(
   path.join(app.getPath("userData"), "full-auto", "runs.json"),
+)
+/**
+ * FA-RUN-05 (#8981): publishes a public-safe live projection of the active
+ * FullAutoRun to `/api/full-auto-runs` so mobile (#8982) can fetch "my
+ * active run" cross-device. Purely additive: `wrapFullAutoRunRegistryWithProjectionPublish`
+ * decorates the registry object below with a fire-and-forget publish call
+ * after every state-changing method already exposed by the (unmodified)
+ * registry -- it never touches `full-auto-run-registry.ts`'s storage,
+ * transition legality, or concurrency invariants. Gated on the same
+ * `desktopSessionState === "session_ready"` signal the Codex usage reporter
+ * already uses; with no signed-in session, publish is skipped entirely (no
+ * network call, no Keychain probe beyond the app's own already-open
+ * in-process session vault read). Every downstream consumer of
+ * `fullAutoRunRegistry` (including FA-RUN-03 #8971's liveness/stall
+ * transitions below) automatically gets its transitions republished too,
+ * since they all route through this one wrapped instance.
+ */
+const fullAutoRunProjectionPublisher = makeFullAutoRunProjectionPublisher({
+  sessionReady: () => desktopSessionState === "session_ready",
+  credential: () => desktopSessionVault?.load() ?? null,
+  baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+})
+const fullAutoRunRegistry = wrapFullAutoRunRegistryWithProjectionPublish(
+  fullAutoRunRegistryRaw,
+  fullAutoRunProjectionPublisher,
 )
 /** FA-HO-01 (#8975): the durable cross-provider handoff receipt store, kept
  * independent of `fullAutoRunRegistry.transitions` (lifecycle-state edges,
@@ -1178,6 +1207,20 @@ const providerHandoffRegistry = openProviderHandoffRegistry(
     )
   }
 }
+/** FA-RUN-05 (#8981): a periodic heartbeat republish while the active run is
+ * Running, so mobile can detect staleness (a stuck/dead Desktop process)
+ * from `updatedAt` even when no lifecycle transition has fired recently.
+ * Every state-changing transition ALSO republishes immediately via the
+ * wrapped registry above; this timer only covers the "still Running, no new
+ * transition" gap. */
+const fullAutoRunProjectionHeartbeatMs = 60_000
+const fullAutoRunProjectionHeartbeatTimer = setInterval(() => {
+  const active = fullAutoRunRegistry.activeRun()
+  if (active !== null && active.state === "running") {
+    Effect.runFork(fullAutoRunProjectionPublisher.publish(active))
+  }
+}, fullAutoRunProjectionHeartbeatMs)
+fullAutoRunProjectionHeartbeatTimer.unref?.()
 const providerLaneRegistry = makeProviderLaneRegistry({
   file: path.join(app.getPath("userData"), "provider-lanes", "registry.json"),
 })
@@ -7408,6 +7451,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   desktopIsQuitting = true
+  clearInterval(fullAutoRunProjectionHeartbeatTimer)
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()
   workspaceSearchRegistry.dispose()

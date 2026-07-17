@@ -21,6 +21,17 @@ export {
   type FleetRunProjectionFetchResult,
 } from "./fleet-run-client-projection.js"
 
+// FA-RUN-05 (#8981): FullAutoRun mobile projection fetch (mobile, #8982) and
+// publish (Desktop) ergonomics -- mirrors the FleetRunClientProjection
+// fetch helper above.
+export {
+  fetchFullAutoRunClientProjection,
+  publishFullAutoRunClientProjection,
+  FULL_AUTO_RUNS_PATH,
+  type FullAutoRunProjectionFetchResult,
+  type FullAutoRunProjectionPublishResult,
+} from "./full-auto-run-client-projection.js"
+
 export {
   admitFleetAttentionCommand,
   admitFleetRunCommand,

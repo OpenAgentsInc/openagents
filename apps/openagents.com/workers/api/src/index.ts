@@ -1128,6 +1128,10 @@ import {
   randomUuid,
 } from './runtime-primitives'
 import {
+  FULL_AUTO_RUNS_PATH,
+  makeFullAutoRunRoutes,
+} from './full-auto-run-routes'
+import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
@@ -10224,6 +10228,31 @@ const optionalCommaSeparatedValues = (
   return values === undefined || values.length === 0 ? undefined : values
 }
 
+// FA-RUN-05 (#8981): the FullAutoRun mobile projection route needs only "is
+// this a signed-in owner", never the Sarah relationship-mode/policy layer --
+// the v1 concurrency policy (at most one active run per owner) is already
+// enforced by Desktop's registry, and every query is scoped by the
+// authenticated owner's own userId.
+const fullAutoRunRoutes = makeFullAutoRunRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') {
+      return undefined
+    }
+    const tokens = actor.tokens
+    return {
+      userId: actor.user.userId,
+      ...(tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, tokens)
+            },
+          }),
+    }
+  },
+})
+
 const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -11341,6 +11370,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
       sarahFleetRunRoutes
+        .handle(request, env, ctx)
+        .pipe(Effect.map(materializeHttpResult)),
+  },
+  // FA-RUN-05 (#8981): Desktop publishes (POST) and mobile fetches (GET) the
+  // signed-in owner's live FullAutoRun projection here. v1, pending
+  // reconciliation with #8972's future canonical run report/receipt schema.
+  {
+    path: FULL_AUTO_RUNS_PATH,
+    handler: (request, env, ctx) =>
+      fullAutoRunRoutes
         .handle(request, env, ctx)
         .pipe(Effect.map(materializeHttpResult)),
   },
