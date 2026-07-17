@@ -478,13 +478,11 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       ...program.initialState,
       drawerOpen: true,
     }))
-    expect(drawer).toContain("Coding sessions")
-    expect(drawer).toContain("drawer-coding-session-session.mobile")
-    expect(drawer).toContain("openagents · 1 session")
-    expect(drawer).toContain('"label":"Active"')
-    expect(drawer.indexOf("drawer-coding-title")).toBeLessThan(
-      drawer.indexOf(`drawer-thread-${initialThread.threadRef}`),
-    )
+    expect(drawer).toContain("workspace-row-session:session.mobile")
+    expect(drawer).toContain("openagents · Worktree worktree.mobile")
+    expect(drawer).toContain('"content":"Running"')
+    expect(drawer).toContain('"name":"CodingSessionSelected"')
+    expect(drawer).not.toContain(`workspace-row-thread:${initialThread.threadRef}`)
 
     program.coding.selectSession({
       schema: "openagents.mobile.coding_target.v1",
@@ -613,7 +611,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(content).not.toContain("1 message · 0 events")
     expect(content).not.toContain('"senderLabel":"YOU"')
     const drawer = JSON.stringify(renderDrawerView(program.initialState))
-    expect(drawer).toContain("drawer-thread-thread.synced.1")
+    expect(drawer).toContain("workspace-row-thread:thread.synced.1")
     expect(drawer).toContain('"label":"Synced"')
   })
 
@@ -1183,12 +1181,15 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       },
     }
     const program = buildHomeProgram({ conversation: selection(host) })
-    expect(JSON.stringify(renderDrawerView(program.initialState))).toContain("Manage selected chat")
+    expect(JSON.stringify(renderDrawerView(program.initialState))).toContain("workspace-row-actions-thread:thread.synced.1")
 
     const report = async (name: string, payload: string | Record<string, string> = {}) => {
       await Effect.runPromise(program.report(IntentRef(name, StaticPayload(payload))) as Effect.Effect<unknown>)
       await Effect.runPromise(settle)
     }
+    await report("WorkspaceRowActionsToggled", { threadRef: initialThread.threadRef })
+    expect(JSON.stringify(renderDrawerView(await Effect.runPromise(lastState(program)))))
+      .toContain("Actions · Synced")
     await report("ConversationThreadRenameStarted", { threadRef: initialThread.threadRef })
     await report("ConversationThreadRenameChanged", "Controller chat")
     await report("ConversationThreadRenameSubmitted")

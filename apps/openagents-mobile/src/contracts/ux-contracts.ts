@@ -5,8 +5,51 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.10",
+    version: "2026-07-17.11",
     contracts: [
+      {
+        contractId: "openagents_mobile.workspace_navigation.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile workspace navigation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "accepted-owner-plan",
+          statedBy: "owner",
+          statedOn: "2026-07-17",
+        },
+        statement:
+          "The mobile workspace drawer uses one compact project-aware row grammar for confirmed conversations, coding sessions, pending attention, and archived threads, with bounded search, status/project filters, row-local lifecycle actions, and exact causal jumps.",
+        authorityBoundary:
+          "Navigation projects only already-confirmed conversation, coding-directory, and personal-attention state. Exact refs remain in typed intents but outside primary labels; invalid attention is withheld, foreign project filters are refused, cached-withheld coding rows remain counted but hidden, and lifecycle writeback remains server-authoritative.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-workspace-navigation.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#active-packet--t3m-c1",
+          "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d:apps/mobile/src/features/sidebar",
+        ],
+        oracles: [
+          {
+            id: "mobile_workspace_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-workspace-navigation.test.ts",
+            description:
+              "Proves exact project/session joins, bounded labels and filters, archive isolation, invalid-attention withholding, and causal target identity.",
+          },
+          {
+            id: "mobile_workspace_actions_and_causal_navigation",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves typed row selection, attention jumps, row-local lifecycle controls, explicit deletion, and confirmed writeback.",
+          },
+        ],
+        verification:
+          "Workspace projection, authoritative Home, lifecycle, attention, accessibility, behavior-contract, mobile typecheck, and repository checks; adaptive native shell and physical-device evidence remain T3M-C2/T3M-F2.",
+      },
       {
         contractId: "openagents_mobile.composer.provider_neutral_queue.v1",
         state: "enforced",

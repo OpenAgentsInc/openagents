@@ -161,7 +161,7 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(serialized).not.toContain("Sarah")
   })
 
-  test("drawer exposes the exact authenticated hybrid FleetRun refs", () => {
+  test("drawer summarizes authenticated FleetRun activity without exposing raw refs", () => {
     const serialized = JSON.stringify(renderDrawerView({
       ...initialHomeState,
       fleetRuns: {
@@ -193,9 +193,9 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
         }],
       },
     }))
-    expect(serialized).toContain("fleet_run.sarah.f566771758bbe0ab5fc5")
-    expect(serialized).toContain("owner_local → owner_local · accepted")
-    expect(serialized).toContain("assignment.closeout.summary.e2d06ebe9e9eaf48dd9e8d74")
+    expect(serialized).toContain("Fleet activity · 1 run · 1 completed")
+    expect(serialized).not.toContain("fleet_run.sarah.f566771758bbe0ab5fc5")
+    expect(serialized).not.toContain("assignment.closeout.summary.e2d06ebe9e9eaf48dd9e8d74")
   })
 
   test("drawer Settings opens the account and Sync surface", async () => {

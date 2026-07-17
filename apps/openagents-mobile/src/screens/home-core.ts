@@ -68,6 +68,12 @@ import {
   resolveMobileAttentionTarget,
   type MobileAttentionTarget,
 } from "../attention/mobile-attention-target"
+import {
+  MOBILE_WORKSPACE_MAX_SEARCH,
+  projectMobileWorkspaceNavigation,
+  type MobileWorkspaceRow,
+  type MobileWorkspaceStatusFilter,
+} from "./mobile-workspace-navigation"
 
 import {
   AgentRowSelected,
@@ -143,7 +149,11 @@ export interface HomeState {
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly archivedConversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
+  readonly workspaceSearch: string
+  readonly workspaceStatusFilter: MobileWorkspaceStatusFilter
+  readonly workspaceProjectFilter: string | null
   readonly threadLifecycle: Readonly<{
+    actionThreadRef: string | null
     editingThreadRef: string | null
     renameDraft: string
     deleteConfirmThreadRef: string | null
@@ -288,7 +298,11 @@ export const initialHomeState: HomeState = {
   conversationThreads: [],
   archivedConversationThreads: [],
   activeThreadRef: null,
+  workspaceSearch: "",
+  workspaceStatusFilter: "all",
+  workspaceProjectFilter: null,
   threadLifecycle: {
+    actionThreadRef: null,
     editingThreadRef: null,
     renameDraft: "",
     deleteConfirmThreadRef: null,
@@ -333,6 +347,23 @@ export const SurfaceModeSelected = defineIntent(
 )
 export const ConversationThreadSelected = defineIntent(
   "ConversationThreadSelected",
+  Schema.Struct({ threadRef: Schema.String }),
+)
+export const WorkspaceSearchChanged = defineIntent(
+  "WorkspaceSearchChanged",
+  Schema.String,
+)
+export const WorkspaceStatusFilterSelected = defineIntent(
+  "WorkspaceStatusFilterSelected",
+  Schema.Literals(["all", "active", "attention", "idle", "archived"]),
+)
+export const WorkspaceProjectFilterSelected = defineIntent(
+  "WorkspaceProjectFilterSelected",
+  Schema.String,
+)
+export const WorkspaceFiltersCleared = defineIntent("WorkspaceFiltersCleared", EmptyPayload)
+export const WorkspaceRowActionsToggled = defineIntent(
+  "WorkspaceRowActionsToggled",
   Schema.Struct({ threadRef: Schema.String }),
 )
 export const ConversationThreadRenameStarted = defineIntent(
@@ -533,6 +564,11 @@ export const homeIntentDefinitions = [
   OpenAgentsSignOutPressed,
   SurfaceModeSelected,
   ConversationThreadSelected,
+  WorkspaceSearchChanged,
+  WorkspaceStatusFilterSelected,
+  WorkspaceProjectFilterSelected,
+  WorkspaceFiltersCleared,
+  WorkspaceRowActionsToggled,
   ConversationThreadRenameStarted,
   ConversationThreadRenameChanged,
   ConversationThreadRenameSubmitted,
@@ -1182,14 +1218,15 @@ const codingOfflineCacheAccountingRows = (state: HomeState): ReadonlyArray<View>
 const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
   if (state.conversationAuthority !== "sync") return []
   const pending = state.threadLifecycle.pendingAction !== null
-  const selected = state.conversationThreads.find(thread => thread.threadRef === state.activeThreadRef)
+  const selected = [...state.conversationThreads, ...state.archivedConversationThreads]
+    .find(thread => thread.threadRef === state.threadLifecycle.actionThreadRef)
   const deleting = [...state.conversationThreads, ...state.archivedConversationThreads]
     .find(thread => thread.threadRef === state.threadLifecycle.deleteConfirmThreadRef)
   const rows: Array<View> = []
   if (selected !== undefined) {
     rows.push(Text({
       key: "drawer-thread-controls-title",
-      content: "Manage selected chat",
+      content: `Actions · ${selected.title}`,
       variant: "caption",
       color: "textMuted",
     }))
@@ -1224,7 +1261,7 @@ const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
           style: mobileInteractiveStyle(state.accessibility),
         }),
       ]))
-    } else {
+    } else if (selected.status === "active") {
       rows.push(Stack({ key: "drawer-thread-active-actions", direction: "row", gap: "2" }, [
         Button({
           key: "drawer-thread-rename",
@@ -1252,28 +1289,23 @@ const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
           style: mobileInteractiveStyle(state.accessibility),
         }),
       ]))
-    }
-  }
-  if (state.archivedConversationThreads.length > 0) {
-    rows.push(Text({ key: "drawer-archived-title", content: "Archived chats", variant: "caption", color: "textMuted" }))
-    for (const thread of state.archivedConversationThreads) {
-      rows.push(Text({ key: `drawer-archived-${thread.threadRef}`, content: thread.title, variant: "body", color: "textPrimary" }))
-      rows.push(Stack({ key: `drawer-archived-actions-${thread.threadRef}`, direction: "row", gap: "2" }, [
+    } else if (selected.status === "archived") {
+      rows.push(Stack({ key: `drawer-archived-actions-${selected.threadRef}`, direction: "row", gap: "2" }, [
         Button({
-          key: `drawer-restore-${thread.threadRef}`,
+          key: `drawer-restore-${selected.threadRef}`,
           label: pending && state.threadLifecycle.pendingAction === "restore" ? "Restoring…" : "Restore",
           variant: "secondary",
           disabled: pending,
-          onPress: IntentRef("ConversationThreadLifecycleRequested", StaticPayload({ action: "restore", threadRef: thread.threadRef })),
+          onPress: IntentRef("ConversationThreadLifecycleRequested", StaticPayload({ action: "restore", threadRef: selected.threadRef })),
           style: mobileInteractiveStyle(state.accessibility),
         }),
         Button({
-          key: `drawer-delete-archived-${thread.threadRef}`,
+          key: `drawer-delete-archived-${selected.threadRef}`,
           label: "Delete",
           tone: "danger",
           variant: "soft",
           disabled: pending,
-          onPress: IntentRef("ConversationThreadDeleteRequested", StaticPayload({ threadRef: thread.threadRef })),
+          onPress: IntentRef("ConversationThreadDeleteRequested", StaticPayload({ threadRef: selected.threadRef })),
           style: mobileInteractiveStyle(state.accessibility),
         }),
       ]))
@@ -1317,64 +1349,197 @@ const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
   return rows
 }
 
+const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
+  const openIntent = row.attentionTarget !== null
+    ? IntentRef("ControllerAttentionSelected", StaticPayload({
+        schema: MobileAttentionTargetSchemaVersion,
+        ...row.attentionTarget,
+      }))
+    : row.kind === "coding_session" && row.sessionRef !== null && row.repositoryRef !== null
+      ? IntentRef("CodingSessionSelected", StaticPayload({
+          repositoryRef: row.repositoryRef,
+          sessionRef: row.sessionRef,
+          threadRef: row.threadRef,
+        }))
+      : IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: row.threadRef }))
+  const canOpen = row.state !== "archived" && row.state !== "recovery"
+  const hasLifecycle = state.conversationAuthority === "sync" &&
+    [...state.conversationThreads, ...state.archivedConversationThreads]
+      .some(thread => thread.threadRef === row.threadRef)
+  const metadata = [
+    row.projectLabel,
+    row.worktreeLabel === null ? null : `Worktree ${row.worktreeLabel}`,
+    row.recencyLabel,
+  ].filter((value): value is string => value !== null).join(" · ")
+  return Stack({
+    key: `workspace-row-${row.rowId}`,
+    direction: "column",
+    gap: "1",
+    padding: "2",
+    style: {
+      width: "full",
+      backgroundColor: row.selected ? "surfaceRaised" : "surface",
+      borderRadius: "lg",
+    },
+    a11y: { role: "region", label: `${row.title}, ${row.stateLabel}, ${metadata}` },
+  }, [
+    Stack({ key: `workspace-row-heading-${row.rowId}`, direction: "row", gap: "2" }, [
+      Button({
+        key: `workspace-row-open-${row.rowId}`,
+        label: row.title,
+        variant: row.selected ? "secondary" : "ghost",
+        disabled: !canOpen,
+        onPress: openIntent,
+        a11y: {
+          label: row.attentionTarget === null
+            ? `${canOpen ? "Open" : "Unavailable"} ${row.title}`
+            : `Open ${row.stateLabel.toLocaleLowerCase()} in ${row.title}`,
+        },
+        style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
+      }),
+      ...(hasLifecycle
+        ? [Button({
+            key: `workspace-row-actions-${row.rowId}`,
+            label: state.threadLifecycle.actionThreadRef === row.threadRef ? "Close" : "More",
+            variant: "ghost",
+            onPress: IntentRef("WorkspaceRowActionsToggled", StaticPayload({ threadRef: row.threadRef })),
+            a11y: { label: `Actions for ${row.title}` },
+            style: mobileInteractiveStyle(state.accessibility),
+          })]
+        : []),
+    ]),
+    Text({
+      key: `workspace-row-meta-${row.rowId}`,
+      content: metadata,
+      variant: "caption",
+      color: "textMuted",
+    }),
+    Text({
+      key: `workspace-row-state-${row.rowId}`,
+      content: row.stateLabel,
+      variant: "caption",
+      color: row.state === "attention" || row.state === "recovery"
+        ? "warning"
+        : row.state === "active"
+          ? "success"
+          : "textMuted",
+    }),
+  ])
+}
+
+const workspaceNavigationRows = (state: HomeState): ReadonlyArray<View> => {
+  const directory = state.codingDirectory === null
+    ? null
+    : projectMobileControllerDirectory(state.codingDirectory)
+  const projection = projectMobileWorkspaceNavigation({
+    threads: state.conversationThreads,
+    archivedThreads: state.archivedConversationThreads,
+    directory,
+    attention: state.attentionSnapshot,
+    activeThreadRef: state.activeThreadRef,
+    search: state.workspaceSearch,
+    status: state.workspaceStatusFilter,
+    projectRef: state.workspaceProjectFilter,
+  })
+  const filtersActive = state.workspaceSearch.trim() !== "" ||
+    state.workspaceStatusFilter !== "all" || state.workspaceProjectFilter !== null
+  return [
+    TextField({
+      key: "workspace-search",
+      value: state.workspaceSearch,
+      label: "Search workspaces",
+      placeholder: "Search chats, projects, worktrees",
+      onChange: IntentRef("WorkspaceSearchChanged", ComponentValueBinding()),
+      variant: "outline",
+      size: "md",
+      style: { width: "full" },
+    }),
+    SegmentedControl({
+      key: "workspace-status-filter",
+      value: state.workspaceStatusFilter,
+      options: [
+        { id: "all", label: "All" },
+        { id: "active", label: "Active" },
+        { id: "attention", label: "Needs you" },
+        { id: "idle", label: "Idle" },
+        { id: "archived", label: "Archived" },
+      ],
+      onChange: IntentRef("WorkspaceStatusFilterSelected", ComponentValueBinding()),
+      a11y: { label: "Workspace status filter" },
+      style: { width: "full" },
+    }),
+    ...(projection.projectFilters.length === 0
+      ? []
+      : [
+          Text({ key: "workspace-project-filter-title", content: "Projects", variant: "caption", color: "textMuted" }),
+          Stack({ key: "workspace-project-filters", direction: "column", gap: "1" }, [
+            Button({
+              key: "workspace-project-all",
+              label: "All projects",
+              variant: state.workspaceProjectFilter === null ? "secondary" : "ghost",
+              onPress: IntentRef("WorkspaceProjectFilterSelected", StaticPayload("")),
+              style: mobileInteractiveStyle(state.accessibility),
+            }),
+            ...projection.projectFilters.map(project => Button({
+              key: `workspace-project-${project.id}`,
+              label: project.label,
+              variant: state.workspaceProjectFilter === project.id ? "secondary" : "ghost",
+              onPress: IntentRef("WorkspaceProjectFilterSelected", StaticPayload(project.id)),
+              style: mobileInteractiveStyle(state.accessibility),
+            })),
+          ]),
+        ]),
+    ...(filtersActive
+      ? [Button({
+          key: "workspace-clear-filters",
+          label: "Clear filters",
+          variant: "ghost",
+          onPress: IntentRef("WorkspaceFiltersCleared", StaticPayload({})),
+          style: mobileInteractiveStyle(state.accessibility),
+        })]
+      : []),
+    ...(projection.rows.length === 0
+      ? [Text({
+          key: "workspace-empty-results",
+          content: filtersActive
+            ? "No workspaces match these filters."
+            : "No confirmed chats or coding sessions yet.",
+          variant: "body",
+          color: "textMuted",
+        })]
+      : projection.rows.map(row => workspaceRow(row, state))),
+    ...(projection.hiddenRowCount === 0
+      ? []
+      : [Text({
+          key: "workspace-hidden-row-count",
+          content: `${projection.hiddenRowCount} more results hidden. Refine search to continue.`,
+          variant: "caption",
+          color: "textMuted",
+        })]),
+  ]
+}
+
 export const renderDrawerView = (state: HomeState): View =>
   Stack(
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
-      drawerRow({ key: "drawer-openagents", label: "OpenAgents", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "openagents" })), selected: state.surfaceMode === "openagents" }, state.accessibility),
-      drawerRow({ key: "drawer-khala", label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala", onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })), selected: state.surfaceMode === "khala" }, state.accessibility),
-      ...(state.fleetRuns?.runs ?? []).flatMap(run => [
-        Text({
-          key: `fleet-run-${run.runRef}`,
-          content: `Fleet run · ${run.executionState}\n${run.runRef}`,
-          variant: "caption",
-          color: "textPrimary",
-        }),
-        ...run.attempts.map(attempt => Text({
-          key: `fleet-attempt-${attempt.workClaimRef}`,
-          content: `${attempt.requestedTarget} → ${attempt.selectedTarget} · ${attempt.outcome}\n${attempt.workClaimRef}\n${attempt.assignmentRef ?? "Assignment pending"}\n${attempt.closeoutRef ?? "Closeout pending"}`,
-          variant: "caption",
-          color: "textMuted",
-        })),
-      ]),
-      ...(state.codingDirectory?.authority === "confirmed" && state.codingDirectory.sessions.length > 0
-        ? [
-            Text({
-              key: "drawer-coding-title",
-              content: "Coding sessions",
-              variant: "caption",
-              color: "textMuted",
-            }),
-            ...state.codingDirectory.repositories.flatMap(repository => [
-              Text({
-                key: `drawer-coding-repository-${repository.repositoryRef}`,
-                content: `${repository.displayName} · ${repository.sessionCount} ${repository.sessionCount === 1 ? "session" : "sessions"}`,
-                variant: "body",
-                color: "textPrimary",
-              }),
-              ...state.codingDirectory!.sessions
-                .filter(session => session.repositoryRef === repository.repositoryRef)
-                .map(session => drawerRow({
-                  key: `drawer-coding-session-${session.sessionRef}`,
-                  label: codingSessionStateLabel(session.state),
-                  onPress: IntentRef("CodingSessionSelected", StaticPayload({
-                    repositoryRef: session.repositoryRef,
-                    sessionRef: session.sessionRef,
-                    threadRef: session.threadRef,
-                  })),
-                  selected: state.activeThreadRef === session.threadRef,
-                }, state.accessibility)),
-            ]),
-          ]
-        : []),
-      ...state.conversationThreads.map(thread => drawerRow({
-        key: `drawer-thread-${thread.threadRef}`,
-        label: thread.title,
-        onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
-        selected: state.activeThreadRef === thread.threadRef,
-      }, state.accessibility)),
+      drawerRow({
+        key: "drawer-current-surface",
+        label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala",
+        onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })),
+        selected: state.surfaceMode === "khala",
+      }, state.accessibility),
+      ...workspaceNavigationRows(state),
+      ...((state.fleetRuns?.runs.length ?? 0) === 0
+        ? []
+        : [Text({
+            key: "workspace-fleet-summary",
+            content: `Fleet activity · ${state.fleetRuns!.runs.length} ${state.fleetRuns!.runs.length === 1 ? "run" : "runs"} · ${state.fleetRuns!.runs.filter(run => run.executionState === "completed").length} completed`,
+            variant: "caption",
+            color: "textMuted",
+          })]),
       ...threadLifecycleRows(state),
       ...codingOfflineCacheAccountingRows(state),
       Spacer({ key: "drawer-flex-space", size: "8" }),
@@ -1886,6 +2051,7 @@ const makeSyncedConversationHandlers = (
         codingPathDiscovery: activeRemoved ? { state: "idle" as const } : current.codingPathDiscovery,
         codingAttachmentMutatingRef: activeRemoved ? null : current.codingAttachmentMutatingRef,
         threadLifecycle: {
+          actionThreadRef: null,
           editingThreadRef: null,
           renameDraft: "",
           deleteConfirmThreadRef: null,
@@ -1995,6 +2161,7 @@ const makeSyncedConversationHandlers = (
             ...current,
             threadLifecycle: {
               ...current.threadLifecycle,
+              actionThreadRef: thread.threadRef,
               editingThreadRef: thread.threadRef,
               renameDraft: thread.title,
               deleteConfirmThreadRef: null,
@@ -2487,6 +2654,57 @@ export const makeHomeHandlers = (
   })
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
+    WorkspaceSearchChanged: (search: string) => SubscriptionRef.update(state, current => ({
+      ...current,
+      workspaceSearch: search.slice(0, MOBILE_WORKSPACE_MAX_SEARCH),
+      threadLifecycle: { ...current.threadLifecycle, actionThreadRef: null },
+    })),
+    WorkspaceStatusFilterSelected: (status: MobileWorkspaceStatusFilter) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        workspaceStatusFilter: status,
+        workspaceProjectFilter: status === "archived" ? null : current.workspaceProjectFilter,
+        threadLifecycle: { ...current.threadLifecycle, actionThreadRef: null },
+      })),
+    WorkspaceProjectFilterSelected: (projectRef: string) =>
+      SubscriptionRef.update(state, current => {
+        const selected = projectRef === "" ? null : projectRef
+        const allowed = selected === null || (
+          current.codingDirectory?.authority === "confirmed" &&
+          current.codingDirectory.repositories.some(repository => repository.projectRef === selected)
+        )
+        return allowed
+          ? {
+              ...current,
+              workspaceProjectFilter: selected,
+              threadLifecycle: { ...current.threadLifecycle, actionThreadRef: null },
+            }
+          : current
+      }),
+    WorkspaceFiltersCleared: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      workspaceSearch: "",
+      workspaceStatusFilter: "all" as const,
+      workspaceProjectFilter: null,
+      threadLifecycle: { ...current.threadLifecycle, actionThreadRef: null },
+    })),
+    WorkspaceRowActionsToggled: ({ threadRef }: { readonly threadRef: string }) =>
+      SubscriptionRef.update(state, current => {
+        const exists = [...current.conversationThreads, ...current.archivedConversationThreads]
+          .some(thread => thread.threadRef === threadRef)
+        if (!exists || current.threadLifecycle.pendingAction !== null) return current
+        return {
+          ...current,
+          threadLifecycle: {
+            ...current.threadLifecycle,
+            actionThreadRef: current.threadLifecycle.actionThreadRef === threadRef ? null : threadRef,
+            editingThreadRef: null,
+            renameDraft: "",
+            deleteConfirmThreadRef: null,
+            notice: null,
+          },
+        }
+      }),
     NewChatPressed: synced?.NewChatPressed ??
       (() => SubscriptionRef.update(state, (current) => ({
         ...current,

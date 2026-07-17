@@ -67,6 +67,7 @@ describe("contract openagents_mobile.seam.accessibility_core_flows.v1", () => {
       node.key === "home-new-chat" ||
       node.key === "home-more" ||
       node.key === "drawer-new-chat" ||
+      node.key === "drawer-current-surface" ||
       node.key === "drawer-openagents" ||
       node.key === "drawer-khala" ||
       node.key === "drawer-settings")

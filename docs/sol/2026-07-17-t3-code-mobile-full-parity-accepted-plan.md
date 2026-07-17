@@ -923,3 +923,63 @@ separate capability and is not claimed.
 - residual: `T3M-B2.3` mobile queue/Stop semantics are complete for the current
   Pylon adapter; transcript/composer group B is complete; ordered parity work
   advances to `T3M-C1`; full mobile parity remains open through `T3M-F2`
+
+## Active packet — T3M-C1
+
+Outcome: replace the administrative mobile drawer with one bounded,
+project-aware workspace navigation grammar spanning confirmed conversations,
+coding sessions, attention, and archived threads.
+
+Owned paths:
+
+- `apps/openagents-mobile/src/screens/mobile-workspace-navigation.ts`
+- `apps/openagents-mobile/src/screens/home-core.ts`
+- `apps/openagents-mobile/tests/mobile-workspace-navigation.test.ts`
+- `apps/openagents-mobile/tests/authoritative-home.test.ts`
+- `apps/openagents-mobile/tests/mobile-accessibility.test.ts`
+- `apps/openagents-mobile/src/contracts/ux-contracts.ts`
+- this ledger, `docs/sol/document-manifest-policy.json`, and
+  `docs/sol/document-manifest.json`
+
+Hot contracts: confirmed conversation and coding-directory projections,
+attention-target identity, Effect Native intent dispatch, thread lifecycle
+writeback, accessibility, and Sol manifest. This packet does not add a remote
+query, hydrate withheld cache rows, or change conversation authority.
+
+Required behavior:
+
+- one bounded row model joins coding sessions to repository/project,
+  branch/worktree identity, recency, run/readiness state, attention, selected
+  state, and exact navigation intent while ordinary chat rows retain confirmed
+  thread identity and sync state;
+- local search and status/project filters are deterministic, bounded, and
+  operate only on already-authorized projections, with predictable empty
+  results and a clear-filters path;
+- pending attention appears in the same row grammar and dispatches the exact
+  confirmed attention target so selection lands on the causal transcript card;
+- conversation lifecycle controls are row-local, archived threads have a
+  dedicated filtered destination, and rename/delete confirmation remains
+  explicit and server-authoritative;
+- raw refs remain out of the primary row label, withheld cached rows remain
+  counted but hidden, and all controls preserve Dynamic Type touch targets and
+  accessible labels.
+
+Proof: focused workspace-navigation projection, authoritative Home, lifecycle,
+attention, accessibility, behavior-contract, mobile typecheck, and
+repository-required checks.
+
+Close rule: this closes only `T3M-C1`. Adaptive phone/tablet shell composition,
+native headers/sheets/gestures/keyboard focus, and all files/change/Git/terminal
+surfaces remain `T3M-C2` through `T3M-F2`; this is not a full-parity claim.
+
+### CLAIM
+
+- packet: `T3M-C1`
+- base: `1b8a738b7df2a8c614b148476b8004719f11b6a4`
+- claimed_at: `2026-07-17T22:27:38Z`
+- scope: bounded project-aware workspace row projection; drawer search,
+  filters, attention causal jumps, row-local lifecycle actions, archived
+  destination, tests, behavior contract, and Sol receipt
+- exclusions: adaptive shell/native navigation (`T3M-C2`), repository files and
+  changes (`T3M-D1`/`T3M-D2`), Git/terminal (`T3M-E1`/`T3M-E2`), and physical
+  device/distribution evidence (`T3M-F1`/`T3M-F2`)
