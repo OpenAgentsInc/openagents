@@ -64,6 +64,7 @@ import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
+import type { RuntimeControlOutcome } from "@openagentsinc/agent-runtime-schema"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 import { desktopCanonicalCommandRegistry } from "../desktop-command-contract.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
@@ -1542,6 +1543,155 @@ describe("composer image input (capability I1)", () => {
         expect(queueAttempts).toHaveLength(3)
         expect(recorded).toHaveLength(3)
         expect((yield* SubscriptionRef.get(state)).input).toBe("")
+      }),
+    )
+  })
+
+  test("an exact durable Queue acknowledgement replays without redispatch after a lost record ACK", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const queueAttempts: Array<unknown> = []
+        const lookups: Array<unknown> = []
+        let retained: RuntimeControlOutcome | null = null
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: true as const, thread: testThread }),
+          queueFollowup: async (input: unknown) => {
+            queueAttempts.push(input)
+            return { ok: true, queued: true }
+          },
+          reconcileControlOutcome: async (lookup: unknown) => {
+            lookups.push(lookup)
+            return retained === null
+              ? { status: "missing" as const }
+              : { status: "found" as const, outcome: retained }
+          },
+          recordControlOutcome: async ({ outcome }: { outcome: RuntimeControlOutcome }) => {
+            retained = outcome
+            return false
+          },
+        }
+        const state = yield* SubscriptionRef.make({ ...baseState, pending: true, input: "queue exactly once" })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null))))
+        expect(queueAttempts).toHaveLength(1)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("queue exactly once")
+
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null))))
+        expect(queueAttempts).toHaveLength(1)
+        expect(lookups).toHaveLength(2)
+        expect(lookups[1]).toEqual(lookups[0])
+        expect((yield* SubscriptionRef.get(state)).input).toBe("")
+      }),
+    )
+  })
+
+  test("a retained pending Queue acknowledgement blocks redispatch and keeps the draft", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let attempts = 0
+        let retained: RuntimeControlOutcome | null = null
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: true as const, thread: testThread }),
+          queueFollowup: async () => { attempts += 1; throw new Error("ack lost") },
+          reconcileControlOutcome: async () => retained === null
+            ? { status: "missing" as const }
+            : { status: "found" as const, outcome: retained },
+          recordControlOutcome: async ({ outcome }: { outcome: RuntimeControlOutcome }) => {
+            retained = outcome
+            return false
+          },
+        }
+        const state = yield* SubscriptionRef.make({ ...baseState, pending: true, input: "still pending" })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null))))
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null))))
+        expect(attempts).toBe(1)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("still pending")
+      }),
+    )
+  })
+
+  test("an exact durable Steer acknowledgement replays without redispatch", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let attempts = 0
+        let retained: RuntimeControlOutcome | null = null
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: true as const, thread: testThread }),
+          steerCurrent: async () => { attempts += 1; return { ok: true, outcome: "delivered" } },
+          reconcileControlOutcome: async () => retained === null
+            ? { status: "missing" as const }
+            : { status: "found" as const, outcome: retained },
+          recordControlOutcome: async ({ outcome }: { outcome: RuntimeControlOutcome }) => {
+            retained = outcome
+            return false
+          },
+        }
+        const state = yield* SubscriptionRef.make<DesktopShellState>({
+          ...baseState,
+          pending: true,
+          input: "steer exactly once",
+          composerAdmission: {
+            state: "active_steerable" as const,
+            activeTurnId: "turn.active.1",
+            reason: null,
+            queuedCount: 0,
+          },
+        })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopSteerCurrentRequested", StaticPayload(null))))
+        expect(attempts).toBe(1)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("steer exactly once")
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopSteerCurrentRequested", StaticPayload(null))))
+        expect(attempts).toBe(1)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("")
+      }),
+    )
+  })
+
+  test("an unavailable outcome ledger fails closed before Queue transport", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let attempts = 0
+        const chatHost = {
+          listThreads: async () => [testThread],
+          newThread: async () => null,
+          openThread: async () => testThread,
+          sendMessage: async () => ({ ok: true as const, thread: testThread }),
+          queueFollowup: async () => { attempts += 1; return { ok: true, queued: true } },
+          reconcileControlOutcome: async () => ({ status: "unavailable" as const }),
+        }
+        const state = yield* SubscriptionRef.make<DesktopShellState>({
+          ...baseState,
+          pending: true,
+          input: "do not duplicate",
+        })
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
+        )
+        yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopQueueNextRequested", StaticPayload(null))))
+        expect(attempts).toBe(0)
+        expect((yield* SubscriptionRef.get(state)).input).toBe("do not duplicate")
       }),
     )
   })

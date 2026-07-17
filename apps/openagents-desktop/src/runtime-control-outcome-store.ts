@@ -3,9 +3,11 @@ import path from "node:path";
 
 import {
   DesktopRuntimeControlOutcomeLedgerSchema,
+  decodeDesktopRuntimeControlOutcomeLookup,
   decodeDesktopRuntimeControlOutcomeRecord,
   type DesktopRuntimeControlOutcomeRecord,
   type DesktopRuntimeControlOutcomeRecordResult,
+  type DesktopRuntimeControlOutcomeLookupResult,
 } from "./runtime-control-outcome-contract.ts";
 
 const maxRecords = 512;
@@ -131,6 +133,20 @@ export const openDesktopRuntimeControlOutcomeStore = (file: string) => {
         return reject("persistence_failed");
       }
       return { status: "advanced", record: merged };
+    },
+    lookup: (input: unknown): DesktopRuntimeControlOutcomeLookupResult => {
+      if (corrupt) return { status: "rejected", reason: "corrupt_ledger" };
+      const lookup = decodeDesktopRuntimeControlOutcomeLookup(input);
+      if (lookup === null) return { status: "rejected", reason: "invalid_request" };
+      const record = records.find(({ outcome }) =>
+        outcome.intentRef === lookup.intentRef || outcome.idempotencyKey === lookup.idempotencyKey);
+      if (record === undefined) return { status: "missing" };
+      if (
+        record.threadRef !== lookup.threadRef ||
+        record.outcome.intentRef !== lookup.intentRef ||
+        record.outcome.idempotencyKey !== lookup.idempotencyKey
+      ) return { status: "rejected", reason: "identity_conflict" };
+      return { status: "found", record: structuredClone(record) };
     },
   };
 };

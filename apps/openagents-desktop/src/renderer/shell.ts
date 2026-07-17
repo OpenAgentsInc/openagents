@@ -61,7 +61,7 @@ import {
   type ComposerSubmitOutcome,
 } from "../composer-admission.ts"
 import type { CodexQueuedIntent } from "../codex-durable-queue.ts"
-import type { DesktopRuntimeControlOutcomeRecord } from "../runtime-control-outcome-contract.ts"
+import type { DesktopRuntimeControlOutcomeLookup, DesktopRuntimeControlOutcomeRecord } from "../runtime-control-outcome-contract.ts"
 import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
 import {
   contextGroupSummary,
@@ -1427,6 +1427,12 @@ export type ChatHost = Readonly<{
   }>>
   /** Persist a schema-checked ref-only control outcome before delivery state is consumed. */
   recordControlOutcome?: (record: DesktopRuntimeControlOutcomeRecord) => Promise<boolean>
+  /** Replays a durable exact acknowledgement before a Queue/Steer retry dispatches. */
+  reconcileControlOutcome?: (lookup: DesktopRuntimeControlOutcomeLookup) => Promise<
+    | Readonly<{ status: "found"; outcome: ComposerSubmitOutcome }>
+    | Readonly<{ status: "missing" }>
+    | Readonly<{ status: "unavailable" }>
+  >
   sendMessage: (input: Readonly<{
     id: string
     message: string
@@ -2016,7 +2022,17 @@ export const makeDesktopShellHandlers = (
         return
       }
       const steerIntent = intent as Extract<typeof intent, { kind: "steer_current" }>
-      const steered = yield* Effect.promise(async () => {
+      const steerReconciliation = chat.reconcileControlOutcome === undefined
+        ? { status: "missing" as const }
+        : yield* Effect.promise(() => chat.reconcileControlOutcome!({
+            threadRef: submissionThreadRef,
+            intentRef: steerIntent.control.intentRef,
+            idempotencyKey: steerIntent.control.idempotencyKey,
+          }).catch(() => ({ status: "unavailable" as const })))
+      if (steerReconciliation.status === "unavailable") return
+      const steered = steerReconciliation.status === "found"
+        ? steerReconciliation.outcome
+        : yield* Effect.promise(async () => {
         try {
           if (chat.steerCurrentControl !== undefined) return await chat.steerCurrentControl(steerIntent)
           const legacy = await chat.steerCurrent!(steerIntent)
@@ -2040,7 +2056,7 @@ export const makeDesktopShellHandlers = (
           })
         }
       })
-      const steeredRecorded = chat.recordControlOutcome === undefined ||
+      const steeredRecorded = steerReconciliation.status === "found" || chat.recordControlOutcome === undefined ||
         (yield* Effect.promise(() => chat.recordControlOutcome!({ threadRef: submissionThreadRef, outcome: steered }).catch(() => false)))
       if (!steeredRecorded || steered.delivery.status !== "applied") {
         yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef
@@ -2079,7 +2095,17 @@ export const makeDesktopShellHandlers = (
       return
     }
     const queueIntent = intent as Extract<typeof intent, { kind: "queue_next" }>
-    const queued = yield* Effect.promise(async () => {
+    const queueReconciliation = chat.reconcileControlOutcome === undefined
+      ? { status: "missing" as const }
+      : yield* Effect.promise(() => chat.reconcileControlOutcome!({
+          threadRef: submissionThreadRef,
+          intentRef: queueIntent.control.intentRef,
+          idempotencyKey: queueIntent.control.idempotencyKey,
+        }).catch(() => ({ status: "unavailable" as const })))
+    if (queueReconciliation.status === "unavailable") return
+    const queued = queueReconciliation.status === "found"
+      ? queueReconciliation.outcome
+      : yield* Effect.promise(async () => {
       try {
         if (chat.queueFollowupControl !== undefined) return await chat.queueFollowupControl(queueIntent)
         const legacy = await chat.queueFollowup!(queueIntent)
@@ -2103,7 +2129,7 @@ export const makeDesktopShellHandlers = (
         })
       }
     })
-    const queuedRecorded = chat.recordControlOutcome === undefined ||
+    const queuedRecorded = queueReconciliation.status === "found" || chat.recordControlOutcome === undefined ||
       (yield* Effect.promise(() => chat.recordControlOutcome!({ threadRef: submissionThreadRef, outcome: queued }).catch(() => false)))
     if (!queuedRecorded || queued.delivery.status !== "queued") {
       yield* SubscriptionRef.update(state, next => next.activeThreadId === submissionThreadRef

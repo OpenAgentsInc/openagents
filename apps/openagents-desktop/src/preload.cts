@@ -172,7 +172,10 @@ import {
   type DesktopRuntimeGatewayEvent,
 } from "./runtime-gateway-contract.ts"
 import {
+  DesktopRuntimeControlOutcomeLookupChannel,
   DesktopRuntimeControlOutcomeRecordChannel,
+  decodeDesktopRuntimeControlOutcomeLookup,
+  decodeDesktopRuntimeControlOutcomeLookupResult,
   decodeDesktopRuntimeControlOutcomeRecord,
   decodeDesktopRuntimeControlOutcomeRecordResult,
 } from "./runtime-control-outcome-contract.ts"
@@ -366,6 +369,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     return () => ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)
   },
   controlOutcomes: {
+    lookup: async (value: unknown) => {
+      const request = decodeDesktopRuntimeControlOutcomeLookup(value)
+      if (request === null) return { status: "rejected", reason: "invalid_request" }
+      return decodeDesktopRuntimeControlOutcomeLookupResult(
+        await ipcRenderer.invoke(DesktopRuntimeControlOutcomeLookupChannel, request),
+      ) ?? { status: "rejected", reason: "invalid_request" }
+    },
     record: async (value: unknown) => {
       const request = decodeDesktopRuntimeControlOutcomeRecord(value)
       if (request === null) return { status: "rejected", reason: "invalid_request" }

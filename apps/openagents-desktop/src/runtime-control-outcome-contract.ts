@@ -4,6 +4,7 @@ import {
 } from "@openagentsinc/agent-runtime-schema";
 
 export const DesktopRuntimeControlOutcomeRecordChannel = "desktop:runtime-control-outcome:record";
+export const DesktopRuntimeControlOutcomeLookupChannel = "desktop:runtime-control-outcome:lookup";
 export const DesktopRuntimeControlOutcomeLedgerSchema =
   "openagents.desktop_runtime_control_outcome_ledger.v1" as const;
 
@@ -24,6 +25,60 @@ export type DesktopRuntimeControlOutcomeRecordResult = Readonly<{
     | "persistence_failed";
   record?: DesktopRuntimeControlOutcomeRecord;
 }>;
+
+export type DesktopRuntimeControlOutcomeLookup = Readonly<{
+  threadRef: string;
+  intentRef: string;
+  idempotencyKey: string;
+}>;
+
+export type DesktopRuntimeControlOutcomeLookupResult =
+  | Readonly<{ status: "found"; record: DesktopRuntimeControlOutcomeRecord }>
+  | Readonly<{ status: "missing" }>
+  | Readonly<{
+      status: "rejected";
+      reason: "invalid_request" | "corrupt_ledger" | "identity_conflict";
+    }>;
+
+export const decodeDesktopRuntimeControlOutcomeLookup = (
+  input: unknown,
+): DesktopRuntimeControlOutcomeLookup | null => {
+  if (typeof input !== "object" || input === null) return null;
+  const value = input as Readonly<Record<string, unknown>>;
+  if (
+    Object.keys(value).some(
+      (key) => key !== "threadRef" && key !== "intentRef" && key !== "idempotencyKey",
+    )
+  ) return null;
+  if (
+    typeof value.threadRef !== "string" || !safeRef.test(value.threadRef) ||
+    typeof value.intentRef !== "string" || !safeRef.test(value.intentRef) ||
+    typeof value.idempotencyKey !== "string" || !safeRef.test(value.idempotencyKey)
+  ) return null;
+  return {
+    threadRef: value.threadRef,
+    intentRef: value.intentRef,
+    idempotencyKey: value.idempotencyKey,
+  };
+};
+
+export const decodeDesktopRuntimeControlOutcomeLookupResult = (
+  input: unknown,
+): DesktopRuntimeControlOutcomeLookupResult | null => {
+  if (typeof input !== "object" || input === null) return null;
+  const value = input as Readonly<{ status?: unknown; reason?: unknown; record?: unknown }>;
+  if (Object.keys(value).some((key) => key !== "status" && key !== "reason" && key !== "record")) return null;
+  if (value.status === "missing") return { status: "missing" };
+  if (value.status === "found") {
+    const record = decodeDesktopRuntimeControlOutcomeRecord(value.record);
+    return record === null ? null : { status: "found", record };
+  }
+  if (
+    value.status === "rejected" &&
+    (value.reason === "invalid_request" || value.reason === "corrupt_ledger" || value.reason === "identity_conflict")
+  ) return { status: "rejected", reason: value.reason };
+  return null;
+};
 
 export const decodeDesktopRuntimeControlOutcomeRecord = (
   input: unknown,

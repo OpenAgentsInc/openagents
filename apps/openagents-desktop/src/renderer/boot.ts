@@ -88,7 +88,9 @@ import {
 import { preferencesRootAttributes, themeForPreferences } from "../desktop-preferences-effects.ts"
 import { makeConvergingDesktopChatHost, selectDesktopChatHostSelection } from "./runtime-conversation.ts"
 import {
+  decodeDesktopRuntimeControlOutcomeLookupResult,
   decodeDesktopRuntimeControlOutcomeRecordResult,
+  type DesktopRuntimeControlOutcomeLookup,
   type DesktopRuntimeControlOutcomeRecord,
 } from "../runtime-control-outcome-contract.ts"
 import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
@@ -153,6 +155,7 @@ type DesktopBridge = Readonly<{
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   controlOutcomes?: Readonly<{
+    lookup?: (value: DesktopRuntimeControlOutcomeLookup) => Promise<unknown>
     record?: (value: DesktopRuntimeControlOutcomeRecord) => Promise<unknown>
   }>
   stageFleet?: (value: unknown) => Promise<unknown>
@@ -845,6 +848,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     const chat = {
       ...convergingChat,
+      reconcileControlOutcome: async (lookup: DesktopRuntimeControlOutcomeLookup) => {
+        const result = decodeDesktopRuntimeControlOutcomeLookupResult(
+          await bridge?.controlOutcomes?.lookup?.(lookup),
+        )
+        if (result?.status === "found") return { status: "found" as const, outcome: result.record.outcome }
+        if (result?.status === "missing") return { status: "missing" as const }
+        return { status: "unavailable" as const }
+      },
       recordControlOutcome: async (record: DesktopRuntimeControlOutcomeRecord): Promise<boolean> => {
         const result = decodeDesktopRuntimeControlOutcomeRecordResult(
           await bridge?.controlOutcomes?.record?.(record),

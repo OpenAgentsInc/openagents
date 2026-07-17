@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "0195d4e730ed27951a56df5b3c20a067b9d0c97a8546e4b0268436df0081c8d5",
+  "sourceTreeSha256": "80a689f7f2dad25d092144f4c500c11c1cabea3b8b54f240c7d2139af75128b1",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -46,9 +46,10 @@
         "docs/sol/README.md",
         "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
         "docs/sol/issues/app-mobile.md",
-        "docs/sol/issues/glass-ui-and-sarah-mobile.md"
+        "docs/sol/issues/glass-ui-and-sarah-mobile.md",
+        "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md"
       ],
-      "inboundSourceCount": 10,
+      "inboundSourceCount": 11,
       "issueLinks": [
         8547,
         8566,
@@ -561,9 +562,10 @@
         "docs/sol/2026-07-12-port-00-portable-session-contract-freeze-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
+        "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md",
         "docs/teardowns/README.md"
       ],
-      "inboundSourceCount": 6,
+      "inboundSourceCount": 7,
       "issueLinks": [
         8547,
         8566,
@@ -1779,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "2bea167ca8ab55721a47877f13f4e736c6ec2df0ab2e12363d12e240fc85ed22",
+      "sha256": "f25b03c3e1a6980707cb26795a8ffe04bf3a04d23503d46e6dd02dd7dc54911b",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1792,10 +1794,11 @@
         "docs/fastfollow/receipts/2026-07-16-ff-d1-02-desktop-stop-control-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-03-desktop-queue-steer-control-receipt.md",
         "docs/fastfollow/receipts/2026-07-17-ff-d1-04-desktop-control-outcome-ledger-receipt.md",
+        "docs/fastfollow/receipts/2026-07-17-ff-d1-05-desktop-control-outcome-replay-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 9,
+      "inboundSourceCount": 10,
       "issueLinks": []
     },
     {
@@ -2401,9 +2404,10 @@
       "reviewTrigger": "only on explicit owner revival",
       "inboundLinks": [
         "docs/sol/issues/README.md",
-        "docs/sol/issues/glass-ui-and-sarah-mobile.md"
+        "docs/sol/issues/glass-ui-and-sarah-mobile.md",
+        "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md"
       ],
-      "inboundSourceCount": 2,
+      "inboundSourceCount": 3,
       "issueLinks": [
         8566,
         8597,

@@ -294,7 +294,9 @@ import { openDesktopCodexUsageOutbox } from "./desktop-codex-usage-outbox.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { openDesktopRuntimeControlOutcomeStore } from "./runtime-control-outcome-store.ts"
 import {
+  DesktopRuntimeControlOutcomeLookupChannel,
   DesktopRuntimeControlOutcomeRecordChannel,
+  decodeDesktopRuntimeControlOutcomeLookup,
   decodeDesktopRuntimeControlOutcomeRecord,
 } from "./runtime-control-outcome-contract.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
@@ -1094,11 +1096,19 @@ const threads = () => makeThreadStore(path.join(app.getPath("userData"), "thread
 const runtimeControlOutcomes = openDesktopRuntimeControlOutcomeStore(
   path.join(app.getPath("userData"), "runtime-control-outcomes", "ledger.json"),
 )
-ipcMain.handle(DesktopRuntimeControlOutcomeRecordChannel, (_event, value: unknown) => {
+ipcMain.handle(DesktopRuntimeControlOutcomeRecordChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { status: "rejected", reason: "invalid_request" }
   const request = decodeDesktopRuntimeControlOutcomeRecord(value)
   return request === null
     ? { status: "rejected", reason: "invalid_request" }
     : runtimeControlOutcomes.record(request)
+})
+ipcMain.handle(DesktopRuntimeControlOutcomeLookupChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { status: "rejected", reason: "invalid_request" }
+  const request = decodeDesktopRuntimeControlOutcomeLookup(value)
+  return request === null
+    ? { status: "rejected", reason: "invalid_request" }
+    : runtimeControlOutcomes.lookup(request)
 })
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),

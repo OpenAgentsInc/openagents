@@ -363,6 +363,15 @@ Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-17T12:47:16Z`
 
+### CLAIM-STATUS
+
+- implementation: exact Queue/Steer retry identity looks up restart-stable acknowledgement before transport and replays retained outcomes without redispatch
+- fail-closed proof: pending, corrupt, unavailable, and conflicting reconciliation retain the draft and cannot authorize duplicate transport or success
+- focused proof: 171 tests passed with 11 skipped across store, boundary, shell, and converging-host suites; Desktop typecheck passed
+- authority proof: Fast Follow policy/spec 20/20, behavior contracts 36/36, ProductSpec 104/104, and Sol checks 19/19 passed
+- repository check: `pnpm run check` passed
+- residual: Stop retry identity, Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
