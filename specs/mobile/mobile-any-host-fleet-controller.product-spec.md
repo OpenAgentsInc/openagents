@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T22:45:00.000Z"
+updated_at: "2026-07-17T23:10:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-mobile/"
@@ -21,7 +21,8 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_source_synthesis: "docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md"
-  openagents_source_transcripts: "docs/transcripts/238.md through docs/transcripts/255.md (mobile remote-control doctrine, fleet supervision, overnight runs, UI-first operations)"
+  openagents_source_transcripts: "docs/transcripts/200.md through docs/transcripts/255.md plus the episode-256 draft transcript (mobile remote-control doctrine, fleet supervision, overnight runs, UI-first operations, Full Auto AFK supervision)"
+  openagents_revision_3_note: "Rev 3 adds Full Auto run supervision as a first-class mobile object per the episode-256 draft transcript: active runs listed with live run state, remote Play/Pause/Stop as typed durable commands, rotation/failure visibility, and run reports in the attention inbox — the AFK scenario (owner away for a day or two while runs continue) is the anchor journey this surface exists for. Also folds in the back-catalog founding texts: episode 225 ('I want to be able to talk to my Forge, talk to my Probes when I'm at the store... carrying around my laptop like a jackass') and episode 228's untethered North Star ('say what the software you want is... go live your life and then come back'), plus episode 200's portfolio-manager frame (people supervise fleets, set policies, allocate budgets, review outcomes)."
   openagents_admission_status: "authored from the full teardown-catalog synthesis; surface-vision PRD pending owner admission and MASTER_ROADMAP reconciliation; MASTER_ROADMAP retains sequencing authority"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
@@ -31,7 +32,14 @@ tool_metadata:
 
 An owner running parallel coding agents is away from the desk exactly when
 the fleet needs them: an approval blocks a turn, a question stalls a thread,
-a finished change needs review and push. The transcripts make the stakes
+a finished change needs review and push, a Full Auto run rotates onto its
+last healthy account. The founding statement of the need is from episode
+225: "I want to be able to talk to my Forge, talk to my Probes when I'm at
+the store. Right now I'm carrying around my laptop like a jackass letting
+Claude Code run" — and the episode-256 stakes make it concrete: an owner
+with a baby due any day needs agents to keep going AFK "for a day or two,"
+which means the phone must be able to check on, pause, and redirect
+unattended runs without a laptop. The transcripts make the stakes
 concrete: overnight fleet runs across six connected accounts racked up
 billions of tokens — and also produced duplicate PRs, agents stepping on each
 other, and runs that "crapped out after 30 minutes because you hit some
@@ -71,6 +79,7 @@ in:
   - Route remote reachability through owned relay infrastructure that is end-to-end encrypted and grants reachability without authorization; the client still presents its normal credential to the environment.
   - Bind every environment-facing grant to DPoP-style scope-limited, revocable capability tokens stored in the device vault; every consequential remote action records a durable outcome and receipt.
   - Make overnight-fleet supervision the anchor journey: see every running workstream across hosts and accounts, catch a run that stalled on an exhausted account or a blocking question, steer or re-dispatch it from the phone, and arrive at a morning review of what completed, what needs attention, and what evidence backs each claim.
+  - Surface Full Auto runs as first-class supervised objects: every active run on any connected host listed with its live run state (playing, paused, blocked), current provider/account lane, rotation and failure history, and elapsed budget; Pause, Resume, and Stop issued from the phone as typed durable commands with receipts; and the bounded run report delivered to the attention inbox when a run ends.
   - Show fleet capacity as quantities, not presence: connected accounts and Pylons with available, busy, and queued counts, readiness lights lit only from decoded fresh receipts ("no receipt means no light"), and honest provider-condition errors (exhausted, rate-limited) rather than generic failures.
   - Display effective execution identity on mobile exactly as on Desktop: every message's metadata shows the observed effective model, provider, and account, never an inference from the requested brand.
   - Treat the portable session as the stable object: a session moves owner-local to managed cloud and back through quiesce, checkpoint, detach, attach, resume, and failback verbs, with exclusive attachment generations so exactly one host executes, secret-free checkpoints, and source-cleanup receipts.
@@ -124,6 +133,8 @@ cut:
   criterion: When any assistant message is inspected on mobile, its metadata shows the observed effective model, provider, and account for that turn, matching the Desktop projection of the same session.
 - id: AC-12
   criterion: When a user enrolls a device, changes a visibility mode, revokes a grant, or adjusts policy, the complete flow is achievable through screens and buttons with no terminal command required.
+- id: AC-13
+  criterion: When a Full Auto run is active on any connected host, the phone lists it with live run state, current provider/account lane, and rotation history; Pause, Resume, and Stop from the phone are typed durable commands whose outcomes are receipted; and when the run ends its bounded run report is retrievable from the attention inbox.
 ```
 
 ## Success Metrics
@@ -226,12 +237,15 @@ position no one else can copy without rebuilding their custody model.
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Controller-parity evidence: `docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md`,
   `docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md`
-- Transcript sources for rev 2: `docs/transcripts/244.md` (mobile-control
+- Transcript sources: `docs/transcripts/225.md` (founding mobile text) and
+  `docs/transcripts/228.md` (untethered North Star), `docs/transcripts/200.md`
+  (fleet portfolio-manager frame), `docs/transcripts/244.md` (mobile-control
   payoff, one-interface consolidation), `docs/transcripts/246.md` +
   `docs/transcripts/250.md` (overnight fleet runs, evidence-gated fleet
   truth), `docs/transcripts/253-notes.md` (supervision-before-authoring),
   `docs/transcripts/255.md` (remote-control doctrine, exactly-one-outcome,
-  UI-first operations)
+  UI-first operations), and the episode-256 draft transcript (Full Auto AFK
+  supervision)
 - Sibling surface specs: `specs/desktop/desktop-trust-complete-workbench.product-spec.md`,
   `specs/web/openagents-com-trust-surface.product-spec.md`
 - Portable-session intent: `specs/openagents/portable-coding-sessions.product-spec.md`
