@@ -1720,6 +1720,69 @@ evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-17T18:58:22Z`
 - residual: actual `main.ts` call-site composition, renderer command/pixels, audience authorization/publication adapters, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-23 — Desktop thread-visibility audience authorization adapter
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-22. Active
+work still owns Desktop `main.ts` and broad renderer surfaces. The packet
+therefore adds a new-file-only pure authorization adapter that evaluates one
+applied visibility receipt against bounded host-supplied owner, workspace,
+administrator, and group authority facts. It does not look up membership,
+transport content, publish a thread, or edit the active host/UI files.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-visibility-audience-authorization.ts`
+- `apps/openagents-desktop/src/thread-visibility-audience-authorization.test.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-23-desktop-thread-visibility-audience-authorization-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_disclosure_receipt.v1`, exact
+`visibility_applied` receipt identity, explicit audience and administrator
+axes, bounded caller authority facts, fail-closed decoding, and ref-only
+authorization decisions. Existing shared schemas, policy persistence,
+`main.ts`, preload, renderer, membership stores, Sync, provider, publication,
+and transport contracts remain unchanged.
+
+Required behavior:
+
+- accept only an exact visibility-applied receipt plus exact bounded actor,
+  owner, workspace-role, and group authority facts; reject raw content,
+  duplicate/ambiguous facts, exports, malformed receipts, and extra envelopes;
+- authorize the exact owner, internet-readable audience, matching workspace
+  members, matching named-group members, or an explicitly configured matching
+  workspace administrator, with one bounded basis;
+- deny when no supplied fact satisfies the applied target and never infer
+  membership, group, administrator, owner, or publication authority;
+- bind every decision to the exact receipt, thread, and visibility version and
+  expose no content, path, credential, native error, or authority-store detail;
+  and
+- remain a pure authorization decision only: an authorized result does not
+  transport, publish, share, export, or prove observation of thread content.
+
+Proof: focused audience-authorization and shared disclosure tests; Desktop
+TypeScript check; Fast Follow, behavior-contract, ProductSpec, Sol,
+AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only the pure applied-policy audience decision.
+Real membership/authorization lookup, publication/transport, the actual
+`main.ts` call site, renderer command/pixels, installed/runtime-rendered
+evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-23-20260717`
+- base: `9de9b278d13c326996c666fb8903f72d7adc3ccf`
+- worktree/branch: `openagents-ff-d1-23` / detached `origin/main`
+- scope: fail-closed ref-only Desktop visibility audience authorization against an exact applied receipt
+- paths: the FF-D1-23 owned implementation paths above
+- hot files: new Desktop audience-authorization adapter/test; accepted-plan ledger and Sol manifest
+- hot contracts: exact visibility-applied receipt identity, audience/admin axes, bounded authority facts, decision binding, and no inferred publication authority
+- dependencies: FF-D1-22 released; no relevant feature issue or competing claim; active Desktop `main.ts` and renderer work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T19:02:45Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
