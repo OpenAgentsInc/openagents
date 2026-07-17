@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "abf56fc6b8774fa46538eda85fc124dcbb507782c9e0f8409f42449fc86dbec9",
+  "sourceTreeSha256": "6fc4167a958109796f582be1f45d4c929128a90c224ad91b2e12f9dcbb3c6d66",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1781,7 +1781,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "a42327ae29ea0d723d8698556f3d64f43bfc4d0e295926e0c8c987de224aef13",
+      "sha256": "61d9b3a63ac9f11e82a39d3fbc3f77012ba377324bf1f811b80c661fef68cb76",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -3303,12 +3303,57 @@
       ]
     },
     {
+      "path": "docs/sol/receipts/2026-07-17-port-06-mobile-controller-foundation.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "52366a2a07894fe9f2726dcaf79b69ded020cf068d47f9be7de940fe1625e060",
+      "status": "deterministic source receipt; no physical-device, host-movement, or",
+      "snapshot": "2026-07-17",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8751,
+        8944,
+        8945,
+        8946
+      ]
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-17-port-06-mobile-portable-controls.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "e6aebac6b5d08c23cc4f542e58f89613928b74e4d2422759876bf3ab2941b184",
+      "status": "deterministic source receipt; no physical-device or real host-move",
+      "snapshot": "2026-07-17",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8748,
+        8751,
+        8947,
+        8948,
+        8949
+      ]
+    },
+    {
       "path": "docs/sol/receipts/README.md",
       "class": "index",
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "fe51e0c4fa623e210cecf232b0225cac33686e987df0dbc9f2ed177cfd3a1a55",
+      "sha256": "7a8aaaaf6472d35286cdd4ef3046c5db84cbd405eb80b51f12ad979addd05f23",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3352,6 +3397,7 @@
         8746,
         8747,
         8748,
+        8751,
         8796,
         8845,
         8846,

@@ -453,6 +453,61 @@ search/share/export/supersession, and Day 1 completion remain later packets.
 - enforced Desktop proof: both repository gate passes completed with 1,942 tests passed and 39 skipped, production builds, compatibility Electron smokes, and the React Electron smoke
 - residual: Sync/mobile/Pylon adapters, rendered evidence, thread search/share/export/supersession, and Day 1 completion remain unclaimed
 
+## FF-D1-07 — Accepted-event authority relations
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next non-colliding Day 1 residual after FF-D1-06 and the
+separately landed mobile/Sync controller work. It establishes a provider-neutral,
+ref-only algebra for accepted, superseded, and reverted thread-event authority
+without introducing a second transcript store or treating summaries as evidence.
+
+Owned implementation paths:
+
+- `packages/agent-runtime-schema/src/thread-event-authority.ts`
+- `packages/agent-runtime-schema/src/thread-event-authority.test.ts`
+- `packages/agent-runtime-schema/src/index.ts`
+- `docs/fastfollow/receipts/2026-07-17-ff-d1-07-thread-event-authority-receipt.md`
+- this accepted-plan ledger, `docs/sol/receipts/README.md`, and `docs/sol/document-manifest.json`
+
+Hot contracts: the new `openagents.thread_event_authority.v1` relation schema,
+exact thread/event refs, append-only observed relation order, and conflict-failing
+authority projection. Existing runtime-control, portable-session, and provider
+event schemas remain unchanged.
+
+Required behavior:
+
+- accepted, superseded, and reverted are distinct typed relation states over
+  exact thread/event refs;
+- supersession names the accepted event that replaced the original, while a
+  revert names both the accepted revert event and the exact restored event;
+- self-reference, cross-thread projection, malformed refs/timestamps, and
+  duplicate or conflicting relation evidence fail closed;
+- projection is deterministic over append-only relations and returns explicit
+  missing, resolved, or conflict state without using transcript text; and
+- the contract grants no mutation, share, export, visibility, provider,
+  acceptance, or release authority by itself.
+
+Proof: focused schema/projection tests and package typecheck; Fast Follow,
+behavior-contract, ProductSpec, Sol, and repository-required checks.
+
+Close rule: this packet closes only the shared accepted-event authority
+relation algebra. Desktop consumption, share/export visibility, remaining
+adapters, rendered runtime evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-07-20260717`
+- base: `0cfd9334c3`
+- worktree/branch: `openagents-ff-d1-07` / detached `origin/main`
+- scope: provider-neutral accepted/superseded/reverted thread-event authority relations and deterministic conflict-failing projection
+- paths: the FF-D1-07 owned implementation paths above
+- hot files: agent-runtime-schema index and new relation module; accepted-plan ledger and Sol manifest/index
+- hot contracts: exact relation refs, no-self-reference, same-thread projection, and fail-closed conflict behavior
+- dependencies: FF-D1-01 through FF-D1-06 released; later mobile/Sync landings reconciled; their two unindexed Sol receipts receive additive index rows only
+- verification: focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-17T13:35:00Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
