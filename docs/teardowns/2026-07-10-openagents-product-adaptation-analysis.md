@@ -19,6 +19,7 @@ Evidence base:
 - [Grok Build teardown](./2026-07-15-grok-build-teardown.md)
 - [Command Code teardown](./2026-07-16-command-code-teardown.md)
 - [Factory Desktop and Droid CLI teardown](./2026-07-16-factory-desktop-cli-teardown.md)
+- [Amp Code teardown](./2026-07-16-amp-code-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -2240,3 +2241,78 @@ origin checks, containment, extension provenance, data-flow truth, and release
 proof than the audited product exposes. As elsewhere in this document, these
 lessons become requirements only when promoted into their owning contracts,
 roadmap gates, issues, tests, and receipts.
+
+## Amp Code addendum (2026-07-16)
+
+The [Amp teardown](./2026-07-16-amp-code-teardown.md) adds the clearest current
+example of a coding thread becoming a distributed collaboration and execution
+object. Amp's closed Bun CLI attaches to actor-backed server state, runs local
+tools, can become a remotely addressable runner, and projects the same thread
+into web/mobile remote control and diff review. Its model router, Oracle,
+specialist agents, cross-thread reader, and plugin-defined modes/agents make
+the thread—not one engine binary or provider—the stable product object.
+
+1. **Cross-thread reading should preserve evidence, not only memory.** Amp's
+   dedicated reader searches original history after compaction, considers
+   later revisions and reverts, and treats tool calls as attempts rather than
+   outcomes. OpenAgents should add a bounded history-reader role over exact
+   accepted event refs with supersession, review, and acceptance state.
+   Compaction remains an orientation artifact and can never replace evidence.
+2. **Queue, steer, and interrupt belong in the canonical command algebra.**
+   Amp exposes all three in the TUI and carries steer into JSONL automation.
+   Runtime Gateway and Sync should bind each to a stable command id, target
+   generation, durable admission, ordering, requested safe boundary, origin
+   client, and terminal outcome rather than infer intent from arrival time.
+3. **A terminal process can be both client and worker without becoming
+   product authority.** Amp's CLI, stream JSON, SDK, IDE bridge, web/mobile
+   controller, runner-only mode, and Orbs converge on one thread. OpenAgents
+   should keep the same host convergence behind a public generated protocol,
+   portable local event/receipt store, and Desktop/mobile workroom authority.
+4. **Specialist diversity should be explicit and receipted.** Amp routes
+   review, retrieval, thread reading, media, compaction, and the Oracle
+   separately; the Oracle deliberately changes model family when the primary
+   model would otherwise match. Adapt that diversity while recording exact
+   provider, model, prompt/catalog generation, cost, retention class, and
+   outcome. A second opinion is advice, not independent verification.
+5. **Review fan-out is a useful product projection of an Assurance Manifest.**
+   Amp runs each Markdown review check in a separate subagent with a selected
+   tool set. OpenAgents should preserve the one-check/one-observation ergonomics
+   while compiling exact source, environment, adapter, budget, catalog, and
+   evidence bindings. Check output cannot self-admit or self-accept.
+6. **Runner identity is not enough placement identity.** A named Amp runner
+   accepts remotely created work in its starting directory. OpenAgents must
+   additionally bind repository revision/dirty policy, owner and account,
+   authority, containment, network, secrets, component generation, lease/
+   fence, capacity, and receipt destination before remote admission.
+7. **Plugin breadth validates one extension grammar but raises the isolation
+   bar.** Amp plugins add commands, tools, synchronized UI, lifecycle
+   continuation, modes, agents, model calls, and remote placement. OpenAgents
+   should unify those extension classes only through immutable publisher/
+   provenance identity, a declared capability manifest, scoped accounts,
+   bounded resources, isolated execution, explicit activation, generation
+   fencing, and rollback.
+8. **Cloud thread visibility is a source-code security property.** Amp threads
+   may include messages, full selected files, tool results, and attachments;
+   unlisted links are internet-readable, workspace defaults can share threads,
+   and administrators retain privileged visibility. OpenAgents must make data
+   ownership, Sync, provider exposure, workspace/admin access, retention,
+   deletion, and training state separately visible per thread.
+9. **Default-open host tools remain unacceptable.** Amp candidly says tools do
+   not ask by default and recommends policy plugins or external isolation for
+   untrusted input. OpenAgents retains deny-first authorization and default
+   fail-closed containment as separate observed artifacts; an AI/plugin policy
+   judge cannot be the mandatory deny boundary.
+10. **Release proof must be independent of the download origin.** Amp's direct
+    installer fetches the executable and checksum from the same vendor origin,
+    leaves its minisign path disabled, and installed macOS evidence has no
+    working Developer ID/notarization signature. OpenAgents keeps its signed
+    component manifest, platform trust, provenance/SBOM, compatibility,
+    immutable candidate, staged activation, last-known-good rollback, and
+    receipts ahead of updater convenience.
+
+Amp therefore changes the history and remote-supervision design, not the
+authority model. OpenAgents should make work history as useful and mobile as
+Amp does while keeping accepted events local-portable, protocols public,
+execution contained, extensions non-amplifying, data planes explicit, and
+release identity independently verifiable. These conclusions remain analysis
+until represented in the owning roadmap, schemas, tests, and receipts.
