@@ -1186,8 +1186,9 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(activeFullAutoTurnRunning(baseState)).toBe(false)
   })
 
-  test("FA-H4 (#8877): a manual send while a background Full Auto turn runs is FENCED -- sendMessage is never called, a notice says why, and the draft is kept", async () => {
+  test("FA-H4: a follow-up during background Full Auto queues on the canonical thread without starting a concurrent turn", async () => {
     const calls: Array<string> = []
+    const queueCalls: Array<{ threadRef: string; message: string }> = []
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
       ...baseState,
       input: "My queued idea",
@@ -1203,20 +1204,22 @@ describe("desktopShellView (state -> component tree)", () => {
         calls.push(input.message)
         return { ok: true as const, thread: testThread }
       },
+      queueFollowup: async (input: { threadRef: string; message: string }) => {
+        queueCalls.push(input)
+        return { ok: true, queued: true }
+      },
     }
     const registry = await Effect.runPromise(makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, fixedNow, undefined, chatHost),
     ))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Do more")))))
-    // Never a silent second concurrent turn on the same thread.
+    // Never a silent second concurrent turn on the same thread; the exact
+    // follow-up is admitted to the runtime-owned queue and the draft clears.
     expect(calls).toEqual([])
     const settled = await Effect.runPromise(SubscriptionRef.get(state))
-    expect(settled.commandNotice).toBe(
-      "Full Auto is running a turn on this thread. Stop it first or wait for it to finish.",
-    )
-    // The draft survives the refusal.
-    expect(settled.input).toBe("My queued idea")
+    expect(queueCalls).toEqual([expect.objectContaining({ threadRef: testThread.id, message: "Do more" })])
+    expect(settled.input).toBe("")
 
     // Once the background turn is terminal, the same submit goes through.
     await Effect.runPromise(SubscriptionRef.update(state, current =>
@@ -3001,10 +3004,12 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
-  test("a locally owned history row resumes its exact chat so the composer stays reachable", async () => {
+  test("a provider-history alias resumes one canonical local chat and hydrates every control by the canonical ref", async () => {
     await Effect.runPromise(Effect.gen(function* () {
+      const providerRef = historyPageFixture.rootThreadRef
+      const canonicalRef = "desktop-local-canonical"
       const resumed = {
-        id: historyPageFixture.rootThreadRef,
+        id: canonicalRef,
         title: "Resumed Full Auto chat",
         updatedAt: "2026-07-16T19:30:00Z",
         notes: [{ key: "a1", role: "assistant" as const, text: "Still working", timestamp: "19:30" }],
@@ -3013,42 +3018,82 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         ...baseState,
         activeThreadId: null,
         threads: [],
-        history: { ...baseState.history, page: null },
+        history: {
+          ...baseState.history,
+          page: null,
+          catalog: {
+            roots: [{
+              threadRef: providerRef, parentThreadRef: null, title: resumed.title, status: "running" as const,
+              createdAt: "2026-07-16T13:00:00Z", updatedAt: "2026-07-16T13:00:00Z",
+              depth: 0, descendantCount: 0, model: null, role: null, nickname: null, agentPath: null,
+              sourceVersion: null, reasoning: null, source: "codex" as const,
+            }],
+            agents: [],
+          },
+          searchResults: [{
+            threadRef: providerRef, rootThreadRef: providerRef, source: "codex" as const,
+            title: resumed.title, matchKind: "title" as const, matchItemRef: null, matchSequence: null,
+            snippet: resumed.title, updatedAt: "2026-07-16T13:00:00Z", score: 1,
+          }],
+        },
       }
       const opened: string[] = []
+      const canonicalCalls: string[] = []
       let historyReads = 0
       const state = yield* SubscriptionRef.make(initial)
-      const registry = yield* makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(
-        state,
-        fixedNow,
-        undefined,
-        {
+      const chatHost = {
           listThreads: async () => [],
           newThread: async () => null,
-          openThread: async (threadRef) => {
+          openThread: async (threadRef: string) => {
             opened.push(threadRef)
-            return threadRef === resumed.id ? resumed : null
+            return threadRef === providerRef ? resumed : null
           },
+          queueList: async (threadRef: string) => { canonicalCalls.push(`queue:${threadRef}`); return [] },
+          laneForThread: async (threadRef: string) => { canonicalCalls.push(`lane:${threadRef}`); return "codex-local" },
+          hydrateThread: async (threadRef: string) => { canonicalCalls.push(`hydrate:${threadRef}`); return resumed },
           sendMessage: async () => ({ ok: false as const, error: "unused" }),
-        },
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
+        }
+      const historyHost = {
           catalog: async () => null,
           page: async () => { historyReads += 1; return historyPageFixture },
+        }
+      const fullAutoHost = {
+        set: async () => ({ ok: true }),
+        get: async ({ threadRef }: { threadRef: string }) => {
+          canonicalCalls.push(`full-auto:${threadRef}`)
+          return { enabled: true, state: "turn_running", turnRef: "turn.full-auto.resumed" }
         },
-      ))
+      }
+      const args: Parameters<typeof makeDesktopShellHandlers> = [
+        state, fixedNow, undefined, chatHost,
+        undefined, undefined, undefined, undefined, historyHost,
+        undefined, undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined,
+        fullAutoHost,
+      ]
+      const registry = yield* makeIntentRegistry(
+        desktopShellIntents,
+        makeDesktopShellHandlers(...args),
+      )
 
-      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected", StaticPayload(resumed.id))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected", StaticPayload(providerRef))))
       const next = yield* SubscriptionRef.get(state)
-      expect(opened).toEqual([resumed.id])
+      expect(opened).toEqual([providerRef])
       expect(historyReads).toBe(0)
-      expect(next.activeThreadId).toBe(resumed.id)
+      expect(next.activeThreadId).toBe(canonicalRef)
       expect(next.threads[0]).toEqual(resumed)
       expect(next.notes).toEqual(resumed.notes)
       expect(next.history.page).toBeNull()
+      expect(next.history.catalog.roots).toEqual([])
+      expect(next.history.searchResults).toEqual([])
+      expect(canonicalCalls).toEqual([
+        `queue:${canonicalRef}`,
+        `full-auto:${canonicalRef}`,
+        `lane:${canonicalRef}`,
+        `hydrate:${canonicalRef}`,
+      ])
+      expect(next.fullAutoLiveByThread[canonicalRef]?.state).toBe("turn_running")
       expect(nodeByKey(desktopShellView(next), "shell-composer")).toBeDefined()
     }))
   })

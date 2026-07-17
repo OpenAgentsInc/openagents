@@ -255,6 +255,14 @@ export type ProviderLaneDispatcherDeps = Readonly<{
     ) => void
   }>
   now?: () => Date
+  /** Main-owned observation after durable projection. Background Full Auto
+   * uses this to publish bounded progress and own queued-message promotion
+   * without pretending a renderer initiated the turn. */
+  onTurnEventProjected?: (
+    request: FableLocalStartRequest,
+    event: FableLocalEvent,
+    background: boolean,
+  ) => void
 }>
 
 /**
@@ -443,6 +451,7 @@ export const makeProviderLaneDispatcher = (
         // Lane-specific durable projection (plan cards, child usage,
         // reasoning lines, structured runtime cards, …).
         projectLaneEvent?.(turnEvent)
+        deps.onTurnEventProjected?.(request, turnEvent, sender === null)
         if (sender === null || sender.isDestroyed()) return
         // Attach the persisted thread snapshot (user message included) to the
         // start event so the renderer can stream onto real thread state.

@@ -6,8 +6,65 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-16.7",
+    version: "2026-07-17.1",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Full Auto conversation resume",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "Multiple bugs in trying to resume a stalled Full Auto conversation. One is, the chat shows twice in left sidebar. one with 6h one with a loadspinner. I click Full Auto and see the status indicator but nothing happens for awhile. And I can't send followup messages in the chat wtf. debug and fix on new worktree then push to main",
+        authorityBoundary:
+          "Electron main remains the authority that verifies a provider-history ref aliases one mutable Desktop-local thread, owns background Full Auto execution, persists streamed progress, and promotes a durable queued follow-up. The renderer canonicalizes to the returned local thread ref, removes only that verified top-level provider alias, and uses the canonical ref for queue, Full Auto, lane, hydration, navigation, and composer state. A main-owned background turn stays distinct from renderer pending state: Stop keeps the thread-scoped main interrupt route, while text submission is queue-only and cannot start a concurrent turn. Background events publish bounded persisted thread snapshots without granting the renderer question-answer or dispatch authority. A promoted durable queue identity is consumed once before the next generic Full Auto continuation.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/full-auto-followup.ts",
+          "apps/openagents-desktop/src/provider-lane.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/codex-durable-queue.ts",
+        ],
+        oracles: [
+          {
+            id: "full_auto_resume.canonical_alias_and_control_hydration",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Resumes a provider-history ref as a different canonical local UUID, removes the verified duplicate row/search alias, and proves queue, Full Auto, lane, transcript hydration, running state, and composer selection all use the canonical ref.",
+          },
+          {
+            id: "full_auto_resume.background_queue_only_composer",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Projects a main-owned running Full Auto turn as queue-only composer admission with an enabled follow-up action while retaining the exact Stop affordance.",
+          },
+          {
+            id: "full_auto_resume.background_queue_promotion_once",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/full-auto-followup.test.ts",
+            description:
+              "Transfers a main-owned background Full Auto promotion to exactly one next dispatch while leaving foreground and ordinary-turn promotion ownership unchanged.",
+          },
+          {
+            id: "full_auto_resume.background_progress_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/provider-lane.test.ts",
+            description:
+              "Proves background Full Auto events cross the durable post-projection observer before terminal completion without being forwarded as renderer-owned stream events.",
+          },
+        ],
+        verification:
+          "Desktop shell/composer/provider-lane suites, behavior-contract validation, Desktop typecheck/build, and repository completion gate.",
+      },
       {
         contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
         state: "enforced",

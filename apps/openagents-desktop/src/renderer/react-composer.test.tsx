@@ -433,6 +433,7 @@ describe("React Codex composer", () => {
     // targets the actual background turn.
     await render(root, <ReactComposer state={fixtureState({
       pending: false,
+      input: "Queue this next",
       fullAutoLiveByThread: { "thread-1": { state: "turn_running", turnRef: "turn.full-auto.bg-1" } },
     })} report={report} />);
     const badge = container.querySelector('[data-full-auto-status="running"]');
@@ -440,6 +441,11 @@ describe("React Codex composer", () => {
     expect(badge?.textContent).toBe("Full Auto running…");
     const stop = container.querySelector('[aria-label="Stop current turn"]') as HTMLButtonElement;
     expect(stop).not.toBeNull();
+    const queue = container.querySelector('[aria-label="Queue"]') as HTMLButtonElement;
+    expect(queue).not.toBeNull();
+    expect(queue.disabled).toBe(false);
+    await interact(() => queue.click());
+    expect(received).toContainEqual({ name: "DesktopQueueNextRequested", payload: "Queue this next" });
     await interact(() => stop.click());
     expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
     // A terminal live state clears both again.

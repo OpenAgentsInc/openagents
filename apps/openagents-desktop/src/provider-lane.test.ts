@@ -219,6 +219,31 @@ const startRequest = (threadRef: string, turnRef = "turn-fixture-1"): FableLocal
   message: "run the fixture",
 })
 
+test("background Full Auto exposes durably projected progress without renderer ownership", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-background-progress-"))
+  try {
+    const harness = makeFixtureHarness(root)
+    const thread = harness.store.newThread("Background progress")
+    const observed: Array<{ kind: string; background: boolean }> = []
+    const dispatcher = makeProviderLaneDispatcher({
+      ...harness.deps,
+      onTurnEventProjected: (_request, event, background) => observed.push({ kind: event.kind, background }),
+    })
+    const result = await dispatcher.dispatchTurn(
+      harness.lane,
+      { ...startRequest(thread.id), fullAuto: true },
+      null,
+    )
+    expect(result.ok).toBe(true)
+    expect(observed.length).toBeGreaterThan(2)
+    expect(observed.every(event => event.background)).toBe(true)
+    expect(observed.map(event => event.kind)).toContain("text_delta")
+    expect(harness.forwarded).toEqual([])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 describe("provider lane SPI with a never-hand-wired fixture lane", () => {
   test("projects and revalidates the same bounded spec context across two lane refs", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-spec-lanes-"))

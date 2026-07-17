@@ -10,6 +10,23 @@ oracle runs in the normal test sweep.
 
 ## Current UX guarantees
 
+### Canonical Full Auto resume with queued follow-ups
+
+Resuming a Codex-history row that maps to an existing Desktop conversation
+adopts the canonical local thread identity and removes the verified duplicate
+history alias. Queue, lane, transcript, navigation, and Full Auto state then
+use that canonical identity consistently.
+
+While a main-owned Full Auto turn is running, the composer remains usable for
+text follow-ups without starting a concurrent turn. The follow-up enters the
+durable thread queue, its promoted identity is consumed exactly once by the
+next Full Auto dispatch, and already-persisted background progress continues
+to refresh the visible conversation. Stop remains the existing main-owned,
+thread-scoped interrupt action.
+
+Contract:
+`openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`.
+
 ### Durable automatic conversation titles
 
 A genuinely empty conversation may say New chat. Its first authored message

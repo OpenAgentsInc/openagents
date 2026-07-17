@@ -1979,7 +1979,8 @@ export const makeDesktopShellHandlers = (
     message: string,
     mode: "steer" | "queue",
   ) => Effect.gen(function* () {
-    if (!current.pending || current.activeThreadId === null || message.trim() === "") return
+    const backgroundFullAuto = activeFullAutoTurnRunning(current)
+    if ((!current.pending && !backgroundFullAuto) || current.activeThreadId === null || message.trim() === "") return
     const submissionThreadRef = current.activeThreadId
     const identity = current.composerIntentIdentity ?? {
       intentRef: `intent.desktop.${globalThis.crypto.randomUUID()}`,
@@ -2185,15 +2186,16 @@ export const makeDesktopShellHandlers = (
       yield* submitPendingMessage(current, message, current.pendingSubmitMode)
       return
     }
-    // FA-H4 (#8877) manual-send fencing: while main reports a BACKGROUND
-    // Full Auto turn running on this thread (renderer non-pending — no live
-    // events reach it), a manual send must never start a silent second
-    // concurrent turn. Keep the draft, say why, and leave the stop control
-    // (or waiting it out) as the honest ways forward.
+    // FA-H4 (#8877) background admission: while main reports a Full Auto
+    // turn running on this thread, a submit must never start a silent second
+    // concurrent turn. It enters the exact durable queue instead.
     if (activeFullAutoTurnRunning(current)) {
-      yield* noticeController.setTransientNotice(
-        "Full Auto is running a turn on this thread. Stop it first or wait for it to finish.",
-      )
+      // A main-owned Full Auto turn is not renderer-pending, but it is still
+      // an exact active Codex turn. Queue through the same thread-scoped
+      // durable control instead of starting a concurrent turn or dead-ending
+      // the owner's follow-up. Background turns are queue-only: renderer
+      // steer admission has no provider turn id for this owner boundary.
+      yield* submitPendingMessage(current, message, "queue")
       return
     }
     // Evidence-gated send (#8712): an unavailable selected lane must not
@@ -2358,7 +2360,12 @@ export const makeDesktopShellHandlers = (
   })
   const commitLocalSession = (threadRef: string, expectedRevision?: number) => Effect.gen(function* () {
     const thread = yield* Effect.promise(() => chat.openThread(threadRef))
-    if (thread === null || (expectedRevision !== undefined && expectedRevision !== selectionRevision)) return false
+    if (thread === null || (expectedRevision !== undefined && expectedRevision !== selectionRevision)) return null
+    // Main may resolve a provider-native history ref to the canonical local
+    // UUID that owns the mutable conversation. From this point onward every
+    // composer/control lookup must use the returned identity, and the now-
+    // verified provider alias must leave top-level navigation immediately.
+    const canonicalThreadRef = thread.id
     yield* SubscriptionRef.update(state, current => withChatSelected({
       ...current,
       // A resumed thread can have fallen outside the bounded five-row local
@@ -2368,6 +2375,15 @@ export const makeDesktopShellHandlers = (
       threads: [thread, ...current.threads.filter(value => value.id !== thread.id)].slice(0, 5),
       history: {
         ...current.history,
+        catalog: threadRef === canonicalThreadRef
+          ? current.history.catalog
+          : {
+              ...current.history.catalog,
+              roots: current.history.catalog.roots.filter(root => root.threadRef !== threadRef),
+            },
+        searchResults: threadRef === canonicalThreadRef
+          ? current.history.searchResults
+          : current.history.searchResults.filter(result => result.rootThreadRef !== threadRef),
         page: null,
         selectedItemRef: null,
         pendingThreadRef: null,
@@ -2376,17 +2392,17 @@ export const makeDesktopShellHandlers = (
     }, thread))
     const composerQueue = chat.queueList === undefined
       ? []
-      : (yield* Effect.promise(() => chat.queueList!(threadRef).catch(() => [])))
-          .filter(entry => entry.threadRef === threadRef)
-    yield* SubscriptionRef.update(state, current => current.activeThreadId === threadRef
+      : (yield* Effect.promise(() => chat.queueList!(canonicalThreadRef).catch(() => [])))
+          .filter(entry => entry.threadRef === canonicalThreadRef)
+    yield* SubscriptionRef.update(state, current => current.activeThreadId === canonicalThreadRef
       ? { ...current, composerQueue, composerQueueEditingRef: null }
       : current)
     // Full Auto (FA-H1 #8874): the selection is already committed above, so
     // re-hydrating this thread's toggle from durable registry truth never
     // blocks the switch — it only corrects a stale/missing map entry.
-    yield* hydrateFullAuto(threadRef)
+    yield* hydrateFullAuto(canonicalThreadRef)
     if (chat.laneForThread !== undefined) {
-      const laneRef = yield* Effect.promise(() => chat.laneForThread!(threadRef))
+      const laneRef = yield* Effect.promise(() => chat.laneForThread!(canonicalThreadRef))
       if (laneRef === "codex-local" || laneRef === "fable-local") {
         yield* SubscriptionRef.update(state, current => ({
           ...current,
@@ -2395,13 +2411,15 @@ export const makeDesktopShellHandlers = (
       }
     }
     if (chat.hydrateThread !== undefined) {
-      const hydrated = yield* Effect.promise(() => chat.hydrateThread!(threadRef))
+      const hydrated = yield* Effect.promise(() => chat.hydrateThread!(canonicalThreadRef))
       if (hydrated !== null) {
         yield* SubscriptionRef.update(state, current =>
-          current.activeThreadId === threadRef ? withActiveChatProjected(current, hydrated) : current)
+          current.activeThreadId === canonicalThreadRef
+            ? withActiveChatProjected(current, hydrated)
+            : current)
       }
     }
-    return true
+    return canonicalThreadRef
   })
   const commitCodexHistory = (threadRef: string, expectedRevision?: number) => Effect.gen(function* () {
     const probe = yield* Effect.promise(() => historyHost.page(threadRef, 0, 1))
@@ -3105,13 +3123,13 @@ export const makeDesktopShellHandlers = (
   }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
     const revision = ++selectionRevision
-    const committed = yield* commitLocalSession(id, revision)
-    if (!committed || revision !== selectionRevision) return
+    const committedThreadRef = yield* commitLocalSession(id, revision)
+    if (committedThreadRef === null || revision !== selectionRevision) return
     const current = yield* SubscriptionRef.get(state)
     yield* recordNavigation({
       kind: "local_session",
-      threadRef: id,
-      title: current.threads.find(thread => thread.id === id)?.title || "Local session",
+      threadRef: committedThreadRef,
+      title: current.threads.find(thread => thread.id === committedThreadRef)?.title || "Local session",
     })
   }),
   DesktopChatRenameRequested: ({ threadRef, title }) => Effect.gen(function* () {
@@ -3190,13 +3208,13 @@ export const makeDesktopShellHandlers = (
     // ownership keeps the ordinary chat transcript and composer reachable;
     // a genuine provider-only row still falls back to the read-only history
     // page below.
-    const resumed = yield* commitLocalSession(id, revision)
-    if (resumed && revision === selectionRevision) {
+    const resumedThreadRef = yield* commitLocalSession(id, revision)
+    if (resumedThreadRef !== null && revision === selectionRevision) {
       const current = yield* SubscriptionRef.get(state)
       yield* recordNavigation({
         kind: "local_session",
-        threadRef: id,
-        title: current.threads.find(thread => thread.id === id)?.title || "Local session",
+        threadRef: resumedThreadRef,
+        title: current.threads.find(thread => thread.id === resumedThreadRef)?.title || "Local session",
       })
       return
     }

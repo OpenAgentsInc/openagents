@@ -303,6 +303,7 @@ import {
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { applyFullAutoComposerToggle, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
+import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
 import {
@@ -1107,6 +1108,14 @@ const broadcastFullAutoThreadUpdate = (threadRef: string): void => {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(DesktopLocalTurnRecoveryUpdateChannel, thread)
   }
+}
+const fullAutoProgressTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const scheduleFullAutoThreadUpdate = (threadRef: string): void => {
+  if (fullAutoProgressTimers.has(threadRef)) return
+  fullAutoProgressTimers.set(threadRef, setTimeout(() => {
+    fullAutoProgressTimers.delete(threadRef)
+    broadcastFullAutoThreadUpdate(threadRef)
+  }, 75))
 }
 /**
  * FA-H4 (#8877): main-owned in-memory coarse live state per Full Auto
@@ -2915,6 +2924,7 @@ ipcMain.handle(FableLocalQueueFollowupChannel, (_event, value: unknown) => {
 // plumbing the two lanes previously duplicated here; the lane values below
 // contribute only what is genuinely lane-specific.
 // ---------------------------------------------------------------------------
+const fullAutoFollowupHandoff = makeFullAutoFollowupHandoff()
 const laneDispatcher = makeProviderLaneDispatcher({
   threads,
   journal: localTurnJournal,
@@ -2941,6 +2951,16 @@ const laneDispatcher = makeProviderLaneDispatcher({
   captureTurnCheckpoint,
   localTurnFlushers,
   isQuitting: () => desktopIsQuitting,
+  onTurnEventProjected: (request, event, background) => {
+    if (!background || request.fullAuto !== true) return
+    scheduleFullAutoThreadUpdate(request.threadRef)
+    fullAutoFollowupHandoff.observe({
+      threadRef: request.threadRef,
+      background,
+      fullAuto: request.fullAuto === true,
+      event,
+    })
+  },
   specWorkflow: {
     beforeTurn: () => projectSpecLaneTurn(resolveDesktopLocalWorkspaceRoot()),
     afterTurn: (laneRef, request, before) => {
@@ -3775,14 +3795,19 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // it dispatches, carrying the lease turn ref so the composer's stop
       // control can target the ACTUAL running background turn.
       setFullAutoLiveState(threadRef, "turn_running", turnRef)
+      const promotedFollowup = fullAutoFollowupHandoff.take(threadRef)
       const result = laneRef === "codex-local"
         ? await (async () => {
             const bound = decodeCodexLocalContinuationProfile(profile)
             return dispatchCodexLocalTurn({
               turnRef,
               threadRef,
-              message,
+              message: promotedFollowup?.message ?? message,
               fullAuto: true,
+              ...(promotedFollowup === null ? {} : {
+                queueRef: promotedFollowup.queueRef,
+                clientUserMessageId: promotedFollowup.clientUserMessageId,
+              }),
               ...(bound.model === null ? {} : { model: bound.model }),
               ...(bound.reasoningEffort === null ? {} : { reasoningEffort: bound.reasoningEffort }),
               ...(bound.model !== null && bound.accountRef !== null
