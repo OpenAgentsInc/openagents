@@ -983,3 +983,19 @@ surfaces remain `T3M-C2` through `T3M-F2`; this is not a full-parity claim.
 - exclusions: adaptive shell/native navigation (`T3M-C2`), repository files and
   changes (`T3M-D1`/`T3M-D2`), Git/terminal (`T3M-E1`/`T3M-E2`), and physical
   device/distribution evidence (`T3M-F1`/`T3M-F2`)
+
+### CLAIM-RELEASE
+
+- landed: `159f6dff775b35cf19e183e9a58997d10468d413` on `main`
+- verification: post-rebase 195 mobile tests, mobile typecheck, and 19 Sol
+  policy tests; pre-rebase repository lint/format and the same mobile/Sol
+  suites; `git diff --check`
+- authority note: rows project only confirmed conversation, coding-directory,
+  and personal-attention state; exact refs stay in typed actions, invalid or
+  withheld authority stays hidden, and lifecycle effects remain confirmed by
+  the existing server writeback path
+- close boundary: `T3M-C1` project-aware rows, bounded local search/status and
+  project filters, causal attention jumps, row-local lifecycle actions, and
+  archived navigation are complete; adaptive/native workspace composition is
+  `T3M-C2`, and full mobile parity remains open through `T3M-F2`
+- verified_at: `2026-07-17T22:34:08Z`
