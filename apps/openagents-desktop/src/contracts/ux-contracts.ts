@@ -2867,10 +2867,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement: "yeah i need codex and claude both first class",
         authorityBoundary:
-          "The Codex chip in local mode uses the package-owned Codex app-server protocol against the ordinary authenticated local Codex session — never the cloud gateway and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. The lane reuses the frozen fable-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
+          "The Codex chip in local mode uses the package-owned Codex app-server protocol against the ordinary authenticated local Codex session — never the cloud gateway and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. On a reused supervised connection, notifications received before the new provider thread and turn identities are bound are quarantined with a fixed bound and replayed only through the exact identity fence: stale identities and unaffiliated transcript content cannot enter the new chat, while explicitly connection-scoped telemetry and compatibility notices remain non-transcript exceptions. The lane reuses the frozen fable-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-contract.ts",
+          "apps/openagents-desktop/src/codex-app-server-turn.ts",
           "apps/openagents-desktop/src/codex-app-server-smoke-fixture.ts",
           "apps/openagents-desktop/src/codex-app-server-smoke-fixture.test.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
@@ -2885,6 +2886,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/codex-local-runtime.test.ts",
             description:
               "Exercises the production app-server runtime, including a provider-originated command approval that blocks the turn until the exact request id receives the method-correct decision. It also retains explicit compatibility coverage for the legacy JSONL parser, bounded history, event mapping, interruption, and typed no-account failures.",
+          },
+          {
+            id: "codex_first_class.turn_stream_identity",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-app-server-turn.test.ts",
+            description:
+              "Reproduces a reused app-server publishing previous-chat text before the new provider identities bind, then proves quarantined stale and unaffiliated text are discarded while the exact current thread/turn answer is the only emitted assistant delta.",
           },
           {
             id: "codex_first_class.smoke",

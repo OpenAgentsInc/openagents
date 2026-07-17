@@ -329,6 +329,13 @@ export const runCodexAppServerTurn = async (
   let releaseReverseHandler: (() => void) | null = null
   let threadId: string | null = input.resumeThreadId
   let turnId: string | null = null
+  // A shared supervised app-server can publish the tail of an older turn
+  // immediately after this listener is installed. Until BOTH provider
+  // identities are bound, no turn-scoped notification has authority over the
+  // new local turn. Keep only a bounded quarantine and replay it through the
+  // exact identity fence once turn/start returns.
+  const preBindNotifications: Array<CodexAppServerMessage> = []
+  const PRE_BIND_NOTIFICATION_LIMIT = 256
   let text = ""
   let usage: CodexChildUsage | null = null
   const children = new Map<string, {
@@ -435,8 +442,10 @@ export const runCodexAppServerTurn = async (
     }
   }
 
-  const handleNotification = (message: CodexAppServerMessage): void => {
-    turnState.apply({ generation: lease?.state().generation ?? 0, message })
+  const handleNotification = (
+    message: CodexAppServerMessage,
+    source: "live" | "quarantined" = "live",
+  ): void => {
     const params = record(message.params)
     if (params === null) return
     if (message.method === "thread/started") {
@@ -447,6 +456,22 @@ export const runCodexAppServerTurn = async (
         (parentThreadId === threadId || children.has(parentThreadId))) {
         registerChild(childRef, parentThreadId, string(startedThread?.preview) ?? "")
       }
+      return
+    }
+    if (threadId === null || turnId === null) {
+      if (preBindNotifications.length === PRE_BIND_NOTIFICATION_LIMIT) {
+        preBindNotifications.shift()
+      }
+      preBindNotifications.push(message)
+      return
+    }
+    turnState.apply({ generation: lease?.state().generation ?? 0, message })
+    // Account rate limits are intentionally connection-scoped and carry no
+    // thread/turn identity. They remain ordered with the quarantined stream,
+    // but never contribute transcript content.
+    if (message.method === "account/rateLimits/updated") {
+      const meter = meterFromRateLimitsNotification(params)
+      if (meter !== null) input.emit(meter)
       return
     }
     const notifiedThread = string(params.threadId)
@@ -504,9 +529,18 @@ export const runCodexAppServerTurn = async (
       }
       return
     }
-    if (threadId !== null && notifiedThread !== null && notifiedThread !== threadId) return
     const notifiedTurn = string(params.turnId) ?? string(record(params.turn)?.id)
-    if (turnId !== null && notifiedTurn !== null && notifiedTurn !== turnId) return
+    // A notification received before binding must present provider identity:
+    // missing both is not "probably current" on a reused connection. Some
+    // live Codex compatibility notifications legitimately omit both ids, so
+    // preserve them only when they arrived after this turn was already bound.
+    // Every identity that is present must match the immutable admission.
+    const unaffiliatedCompatibilityNotice = message.method === "warning" ||
+      message.method === "configWarning" || message.method === "deprecationNotice"
+    if (source === "quarantined" && notifiedThread === null && notifiedTurn === null &&
+      !unaffiliatedCompatibilityNotice) return
+    if (notifiedThread !== null && notifiedThread !== threadId) return
+    if (notifiedTurn !== null && notifiedTurn !== turnId) return
 
     if (message.method === "item/commandExecution/outputDelta") {
       const itemRef = string(params.itemId)
@@ -631,14 +665,6 @@ export const runCodexAppServerTurn = async (
       // T11 #8868: additive live-meter event alongside the accounting use
       // above — never replaces it, never invents a value it lacks.
       const meter = meterFromTokenUsageNotification(params)
-      if (meter !== null) input.emit(meter)
-      return
-    }
-    // T11 #8868: previously entirely unconsumed. Account-scoped (no
-    // threadId/turnId params), so it is not gated by the thread/turn checks
-    // above — every rolling update for this account-level connection applies.
-    if (message.method === "account/rateLimits/updated") {
-      const meter = meterFromRateLimitsNotification(params)
       if (meter !== null) input.emit(meter)
       return
     }
@@ -1037,6 +1063,8 @@ export const runCodexAppServerTurn = async (
     if (turnId === null) throw new Error("Codex app-server omitted turn identity")
     turnState.bindStartedTurn(threadId, turnId)
     input.onProviderTurn?.(turnId)
+    const quarantined = preBindNotifications.splice(0)
+    for (const notification of quarantined) handleNotification(notification, "quarantined")
     input.control.interrupt = () => {
       if (client !== null && threadId !== null && turnId !== null) {
         if (!turnState.admitInterrupt(threadId, turnId)) return

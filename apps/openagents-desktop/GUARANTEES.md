@@ -616,6 +616,20 @@ Contract: `openagents_desktop.chat.lexical_composer.v1`.
 
 Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
 
+### Codex streams cannot cross chat ownership
+
+- Every local Codex stream is admitted against an immutable desktop thread and
+  provider turn identity; the selected chat is never routing authority.
+- Notifications that arrive while a reused app-server connection is still
+  binding the new provider thread/turn are held in a fixed-size quarantine.
+- Quarantined content is replayed only after identity binding. A stale
+  thread/turn or content with neither identity is discarded, so text from a
+  previous chat cannot become the first chunk of a new chat.
+- Connection-scoped rate-limit telemetry and known compatibility notices are
+  explicit non-transcript exceptions and cannot supply assistant text.
+
+Contract: `openagents_desktop.chat.codex_first_class_local_lane.v1`.
+
 ### Sidebar session search actually filters
 
 Typing in the sidebar session search filters over the FULL loss-accounted

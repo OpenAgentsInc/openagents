@@ -591,6 +591,99 @@ describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
   })
 })
 
+describe("codex app-server turn ownership", () => {
+  test("quarantines pre-bind events and rejects stale or unaffiliated text from another chat", async () => {
+    const currentThread = "thread-current"
+    const currentTurn = "turn-current"
+    const spawn: CodexAppServerSpawn = () => {
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+      const child = new EventEmitter() as EventEmitter & {
+        stdin: PassThrough
+        stdout: PassThrough
+        stderr: PassThrough
+        kill: () => boolean
+      }
+      child.stdin = stdin
+      child.stdout = stdout
+      child.stderr = new PassThrough()
+      child.kill = () => { child.emit("close", 0); return true }
+      const write = (message: unknown): void => { stdout.write(`${JSON.stringify(message)}\n`) }
+      const notify = (method: string, params: unknown): void => write({ method, params })
+      let buffered = ""
+      stdin.on("data", chunk => {
+        buffered += chunk.toString("utf8")
+        while (buffered.includes("\n")) {
+          const newline = buffered.indexOf("\n")
+          const line = buffered.slice(0, newline)
+          buffered = buffered.slice(newline + 1)
+          if (line === "") continue
+          const request = JSON.parse(line) as Record<string, unknown>
+          if (request.method === "initialize" && typeof request.id === "number") {
+            write({ id: request.id, result: {} })
+          } else if (request.method === "thread/start" && typeof request.id === "number") {
+            // This is the dangerous reuse window: the new listener exists,
+            // but its provider thread/turn identities do not yet exist.
+            notify("item/agentMessage/delta", {
+              threadId: "thread-previous",
+              turnId: "turn-previous",
+              delta: "PREVIOUS CHAT TEXT",
+            })
+            write({ id: request.id, result: { thread: { id: currentThread } } })
+          } else if (request.method === "turn/start" && typeof request.id === "number") {
+            write({ id: request.id, result: { turn: { id: currentTurn } } })
+            // All three notifications can be parsed before the promise
+            // continuation binds currentTurn, so replay must re-check them.
+            notify("item/agentMessage/delta", { delta: "UNAFFILIATED TEXT" })
+            notify("item/agentMessage/delta", {
+              threadId: "thread-previous",
+              turnId: "turn-previous",
+              delta: "LATE PREVIOUS CHAT TEXT",
+            })
+            notify("item/agentMessage/delta", {
+              threadId: currentThread,
+              turnId: currentTurn,
+              delta: "Current answer",
+            })
+            notify("turn/completed", {
+              threadId: currentThread,
+              turn: { id: currentTurn, status: "completed", error: null },
+            })
+          }
+        }
+      })
+      return child as never
+    }
+
+    const events: Array<FableLocalEvent> = []
+    const outcome = await runCodexAppServerTurn({
+      binary: "/packaged/codex",
+      env: {},
+      workspace: "/safe/repo",
+      threadRef: "desktop-thread-current",
+      turnRef: "desktop-turn-current",
+      accountRef: "codex",
+      prompt: "current prompt",
+      imagePaths: [],
+      resumeThreadId: null,
+      model: "gpt-5.5",
+      reasoningEffort: "medium",
+      productSpecSkill: { skillRoot: "/skills", skillPath: "/skills/productspec-work" },
+      includeProductSpecSkill: false,
+      control: { interrupted: false, interrupt: null, steer: null },
+      emit: event => events.push(event),
+      spawnImpl: spawn,
+    })
+
+    expect(outcome).toMatchObject({ outcome: "success", text: "Current answer" })
+    expect(events.filter(event => event.kind === "text_delta")).toEqual([
+      { kind: "text_delta", text: "Current answer" },
+    ])
+    expect(JSON.stringify(events)).not.toContain("PREVIOUS CHAT TEXT")
+    expect(JSON.stringify(events)).not.toContain("UNAFFILIATED TEXT")
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Streaming reasoning disclosure (#8863, epic #8857 T6). Reasoning rides the
 // SAME started/progress/completed tool-card pairing infrastructure every
