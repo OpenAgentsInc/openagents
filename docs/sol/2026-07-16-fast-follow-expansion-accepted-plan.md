@@ -144,6 +144,12 @@ adapters, rendered evidence, and Day 1 completion remain later packets.
 - repository check: `pnpm run check` passed
 - residual: durable outcome persistence/replay, Queue/Steer outcomes, additional adapters, and rendered evidence remain unclaimed later packets
 
+### CLAIM-RELEASE
+
+- landed: `621e900688a869992aaf017ea254e42af010bc13` on `main`
+- verification: focused packet/capability/boundary tests 239 passed and 11 skipped; Desktop typecheck; Fast Follow 7/7; behavior contracts 36/36; ProductSpec 104/104; Sol checks 19/19; `pnpm run check`; enforced Desktop gate 1,908 passed and 39 skipped plus build, fixture visual smoke, React smoke, and built Electron smoke
+- residual: durable outcome persistence/replay, Queue/Steer outcomes, Sync/mobile/Pylon adapters, thread search/share/export/supersession surfaces, real rendered runtime evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

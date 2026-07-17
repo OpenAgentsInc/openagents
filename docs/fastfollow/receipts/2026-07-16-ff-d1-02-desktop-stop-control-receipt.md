@@ -56,6 +56,7 @@ envelope.
 | Fast Follow checks | PASS — 7/7 |
 | Behavior-contract checks | PASS — 36/36 |
 | ProductSpec package test | PASS — 104/104 |
+| Enforced Desktop pre-push gate | PASS — 1,908 passed, 39 skipped; build, fixture visual smoke, React smoke, and built Electron smoke passed |
 | `pnpm run check` | PASS |
 
 ## Honest boundary and next packet
