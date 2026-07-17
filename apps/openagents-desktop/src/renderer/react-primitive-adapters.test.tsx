@@ -629,7 +629,7 @@ describe("React workbench shell", () => {
     })
   })
 
-  test("keeps the sidebar bounded to recent chats while workspace management stays out", async () => {
+  test("groups device-local worktrees by project with status, filters, manual order, and typed actions", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -662,9 +662,10 @@ describe("React workbench shell", () => {
       },
       codingCatalog: {
         ...base.codingCatalog,
+        selectedSessionRef: "session-1",
         sessions: [
           session,
-          { ...session, sessionRef: "session-2", repositoryLabel: "needs-recovery", state: "recovery_required", recoveryReason: "missing_worktree" },
+          { ...session, sessionRef: "session-2", worktreeRef: "worktree-2", worktreeLabel: "feature/recovery", repositoryLabel: "needs-recovery", state: "recovery_required", recoveryReason: "missing_worktree" },
         ],
         totalSessions: 101,
         nextOffset: 100,
@@ -673,9 +674,71 @@ describe("React workbench shell", () => {
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={state} report={report} />)
     expect(received).toEqual([])
-    for (const removedLabel of ["Load more sessions", "Load more workspaces", "Archive", "Recover", "Delete", "Confirm delete"]) {
-      expect([...container.querySelectorAll("button")].some(value => value.textContent === removedLabel)).toBe(false)
+    expect(container.querySelector(".oa-react-projects")?.textContent).toContain("Projects")
+    expect(container.querySelector(".oa-react-project-group")?.textContent).toContain("OpenAgents")
+    expect(container.querySelector(".oa-react-worktree-list")?.textContent).toContain("mainopenagents · idle")
+    expect(container.querySelector(".oa-react-worktree-list")?.textContent).not.toContain("feature/recovery")
+    const choose = container.querySelector('[aria-label="Choose project or worktree"]') as HTMLButtonElement
+    await interact(() => choose.click())
+    expect(received).toContainEqual({ name: "DesktopCodingCatalogChooseRequested", payload: null })
+
+    const recoverFilter = [...container.querySelectorAll(".oa-react-project-controls button")].find(button => button.textContent === "Recover") as HTMLButtonElement
+    await interact(() => recoverFilter.click())
+    expect(received).toContainEqual({ name: "DesktopCodingCatalogFilterSelected", payload: "recovery" })
+    await render(root, <WorkbenchShell state={{ ...state, codingSessionFilter: "recovery" }} report={report} />)
+    expect(container.querySelector(".oa-react-worktree-list")?.textContent).toContain("feature/recoveryneeds-recovery · needs recovery")
+    const checkbox = container.querySelector('[aria-label="Select needs-recovery feature/recovery"]') as HTMLInputElement
+    await interact(() => checkbox.click())
+    const recoverSelected = [...container.querySelectorAll(".oa-react-project-selection button")].find(button => button.textContent === "Recover") as HTMLButtonElement
+    await interact(() => recoverSelected.click())
+    expect(received).toContainEqual({ name: "DesktopCodingSessionRecovered", payload: "session-2" })
+
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    const sort = container.querySelector('[aria-label="Sort projects"]') as HTMLSelectElement
+    await interact(() => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set
+      setter?.call(sort, "manual")
+      sort.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event)
+    })
+    expect(container.querySelector('[aria-label="Move main down"]')).not.toBeNull()
+    const open = container.querySelector(".oa-react-worktree-open") as HTMLButtonElement
+    await interact(() => open.click())
+    expect(received).toContainEqual({ name: "DesktopCodingSessionOpened", payload: "session-1" })
+    const load = [...container.querySelectorAll("button")].find(button => button.textContent === "Load more worktrees") as HTMLButtonElement
+    await interact(() => load.click())
+    expect(received).toContainEqual({ name: "DesktopCodingCatalogMoreRequested", payload: null })
+  })
+
+  test("shows exact worktree context and capability-backed project actions in the header", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const session = {
+      sessionRef: "session-1", workContextRef: "context-1", grantRef: "grant-1",
+      projectRef: "project-1", repositoryRef: "repository-1", worktreeRef: "worktree-1",
+      projectLabel: "OpenAgents", repositoryLabel: "openagents", worktreeLabel: "feature/t3-ui",
+      state: "active" as const, lastActiveAt: "2026-07-14T12:00:00.000Z", recoveryReason: null,
     }
+    const state: DesktopShellState = {
+      ...base,
+      codingCatalog: { ...base.codingCatalog, selectedSessionRef: "session-1", sessions: [session], totalSessions: 1, activeCount: 1 },
+      git: { ...base.git, status: { ok: true, op: "status", branch: "feature/t3-ui", upstream: "origin/feature/t3-ui", detached: false, ahead: 0, behind: 0, staged: [], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1" } },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={state} report={report} />)
+    expect(container.querySelector(".oa-react-conversation-meta")?.textContent).toContain("openagents / feature/t3-ui")
+    expect(container.querySelector(".oa-react-conversation-actions")?.textContent).toContain("feature/t3-uiFilesReviewChange")
+    await interact(() => {
+      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Files") as HTMLButtonElement | undefined)?.click()
+      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Review") as HTMLButtonElement | undefined)?.click()
+      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Change") as HTMLButtonElement | undefined)?.click()
+    })
+    expect(received).toEqual(expect.arrayContaining([
+      { name: "DesktopWorkspaceSelected", payload: "files" },
+      { name: "DesktopWorkspaceSelected", payload: "review" },
+      { name: "DesktopCodingCatalogChooseRequested", payload: null },
+    ]))
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {

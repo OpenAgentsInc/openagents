@@ -2,6 +2,7 @@ import {
   StrictMode,
   createElement,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -23,9 +24,20 @@ import {
 import { Effect, Scope, Stream } from "@effect-native/core/effect"
 import { mountDomThemeStyleSheet } from "@effect-native/render-dom"
 import {
+  ArrowDown,
+  ArrowUp,
+  Archive,
+  ChevronDown,
+  ChevronRight,
   CircleAlert,
   Download,
+  FileCode2,
+  FolderGit2,
+  GitBranch,
   LoaderCircle,
+  RotateCcw,
+  SearchCheck,
+  Trash2,
   X,
 } from "lucide-react"
 import {
@@ -174,16 +186,193 @@ export const projectSidebarMeter = (state: DesktopShellState): DesktopConversati
   return rateLimits === undefined || rateLimits.length === 0 ? undefined : { rateLimits }
 }
 
-export const ConversationHeader = ({ state }: {
+type CodingSession = DesktopShellState["codingCatalog"]["sessions"][number]
+export type ReactCodingProjectGroup = Readonly<{
+  projectRef: string
+  label: string
+  status: "active" | "idle" | "recovery" | "archived"
+  sessions: ReadonlyArray<CodingSession>
+}>
+export type ReactCodingProjectSort = "recent" | "name" | "manual"
+
+const codingSessionStatus = (session: CodingSession): ReactCodingProjectGroup["status"] =>
+  session.recoveryReason !== null || session.state === "recovery_required"
+    ? "recovery"
+    : session.state
+
+const codingStatusRank: Readonly<Record<ReactCodingProjectGroup["status"], number>> = {
+  recovery: 4,
+  active: 3,
+  idle: 2,
+  archived: 1,
+}
+
+/** Project/worktree presentation over the already-admitted device-local catalog. */
+export const projectReactCodingGroups = (
+  state: DesktopShellState,
+  sort: ReactCodingProjectSort,
+  manualOrder: ReadonlyArray<string>,
+): ReadonlyArray<ReactCodingProjectGroup> => {
+  const visible = state.codingCatalog.sessions.filter(session =>
+    state.codingSessionFilter === "active"
+      ? session.state === "active" || session.state === "idle"
+      : state.codingSessionFilter === "recovery"
+        ? codingSessionStatus(session) === "recovery"
+        : session.state === "archived")
+  const manualIndex = new Map(manualOrder.map((ref, index) => [ref, index]))
+  const compare = (left: CodingSession, right: CodingSession): number => sort === "name"
+    ? `${left.repositoryLabel}/${left.worktreeLabel}`.localeCompare(`${right.repositoryLabel}/${right.worktreeLabel}`)
+    : sort === "manual"
+      ? (manualIndex.get(left.sessionRef) ?? Number.MAX_SAFE_INTEGER) - (manualIndex.get(right.sessionRef) ?? Number.MAX_SAFE_INTEGER)
+      : right.lastActiveAt.localeCompare(left.lastActiveAt)
+  const grouped = new Map<string, CodingSession[]>()
+  for (const session of visible) {
+    const sessions = grouped.get(session.projectRef) ?? []
+    sessions.push(session)
+    grouped.set(session.projectRef, sessions)
+  }
+  return [...grouped.entries()].map(([projectRef, sessions]) => {
+    const ordered = [...sessions].sort(compare)
+    const status = ordered.map(codingSessionStatus).sort((left, right) => codingStatusRank[right] - codingStatusRank[left])[0] ?? "idle"
+    return { projectRef, label: ordered[0]?.projectLabel ?? "Project unavailable", status, sessions: ordered }
+  }).sort((left, right) => sort === "name"
+    ? left.label.localeCompare(right.label)
+    : sort === "manual"
+      ? (manualIndex.get(left.sessions[0]?.sessionRef ?? "") ?? Number.MAX_SAFE_INTEGER) - (manualIndex.get(right.sessions[0]?.sessionRef ?? "") ?? Number.MAX_SAFE_INTEGER)
+      : (right.sessions[0]?.lastActiveAt ?? "").localeCompare(left.sessions[0]?.lastActiveAt ?? ""))
+}
+
+const CodingProjectSection = ({ state, report, onDismiss }: {
   readonly state: DesktopShellState
+  readonly report: IntentReporter
+  readonly onDismiss: () => void
+}): ReactElement => {
+  const [sort, setSort] = useState<ReactCodingProjectSort>("recent")
+  const [manualOrder, setManualOrder] = useState<ReadonlyArray<string>>(() => state.codingCatalog.sessions.map(session => session.sessionRef))
+  const [expanded, setExpanded] = useState<ReadonlyArray<string>>(() => state.codingCatalog.sessions.map(session => session.projectRef))
+  const [selected, setSelected] = useState<ReadonlyArray<string>>([])
+  useEffect(() => {
+    setManualOrder(current => [
+      ...current.filter(ref => state.codingCatalog.sessions.some(session => session.sessionRef === ref)),
+      ...state.codingCatalog.sessions.map(session => session.sessionRef).filter(ref => !current.includes(ref)),
+    ])
+    setExpanded(current => [
+      ...current.filter(ref => state.codingCatalog.sessions.some(session => session.projectRef === ref)),
+      ...state.codingCatalog.sessions.map(session => session.projectRef).filter(ref => !current.includes(ref)),
+    ])
+    setSelected(current => current.filter(ref => state.codingCatalog.sessions.some(session => session.sessionRef === ref)))
+  }, [state.codingCatalog.sessions])
+  const groups = useMemo(() => projectReactCodingGroups(state, sort, manualOrder), [manualOrder, sort, state])
+  const move = (sessionRef: string, direction: -1 | 1): void => setManualOrder(current => {
+    const index = current.indexOf(sessionRef)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= current.length) return current
+    const next = [...current]
+    const [entry] = next.splice(index, 1)
+    if (entry === undefined) return current
+    next.splice(target, 0, entry)
+    return next
+  })
+  const toggleSelected = (sessionRef: string): void => setSelected(current =>
+    current.includes(sessionRef) ? current.filter(ref => ref !== sessionRef) : [...current, sessionRef])
+  const batch = (intent: "DesktopCodingSessionArchived" | "DesktopCodingSessionRecovered"): void => {
+    for (const sessionRef of selected) dispatch(report, intent, sessionRef)
+    setSelected([])
+  }
+  return <section className="oa-react-projects" aria-labelledby="oa-react-projects-heading">
+    <header className="oa-react-projects-header">
+      <strong id="oa-react-projects-heading">Projects</strong>
+      <Button type="button" variant="ghost" size="icon-sm" aria-label="Choose project or worktree"
+        title="Choose project or worktree" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}>
+        <FolderGit2 aria-hidden="true" />
+      </Button>
+    </header>
+    <div className="oa-react-project-controls">
+      {(["active", "recovery", "archived"] as const).map(filter => <button
+        aria-pressed={state.codingSessionFilter === filter}
+        key={filter}
+        onClick={() => dispatch(report, "DesktopCodingCatalogFilterSelected", filter)}
+        type="button"
+      >{filter === "active" ? "Open" : filter === "recovery" ? "Recover" : "Archived"}</button>)}
+      <label>
+        <span className="oa-react-sr-only">Sort projects</span>
+        <select aria-label="Sort projects" onChange={event => setSort(event.currentTarget.value as ReactCodingProjectSort)} value={sort}>
+          <option value="recent">Recent</option>
+          <option value="name">Name</option>
+          <option value="manual">Manual</option>
+        </select>
+      </label>
+    </div>
+    {selected.length === 0 ? null : <div className="oa-react-project-selection" role="toolbar" aria-label={`${selected.length} selected worktrees`}>
+      <span>{selected.length} selected</span>
+      {state.codingSessionFilter === "recovery"
+        ? <button type="button" onClick={() => batch("DesktopCodingSessionRecovered")}><RotateCcw aria-hidden="true" />Recover</button>
+        : state.codingSessionFilter === "archived"
+          ? null
+        : <button type="button" onClick={() => batch("DesktopCodingSessionArchived")}><Archive aria-hidden="true" />Archive</button>}
+      <button type="button" onClick={() => setSelected([])}>Clear</button>
+    </div>}
+    <div className="oa-react-project-groups">
+      {groups.length === 0 ? <p>{state.codingSessionFilter === "recovery" ? "No worktrees need recovery." : state.codingSessionFilter === "archived" ? "No archived worktrees." : "Choose a project to start a coding session."}</p> : groups.map(group => {
+        const isExpanded = expanded.includes(group.projectRef)
+        return <section className="oa-react-project-group" data-project-status={group.status} key={group.projectRef}>
+          <button className="oa-react-project-group-trigger" type="button" aria-expanded={isExpanded}
+            onClick={() => setExpanded(current => isExpanded ? current.filter(ref => ref !== group.projectRef) : [...current, group.projectRef])}>
+            {isExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+            <span className="oa-react-project-status-dot" aria-hidden="true" />
+            <strong>{group.label}</strong>
+            <small>{group.sessions.length}</small>
+          </button>
+          {!isExpanded ? null : <div className="oa-react-worktree-list">
+            {group.sessions.map(session => {
+              const status = codingSessionStatus(session)
+              const deleting = state.codingSessionDeleteConfirmRef === session.sessionRef
+              return <div className="oa-react-worktree-row" data-selected={state.codingCatalog.selectedSessionRef === session.sessionRef ? "true" : "false"} data-status={status} key={session.sessionRef}>
+                <input checked={selected.includes(session.sessionRef)} type="checkbox" aria-label={`Select ${session.repositoryLabel} ${session.worktreeLabel}`}
+                  onChange={() => toggleSelected(session.sessionRef)} />
+                <button className="oa-react-worktree-open" type="button" onClick={() => { dispatch(report, "DesktopCodingSessionOpened", session.sessionRef); onDismiss() }}>
+                  <span><GitBranch aria-hidden="true" />{session.worktreeLabel}</span>
+                  <small>{session.repositoryLabel} · {status === "recovery" ? "needs recovery" : status} · {formatRelativeTimestamp(session.lastActiveAt)}</small>
+                </button>
+                {sort !== "manual" ? null : <span className="oa-react-worktree-order">
+                  <button type="button" aria-label={`Move ${session.worktreeLabel} up`} onClick={() => move(session.sessionRef, -1)}><ArrowUp aria-hidden="true" /></button>
+                  <button type="button" aria-label={`Move ${session.worktreeLabel} down`} onClick={() => move(session.sessionRef, 1)}><ArrowDown aria-hidden="true" /></button>
+                </span>}
+                {status === "recovery" ? <button className="oa-react-worktree-action" type="button" aria-label={`Recover ${session.worktreeLabel}`} onClick={() => dispatch(report, "DesktopCodingSessionRecovered", session.sessionRef)}><RotateCcw aria-hidden="true" /></button>
+                  : session.state === "archived"
+                    ? <button className="oa-react-worktree-action" type="button" aria-label={`Delete ${session.worktreeLabel}`} onClick={() => dispatch(report, "DesktopCodingSessionDeleteRequested", session.sessionRef)}><Trash2 aria-hidden="true" /></button>
+                    : <button className="oa-react-worktree-action" type="button" aria-label={`Archive ${session.worktreeLabel}`} onClick={() => dispatch(report, "DesktopCodingSessionArchived", session.sessionRef)}><Archive aria-hidden="true" /></button>}
+                {deleting ? <span className="oa-react-worktree-delete-confirm">
+                  <button type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteConfirmed", session.sessionRef)}>Delete</button>
+                  <button type="button" onClick={() => dispatch(report, "DesktopCodingSessionDeleteCancelled")}>Cancel</button>
+                </span> : null}
+              </div>
+            })}
+          </div>}
+        </section>
+      })}
+    </div>
+    {state.codingCatalog.nextOffset === null ? null : <button className="oa-react-project-load-more" type="button" onClick={() => dispatch(report, "DesktopCodingCatalogMoreRequested")}>Load more worktrees</button>}
+  </section>
+}
+
+export const ConversationHeader = ({ state, report }: {
+  readonly state: DesktopShellState
+  readonly report: IntentReporter
 }): ReactElement => {
   const selectedCoding = state.codingCatalog.sessions.find(
     session => session.sessionRef === state.codingCatalog.selectedSessionRef,
   )
   return <DesktopConversationHeader
     lifecycle={selectedLifecycle(state)}
-    secondary={selectedCoding?.repositoryLabel}
+    secondary={selectedCoding === undefined ? undefined : `${selectedCoding.repositoryLabel} / ${selectedCoding.worktreeLabel}`}
     title={selectedTitle(state)}
+    actions={selectedCoding === undefined ? undefined : <div className="oa-react-conversation-actions" aria-label="Project actions">
+      <span title="Current branch"><GitBranch aria-hidden="true" />{state.git.status?.branch ?? selectedCoding.worktreeLabel}</span>
+      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopWorkspaceSelected", "files")}><FileCode2 aria-hidden="true" />Files</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopWorkspaceSelected", "review")}><SearchCheck aria-hidden="true" />Review</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}><FolderGit2 aria-hidden="true" />Change</Button>
+    </div>}
   />
 }
 
@@ -363,6 +552,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       title: row.title,
       working: row.working && !state.historyShortcutHintsVisible,
     }))}
+    workspaceSection={state.workspace === "settings" ? undefined : <CodingProjectSection state={state} report={report} onDismiss={onDismiss} />}
     settingsDestination={settingsDestination === undefined ? undefined : {
       accessibilityLabel: settingsDestination.accessibilityLabel,
       current: state.workspace === "settings" ? undefined : settingsDestination.accessibilityCurrent,
@@ -592,7 +782,7 @@ export const WorkbenchShell = ({ state, report }: {
         <DecisionSurface state={state} report={report} />
         <ReactComposer state={state} report={report} />
       </div> : null}
-      header={<ConversationHeader state={state} />}
+      header={<ConversationHeader state={state} report={report} />}
       notices={<StatusNotices state={state} report={report} />}
       timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForHarness(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
     />}

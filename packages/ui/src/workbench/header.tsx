@@ -24,7 +24,8 @@ export const DesktopConversationHeader = ({
   lifecycle,
   secondary,
   meter,
-}: Readonly<{ title: string; lifecycle: string; secondary?: string; meter?: DesktopConversationHeaderMeter }>): ReactElement =>
+  actions,
+}: Readonly<{ title: string; lifecycle: string; secondary?: string; meter?: DesktopConversationHeaderMeter; actions?: ReactNode }>): ReactElement =>
   <header className="oa-react-conversation-header">
     <div className="oa-react-conversation-heading">
       <h1>{title}</h1>
@@ -37,6 +38,7 @@ export const DesktopConversationHeader = ({
       {...(meter.usage === undefined ? {} : { usage: meter.usage })}
       {...(meter.rateLimits === undefined ? {} : { rateLimits: meter.rateLimits })}
     />}
+    {actions}
   </header>
 
 export const DesktopConversation = ({

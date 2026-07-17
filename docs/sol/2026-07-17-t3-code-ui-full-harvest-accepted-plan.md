@@ -113,63 +113,58 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-03
+## Active packet — T3UI-04
 
-Outcome: make the mounted composer a compact, context-aware coding control
-surface without weakening Effect-owned draft, provider, or workspace authority.
+Outcome: mount the admitted device-local project/worktree catalog as the
+primary coding-session shell without introducing renderer path or Git authority.
 
 Owned paths:
 
-- `apps/openagents-desktop/src/renderer/react-composer.tsx`
-- `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
 - `apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx`
-- `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- `packages/ui/src/workbench/rail.tsx`
+- `packages/ui/src/workbench/header.tsx`
 - `packages/ui/src/desktop-workbench.css`
 - this plan, the Sol roadmap, and generated Sol document manifest
 
 Required behavior:
 
-- typed review and editor-file context render as removable chips and context-
-  only submissions remain admitted through the existing turn boundary;
-- one bounded discovery menu projects canonical commands, loaded files/folders,
-  the active editor attachment, and admitted enabled plugin skills;
-- each discovery selection dispatches an existing typed intent or the modeled
-  explicit skill grammar, never a renderer filesystem or shell action;
-- provider/model controls remain direct while reasoning/access/Full Auto move
-  into one compact overflow surface at narrow widths;
-- approvals, questions, and plan follow-up render in the composer stack with
-  their exact typed decision vocabulary instead of a blocking modal; and
-- images, Queue/Steer, Stop, Full Auto, permission, provider, model, reasoning,
-  focus, history, and submission de-duplication remain proved.
+- sessions group under their exact project and retain repository/worktree refs;
+- active/idle/recovery/archived status, filtering, recent/name/manual ordering,
+  expansion, and multi-selection remain semantically distinct;
+- open, archive, recover, delete request/confirmation, choose, and paging use
+  existing exact-ref catalog intents;
+- batch actions emit the same exact-session intents rather than inventing a
+  renderer bulk authority; and
+- the conversation header shows admitted repository/worktree/branch context
+  with typed Files, Review, and Change-project actions.
 
-Proof: mounted context, discovery, skill/path/action dispatch, compact-control,
-decision, image, Queue/Steer, Full Auto, focus, and submission tests; Desktop
-typecheck, full serial suite, production build, Electron fixture smokes, Sol
+Proof: pure grouping/sort projection plus mounted filter, selection, manual
+order, exact lifecycle/paging, header identity/action tests; Desktop typecheck,
+full serial suite, production build, Electron fixture smokes, visual lane, Sol
 guards, and the publishing gate.
 
-Close rule: this packet closes the current typed composer-context, discovery,
-responsive-control, inline-decision, image, and mode-state gap. Arbitrary rich
-Lexical nodes, terminal/preview contexts, revert, all-component harvest,
-installed journey, signed release, and T3 parity remain later packets.
+Close rule: this packet closes the current admitted project/worktree grouping,
+status, sorting, local manual order, multi-select, lifecycle, and header-control
+gap. A typed durable manual-order contract, tabs/surfaces, rich files/diff,
+terminal, preview, installed journey, signed release, and T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-03-20260717`
-- base: `780887ff5fe74dafb857caaf482c8a36f580b9a9`
+- actor/session: `codex-t3ui-04-20260717`
+- base: `b6852266992055da79f7f00386e3a891ab449105`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: mounted composer context, discovery, responsive controls, and decisions
+- scope: mounted project/worktree grouping, lifecycle, selection, and header
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: typed context chips, bounded command/file/folder/skill
-  discovery, compact secondary controls, inline decisions and plan review, and
-  existing image/mode behaviors are mounted
-- focused proof: 26 composer tests and 51 composer/shell-adapter focused tests
-  pass before final full acceptance
-- receipt: [`2026-07-17-t3ui-03-composer-parity-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-03-composer-parity-receipt.md)
-- residual: rich persistent Lexical nodes, terminal/preview contexts, revert,
-  installed signed-build evidence, and later packets remain; this is not T3 parity
+- implementation: admitted project groups, worktree rows, status/filter/sort,
+  local manual order, selection/batch lifecycle, and header actions are mounted
+- focused proof: project/worktree coverage is included in the 26-test mounted
+  shell-adapter suite before final full acceptance
+- receipt: [`2026-07-17-t3ui-04-project-worktree-shell-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md)
+- residual: durable manual ordering and later packets remain; this is not T3 parity
 
 ## Explicit non-authority
 

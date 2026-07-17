@@ -72,6 +72,7 @@ export type DesktopSessionRailProps = Readonly<{
   destinations: ReadonlyArray<DesktopRailDestination>
   settingsDestination?: DesktopRailDestination
   sessions: ReadonlyArray<DesktopRailSession>
+  workspaceSection?: ReactNode
   canLoadMore?: boolean
   footer?: ReactNode
   onCollapse: () => void
@@ -108,6 +109,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
   destinations,
   settingsDestination,
   sessions,
+  workspaceSection,
   canLoadMore = false,
   footer,
   onCollapse,
@@ -186,6 +188,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
       />
     </label> : null}
     <nav aria-label="Primary" className="oa-react-primary-nav">{destinations.map(renderDestination)}</nav>
+    {settingsDestination?.icon === "back" ? null : workspaceSection}
     {settingsDestination?.icon === "back" ? null : <p className="oa-react-section-label">Recent</p>}
     {settingsDestination?.icon === "back" ? <div aria-hidden="true" className="oa-react-session-scroll" /> : <div className="oa-react-session-scroll">
       <nav aria-label="Recent sessions" className="oa-react-session-list">

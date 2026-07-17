@@ -331,6 +331,246 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   outline-offset: 2px;
 }
 
+.oa-react-projects {
+  display: grid;
+  max-height: min(42vh, 360px);
+  min-height: 0;
+  gap: 4px;
+  margin-top: var(--en-spacing-1);
+  padding-bottom: var(--en-spacing-2);
+  overflow-y: auto;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  overscroll-behavior: contain;
+}
+
+.oa-react-projects-header,
+.oa-react-project-controls,
+.oa-react-project-selection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--en-spacing-1);
+}
+
+.oa-react-projects-header {
+  min-height: 28px;
+  justify-content: space-between;
+}
+
+.oa-react-projects-header > strong {
+  color: var(--en-color-textSecondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.oa-react-projects-header svg,
+.oa-react-project-selection svg,
+.oa-react-worktree-row svg {
+  width: 13px;
+  height: 13px;
+}
+
+.oa-react-project-controls > button,
+.oa-react-project-selection button,
+.oa-react-project-load-more {
+  min-height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.oa-react-project-controls > button[aria-pressed="true"] {
+  background: var(--en-color-stateSelected);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-project-controls label {
+  min-width: 0;
+  margin-left: auto;
+}
+
+.oa-react-project-controls select {
+  max-width: 74px;
+  height: 24px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textSecondary);
+  font-size: 10px;
+}
+
+.oa-react-project-selection {
+  justify-content: flex-end;
+  color: var(--en-color-textSecondary);
+  font-size: 10px;
+}
+
+.oa-react-project-selection > span {
+  margin-right: auto;
+}
+
+.oa-react-project-selection button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--en-color-stateSelected);
+}
+
+.oa-react-project-groups {
+  display: grid;
+  gap: 2px;
+}
+
+.oa-react-project-groups > p {
+  margin: 0;
+  padding: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.oa-react-project-group-trigger {
+  display: grid;
+  width: 100%;
+  min-height: 28px;
+  grid-template-columns: 14px 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  padding: 0 var(--en-spacing-1);
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textSecondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.oa-react-project-group-trigger:hover,
+.oa-react-worktree-row:hover {
+  background: var(--en-color-stateHover);
+}
+
+.oa-react-project-group-trigger > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.oa-react-project-group-trigger strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-project-group-trigger small {
+  color: var(--en-color-textFaint);
+  font-size: 9px;
+}
+
+.oa-react-project-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--en-radius-full);
+  background: var(--en-color-textFaint);
+}
+
+.oa-react-project-group[data-project-status="active"] .oa-react-project-status-dot { background: var(--en-color-accent); }
+.oa-react-project-group[data-project-status="recovery"] .oa-react-project-status-dot { background: var(--en-color-warning); }
+.oa-react-project-group[data-project-status="archived"] .oa-react-project-status-dot { background: var(--en-color-textMuted); }
+
+.oa-react-worktree-list {
+  display: grid;
+  gap: 1px;
+  padding-left: var(--en-spacing-2);
+}
+
+.oa-react-worktree-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--en-spacing-1);
+  border-radius: var(--en-radius-sm);
+}
+
+.oa-react-worktree-row[data-selected="true"] {
+  background: var(--en-color-stateSelected);
+}
+
+.oa-react-worktree-row > input {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--en-color-accent);
+}
+
+.oa-react-worktree-open {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.oa-react-worktree-open > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-worktree-open small {
+  overflow: hidden;
+  color: var(--en-color-textFaint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-worktree-action,
+.oa-react-worktree-order button {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  place-items: center;
+}
+
+.oa-react-worktree-order {
+  display: flex;
+}
+
+.oa-react-worktree-delete-confirm {
+  grid-column: 2 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--en-color-danger);
+  font-size: 10px;
+}
+
+.oa-react-project-load-more {
+  justify-self: center;
+}
+
 .oa-react-session-list {
   display: flex;
   min-height: 0;
@@ -589,6 +829,46 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding: 0 var(--en-spacing-5);
   border-bottom: 1px solid var(--en-color-borderSubtle);
   -webkit-app-region: no-drag;
+}
+
+.oa-react-conversation-heading {
+  flex: 1 1 auto;
+}
+
+.oa-react-conversation-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.oa-react-conversation-actions > span,
+.oa-react-conversation-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+
+.oa-react-conversation-actions svg {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 760px) {
+  .oa-react-conversation-actions button {
+    width: var(--en-control-sm-height);
+    padding: 0;
+    font-size: 0;
+    justify-content: center;
+  }
+
+  .oa-react-conversation-actions > span {
+    display: none;
+  }
 }
 
 .oa-react-conversation-heading {

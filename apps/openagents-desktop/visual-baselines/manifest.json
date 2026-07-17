@@ -15,35 +15,35 @@
     {
       "name": "composer-idle",
       "file": "composer-idle.png",
-      "sha256": "cef5be7391d5e46e7d102c8c4ab05a73e639877507d468bbdd35ae4a036c6bed",
+      "sha256": "bc0dd029b5f7abd5d3ad6f6214744c43f31e048486ae267e5898592e615f54bb",
       "width": 1280,
       "height": 800
     },
     {
       "name": "thread-plan-card",
       "file": "thread-plan-card.png",
-      "sha256": "b4a7bd5dc32b07cb7e890992d500bed9ff8d1fe89df5bd5f70ddd8b0b06ff34d",
+      "sha256": "4a9ebbd19a0a8903f5a30e433e2d741f8b7004b0172f98da16d0b627a18d1da5",
       "width": 1280,
       "height": 800
     },
     {
       "name": "approval-card",
       "file": "approval-card.png",
-      "sha256": "761652169c172a06355f3f6e71a9b5319c73c019af862498525b39209734e3e1",
+      "sha256": "9dbaf8ffe1fa16b2defe14f11d01729f4b0e843df2c7aa1f4aa1049782f67bfc",
       "width": 1280,
       "height": 800
     },
     {
       "name": "reasoning-disclosure",
       "file": "reasoning-disclosure.png",
-      "sha256": "2e9a40da7eba16e9d608a80ec5bdd69f1ff9a932b61eae35bfa45cac387ebc08",
+      "sha256": "a99498b1f6b16c798822c02928584be9a8ba2107122c2478ef92c99586ace691",
       "width": 1280,
       "height": 800
     },
     {
       "name": "full-auto-running",
       "file": "full-auto-running.png",
-      "sha256": "97880e59e45c0d7fde48413d19073a421a389e9bb50d8aa86b8264311cb8f74b",
+      "sha256": "2abb8c07f633c20e6626ee2b6c0c52e61973fb892ef51988cb06296ed14bd352",
       "width": 1280,
       "height": 800
     },
@@ -120,7 +120,7 @@
     {
       "name": "workbench-frame",
       "file": "workbench-frame.png",
-      "sha256": "8c8abc94449d655da1d6ff5ccfbef81c8fe891eef887e2e65348a69f57f7e88d",
+      "sha256": "883899b20462465d0fad8ecafea61be2556d229ded63df4be29c5069bf4f04e0",
       "width": 1280,
       "height": 800
     }
