@@ -754,3 +754,27 @@ Parity is still bounded. History older than the retained 500-message window
 has no authorized pagination contract; non-image files, share/quick actions,
 physical push, and installed-device acceptance remain open. This work also does
 not implement the next phase's repository onboarding and Files surface.
+
+## 14. Implementation update — MOBILE-PARITY-03F
+
+The selected-chat presentation parity slice landed on 2026-07-17 as
+[#8965](https://github.com/OpenAgentsInc/openagents/issues/8965).
+
+The React Native Effect Native transcript renderer now follows T3 Code
+mobile's message grammar directly: user messages use the same dark-mode iOS
+blue (`#0a84ff`), 20px radius, 14px horizontal and 10px vertical padding,
+85-percent maximum width, right alignment, and 20px row separation. Assistant
+messages are unboxed, full-width prose with a 4px inset and 8px row separation.
+User timestamps sit below the bubble; repeated `YOU` and `ASSISTANT` labels no
+longer compete with message content.
+
+The selected-thread surface also drops the 64px dead spacer and shortens its
+retained-message accounting. Renderer-level coverage pins the T3 geometry and
+white user-message text, while the existing authoritative-thread tests pin the
+new metadata contract. Expo Go on the iOS 26.5 iPhone 17 Pro Simulator provided
+the native visual proof.
+
+This closes presentation parity for ordinary text rows, not the broader mobile
+controller gap. T3's copy/revert affordances, rich Markdown and code surfaces,
+activity folding, attachment viewer, Files, Changes, Terminal, Preview, push,
+and installed-device acceptance remain separate work.

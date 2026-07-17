@@ -3882,6 +3882,19 @@ const renderTranscript = (
   // Production-scale transcript (#57): FlatList-backed with pin-to-end and
   // maintainVisibleContentPosition so streaming append stays O(new).
   const theme = options.theme ?? defaultTheme
+  // Match T3 Code's native thread grammar: user content is white on the
+  // platform-blue bubble while assistant content remains unboxed on the
+  // conversation surface. Text is a native leaf in this renderer, so give
+  // user-message descendants a scoped palette instead of relying on CSS-like
+  // color inheritance that React Native does not provide.
+  const userMessageTheme: Theme = {
+    ...theme,
+    color: {
+      ...theme.color,
+      textPrimary: "#ffffff",
+      textMuted: "rgba(255, 255, 255, 0.78)"
+    }
+  }
   return createElement(
     dependencies,
     dependencies.ReactNative.FlatList,
@@ -3916,9 +3929,35 @@ const renderTranscript = (
           readonly body: ReadonlyArray<View>
         }
       }) => {
-        // Role-differentiated chrome (v29, #72): meta row (sender/timestamp)
-        // separated from the body; user rows end-aligned bounded bubbles.
+        // T3 Code mobile message chrome: a right-aligned 20px user bubble,
+        // plain full-width assistant prose, then quiet timestamp metadata.
         const children: Array<ReactElementLike> = []
+        const body = createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          {
+            key: "body",
+            testID: `en-message-body:${message.key}`,
+            style: message.role === "user"
+              ? {
+                  backgroundColor: "#0a84ff",
+                  borderRadius: 20,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  gap: spacingValue(theme, "2")
+                }
+              : {}
+          },
+          ...message.body.map((child) =>
+            renderResolvedReactNativeView(
+              child,
+              dependencies,
+              report,
+              message.role === "user" ? { ...options, theme: userMessageTheme } : options
+            )
+          )
+        )
+        children.push(body)
         if (message.senderLabel !== undefined || message.timestamp !== undefined) {
           const metaChildren: Array<ReactElementLike> = []
           if (message.senderLabel !== undefined) {
@@ -3931,7 +3970,7 @@ const renderTranscript = (
                   fontWeight: "600",
                   letterSpacing: 0.8,
                   textTransform: "uppercase",
-                  color: message.role === "user" ? colorValue(theme, "accent") : colorValue(theme, "textMuted")
+                  color: colorValue(theme, "textMuted")
                 }
               }, message.senderLabel)
             )
@@ -3952,35 +3991,18 @@ const renderTranscript = (
               {
                 key: "meta",
                 testID: `en-message-meta:${message.key}`,
-                style: { flexDirection: "row", alignItems: "baseline", gap: spacingValue(theme, "2") }
+                style: {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacingValue(theme, "1"),
+                  marginTop: spacingValue(theme, "1"),
+                  ...(message.role === "user" ? { paddingRight: 2, justifyContent: "flex-end" } : {})
+                }
               },
               ...metaChildren
             )
           )
         }
-        children.push(
-          createElement(
-            dependencies,
-            dependencies.ReactNative.View,
-            {
-              key: "body",
-              testID: `en-message-body:${message.key}`,
-              style: message.role === "user"
-                ? {
-                    backgroundColor: colorValue(theme, "surfaceRaised"),
-                    borderColor: colorValue(theme, "border"),
-                    borderWidth: 1,
-                    borderRadius: 8,
-                    paddingVertical: spacingValue(theme, "2"),
-                    paddingHorizontal: spacingValue(theme, "3")
-                  }
-                : {}
-            },
-            ...message.body.map((child) =>
-              renderResolvedReactNativeView(child, dependencies, report, options)
-            )
-          )
-        )
         const messageElement = createElement(
           dependencies,
           dependencies.ReactNative.View,
@@ -3988,8 +4010,10 @@ const renderTranscript = (
             testID: `en-message:${message.key}`,
             nativeID: `effect-native-message:${message.role}`,
             style: {
-              gap: spacingValue(theme, "1"),
-              maxWidth: "82%",
+              maxWidth: message.role === "user" ? "85%" : "100%",
+              width: message.role === "user" ? undefined : "100%",
+              paddingHorizontal: message.role === "user" ? 0 : spacingValue(theme, "1"),
+              marginBottom: message.role === "user" ? spacingValue(theme, "5") : spacingValue(theme, "2"),
               minWidth: 0,
               flexShrink: 1
             },

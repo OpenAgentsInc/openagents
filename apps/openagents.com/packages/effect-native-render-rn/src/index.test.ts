@@ -4,6 +4,8 @@ import {
   Composer,
   IntentRef,
   Stack,
+  Text,
+  Transcript,
   UnknownIntentError,
   type IntentReporter,
   type View
@@ -52,6 +54,52 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("React Native renderer host boundaries", () => {
+  test("matches T3 Code mobile message geometry", () => {
+    const element = renderReactNativeView(
+      Transcript({
+        key: "thread",
+        messages: [
+          {
+            key: "user",
+            role: "user",
+            timestamp: "12:34",
+            body: [Text({ key: "user-text", content: "Ship it", variant: "body", color: "textPrimary" })]
+          },
+          {
+            key: "assistant",
+            role: "assistant",
+            body: [Text({ key: "assistant-text", content: "Done.", variant: "body", color: "textPrimary" })]
+          }
+        ]
+      }),
+      {
+        React: { createElement },
+        ReactNative: reactNative
+      },
+      () => Effect.succeed(undefined)
+    )
+    const renderItem = element.props.renderItem as (input: { readonly item: unknown }) => ReactElementLike
+    const data = element.props.data as ReadonlyArray<unknown>
+    const userRow = renderItem({ item: data[0] })
+    const assistantRow = renderItem({ item: data[1] })
+    const userMessage = userRow.props.children as ReactElementLike
+    const assistantMessage = assistantRow.props.children as ReactElementLike
+    const userChildren = userMessage.props.children as ReadonlyArray<ReactElementLike>
+    const userBody = userChildren[0]!
+    const assistantBody = assistantMessage.props.children as ReactElementLike
+
+    expect(userMessage.props.style).toMatchObject({ maxWidth: "85%", marginBottom: 20 })
+    expect(userBody.props.style).toMatchObject({
+      backgroundColor: "#0a84ff",
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 10
+    })
+    expect((userBody.props.children as ReactElementLike).props.style).toMatchObject({ color: "#ffffff" })
+    expect(assistantMessage.props.style).toMatchObject({ maxWidth: "100%", width: "100%", marginBottom: 8 })
+    expect(assistantBody.props.style).toEqual({})
+  })
+
   test("lowers a glass composer through renderer-owned SwiftUI on iOS 26 with typed change and submit parity", async () => {
     const cleanups: Array<() => void> = []
     let observedNativeState: { readonly get: () => string; readonly set: (value: string) => void } | undefined

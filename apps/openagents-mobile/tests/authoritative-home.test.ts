@@ -602,8 +602,8 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     })
     const content = JSON.stringify(renderContentView(program.initialState))
     expect(content).toContain('"content":"Synced"')
-    expect(content).toContain("1 confirmed message · 0 runtime events")
-    expect(content).toContain('"senderLabel":"YOU"')
+    expect(content).toContain("1 message · 0 events")
+    expect(content).not.toContain('"senderLabel":"YOU"')
     const drawer = JSON.stringify(renderDrawerView(program.initialState))
     expect(drawer).toContain("drawer-thread-thread.synced.1")
     expect(drawer).toContain('"label":"Synced"')
@@ -637,7 +637,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const content = JSON.stringify(renderContentView(program.initialState))
 
     expect(content).toContain('"content":"Mobile parity plan"')
-    expect(content).toContain("1 of 3 confirmed messages retained · 0 runtime events")
+    expect(content).toContain("1 of 3 messages · 0 events")
     expect(content).toContain('"_tag":"Image"')
     expect(content).toContain('"alt":"parity-map.png"')
     expect(content).toContain("data:image/png;base64,iVBORw0KGgo")
@@ -929,7 +929,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       text: "Continue this",
       status: "pending",
     })
-    expect(JSON.stringify(renderContentView(pending))).toContain('"senderLabel":"YOU · PENDING"')
+    expect(JSON.stringify(renderContentView(pending))).not.toContain('"senderLabel":"YOU · PENDING"')
 
     resolveSend?.({ ok: true, thread: confirmed })
     await Effect.runPromise(settle)

@@ -702,7 +702,7 @@ export const renderKhalaSurface = (
       style: { width: "full", height: "full" },
     },
     [
-      Spacer({ key: "khala-top-space", size: "16" }),
+      Spacer({ key: "khala-top-space", size: "2" }),
       Text({
         key: "khala-title",
         content: authority === "sync"
@@ -722,9 +722,9 @@ export const renderKhalaSurface = (
                 : "Select a chat to see its confirmed history."
               : `${historyAvailability === "refreshing" ? "Refreshing · " : ""}${
                   state.threadHistory.retainedMessageCount < state.threadHistory.totalMessageCount
-                    ? `${state.threadHistory.retainedMessageCount} of ${state.threadHistory.totalMessageCount} confirmed messages retained`
-                    : `${state.threadHistory.retainedMessageCount} confirmed ${state.threadHistory.retainedMessageCount === 1 ? "message" : "messages"}`
-                } · ${state.threadHistory.retainedEventCount} runtime ${state.threadHistory.retainedEventCount === 1 ? "event" : "events"}`
+                    ? `${state.threadHistory.retainedMessageCount} of ${state.threadHistory.totalMessageCount} messages`
+                    : `${state.threadHistory.retainedMessageCount} ${state.threadHistory.retainedMessageCount === 1 ? "message" : "messages"}`
+                } · ${state.threadHistory.retainedEventCount} ${state.threadHistory.retainedEventCount === 1 ? "event" : "events"}`
           : "One conversation, routed by the OpenAgents orchestrator.",
         variant: "body",
         color: "textMuted",
@@ -744,10 +744,10 @@ export const renderKhalaSurface = (
           key: entry.key,
           role: entry.role,
           status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
-          senderLabel: entry.role === "user"
-            ? entry.status === "pending" ? "YOU · PENDING" : "YOU"
-            : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
-          ...(entry.createdAt === undefined ? {} : { timestamp: entry.createdAt.slice(11, 16) }),
+          ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
+          ...(entry.role !== "assistant" && entry.createdAt !== undefined
+            ? { timestamp: entry.createdAt.slice(11, 16) }
+            : {}),
           body: interactionBody(state, entry, accessibility),
         })),
         a11y: {
