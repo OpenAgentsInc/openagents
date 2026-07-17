@@ -217,3 +217,12 @@ remains `T3M-A3`; attachment and scroll/history parity remains `T3M-A4`.
 - repository gate: `pnpm run check` passed
 - residual: `T3M-A3` decision-card parity through `T3M-F2`; this is not a
   full-parity claim
+
+### CLAIM-RELEASE
+
+- landed: `61f8b0ad4b1f5884dccfd19aca75b034addcd927` on `main`
+- verification: post-rebase mobile typecheck; 60 focused work-log,
+  authoritative Home, accessibility, and behavior-contract tests; `pnpm run
+  check`
+- residual: `T3M-A3` compact approval/input/plan cards is the next ordered
+  packet; full mobile parity remains open through `T3M-F2`
