@@ -1,7 +1,7 @@
 # Full Auto stalled-conversation resume work packet
 
 - Date: 2026-07-17
-- Status: accepted and implemented; focused verification passed
+- Status: accepted, implemented, and locally verified
 - Authority: owner request and screenshot in the 2026-07-17 Codex session
 - Scope: OpenAgents Desktop conversation resume, Full Auto progress, and follow-up admission
 - Base: `b82742da3afeb1725760e89456ce6fd1ed77781e`
@@ -43,6 +43,8 @@ claimed_at: 2026-07-17T11:52:20Z
 ## Verification receipt
 
 - 173 focused Desktop tests passed (11 skipped).
+- The combined recovered-change suite passed 288 tests (11 skipped) after
+  integration with the interactive-question fix.
 - Desktop TypeScript typecheck passed.
-- Repository completion gate and push receipt are intentionally deferred to
-  the batched final verification phase.
+- The production Desktop build and repository completion gate passed.
+- Push receipt is pending integration onto the latest concurrent `main`.
