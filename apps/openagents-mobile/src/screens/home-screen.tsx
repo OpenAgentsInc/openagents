@@ -129,6 +129,9 @@ export const HomeScreen = ({
   useEffect(() => {
     program.accessibility.setProfile(accessibility)
   }, [program, accessibility])
+  useEffect(() => () => {
+    void program.close()
+  }, [program])
   useEffect(() => {
     program.sync.setPhase(syncPhase)
   }, [program, syncPhase])

@@ -25,6 +25,7 @@ import type { MobileExecutionTargetOption } from "../src/coding/mobile-execution
 import {
   buildHomeProgram,
   chromeProps,
+  makeMobileSelectedThreadLeaseController,
   renderContentView,
   renderDrawerView,
 } from "../src/screens/home-core"
@@ -142,7 +143,74 @@ const exactCodexTarget: MobileExecutionTargetOption = {
   readiness: "ready",
 }
 
+const deferred = <A>() => {
+  let resolve!: (value: A) => void
+  const promise = new Promise<A>(done => { resolve = done })
+  return { promise, resolve }
+}
+
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () => {
+  test("generation-fences replacement races and closes the sole selected chat lease", async () => {
+    const firstOpen = deferred<MobileConversationThread | null>()
+    const callbacks = new Map<string, (thread: MobileConversationThread) => void>()
+    const closed: Array<string> = []
+    const updates: Array<string> = []
+    const secondThread = { ...initialThread, threadRef: "thread.synced.2", title: "Second" }
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread, secondThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: threadRef => threadRef === initialThread.threadRef
+        ? firstOpen.promise
+        : Promise.resolve(secondThread),
+      watchThread: async (threadRef, onUpdate) => {
+        callbacks.set(threadRef, onUpdate)
+        return { close: async () => { closed.push(threadRef) } }
+      },
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+    }
+    const controller = makeMobileSelectedThreadLeaseController(host)
+
+    const first = controller.activate(initialThread.threadRef, thread => updates.push(thread.threadRef))
+    const second = await controller.activate(secondThread.threadRef, thread => updates.push(thread.threadRef))
+    firstOpen.resolve(initialThread)
+
+    expect(second?.threadRef).toBe(secondThread.threadRef)
+    expect(await first).toBeNull()
+    expect(controller.active()?.threadRef).toBe(secondThread.threadRef)
+    callbacks.get(secondThread.threadRef)?.(secondThread)
+    expect(updates).toEqual([secondThread.threadRef])
+
+    await controller.clear()
+    callbacks.get(secondThread.threadRef)?.(secondThread)
+    expect(updates).toEqual([secondThread.threadRef])
+    expect(closed).toEqual([secondThread.threadRef])
+    expect(controller.active()).toBeNull()
+  })
+
+  test("binds the initial selected thread and releases it on authority loss", async () => {
+    const closed: Array<string> = []
+    let watched = 0
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      watchThread: async () => {
+        watched += 1
+        return { close: async () => { closed.push(initialThread.threadRef) } }
+      },
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+    }
+    const program = buildHomeProgram({ conversation: selection(host) })
+    await Effect.runPromise(settle)
+    expect(watched).toBe(1)
+
+    program.sync.setPhase("unavailable")
+    await Effect.runPromise(settle)
+    expect(closed).toEqual([initialThread.threadRef])
+    await program.close()
+    expect(closed).toEqual([initialThread.threadRef])
+  })
+
   test("renders and sends the exact persisted Effect Native execution target", async () => {
     let sentTarget: unknown = null
     const host: MobileConversationHost = {

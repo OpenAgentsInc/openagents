@@ -1211,6 +1211,64 @@ export interface HomeProgramOptions {
   }>
 }
 
+export type MobileSelectedThreadLeaseController = Readonly<{
+  activate: (
+    threadRef: string,
+    onUpdate: (thread: MobileConversationThread) => void,
+  ) => Promise<MobileConversationThread | null>
+  clear: () => Promise<void>
+  close: () => Promise<void>
+  active: () => Readonly<{ generation: number; threadRef: string }> | null
+}>
+
+/** Owns the sole ordinary-chat live lease. Coding-session activation retains
+ * its separate catalog-owned lease and clears this controller before binding. */
+export const makeMobileSelectedThreadLeaseController = (
+  host: MobileConversationHost,
+): MobileSelectedThreadLeaseController => {
+  let generation = 0
+  let selectedThreadRef: string | null = null
+  let lease: Awaited<ReturnType<NonNullable<MobileConversationHost["watchThread"]>>> = null
+
+  const clear = async (): Promise<void> => {
+    generation += 1
+    selectedThreadRef = null
+    const previous = lease
+    lease = null
+    await previous?.close()
+  }
+
+  return {
+    active: () => selectedThreadRef === null
+      ? null
+      : { generation, threadRef: selectedThreadRef },
+    activate: async (threadRef, onUpdate) => {
+      await clear()
+      const selectedGeneration = generation
+      selectedThreadRef = threadRef
+      const initial = await host.openThread(threadRef)
+      if (selectedGeneration !== generation || selectedThreadRef !== threadRef || initial === null) {
+        return null
+      }
+      if (host.watchThread !== undefined) {
+        const opened = await host.watchThread(threadRef, thread => {
+          if (selectedGeneration === generation && selectedThreadRef === thread.threadRef) {
+            onUpdate(thread)
+          }
+        })
+        if (selectedGeneration !== generation || selectedThreadRef !== threadRef) {
+          await opened?.close()
+          return null
+        }
+        lease = opened
+      }
+      return initial
+    },
+    clear,
+    close: clear,
+  }
+}
+
 const confirmedKhalaState = (
   thread: MobileConversationThread | null,
   turnCounter = 0,
@@ -1408,6 +1466,7 @@ const makeSyncedConversationHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
   host: MobileConversationHost,
   coding: HomeProgramOptions["coding"],
+  selectedThreadLease: MobileSelectedThreadLeaseController,
 ) => {
   const reconcileLifecycle = (
     action: "archive" | "delete" | "rename" | "restore",
@@ -1424,6 +1483,10 @@ const makeSyncedConversationHandlers = (
       threadRef,
       ...(title === undefined ? {} : { title }),
     }))
+    if (result.ok && result.thread.status !== "active" &&
+        selectedThreadLease.active()?.threadRef === result.thread.threadRef) {
+      yield* Effect.promise(selectedThreadLease.clear)
+    }
     yield* SubscriptionRef.update(state, current => {
       if (!result.ok) return {
         ...current,
@@ -1476,6 +1539,7 @@ const makeSyncedConversationHandlers = (
   NewChatPressed: () => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     if (before.khala.pending) return
+    yield* Effect.promise(selectedThreadLease.clear)
     if (coding !== undefined) yield* Effect.promise(coding.clearSelection)
     yield* SubscriptionRef.update(state, current => ({
       ...current,
@@ -1496,8 +1560,19 @@ const makeSyncedConversationHandlers = (
       },
     }))
     const result = yield* Effect.promise(host.newThread)
+    const confirmed = !result.ok
+      ? null
+      : yield* Effect.promise(() => selectedThreadLease.activate(
+          result.thread.threadRef,
+          update => {
+            Effect.runFork(SubscriptionRef.update(state, current =>
+              current.activeThreadRef === update.threadRef
+                ? withConfirmedThread(current, update)
+                : current))
+          },
+        ))
     yield* SubscriptionRef.update(state, current => result.ok
-      ? withConfirmedThread(current, result.thread)
+      ? withConfirmedThread(current, confirmed ?? result.thread)
       : failedConversationState(current, result.error))
   }),
   ConversationThreadSelected: (payload: { readonly threadRef: string }) => Effect.gen(function* () {
@@ -1512,7 +1587,15 @@ const makeSyncedConversationHandlers = (
       codingAttachmentStatus: null,
       khala: { ...current.khala, pending: true },
     }))
-    const thread = yield* Effect.promise(() => host.openThread(payload.threadRef))
+    const thread = yield* Effect.promise(() => selectedThreadLease.activate(
+      payload.threadRef,
+      update => {
+        Effect.runFork(SubscriptionRef.update(state, current =>
+          current.activeThreadRef === update.threadRef
+            ? withConfirmedThread(current, update)
+            : current))
+      },
+    ))
     yield* SubscriptionRef.update(state, current => thread === null
       ? failedConversationState(current, "Conversation is still pending reconciliation.")
       : withConfirmedThread(current, thread))
@@ -1820,6 +1903,15 @@ const makeSyncedConversationHandlers = (
           entries: current.khala.entries,
         },
       }))
+      yield* Effect.promise(() => selectedThreadLease.activate(
+        created.thread.threadRef,
+        update => {
+          Effect.runFork(SubscriptionRef.update(state, current =>
+            current.activeThreadRef === update.threadRef
+              ? withConfirmedThread(current, update)
+              : current))
+        },
+      ))
     }
 
     const result = yield* Effect.promise(() => host.sendMessage({
@@ -1863,11 +1955,17 @@ const makeSyncedConversationHandlers = (
 
 export const makeHomeHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
-  options: HomeProgramOptions = {},
+  options: HomeProgramOptions,
+  selectedThreadLease: MobileSelectedThreadLeaseController,
 ): IntentHandlers<typeof homeIntentDefinitions> => {
   const synced = options.conversation === undefined
     ? undefined
-    : makeSyncedConversationHandlers(state, options.conversation.host, options.coding)
+    : makeSyncedConversationHandlers(
+        state,
+        options.conversation.host,
+        options.coding,
+        selectedThreadLease,
+      )
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
     NewChatPressed: synced?.NewChatPressed ??
@@ -1958,8 +2056,11 @@ export const makeHomeHandlers = (
       ? Effect.void
       : Effect.promise(options.sessionActions.signIn),
     OpenAgentsSignOutPressed: () => options.sessionActions === undefined
-      ? Effect.void
-      : Effect.promise(options.sessionActions.signOut),
+      ? Effect.promise(selectedThreadLease.clear)
+      : Effect.gen(function* () {
+          yield* Effect.promise(selectedThreadLease.clear)
+          yield* Effect.promise(options.sessionActions!.signOut)
+        }),
     SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
     ControllerDestinationSelected: (destination) => SubscriptionRef.update(state, current => ({
       ...current,
@@ -2010,8 +2111,15 @@ export const makeHomeHandlers = (
             attentionNotice: null,
             khala: { ...current.khala, pending: true },
           }))
-          const thread = yield* Effect.promise(() =>
-            options.conversation!.host.openThread(resolution.target.threadRef))
+          const thread = yield* Effect.promise(() => selectedThreadLease.activate(
+            resolution.target.threadRef,
+            update => {
+              Effect.runFork(SubscriptionRef.update(state, current =>
+                current.activeThreadRef === update.threadRef
+                  ? withConfirmedThread(current, update)
+                  : current))
+            },
+          ))
           yield* SubscriptionRef.update(state, current => thread === null
             ? {
                 ...failedConversationState(current, "The confirmed attention target is still reconciling."),
@@ -2127,6 +2235,7 @@ export const makeHomeHandlers = (
       : payload => Effect.gen(function* () {
           const before = yield* SubscriptionRef.get(state)
           if (before.khala.pending) return
+          yield* Effect.promise(selectedThreadLease.clear)
           yield* SubscriptionRef.update(state, current => ({
             ...current,
             drawerOpen: false,
@@ -2175,6 +2284,7 @@ export interface HomeProgramHandle {
   readonly contentViewStream: Stream.Stream<View>
   readonly drawerViewStream: Stream.Stream<View>
   readonly report: IntentReporter
+  readonly close: () => Promise<void>
   readonly stateChanges: Stream.Stream<HomeState>
   readonly chrome: {
     readonly toggleDrawer: () => void
@@ -2255,7 +2365,19 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             },
       }
       const state = yield* SubscriptionRef.make<HomeState>(programInitialState)
-      const registry = yield* makeIntentRegistry(homeIntentDefinitions, makeHomeHandlers(state, options))
+      const selectedThreadLease: MobileSelectedThreadLeaseController =
+        options.conversation === undefined
+          ? {
+              active: () => null,
+              activate: async () => null,
+              clear: async () => undefined,
+              close: async () => undefined,
+            }
+          : makeMobileSelectedThreadLeaseController(options.conversation.host)
+      const registry = yield* makeIntentRegistry(
+        homeIntentDefinitions,
+        makeHomeHandlers(state, options, selectedThreadLease),
+      )
       const report: IntentReporter = (ref, runtimeValue) => registry.dispatch(resolveIntentRef(ref, runtimeValue))
       const fireRef = (ref: ReturnType<typeof IntentRef>): void => {
         Effect.runFork(Effect.exit(registry.dispatch(resolveIntentRef(ref))))
@@ -2265,12 +2387,28 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       }
       const fire = (name: string) => (): void => fireRef(IntentRef(name, StaticPayload({})))
       const submitKhala = (text: string): void => fireText(IntentRef("KhalaTurnSubmitted", ComponentValueBinding()), text)
+      const initialThreadRef = programInitialState.activeThreadRef
+      const initialThreadIsCoding = initialThreadRef !== null &&
+        options.coding?.directory.sessions.some(session => session.threadRef === initialThreadRef) === true
+      if (initialThreadRef !== null && !initialThreadIsCoding &&
+          options.conversation?.host.watchThread !== undefined) {
+        Effect.runFork(Effect.promise(() => selectedThreadLease.activate(
+          initialThreadRef,
+          update => {
+            Effect.runFork(SubscriptionRef.update(state, current =>
+              current.activeThreadRef === update.threadRef
+                ? withConfirmedThread(current, update)
+                : current))
+          },
+        )))
+      }
       return {
         initialState: programInitialState,
         viewStream: makeViewProgramFromState(state, renderHomeView).viewStream,
         contentViewStream: makeViewProgramFromState(state, renderContentView).viewStream,
         drawerViewStream: makeViewProgramFromState(state, renderDrawerView).viewStream,
         report,
+        close: selectedThreadLease.close,
         stateChanges: SubscriptionRef.changes(state),
         chrome: {
           toggleDrawer: fire("DrawerToggled"),
@@ -2301,6 +2439,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         },
         sync: {
           setPhase: phase => {
+            if (phase !== "live" && phase !== "catching_up") {
+              void selectedThreadLease.clear()
+            }
             Effect.runFork(SubscriptionRef.update(state, current =>
               current.conversationAuthority === "sync" && phase !== "live" && phase !== "catching_up"
                 ? {
