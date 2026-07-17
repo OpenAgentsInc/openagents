@@ -2731,6 +2731,15 @@ evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-34-canonical-accepted-event-search-receipt.md`
 - residual: real historical acquisition/index persistence, Desktop consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `f41e349278de06e64b7127f0272bd9efddf1487a`
+- implementation_revision: `ba7ac6e82d3b465815e9ff1957426ee0c2c89429`
+- status: released; FF-D1-34 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-17-ff-d1-34-canonical-accepted-event-search-receipt.md`
+- released_at: `2026-07-17T23:11:12Z`
+- residual: real historical acquisition/index persistence, Desktop consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

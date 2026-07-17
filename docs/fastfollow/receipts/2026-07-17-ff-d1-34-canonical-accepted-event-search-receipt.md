@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "116c77903ea2db9c5903c125a7f1925d54923391"
 claim_revision: "f41e349278de06e64b7127f0272bd9efddf1487a"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "ba7ac6e82d3b465815e9ff1957426ee0c2c89429"
 proof_rung: "canonical_accepted_event_search_projection"
 observed_at: "2026-07-17T23:08:51Z"
 ---
@@ -80,5 +80,6 @@ register the canonical export host in `main.ts`, or prove an installed runtime
 journey. Those residuals, owner acceptance, and Day 1 completion remain
 unclaimed.
 
-The exact tested implementation revision is filled by the documentation-only
-claim release after the implementation tree lands on `origin/main`.
+The exact tested implementation tree landed on `origin/main` at
+`ba7ac6e82d3b465815e9ff1957426ee0c2c89429` before this documentation-only
+claim release.
