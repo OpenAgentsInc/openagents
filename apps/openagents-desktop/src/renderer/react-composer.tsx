@@ -52,6 +52,7 @@ import {
   Square,
   SquarePen,
   TerminalSquare,
+  Globe2,
   X,
   XCircle,
   Zap,
@@ -481,7 +482,7 @@ export const ReactComposer = ({
     : capabilities?.queueFollowup ?? true;
   const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
-  const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null;
+  const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null || state.composerPreviewContext !== null;
   const canSubmit = state.pending || fullAutoRunning
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
     : lane.available && capabilityAdmitted && (hasText || hasBoundedContext);
@@ -517,7 +518,7 @@ export const ReactComposer = ({
     const submitIntent = submitIntentFor(pendingMode);
     const submissionKey = nextHasText
       ? editorValue
-      : `context:${state.composerImages.length}:${state.composerReviewContext?.path ?? ""}:${state.composerFileContext?.path ?? ""}:${state.composerTerminalContext?.sessionRef ?? ""}`;
+      : `context:${state.composerImages.length}:${state.composerReviewContext?.path ?? ""}:${state.composerFileContext?.path ?? ""}:${state.composerTerminalContext?.sessionRef ?? ""}:${state.composerPreviewContext?.port ?? ""}`;
     const now = Date.now();
     if (lastSubmitRef.current?.value === submissionKey && now - lastSubmitRef.current.at < 350)
       return;
@@ -584,7 +585,7 @@ export const ReactComposer = ({
           </ol>
         </section>
       )}
-      {state.composerReviewContext === null && state.composerFileContext === null && state.composerTerminalContext === null ? null : (
+      {state.composerReviewContext === null && state.composerFileContext === null && state.composerTerminalContext === null && state.composerPreviewContext === null ? null : (
         <div className="oa-react-composer-contexts" role="list" aria-label="Attached message context">
           {state.composerReviewContext === null ? null : (
             <div className="oa-react-composer-context" role="listitem" data-context-kind="review">
@@ -624,6 +625,20 @@ export const ReactComposer = ({
               <Button type="button" variant="ghost" size="icon-sm"
                 aria-label={`Remove terminal output for ${state.composerTerminalContext.shellLabel}`}
                 onClick={() => dispatch(report, "DesktopTerminalContextRemoved")}>
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+          )}
+          {state.composerPreviewContext === null ? null : (
+            <div className="oa-react-composer-context" role="listitem" data-context-kind="preview">
+              <Globe2 aria-hidden="true" />
+              <span>
+                <strong>localhost:{state.composerPreviewContext.port}</strong>
+                <small>{state.composerPreviewContext.viewport} · {state.composerPreviewContext.comment}</small>
+              </span>
+              <Button type="button" variant="ghost" size="icon-sm"
+                aria-label={`Remove preview annotation for localhost:${state.composerPreviewContext.port}`}
+                onClick={() => dispatch(report, "DesktopPreviewContextRemoved")}>
                 <X aria-hidden="true" />
               </Button>
             </div>

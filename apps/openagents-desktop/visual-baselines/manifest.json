@@ -64,7 +64,14 @@
     {
       "name": "terminal-workbench",
       "file": "terminal-workbench.png",
-      "sha256": "94e8eb95cdddfa6cbba6cba3de7367f0f3639e1b15fe142db0c45e0310cb4f63",
+      "sha256": "dc47c0085a6837d68a18ad72c4ee4604102b29bdcaefa29cf07f0c3d1285a28d",
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "name": "browser-preview",
+      "file": "browser-preview.png",
+      "sha256": "7f4aa3c5931ded480859d89e82ff2d27be2547e2910c49db9bd882c8d21672a4",
       "width": 1280,
       "height": 800
     },

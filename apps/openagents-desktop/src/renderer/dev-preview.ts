@@ -7,6 +7,7 @@ export const desktopPreviewReloadRisk = (state: DesktopShellState): boolean =>
   state.composerReviewContext !== null ||
   state.composerFileContext !== null ||
   state.composerTerminalContext !== null ||
+  state.composerPreviewContext !== null ||
   Object.values(state.questionCards).some(interaction =>
     interaction.submitting === true ||
     (!interaction.answered && (

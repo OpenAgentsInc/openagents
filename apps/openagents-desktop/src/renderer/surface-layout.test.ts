@@ -26,8 +26,8 @@ describe("desktop surface layout", () => {
 
   test("decodes persisted presentation state without admitting unknown surfaces", () => {
     expect(decodeDesktopSurfaceLayout({
-      surfaces: ["files", "browser", "files", "review"],
-      active: "browser",
+      surfaces: ["files", "unknown", "files", "review"],
+      active: "unknown",
       maximized: true,
       width: Number.NaN,
     })).toEqual({ version: 1, surfaces: ["files", "review"], active: "review", maximized: true, width: 440 })

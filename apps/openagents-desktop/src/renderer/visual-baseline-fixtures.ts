@@ -314,5 +314,7 @@ export const visualBaselineShellState = (name: VisualBaselineShellStateName): De
         },
       };
     }
+    case "browser-preview":
+      return visualBaselineShellState("terminal-workbench");
   }
 };

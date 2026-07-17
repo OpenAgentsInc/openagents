@@ -856,6 +856,14 @@ describe("React workbench shell", () => {
       { name: "TerminalContextAttached", payload: null },
       { name: "TerminalPreviewOpenRequested", payload: 3000 },
     ]))
+    const previewButton = [...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Preview") as HTMLButtonElement
+    await interact(() => previewButton.click())
+    expect(container.querySelector('[aria-label="Browser preview surface"]')?.textContent).toContain("localhost:3000 is ready")
+    await interact(() => (container.querySelector('[aria-label="Tablet"]') as HTMLButtonElement).click())
+    expect(container.querySelector('[aria-label="Tablet"]')?.getAttribute("aria-pressed")).toBe("true")
+    await interact(() => (container.querySelector('[aria-label="Annotate preview"]') as HTMLButtonElement).click())
+    expect(container.querySelector('[aria-label="Preview annotation"]')).not.toBeNull()
+    expect([...container.querySelectorAll(".oa-react-browser-annotation button")].some(button => button.textContent === "Add to composer")).toBe(true)
   })
 
   test("the overlay session rail closes on Escape and restores the trigger focus", async () => {

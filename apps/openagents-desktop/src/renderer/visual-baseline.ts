@@ -80,11 +80,11 @@ export const mountVisualBaseline = async (root: HTMLElement, stateName: string):
   }
   const theme = themeForPreferences(preferences);
   if (isVisualBaselineShellStateName(stateName)) {
-    if (stateName === "terminal-workbench") {
+    if (stateName === "terminal-workbench" || stateName === "browser-preview") {
       window.localStorage.setItem(`${desktopSurfaceLayoutStorageKey}:session.visual.surface`, JSON.stringify({
         version: 1,
-        surfaces: ["terminal"],
-        active: "terminal",
+        surfaces: [stateName === "terminal-workbench" ? "terminal" : "browser"],
+        active: stateName === "terminal-workbench" ? "terminal" : "browser",
         maximized: false,
         panelWidth: 640,
       }));

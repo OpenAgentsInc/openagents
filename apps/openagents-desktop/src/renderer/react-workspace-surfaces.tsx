@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactElement } from "react"
-import { ChevronDown, ChevronRight, CircleStop, File, FileDiff, Folder, FolderOpen, Plus, RefreshCw, RotateCcw, Search, TerminalSquare, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, Camera, ChevronDown, ChevronRight, CircleStop, ExternalLink, File, FileDiff, Folder, FolderOpen, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Search, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
@@ -195,5 +195,48 @@ export const ReactTerminalSurface = ({ state, report }: { readonly state: Deskto
         <Button size="sm" disabled={active.status !== "running"} type="submit">Run</Button>
       </form>
     </>}
+  </section>
+}
+
+type PreviewViewport = "responsive" | "mobile" | "tablet" | "desktop"
+const previewViewports: ReadonlyArray<Readonly<{ id: PreviewViewport; label: string; width: string | null; icon: typeof Monitor }>> = [
+  { id: "responsive", label: "Responsive", width: null, icon: Monitor },
+  { id: "mobile", label: "Mobile", width: "390px", icon: Smartphone },
+  { id: "tablet", label: "Tablet", width: "768px", icon: Tablet },
+  { id: "desktop", label: "Desktop", width: "1280px", icon: Monitor },
+]
+
+export const ReactBrowserPreviewSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
+  const available = state.terminal.sessions.flatMap(session => session.previews.map(preview => ({ ...preview, sessionRef: session.sessionRef })))
+  const [selectedPort, setSelectedPort] = useState<number | null>(available[0]?.port ?? null)
+  const [viewport, setViewport] = useState<PreviewViewport>("responsive")
+  const [mode, setMode] = useState<"server" | "file">("server")
+  const [annotating, setAnnotating] = useState(false)
+  const [comment, setComment] = useState("")
+  const selected = available.find(preview => preview.port === selectedPort) ?? available[0] ?? null
+  const activeFile = state.workspaceEditor.tabs.find(tab => tab.pathRef === state.workspaceEditor.activePathRef) ?? null
+  const selectedViewport = previewViewports.find(candidate => candidate.id === viewport)!
+  return <section className="oa-react-browser-preview" aria-label="Browser preview surface">
+    <header className="oa-react-browser-chrome">
+      <div role="group" aria-label="Preview navigation"><Button aria-label="Back" disabled size="icon-sm" variant="ghost"><ArrowLeft aria-hidden="true" /></Button><Button aria-label="Forward" disabled size="icon-sm" variant="ghost"><ArrowRight aria-hidden="true" /></Button><Button aria-label="Refresh preview discovery" size="icon-sm" variant="ghost" onClick={() => dispatch(report, "TerminalRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></div>
+      <div className="oa-react-browser-address"><Globe2 aria-hidden="true" /><span>{mode === "server" ? selected?.url ?? "No local server detected" : activeFile?.pathRef ?? "No file selected"}</span></div>
+      <Button aria-label="Open in system browser" disabled={selected === null || !selected.ready || mode !== "server"} size="icon-sm" variant="ghost" onClick={() => selected === null ? undefined : dispatch(report, "TerminalPreviewOpenRequested", selected.port)}><ExternalLink aria-hidden="true" /></Button>
+      <Button aria-label="Annotate preview" aria-pressed={annotating} disabled={selected === null || mode !== "server"} size="icon-sm" variant={annotating ? "secondary" : "ghost"} onClick={() => setAnnotating(value => !value)}><MousePointer2 aria-hidden="true" /></Button>
+      <Button aria-label="Preview recording unavailable" disabled title="Recording requires an admitted isolated browser host" size="icon-sm" variant="ghost"><Camera aria-hidden="true" /></Button>
+    </header>
+    <div className="oa-react-browser-toolbar">
+      <div role="tablist" aria-label="Preview source"><button aria-selected={mode === "server"} onClick={() => setMode("server")} role="tab" type="button">Local server</button><button aria-selected={mode === "file"} disabled={activeFile === null} onClick={() => setMode("file")} role="tab" type="button">File</button></div>
+      <label>Target<select aria-label="Detected local server" disabled={available.length === 0} value={selected?.port ?? ""} onChange={event => setSelectedPort(Number(event.currentTarget.value))}>{available.map(preview => <option key={`${preview.sessionRef}:${preview.port}`} value={preview.port}>localhost:{preview.port}{preview.ready ? "" : " · waiting"}</option>)}</select></label>
+      <div role="group" aria-label="Preview viewport">{previewViewports.map(option => { const Icon = option.icon; return <button aria-label={option.label} aria-pressed={viewport === option.id} key={option.id} onClick={() => setViewport(option.id)} title={option.width === null ? option.label : `${option.label} · ${option.width}`} type="button"><Icon aria-hidden="true" /></button> })}</div>
+    </div>
+    {annotating && selected !== null ? <form className="oa-react-browser-annotation" onSubmit={event => { event.preventDefault(); if (comment.trim() === "") return; dispatch(report, "DesktopPreviewAnnotationAttached", { sessionRef: selected.sessionRef, port: selected.port, comment: comment.trim(), viewport }); setComment(""); setAnnotating(false) }}><Input autoFocus aria-label="Preview annotation" maxLength={2_000} placeholder="Describe what should change in this preview" value={comment} onChange={event => setComment(event.currentTarget.value)} /><Button size="sm" type="submit">Add to composer</Button><Button size="sm" variant="ghost" type="button" onClick={() => setAnnotating(false)}>Cancel</Button></form> : null}
+    <div className="oa-react-browser-stage" data-viewport={viewport}>
+      <div className="oa-react-browser-frame" style={selectedViewport.width === null ? undefined : { maxWidth: selectedViewport.width }}>
+        {mode === "file" ? activeFile?.document === null || activeFile?.document === undefined ? <div className="oa-react-browser-empty"><File aria-hidden="true" /><h3>No previewable file</h3><p>Open a text file in Files, then return here.</p></div> : <pre aria-label={`File preview for ${activeFile.pathRef}`}>{activeFile.draft}</pre>
+          : selected === null ? <div className="oa-react-browser-empty"><Globe2 aria-hidden="true" /><h3>No local server detected</h3><p>Start a dev server in Terminal. OpenAgents discovers only ports explicitly announced by its output.</p></div>
+          : <div className="oa-react-browser-empty" data-ready={selected.ready ? "true" : "false"}><Globe2 aria-hidden="true" /><h3>{selected.ready ? `localhost:${selected.port} is ready` : `Waiting for localhost:${selected.port}`}</h3><p>For isolation, this verified local target opens in your system browser. Arbitrary in-app navigation, page credentials, and DOM automation remain unavailable.</p><Button disabled={!selected.ready} onClick={() => dispatch(report, "TerminalPreviewOpenRequested", selected.port)}><ExternalLink aria-hidden="true" />Open preview</Button></div>}
+      </div>
+    </div>
+    <footer className="oa-react-browser-status"><span><span data-status={selected?.ready ? "ready" : "waiting"} />{selected?.ready ? "Server ready" : "No ready server"}</span><span><MousePointer2 aria-hidden="true" />Automation cursor unavailable without an admitted isolated browser host</span><span><Camera aria-hidden="true" />Recording unavailable</span></footer>
   </section>
 }

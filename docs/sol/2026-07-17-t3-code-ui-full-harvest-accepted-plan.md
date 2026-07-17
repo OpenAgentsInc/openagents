@@ -113,10 +113,10 @@ No packet may claim “all components” or T3 parity until T3UI-12 proves the e
 pinned census has no undisposed component and the mounted product satisfies the
 parity definition.
 
-## Active packet — T3UI-07
+## Active packet — T3UI-08
 
-Outcome: mount the existing generation-owned terminal authority as a persistent
-transcript-preserving workbench with explicit bounded composer attachment.
+Outcome: mount T3's browser-preview component family over admitted OpenAgents
+local-preview and file authorities without weakening renderer isolation.
 
 Owned paths:
 
@@ -125,7 +125,7 @@ Owned paths:
 - `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`
 - `apps/openagents-desktop/src/renderer/react-composer.tsx`
 - `apps/openagents-desktop/src/renderer/shell.ts`
-- `apps/openagents-desktop/src/renderer/terminal-workspace.ts`
+- `apps/openagents-desktop/src/renderer/surface-layout.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.ts`
 - `apps/openagents-desktop/src/renderer/visual-baseline-fixtures.test.ts`
 - `apps/openagents-desktop/src/visual-baseline-contract.ts`
@@ -135,40 +135,44 @@ Owned paths:
 
 Required behavior:
 
-- terminal tabs preserve exact generation-owned session identity and status;
-- create, select, input, interrupt, restart, refresh, close, and preview actions
-  dispatch existing typed intents; the renderer receives no shell capability;
-- output follows the active tail, replays recovered snapshots, and discloses
-  recovery and gaps;
-- explicit attachment copies only a bounded output tail into one-turn composer
-  state and lowers it as untrusted provider context; and
+- local targets come only from exact ready ports announced by generation-owned
+  terminal output; no scan or arbitrary URL field is admitted;
+- browser chrome, target selection, system-browser open, refresh discovery,
+  file preview, responsive/mobile/tablet/desktop framing, empty/waiting/error
+  states, annotation, cursor, capture, and recording affordances are mounted;
+- unsupported DOM automation, capture, recording, credentials, and in-app
+  navigation remain visibly unavailable rather than gaining ambient authority;
+- typed preview annotations validate exact session + ready port, enter bounded
+  one-turn composer state, and lower as untrusted provider context; and
 - the transcript remains mounted behind the T3UI-05 workbench panel.
 
-Proof: terminal transition and exact-intent tests, mounted workbench controls,
-composer-context lowering tests, the terminal visual fixture, Desktop typecheck,
-full serial suite, production build, Electron fixture smokes, Sol guards, and
-publishing.
+Proof: mounted preview chrome/device/file/annotation controls, exact local-target
+and composer-context tests, the browser-preview visual fixture, Desktop
+typecheck, full serial suite, production build, Electron fixture smokes, Sol
+guards, and publishing.
 
-Close rule: this packet closes the local persistent terminal-workbench gap.
-Browser preview, settings, remote/mobile, installed journey, signed release,
-and T3 parity remain later.
+Close rule: this packet closes the capability-backed safe Preview workbench and
+truthfully disposes unadmitted T3 controls. A future isolated browser host is
+still required before automation/recording can become enabled. Settings,
+remote/mobile, installed journey, signed release, and T3 parity remain later.
 
 ### CLAIM
 
-- actor/session: `codex-t3ui-07-20260717`
-- base: `0f00c016a9`
+- actor/session: `codex-t3ui-08-20260717`
+- base: `9309e0c407`
 - worktree/branch: `.worktrees/openagents-t3-ui-20260717` / detached `origin/main`
-- scope: generation-owned persistent terminal workbench and bounded attachment
+- scope: safe local/file Preview workbench and typed annotation
 - claimed_at: `2026-07-17`
 
 ### CLAIM-STATUS
 
-- implementation: persistent terminal tabs, output replay, controls, preview
-  links, and explicit bounded composer attachment are mounted
-- focused proof: terminal and shell contracts pass and the 19th visual state is
-  admitted before final full acceptance
-- receipt: [`2026-07-17-t3ui-07-terminal-workbench-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-07-terminal-workbench-receipt.md)
-- residual: preview and later packets remain; this is not T3 parity
+- implementation: local-server/file Preview, browser chrome, device framing,
+  truthful unsupported controls, and typed composer annotation are mounted
+- focused proof: shell/UI contracts pass and the 20th visual state is admitted
+  before final full acceptance
+- receipt: [`2026-07-17-t3ui-08-browser-preview-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-08-browser-preview-receipt.md)
+- residual: isolated automation/recording host and later packets remain; this is
+  not T3 parity
 
 ## Explicit non-authority
 

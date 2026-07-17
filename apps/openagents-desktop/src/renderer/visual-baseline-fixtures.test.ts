@@ -26,6 +26,7 @@ describe("visual-baseline fixture states", () => {
       "surface-tabs",
       "files-rich-diff",
       "terminal-workbench",
+      "browser-preview",
       "workbench-messages-reasoning",
       "workbench-commands",
       "workbench-files",

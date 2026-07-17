@@ -38,6 +38,7 @@ import {
   Files,
   FolderGit2,
   GitBranch,
+  Globe2,
   LoaderCircle,
   Maximize2,
   Minimize2,
@@ -84,7 +85,7 @@ import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { RedactedSensitiveText } from "./react-sensitive-text.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-import { ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
+import { ReactBrowserPreviewSurface, ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
 import {
   decodeDesktopSurfaceLayout,
   defaultDesktopSurfaceLayout,
@@ -393,17 +394,20 @@ export const ConversationHeader = ({ state, report }: {
       <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("files")}><FileCode2 aria-hidden="true" />Files</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("review")}><SearchCheck aria-hidden="true" />Review</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("terminal")}><TerminalSquare aria-hidden="true" />Terminal</Button>
+      {state.terminal.sessions.some(session => session.previews.length > 0) ? <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("browser")}><Globe2 aria-hidden="true" />Preview</Button> : null}
       <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}><FolderGit2 aria-hidden="true" />Change</Button>
     </div>}
   />
 }
 
-const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : surface === "review" ? "Review" : "Terminal"
+const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : surface === "review" ? "Review" : surface === "terminal" ? "Terminal" : "Preview"
 const SurfaceIcon = ({ surface }: { readonly surface: DesktopSurfaceKind }): ReactElement => surface === "files"
   ? <Files aria-hidden="true" />
   : surface === "review"
     ? <FileDiff aria-hidden="true" />
-    : <TerminalSquare aria-hidden="true" />
+    : surface === "terminal"
+      ? <TerminalSquare aria-hidden="true" />
+      : <Globe2 aria-hidden="true" />
 
 const SurfacePanelContent = ({ state, surface, report }: {
   readonly state: DesktopShellState
@@ -413,7 +417,9 @@ const SurfacePanelContent = ({ state, surface, report }: {
   ? <ReactFilesSurface state={state} report={report} />
   : surface === "review"
     ? <ReactReviewSurface state={state} report={report} />
-    : <ReactTerminalSurface state={state} report={report} />
+    : surface === "terminal"
+      ? <ReactTerminalSurface state={state} report={report} />
+      : <ReactBrowserPreviewSurface state={state} report={report} />
 
 export const DesktopSurfaceManager = ({ state, report, conversation }: {
   readonly state: DesktopShellState
@@ -444,7 +450,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
     update({ type: "open", surface })
     if (surface === "terminal") {
       if (state.terminal.sessions.length === 0) dispatch(report, "TerminalCreateRequested")
-    } else {
+    } else if (surface !== "browser") {
       dispatch(report, "DesktopWorkspaceSelected", surface)
     }
     setAddOpen(false)
@@ -453,7 +459,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
     const next = reduceDesktopSurfaceLayout(layout, { type: action, surface })
     setLayout(next)
     if (next.active === null) dispatch(report, "DesktopWorkspaceSelected", "chat")
-    else if (next.active !== "terminal") dispatch(report, "DesktopWorkspaceSelected", next.active)
+    else if (next.active !== "terminal" && next.active !== "browser") dispatch(report, "DesktopWorkspaceSelected", next.active)
   }
   const closeAll = (): void => {
     update({ type: "close_all" })
@@ -508,7 +514,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
             <button aria-label="Close panel" onClick={closeAll} type="button"><X aria-hidden="true" /></button>
           </div>
           {!addOpen ? null : <div className="oa-react-surface-add" role="menu">
-            {(["files", "review", "terminal"] as const).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button"><SurfaceIcon surface={surface} />{surfaceLabel(surface)}</button>)}
+            {(["files", "review", "terminal", "browser"] as const).filter(surface => surface !== "browser" || state.terminal.sessions.some(session => session.previews.length > 0)).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button"><SurfaceIcon surface={surface} />{surfaceLabel(surface)}</button>)}
           </div>}
         </header>
         <SurfacePanelContent state={state} surface={active} report={report} />
