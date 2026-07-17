@@ -2,46 +2,59 @@ import { describe, expect, test } from "vite-plus/test"
 
 import { fetchFullAutoRunMobileProjection } from "../src/full-auto/full-auto-run-projection-source"
 
-describe("fetchFullAutoRunMobileProjection", () => {
-  test("decodes an authenticated active-run response", async () => {
+describe("fetchFullAutoRunMobileProjection (translation over the real #8981 client)", () => {
+  test("maps an available projection with an active run to state 'active'", async () => {
     const result = await fetchFullAutoRunMobileProjection({
       baseUrl: "https://openagents.com",
       accessToken: "host-owned",
       fetchImpl: async (input, init) => {
-        expect(String(input)).toBe("https://openagents.com/api/full-auto-runs/mine")
+        expect(String(input)).toBe("https://openagents.com/api/full-auto-runs")
         expect(new Headers(init?.headers).get("authorization")).toBe("Bearer host-owned")
         return Response.json({
           ok: true,
-          fullAutoRun: {
+          projection: {
             schema: "full_auto_run.mobile_projection.v1",
-            runRef: "full_auto_run.remote.0001",
-            threadRef: "thread.full-auto.remote.0001",
-            objective: "Ship it.",
-            doneCondition: "Mobile shows the thread.",
-            lifecycleState: "running",
-            workspaceLabel: "openagents",
-            startedAt: "2026-07-17T00:00:00.000Z",
-            updatedAt: "2026-07-17T00:00:00.000Z",
+            privateMaterialExcluded: true,
+            generatedAt: "2026-07-17T00:00:00.000Z",
+            run: {
+              runRef: "run.full-auto.remote-0001",
+              threadRef: "thread.full-auto.remote.0001",
+              objective: "Ship it.",
+              doneCondition: "Mobile shows the thread.",
+              lifecycleState: "running",
+              workspaceLabel: "openagents",
+              startedAt: "2026-07-17T00:00:00.000Z",
+              updatedAt: "2026-07-17T00:00:00.000Z",
+              lastTransition: { actor: "owner_ui", at: "2026-07-17T00:00:00.000Z" },
+            },
           },
         })
       },
     })
     expect(result).toMatchObject({
       state: "active",
-      projection: { runRef: "full_auto_run.remote.0001", lifecycleState: "running" },
+      projection: { runRef: "run.full-auto.remote-0001", lifecycleState: "running" },
     })
   })
 
-  test("decodes an authenticated no-active-run response", async () => {
+  test("maps an available projection with run: null to state 'none'", async () => {
     const result = await fetchFullAutoRunMobileProjection({
       baseUrl: "https://openagents.com",
       accessToken: "host-owned",
-      fetchImpl: async () => Response.json({ ok: true, fullAutoRun: null }),
+      fetchImpl: async () => Response.json({
+        ok: true,
+        projection: {
+          schema: "full_auto_run.mobile_projection.v1",
+          privateMaterialExcluded: true,
+          generatedAt: "2026-07-17T00:00:00.000Z",
+          run: null,
+        },
+      }),
     })
     expect(result).toEqual({ state: "none" })
   })
 
-  test("fails closed for authentication, non-ok, and malformed payloads", async () => {
+  test("passes through unauthorized and unavailable states from the real client", async () => {
     expect(await fetchFullAutoRunMobileProjection({
       baseUrl: "https://openagents.com",
       accessToken: "x",
@@ -50,20 +63,7 @@ describe("fetchFullAutoRunMobileProjection", () => {
     expect(await fetchFullAutoRunMobileProjection({
       baseUrl: "https://openagents.com",
       accessToken: "x",
-      fetchImpl: async () => new Response(null, { status: 403 }),
-    })).toEqual({ state: "unauthorized" })
-    // The endpoint does not exist yet (openagents #8981 not landed): a 404
-    // must degrade to "unavailable", which mobile treats like "no active
-    // run" — this is what keeps default behavior unregressed until #8981 ships.
-    expect(await fetchFullAutoRunMobileProjection({
-      baseUrl: "https://openagents.com",
-      accessToken: "x",
       fetchImpl: async () => new Response(null, { status: 404 }),
-    })).toEqual({ state: "unavailable" })
-    expect(await fetchFullAutoRunMobileProjection({
-      baseUrl: "https://openagents.com",
-      accessToken: "x",
-      fetchImpl: async () => Response.json({ ok: true, fullAutoRun: { schema: "wrong" } }),
     })).toEqual({ state: "unavailable" })
     expect(await fetchFullAutoRunMobileProjection({
       baseUrl: "https://openagents.com",

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import {
-  decodeFullAutoRunMobileProjection,
   FULL_AUTO_RUN_STALE_AFTER_MS,
   isFullAutoRunLifecycleActive,
   isFullAutoRunProjectionActive,
@@ -11,8 +10,7 @@ import {
 } from "../src/full-auto/full-auto-run-projection"
 
 const baseProjection: FullAutoRunMobileProjection = {
-  schema: "full_auto_run.mobile_projection.v1",
-  runRef: "full_auto_run.test.0001",
+  runRef: "run.full-auto.test-0001",
   threadRef: "thread.full-auto.test.0001",
   objective: "Ship the mobile Full Auto live thread.",
   doneCondition: "Mobile shows the live thread and header.",
@@ -20,34 +18,24 @@ const baseProjection: FullAutoRunMobileProjection = {
   workspaceLabel: "openagents",
   startedAt: "2026-07-17T00:00:00.000Z",
   updatedAt: "2026-07-17T00:00:00.000Z",
+  lastTransition: { actor: "owner_ui", at: "2026-07-17T00:00:00.000Z" },
 }
 
-describe("contract full_auto_run.mobile_projection.v1", () => {
-  test("decodes a well-formed projection", () => {
-    expect(decodeFullAutoRunMobileProjection(baseProjection)).toEqual(baseProjection)
-  })
-
-  test("rejects a projection with an unknown lifecycle state", () => {
-    expect(() => decodeFullAutoRunMobileProjection({
-      ...baseProjection,
-      lifecycleState: "unknown",
-    })).toThrow()
-  })
-
-  test("rejects a projection with the wrong schema id", () => {
-    expect(() => decodeFullAutoRunMobileProjection({
-      ...baseProjection,
-      schema: "some.other.schema.v1",
-    })).toThrow()
-  })
-
-  test("isFullAutoRunLifecycleActive: only running/paused/stalled count as active", () => {
+describe("full-auto-run-projection mobile helpers (openagents #8982, over the real #8981 schema)", () => {
+  test("isFullAutoRunLifecycleActive: running/pausing/paused/retrying/stalled count as active", () => {
     expect(isFullAutoRunLifecycleActive("running")).toBe(true)
+    expect(isFullAutoRunLifecycleActive("pausing")).toBe(true)
     expect(isFullAutoRunLifecycleActive("paused")).toBe(true)
+    expect(isFullAutoRunLifecycleActive("retrying")).toBe(true)
     expect(isFullAutoRunLifecycleActive("stalled")).toBe(true)
+  })
+
+  test("isFullAutoRunLifecycleActive: draft (not yet started) and terminal states are not active", () => {
+    expect(isFullAutoRunLifecycleActive("draft")).toBe(false)
     expect(isFullAutoRunLifecycleActive("completed")).toBe(false)
     expect(isFullAutoRunLifecycleActive("failed")).toBe(false)
-    expect(isFullAutoRunLifecycleActive("cancelled")).toBe(false)
+    expect(isFullAutoRunLifecycleActive("stopped")).toBe(false)
+    expect(isFullAutoRunLifecycleActive("cap_reached")).toBe(false)
   })
 
   test("isFullAutoRunProjectionFresh: within the staleness window is fresh", () => {
@@ -73,6 +61,11 @@ describe("contract full_auto_run.mobile_projection.v1", () => {
   test("isFullAutoRunProjectionActive: no-active-run case (terminal lifecycle, even if fresh)", () => {
     const nowMs = Date.parse(baseProjection.updatedAt) + 1_000
     expect(isFullAutoRunProjectionActive({ ...baseProjection, lifecycleState: "completed" }, nowMs)).toBe(false)
+  })
+
+  test("isFullAutoRunProjectionActive: draft case (not yet started, even if fresh)", () => {
+    const nowMs = Date.parse(baseProjection.updatedAt) + 1_000
+    expect(isFullAutoRunProjectionActive({ ...baseProjection, lifecycleState: "draft" }, nowMs)).toBe(false)
   })
 
   test("truncateFullAutoRunObjective leaves short objectives untouched", () => {

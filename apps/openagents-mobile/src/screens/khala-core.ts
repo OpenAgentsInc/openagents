@@ -522,11 +522,15 @@ export const agentStackViews = (
 const fullAutoRunLifecycleBadgeTone = (label: string): "neutral" | "info" | "success" | "warn" | "danger" => {
   switch (label) {
     case "Running": return "info"
-    case "Paused": return "neutral"
-    case "Stalled": return "warn"
+    case "Draft":
+    case "Paused":
+    case "Stopped": return "neutral"
+    case "Pausing":
+    case "Retrying": return "info"
+    case "Stalled":
+    case "Cap reached": return "warn"
     case "Completed": return "success"
     case "Failed": return "danger"
-    case "Cancelled": return "neutral"
     default: return "neutral"
   }
 }
@@ -573,12 +577,14 @@ const fullAutoRunHeaderViews = (
             label: header.lifecycleLabel,
             tone: fullAutoRunLifecycleBadgeTone(header.lifecycleLabel),
           }),
-          Text({
-            key: "khala-full-auto-run-workspace",
-            content: header.workspaceLabel,
-            variant: "caption",
-            color: "textMuted",
-          }),
+          ...(header.workspaceLabel === ""
+            ? []
+            : [Text({
+                key: "khala-full-auto-run-workspace",
+                content: header.workspaceLabel,
+                variant: "caption",
+                color: "textMuted",
+              })]),
         ],
       ),
       Text({

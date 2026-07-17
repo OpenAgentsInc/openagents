@@ -42,8 +42,7 @@ const selection: Extract<MobileConversationSelection, { mode: "sync" }> = {
 }
 
 const runningProjection: FullAutoRunMobileProjection = {
-  schema: "full_auto_run.mobile_projection.v1",
-  runRef: "full_auto_run.header.test.0001",
+  runRef: "run.full-auto.header-test-0001",
   threadRef: activeThread.threadRef,
   objective: "Ship the mobile Full Auto live thread fast-follow.",
   doneCondition: "Mobile shows the live thread and header.",
@@ -51,6 +50,7 @@ const runningProjection: FullAutoRunMobileProjection = {
   workspaceLabel: "openagents (fixture)",
   startedAt: now,
   updatedAt: now,
+  lastTransition: { actor: "owner_ui", at: now },
 }
 
 const settle = Effect.gen(function* () {
@@ -99,6 +99,17 @@ describe("contract openagents_mobile.full_auto_run_header.v1 (openagents #8982)"
         state: "active",
         projection: { ...runningProjection, threadRef: "thread.some-other-thread" },
       },
+    })
+    expect(fullAutoRunHeaderForState(program.initialState)).toBeNull()
+  })
+
+  test("run not yet bound to a thread (threadRef: null): renders no header even on a signed-in thread view", () => {
+    // Real #8981 shape: threadRef is nullable when Desktop has created the
+    // run but not yet bound it to a khala-sync thread. null must never
+    // spuriously "match" an active thread that also happens to be unset.
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: { ...runningProjection, threadRef: null } },
     })
     expect(fullAutoRunHeaderForState(program.initialState)).toBeNull()
   })

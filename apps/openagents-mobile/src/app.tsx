@@ -153,7 +153,12 @@ const selectAuthenticatedMobileExperience = async (
   // (openagents #8982) — see `selectActiveConversationThreadRef`. An
   // explicit restored coding session (`preferredThreadRef`) still wins.
   const fullAutoRunResult = await syncHost.fullAutoRun()
+  // `threadRef` is nullable: a Full Auto run may exist before Desktop binds
+  // it to a khala-sync thread. `undefined` here means "nothing to
+  // prioritize", not "no active run" — the live state header can still
+  // appear later once the run's thread does match the selected one.
   const activeFullAutoThreadRef = fullAutoRunResult.state === "active" &&
+      fullAutoRunResult.projection.threadRef !== null &&
       isFullAutoRunProjectionActive(fullAutoRunResult.projection)
     ? fullAutoRunResult.projection.threadRef
     : undefined

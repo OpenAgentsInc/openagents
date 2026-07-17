@@ -721,12 +721,15 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
 export const fullAutoRunHeaderForState = (state: HomeState): FullAutoRunHeaderView | null => {
   if (state.fullAutoRun?.state !== "active") return null
   const projection = state.fullAutoRun.projection
-  if (state.activeThreadRef !== projection.threadRef) return null
+  // `threadRef` is nullable (a run can exist before Desktop binds it to a
+  // thread) — `null === null` must never read as "this is the active
+  // thread"; only a real matching threadRef counts.
+  if (projection.threadRef === null || state.activeThreadRef !== projection.threadRef) return null
   if (!isFullAutoRunProjectionActive(projection)) return null
   return {
     lifecycleLabel: FullAutoRunLifecycleStateLabel[projection.lifecycleState],
     objective: truncateFullAutoRunObjective(projection.objective),
-    workspaceLabel: projection.workspaceLabel,
+    workspaceLabel: projection.workspaceLabel ?? "",
   }
 }
 
