@@ -648,3 +648,13 @@ context remains `T3M-B2.2b`; active-run queue/stop presentation remains
 - close boundary: repository-backed `@` context remains `T3M-B2.2b`;
   active-run queue/stop presentation remains `T3M-B2.3`
 - verified_at: `2026-07-17T21:56:45Z`
+
+### CLAIM-RELEASE
+
+- landed: `14b41ed2b25f0ce5f24f73ade8a911c815b9aa2e` on `main`
+- verification: post-rebase 103 focused slash discovery, authoritative Home,
+  composer toolbar/attachments, accessibility, local-first registry, RN
+  Composer/Combobox, behavior-contract, and Sol tests; mobile typecheck;
+  pre-rebase `pnpm run check`
+- residual: `T3M-B2.2a` is complete; repository-backed `@` context remains
+  `T3M-B2.2b`; full mobile parity remains open through `T3M-F2`
