@@ -1,0 +1,221 @@
+{
+  "schema": "openagents.fast_follow.full_auto_final_receipt.v0_1",
+  "receipt_ref": "receipt.t3code.full-auto.7e487d9bbef8ed5c",
+  "receipt_key_digest": "sha256:7e487d9bbef8ed5c7381f0953add1e52272a13b7e617d82b6e161d5493a1b7a0",
+  "receipt_key": {
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "continuation_ordinal": 8,
+    "turn_cap": 8,
+    "target_commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+    "source_commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "bundle_report_content_digest": "sha256:d6dd1a1bb58e5814c376c29743dbaa267617defd540bde20d3fb49fe68f503fc",
+    "objective_digest": "sha256:4e89bf2494ca69c1b46935472f6a90529ea6f54323579cd58e7576e8a3f63e4f",
+    "done_condition_digest": "sha256:f29129899b05e4abb15900a6bbfdfec4b6c4065204157843be3d6698bc98731a"
+  },
+  "provider_closeout": {
+    "disposition": "blocked_unverified_at_turn_cap",
+    "provider_self_report_only": true,
+    "completion_authority": "host_or_owner",
+    "mission_complete": false,
+    "owner_done_condition_met": false,
+    "reason": "The evidence bundle is committed, but the host never transitioned from Codex to Claude and exposes no restart receipt, explicit terminal FullAutoRun state, or host report/analyzer digests."
+  },
+  "host_packet_at_closeout": {
+    "schema": "openagents.desktop.full_auto_mission.v1",
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "current_lane": "codex-local",
+    "account_ref": null,
+    "continuation_ordinal": 8,
+    "turn_cap": 8,
+    "remaining_turns_including_this_one": 1,
+    "previous_handoff": null,
+    "prior_accepted_outcome": {
+      "turn_ref": "turn.full-auto.b90e9155-e9b5-4806-ba87-2b568c255861",
+      "lane": "codex-local",
+      "disposition": "completed",
+      "updated_at": "2026-07-18T12:31:47.542Z"
+    },
+    "explicit_terminal_state": null,
+    "report_digest": null,
+    "analyzer_digest": null
+  },
+  "mission_identity": {
+    "objective_digest": "sha256:4e89bf2494ca69c1b46935472f6a90529ea6f54323579cd58e7576e8a3f63e4f",
+    "objective_byte_length": 1899,
+    "done_condition_digest": "sha256:f29129899b05e4abb15900a6bbfdfec4b6c4065204157843be3d6698bc98731a",
+    "done_condition_byte_length": 826,
+    "raw_owner_text_in_public_receipt": false,
+    "retention_evidence": "The exact digests remained unchanged in the host packets and repository receipts through ordinals 5, 6, 7, and 8; this proves packet-level retention, not an OS-process restart."
+  },
+  "artifact_chain": [
+    {
+      "kind": "FastFollowManifest",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+      "ref": "run.full-auto.mrqbkgry.bbok6dv9",
+      "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+      "landed_commit": "0b602415fd5670528f869e04954c89082f7ff7a0"
+    },
+    {
+      "kind": "StudyPacket",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-study-packet.json",
+      "ref": "study.t3code.2395916f28f524b8",
+      "content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+      "landed_commit": "54930552e16372e6a4d1399eba05e794b3391645"
+    },
+    {
+      "kind": "GapAssessment",
+      "path": "docs/fastfollow/gaps/2026-07-18-t3-code-full-auto-gap-assessment.json",
+      "ref": "gap.t3code.436c6d129a5c90f2",
+      "content_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb",
+      "landed_commit": "e26595aa45e2a2643e7d7987d440fc83e19f5357"
+    },
+    {
+      "kind": "WorkProposalAndDisposition",
+      "path": "docs/fastfollow/candidates/2026-07-18-t3-code-worktree-creation-proposal.json",
+      "ref": "proposal.t3code.worktree.6d065d3a97fe0795",
+      "content_digest": "sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4",
+      "landed_commit": "1de6a3171662e7ccce36f6bb072f6dd6c5c79231"
+    },
+    {
+      "kind": "PreHandoffCheckpoint",
+      "path": "docs/fastfollow/receipts/2026-07-18-t3-code-full-auto-pre-handoff-checkpoint.json",
+      "ref": "checkpoint.t3code.handoff.cd5ba965d092e6aa",
+      "content_digest": "sha256:119435c72c40cb3f1e5814aac156502695181d5c5010d1d9160af8a16bb49cf9",
+      "landed_commit": "ddbd73f96d0b1a3708875a004f680e558d2a7c66"
+    },
+    {
+      "kind": "HandoffNonTransitionObservation",
+      "path": "docs/fastfollow/receipts/2026-07-18-t3-code-full-auto-handoff-non-transition.json",
+      "ref": "observation.t3code.handoff.95214e30bb97984f",
+      "content_digest": "sha256:b79aa7494163b04d42a43ae186b23529bedec7929a685f413cafd679e331454f",
+      "landed_commit": "75895d39bc21b44f32e4004060f66280bda0492b"
+    },
+    {
+      "kind": "BundleReadinessReport",
+      "path": "docs/fastfollow/receipts/2026-07-18-t3-code-bundle-readiness-report.json",
+      "ref": "report.t3code.bundle.fbe3da416d3af10e",
+      "content_digest": "sha256:d6dd1a1bb58e5814c376c29743dbaa267617defd540bde20d3fb49fe68f503fc",
+      "landed_commit": "b1c7597d7fcf27715499e2cd2922e03e0d596192"
+    }
+  ],
+  "repository_integrity": {
+    "target_pin": {
+      "repository": "OpenAgentsInc/openagents",
+      "commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+      "tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69"
+    },
+    "receipt_preimage": {
+      "commit": "b1c7597d7fcf27715499e2cd2922e03e0d596192",
+      "tree": "92a3c4b6e998c7ef9feb59cc5c8dcbfdc9932c5f"
+    },
+    "source_pin": {
+      "repository": "https://github.com/pingdotgg/t3code",
+      "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+      "license": "MIT",
+      "mutation_status": "clean"
+    },
+    "product_code_changed": false,
+    "research_write_boundary_respected": true
+  },
+  "accepted_turn_history": [
+    {"ordinal":1,"turn_ref":"turn.full-auto.071ccdaa-4a62-4500-bd8f-11231b078e44","lane":"codex-local"},
+    {"ordinal":2,"turn_ref":"turn.full-auto.eedcdfd6-a809-43c2-8048-749f590c5d6a","lane":"codex-local"},
+    {"ordinal":3,"turn_ref":"turn.full-auto.f60d16cc-77ee-42d8-9235-254fdab5b282","lane":"codex-local"},
+    {"ordinal":4,"turn_ref":"turn.full-auto.4bd96f27-9d4e-4562-9448-b1f9af82f79d","lane":"codex-local"},
+    {"ordinal":5,"turn_ref":"turn.full-auto.6b4a3785-aa44-46bf-83bf-8427491d4910","lane":"codex-local"},
+    {"ordinal":6,"turn_ref":"turn.full-auto.1b0fb974-0b4b-4d8f-97b2-4101bf722c13","lane":"codex-local"},
+    {"ordinal":7,"turn_ref":"turn.full-auto.b90e9155-e9b5-4806-ba87-2b568c255861","lane":"codex-local"}
+  ],
+  "duplicate_continuation_assessment": {
+    "unique_ordinals": 7,
+    "unique_turn_refs": 7,
+    "duplicate_observed": false,
+    "limit": "The current ordinal-8 turnRef is not present in its own input packet and therefore cannot be independently included or deduplicated by this provider receipt."
+  },
+  "verification": {
+    "latest_fast_follow_test_files": {"passed":2,"failed":0},
+    "latest_fast_follow_tests": {"passed":13,"failed":0},
+    "distribution_verification": "passed",
+    "git_diff_check": "passed",
+    "pre_push_guards_on_prior_seven_commits": "passed",
+    "target_product_tests_executed": false,
+    "source_tests_executed": false,
+    "provider_or_owner_acceptance_inferred_from_tests": false
+  },
+  "evidence_stage_result": {
+    "manifest": "present_exact",
+    "study_packet": "present_exact",
+    "gap_assessment": "present_exact",
+    "proposal_and_dispositions": "present_exact",
+    "final_receipt": "present_exact_once_this_file_is_committed",
+    "candidate_count": 1,
+    "no_material_delta_count": 4,
+    "implementation_performed": false
+  },
+  "unmet_owner_gates": [
+    {
+      "gate": "both real providers participated in one durable run",
+      "status": "not_met",
+      "evidence": "all observed host packets remained codex-local"
+    },
+    {
+      "gate": "visible provider transition receipted",
+      "status": "not_met",
+      "evidence": "previousHandoff remained null through ordinal 8"
+    },
+    {
+      "gate": "restart boundary receipted",
+      "status": "not_met",
+      "evidence": "sequential packet retention exists, but no OS-process or host restart receipt exists"
+    },
+    {
+      "gate": "explicit terminal FullAutoRun state",
+      "status": "not_met",
+      "evidence": "the host packet exposes no terminal state; reaching the provider turn cap is not provider authority to invent one"
+    },
+    {
+      "gate": "host report digest non-null",
+      "status": "not_met",
+      "evidence": "only the separately labeled bundle report digest exists"
+    },
+    {
+      "gate": "host analyzer digest non-null",
+      "status": "not_met",
+      "evidence": "only the separately labeled bundle analyzer digest exists"
+    }
+  ],
+  "bundle_level_outputs": {
+    "report_digest": "sha256:864220c931bd4969038d383ba97626caff772c050c04ec8870d1fb4f08725e8f",
+    "analyzer_digest": "sha256:7a1a5e3048f88d19baab9ae97a3a09024526a0884a4237cd66c1dc2d2b06c47c",
+    "satisfy_host_runtime_gate": false
+  },
+  "remaining_independently_owned_gates": [
+    {"issue":8967,"gate":"host Full Auto transition, restart, terminal report, and evidence-loop completion"},
+    {"issue":8978,"gate":"independent AssuranceSpec admission, execution, and review"},
+    {"issue":8979,"gate":"packaged/signed release and owner observation"},
+    {"issue":8993,"gate":"live update feed and first containing tag"}
+  ],
+  "rerun_disposition": {
+    "required": true,
+    "same_run_can_pass_after_provider_closeout": false,
+    "reason": "The capped run did not contain Claude or a host transition. A separately identified host run must start with an admitted Codex/Claude transition path and expose transition/restart/report/analyzer receipts before its cap.",
+    "duplicate_prevention": "Reuse the exact content-addressed Manifest, StudyPacket, GapAssessment, and proposal/disposition artifacts. Do not repeat source inference or reopen unchanged candidates."
+  },
+  "classification": {
+    "visibility": "public_safe_repository_artifact",
+    "contains_raw_objective_transcript_or_local_paths": false,
+    "contains_credentials_or_provider_private_state": false,
+    "provider_completion_is_verdict": false,
+    "host_terminal_state_claimed": false,
+    "claude_participation_claimed": false,
+    "restart_claimed": false,
+    "t3_parity_claimed": false,
+    "signed_release_claimed": false,
+    "public_capability_claimed": false,
+    "owner_acceptance_claimed": false
+  },
+  "receipt_content_digest": "sha256:0f942cb3d4a3333471406996922ae66a7327ee940d5945f86aae19ea6aaaf167"
+}
