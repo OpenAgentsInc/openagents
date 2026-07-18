@@ -121,6 +121,10 @@ function createLocalSandbox(
       // This deliberately uses the user's installed, signed-in Codex CLI. The
       // adapter's old bundled executable is not used by this proof of concept.
       ...(provider === "codex" ? { OPENAGENTS_CODEX_BIN: resolveCodexBin() } : {}),
+      // The Claude bridge installs its pinned dependencies on first use. Its
+      // bootstrap runs without a terminal, so Corepack must not wait for a
+      // download confirmation.
+      ...(provider === "claude" ? { COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" } : {}),
     },
     rootDirectory: join(app.getPath("userData"), "harness-workspaces", provider),
   });
