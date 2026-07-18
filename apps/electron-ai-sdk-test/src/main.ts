@@ -87,7 +87,6 @@ async function initializeHarness(): Promise<void> {
     agent: new HarnessAgentConstructor({
       harness: createClaudeCode({
         maxTurns: 10,
-        model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
         thinking: { display: "summarized", type: "adaptive" },
       }),
       id: "openagents-electron-ai-sdk-test-claude",
@@ -107,6 +106,14 @@ function createLocalSandbox(
 ): LocalAiSdkSandboxProvider {
   return new LocalSandboxProvider({
     accountHomes: {
+      ...(provider === "claude"
+        ? {
+            claudeConfigDir: join(homedir(), ".claude"),
+            // Claude Code's login state includes files at the account home;
+            // reuse it for this owner-local development harness.
+            home: homedir(),
+          }
+        : {}),
       codexHome: join(homedir(), ".codex"),
     },
     defaultPorts: [port],
@@ -207,14 +214,17 @@ async function handleHarnessRequest(
     }
 
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-    if (request.method !== "POST" || !path.startsWith("/api/chat/")) {
+    if (request.method !== "POST" || (path !== "/api/chat" && !path.startsWith("/api/chat/"))) {
       sendJson(response, 404, { error: "not_found" });
       return;
     }
 
-    const provider = requireProvider(path.slice("/api/chat/".length));
-    const runtime = getRuntime(provider);
     const body = await readChatRequest(request);
+    const provider =
+      path === "/api/chat"
+        ? requireProvider(body.provider ?? "codex")
+        : requireProvider(path.slice("/api/chat/".length));
+    const runtime = getRuntime(provider);
     const chatId = requireChatId(body.id);
     const messages = await aiSdk.convertToModelMessages(body.messages);
     const harnessSession = await resumeOrCreateSession(runtime, chatId);
@@ -271,7 +281,7 @@ async function resumeOrCreateSession(
   );
 }
 
-function requireProvider(value: string): HarnessProvider {
+function requireProvider(value: unknown): HarnessProvider {
   if (value === "codex" || value === "claude") return value;
   throw new RequestError("Unknown harness provider.");
 }
@@ -312,7 +322,9 @@ function patchBridgeForLocalCodex(bridge: string): string {
   );
 }
 
-async function readChatRequest(request: IncomingMessage): Promise<{ id: unknown; messages: UIMessage[] }> {
+async function readChatRequest(
+  request: IncomingMessage,
+): Promise<{ id: unknown; messages: UIMessage[]; provider: unknown }> {
   const chunks: Buffer[] = [];
   let length = 0;
   for await (const chunk of request) {
@@ -327,9 +339,9 @@ async function readChatRequest(request: IncomingMessage): Promise<{ id: unknown;
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       throw new RequestError("Request body must be a JSON object.");
     }
-    const body = value as { id?: unknown; messages?: unknown };
+    const body = value as { id?: unknown; messages?: unknown; provider?: unknown };
     if (!Array.isArray(body.messages)) throw new RequestError("messages must be an array.");
-    return { id: body.id, messages: body.messages as UIMessage[] };
+    return { id: body.id, messages: body.messages as UIMessage[], provider: body.provider };
   } catch (error) {
     if (error instanceof RequestError) throw error;
     throw new RequestError("Request body must be valid JSON.");

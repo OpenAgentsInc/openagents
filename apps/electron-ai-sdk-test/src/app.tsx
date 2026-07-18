@@ -40,7 +40,7 @@ function HarnessChat({
   const [input, setInput] = useState("");
   const chatId = useMemo(() => crypto.randomUUID(), []);
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: `${endpoint}/api/chat/${provider}` }),
+    () => new DefaultChatTransport({ api: `${endpoint}/api/chat`, body: { provider } }),
     [endpoint, provider],
   );
   const { messages, sendMessage, status, stop, error } = useChat({
