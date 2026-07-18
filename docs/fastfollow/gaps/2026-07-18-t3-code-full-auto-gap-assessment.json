@@ -1,0 +1,263 @@
+{
+  "schema": "openagents.fast_follow.gap_assessment.v0_1",
+  "assessment_ref": "gap.t3code.436c6d129a5c90f2",
+  "assessment_key_digest": "sha256:436c6d129a5c90f2923d130c8e3c1fd5c7867a1d02d782e9da7d870c92c13d17",
+  "assessment_key": {
+    "manifest_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+    "study_packet_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+    "target_repository": "OpenAgentsInc/openagents",
+    "target_commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+    "target_tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+    "fast_follow_document_digest": "sha256:5ec8a75f0efa2fa4234622fd7746b433ec50bf97fe25ce3d83b1107df19bc43c",
+    "fast_follow_intent_digest": "sha256:88cc577f951c82c30bcafd34ed06614e416eb3bf4d24b91b9fc36881a6ddac70",
+    "authority_digest_set": "sha256:8ca80ba6c92a140055b6593eab0977b9a9f0c7da8ebb5f56a137dfc3bbb4467a",
+    "ordered_pattern_ids": [
+      "t3.provider_neutral_cqrs.v1",
+      "t3.effect_projection_kernel.v1",
+      "t3.worktree_parallelism.v1",
+      "t3.acp_peer_profiles.v1",
+      "t3.dpop_environment_access.v1"
+    ],
+    "ordered_directive_refs": [
+      "amp.day2_routing_and_specialists",
+      "amp.day4_placement_and_remote_control",
+      "runtime_protocol_provider_lanes",
+      "effect_runtime_topology",
+      "subagent_supervision",
+      "authority_isolation_receipts"
+    ],
+    "evaluator_version": "fast-follow-gap-rubric-0.1"
+  },
+  "run": {
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "lane": "codex-local",
+    "continuation_ordinal": 3,
+    "work_lane": ["verification", "gap_analysis"],
+    "provider_completion_is_verdict": false
+  },
+  "inputs": {
+    "manifest": {
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+      "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc"
+    },
+    "study_packet": {
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-study-packet.json",
+      "packet_ref": "study.t3code.2395916f28f524b8",
+      "content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7"
+    },
+    "target": {
+      "repository": "OpenAgentsInc/openagents",
+      "commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+      "tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+      "authority_digests_in_manifest": 13,
+      "comparison_mode": "exact_git_objects_at_target_pin"
+    },
+    "source": {
+      "repository": "https://github.com/pingdotgg/t3code",
+      "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+      "license": "MIT",
+      "mutation_status": "clean"
+    }
+  },
+  "authority_reconciliation": {
+    "repository_law": "Fast Follow source evidence is candidate input only; this assessment grants no mutation, acceptance, release, deployment, promise, credential, or public-claim authority.",
+    "accepted_packet": {
+      "path": "docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md",
+      "effect": "Admits target-native T3UI work in bounded packets. T3UI-04 includes collision-safe project/worktree creation and selection; receipts remain implementation evidence rather than parity or release authority."
+    },
+    "packaged_evidence": {
+      "path": "docs/fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md",
+      "effect": "Records a complete 151-row census and bounded T3UI receipts without signed-release or total-parity claims."
+    },
+    "full_auto_owner_real_evidence": {
+      "path": "docs/sol/receipts/2026-07-18-full-auto-real-owner-acceptance.md",
+      "effect": "Development evidence for real Codex and Claude handoffs, restart, report, and analyzer; it explicitly does not supply independent assurance, packaging, signing, or public release authority."
+    },
+    "live_issue_observation": {
+      "observed_on": "2026-07-18",
+      "open_relevant": [
+        {"issue": 8967, "role": "Full Auto parent epic"},
+        {"issue": 8978, "role": "independent Full Auto assurance; no active implementation claim observed"},
+        {"issue": 8979, "role": "signed/package release gate; outside this mission lane"},
+        {"issue": 8993, "role": "live update feed/tag; not authority for these lesson deltas"}
+      ],
+      "closed_relevant": [8712, 8780, 8897, 8901, 8975, 8976, 8994, 8996, 9000, 9001, 9002],
+      "worktree_creation_issue": "none_open",
+      "conclusion": "Do not manufacture duplicate provider, projection, ACP, or DPoP work. Preserve the typed worktree-creation residual under the existing accepted T3UI-04 packet; mutation would still require current claim and packet reconciliation."
+    },
+    "assurance_exception": "The pinned Full Auto AssuranceSpec remains proposed and predates the owner-real development receipt. Updating or admitting it belongs to independently owned issue #8978, not this evidence-only assessment."
+  },
+  "assessments": [
+    {
+      "pattern_id": "t3.provider_neutral_cqrs.v1",
+      "directive_refs": ["amp.day2_routing_and_specialists", "runtime_protocol_provider_lanes"],
+      "axes": {
+        "source_freshness": "exact pinned T3 commit and selected corpus",
+        "evidence_confidence": "high static, medium runtime; source tests inspected but not executed",
+        "relevance": "high for Full Auto provider neutrality, durable routing, canonical events, and handoff",
+        "target_fit": "high as principles; low for importing T3 service shapes",
+        "portability": "high for instance identity, durable binding, mismatch rejection, and independent consumers",
+        "license_provenance": "MIT public source; no code copied",
+        "current_implementation": "substantially implemented target-native through ProviderLane admission, durable lane binding, host-owned canonical event projection, exact lane/session identity, and durable provider handoff",
+        "proof_readiness": "focused target tests and an owner-real development receipt exist; current mission rerun and independent assurance remain separate gates",
+        "disposition": "no_material_delta",
+        "exception": "No literal T3 CQRS parity claim; provider-native recovery remains profile-specific and provider-private session state is not transferred."
+      },
+      "target_evidence": [
+        "apps/openagents-desktop/src/provider-lane.ts:88-208,305-527",
+        "apps/openagents-desktop/src/provider-lane-registry.ts:197-253",
+        "apps/openagents-desktop/src/full-auto-provider-handoff.ts:19-40,79-105,132-190,234-255,320-345",
+        "apps/openagents-desktop/src/full-auto-run-registry.ts:185-258,494-678",
+        "apps/openagents-desktop/src/full-auto-reconcile.ts:541-631",
+        "apps/openagents-desktop/src/provider-lane.test.ts:270-465,626-655"
+      ],
+      "candidate_identity": null
+    },
+    {
+      "pattern_id": "t3.effect_projection_kernel.v1",
+      "directive_refs": ["effect_runtime_topology"],
+      "axes": {
+        "source_freshness": "exact pinned T3 commit and selected corpus",
+        "evidence_confidence": "high static, medium runtime; target tests and receipts inspected, not rerun",
+        "relevance": "high for durable resumable projections; medium for the Full Auto mobile snapshot side channel",
+        "target_fit": "high for existing Khala Sync reducer; no authority requires Full Auto snapshots to become an event reducer",
+        "portability": "high for typed cursor, replay-idempotent reducer, durable apply, and refetch semantics",
+        "license_provenance": "MIT public source; no code copied",
+        "current_implementation": "implemented target-native with durable scope cursors, ordered dense apply, duplicate/out-of-order handling, atomic confirmation, refetch, and schema-validated Full Auto registry persistence",
+        "proof_readiness": "existing focused tests and CUT-10 receipt cover the shared projection kernel; this mission still requires its own restart/handoff/report proof",
+        "disposition": "no_material_delta",
+        "exception": "Full Auto mobile publication is intentionally fail-soft post-commit snapshot plumbing and is not evidence of a missing event-projection requirement."
+      },
+      "target_evidence": [
+        "packages/khala-sync-client/src/store.ts:101-135",
+        "packages/khala-sync-client/src/session.ts:772-854",
+        "packages/khala-sync-client/src/session.test.ts:650-765",
+        "apps/openagents-desktop/src/full-auto-run-registry.ts:300-409",
+        "apps/openagents-desktop/src/full-auto-run-projection-publisher.ts:49-72,97-120,141-200",
+        "docs/sol/2026-07-11-cut-10-live-event-convergence-receipt.md:10-74"
+      ],
+      "candidate_identity": null
+    },
+    {
+      "pattern_id": "t3.worktree_parallelism.v1",
+      "directive_refs": ["subagent_supervision"],
+      "axes": {
+        "source_freshness": "exact pinned T3 commit and selected corpus",
+        "evidence_confidence": "high for target contracts, tests, capability registry, and exact T3UI receipts; target tests inspected, not rerun",
+        "relevance": "high for independent coding lanes and visible worktree supervision",
+        "target_fit": "high when adapted to WorkContext, private grants, typed refusals, and host-owned collision safety",
+        "portability": "high for explicit base, authoritative worktree identity, cwd propagation, and per-workspace serialization; source client-local scheduling is not a cross-process lock",
+        "license_provenance": "MIT public source; no code copied",
+        "current_implementation": "partial: stable project/repository/worktree/session identity, selection, recovery, UI, branch operations, and private path binding exist; typed host worktree creation and lifecycle do not",
+        "proof_readiness": "selection/recovery fixtures exist; creation, collision, cross-surface cwd, restart, concurrent-isolation, and cleanup proofs are absent",
+        "disposition": "candidate_existing_accepted_packet_residual",
+        "exception": "T3UI-04 receipt explicitly introduced no renderer path picker or worktree creation logic; the capability registry marks worktree/branch isolation partial and agent-driven. No total T3 parity or release claim follows."
+      },
+      "target_evidence": [
+        "apps/openagents-desktop/src/coding-catalog-contract.ts:32-63,173-229",
+        "apps/openagents-desktop/src/desktop-coding-catalog.ts:326-357,461-494",
+        "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts:60-87,123-202,286-304",
+        "apps/openagents-desktop/src/capability-registry.ts:141-145,293-300",
+        "docs/fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md:10-30,45-50",
+        "docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md:78-82"
+      ],
+      "candidate_identity": "t3.worktree_parallelism.v1|c9ff26d921aa5fcc155e05a43846d79b7c48560b|T3UI-04|typed-worktree-create",
+      "bounded_candidate": {
+        "desired_outcome": "A typed main-process create-worktree intent requires an explicit base, refuses path collisions, binds canonical worktree/session/WorkContext refs privately, propagates exact cwd to Git, terminal, files, diff, and tools, serializes conflicting mutations, recovers after restart, and cleans up without deleting owner data.",
+        "required_proof": [
+          "two isolated worktrees progress independently",
+          "same-cwd conflicting mutations serialize or refuse",
+          "an absent base fails closed",
+          "every work surface resolves the exact worktree root",
+          "restart restores canonical refs",
+          "cleanup never deletes owner data",
+          "raw paths remain private"
+        ],
+        "authority": "evidence_only_existing_accepted_packet_residual",
+        "mutation_lease": false
+      }
+    },
+    {
+      "pattern_id": "t3.acp_peer_profiles.v1",
+      "directive_refs": ["runtime_protocol_provider_lanes"],
+      "axes": {
+        "source_freshness": "exact pinned T3 commit and selected corpus",
+        "evidence_confidence": "high static, medium interoperability; exact-version live evidence exists but cannot generalize to arbitrary peers",
+        "relevance": "high for typed provider-lane ACP interoperability",
+        "target_fit": "high for schema-derived inverse roles and peer profiles; low for importing T3 RPC groups or numeric ID conventions",
+        "portability": "high for method direction, scoped lifetime, drain/cancel, capability admission, and peer-specific evidence",
+        "license_provenance": "MIT public source; no code copied",
+        "current_implementation": "substantially implemented target-native with one generated directional manifest, distinct outbound and reverse request domains, bounded duplex NDJSON transport, exact Grok/Cursor peer profiles, and canonical ProviderLane projection",
+        "proof_readiness": "focused transport/profile/adapter tests and exact-version compatibility artifacts exist; arbitrary ACP peer support is not claimed",
+        "disposition": "no_material_delta",
+        "exception": "Numeric request IDs may coincide safely across structurally separate routing domains; this is functional adaptation, not T3 implementation parity."
+      },
+      "target_evidence": [
+        "packages/agent-client-protocol/src/runtime.ts:1-24,64-91,218-280",
+        "packages/agent-client-protocol/src/generated/methods.ts:10-35,148-175",
+        "packages/agent-stdio-transport/src/index.ts:11-51,159-200,283-300,349-375,469-595,763-938",
+        "packages/agent-client-protocol/PEER_PROFILES.md:1-25,44-121",
+        "apps/openagents-desktop/src/provider-lane-acp.ts:52-184,194-272",
+        "apps/openagents-desktop/src/acp-provider-host.test.ts:111-224"
+      ],
+      "candidate_identity": null
+    },
+    {
+      "pattern_id": "t3.dpop_environment_access.v1",
+      "directive_refs": ["amp.day4_placement_and_remote_control", "authority_isolation_receipts"],
+      "axes": {
+        "source_freshness": "exact pinned T3 commit and selected corpus",
+        "evidence_confidence": "high for cryptographic flow and broker integration; medium for deployment-wide replay and rollout",
+        "relevance": "high for key-bound environment grants; credential/service expansion is outside this mission",
+        "target_fit": "high in OpenAgents-native scope and environment authority; T3 account, relay, service, and SSH credential authority is intentionally rejected",
+        "portability": "high for ES256 proof binding and atomic replay consume; fleet-wide storage requires target deployment design",
+        "license_provenance": "MIT public source; no code copied",
+        "current_implementation": "partially implemented target-native: RFC 9449/7638 DPoP, normalized method/URL/time/token binding, public-only JWK, nonextractable key, narrowing grants, excluded token material, and fail-closed broker redemption exist; default replay storage is in-memory",
+        "proof_readiness": "unit/integration proof exists for crypto, replay, broker failure, and restore; shared fleet replay and production socket/server rollout are explicitly deferred",
+        "disposition": "no_material_delta",
+        "exception": "fleet_wide_rollout_deferred without a current admitted packet; do not reopen rejected T3 credential authority or manufacture duplicate work"
+      },
+      "target_evidence": [
+        "packages/environment-auth/src/dpop.ts:1-20,30-63,96-125,127-205,247-420",
+        "packages/environment-auth/src/index.ts:1-22,39-84,95-153,165-207",
+        "packages/environment-auth/src/broker-verifier.ts:1-52",
+        "packages/environment-auth/src/dpop.test.ts:48-300",
+        "packages/portable-session-contract/src/capability-broker.ts:162-218,827-878",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md:538-583"
+      ],
+      "candidate_identity": null
+    }
+  ],
+  "aggregate": {
+    "lesson_count": 5,
+    "no_material_delta_count": 4,
+    "candidate_count": 1,
+    "candidate_pattern_ids": ["t3.worktree_parallelism.v1"],
+    "recommendation": "Persist one evidence-only residual for typed, collision-safe worktree creation under the existing accepted T3UI-04 packet. Do not create duplicate provider, projection, ACP, or DPoP implementation work. A separate WorkProposal or explicit disposition artifact remains required before this mission bundle is complete.",
+    "implementation_performed": false,
+    "target_tests_executed": false,
+    "source_tests_executed": false,
+    "acceptance_claimed": false,
+    "release_claimed": false,
+    "public_capability_claimed": false
+  },
+  "classification": {
+    "visibility": "public_safe_repository_artifact",
+    "target_specific": true,
+    "default_policy_exception": "The target is a public repository and this artifact contains only committed public paths, public issue numbers, exact public Git identities, bounded findings, and digests; no prompts, transcripts, credentials, private source, absolute paths, or provider-private state are included.",
+    "external_source_is_authority": false,
+    "study_packet_is_adoption": false,
+    "provider_completion_is_verdict": false,
+    "grants_mutation_authority": false,
+    "grants_release_authority": false
+  },
+  "retained_limits": [
+    "This assessment compares exact Git objects and inspected tests; it does not substitute for target-local execution or owner acceptance.",
+    "Existing receipts are evidence at their stated pins and scopes, not a broad current parity or release verdict.",
+    "The standalone proposal/disposition, real two-provider mission run, visible handoff, restart boundary, report/analyzer receipt, terminal state, final receipt, and independent gates remain outside this one artifact.",
+    "The pinned T3 source checkout remained read-only and clean."
+  ],
+  "assessment_content_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb"
+}
