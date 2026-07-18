@@ -3476,6 +3476,68 @@ packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
 - residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-44 — Desktop confirmed-timeline terminal-authority overlay
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-43. Desktop now
+has separate confirmed accepted evidence and a private ledger for exact
+terminal facts observed elsewhere, but canonical export cannot yet consume the
+two sources as one validated history. The actual producer, `main.ts`, and
+renderer surfaces remain outside this packet. This packet therefore adds only
+a read-side overlay and focused proof. It does not observe, create, infer, or
+authorize any authority fact.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-terminal-authority-overlay.ts`
+- `apps/openagents-desktop/src/thread-export-terminal-authority-overlay.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-44-desktop-confirmed-timeline-terminal-authority-overlay-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_event_authority.v1`, the accepted-then-one-
+terminal history, confirmed-timeline evidence, and no invented authority. No
+schema, producer, host composition, renderer, Sync, event body, receipt,
+artifact byte, path, provider, or release authority is added.
+
+Required behavior:
+
+- start only from an available target-owned confirmed timeline and its exact
+  accepted relations;
+- read only exact terminal relations already retained by the FF-D1-43 private
+  ledger for the same validated thread;
+- require every terminal relation event and every referenced successor,
+  reversion, or restoration event to exist in the confirmed timeline;
+- validate each merged accepted-then-terminal history through the shared
+  authority projection and fail closed on incomplete, conflicting, corrupt,
+  or invalid evidence; and
+- return deterministic ref-only canonical-export evidence without projecting
+  paths, native errors, bodies, prompts, providers, or producer claims.
+
+Proof: focused overlay, ledger, shared authority, export, and search tests;
+Desktop and shared-package typechecks; Fast Follow, behavior-contract,
+ProductSpec, Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only read-side merging of already-observed
+terminal facts with confirmed accepted evidence. Real supersession/reversion
+observation and producer composition, historical-session backfill, the actual
+Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group
+authority/publication, installed/runtime-rendered evidence, and Day 1
+completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-44-20260718`
+- base: `a675d42f781fc7f54d209daf458a76a9dc198f98`
+- worktree/branch: `openagents-ff-d1-44` / detached `origin/main`
+- scope: merge exact already-observed terminal authority relations into confirmed accepted export evidence without inventing producer authority
+- paths: the FF-D1-44 owned implementation paths above
+- hot files: two new Desktop overlay/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: shared authority v1 accepted-then-one-terminal projection, confirmed-timeline evidence, deterministic ref closure, and no inferred authority
+- dependencies: FF-D1-31 projection, FF-D1-33 confirmed timeline evidence, and FF-D1-43 terminal ledger released; no relevant open bug issue or competing claim; active `main.ts`/UI and unavailable historical receipt identity explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T03:43:33Z`
+
 ### CLAIM-RELEASE
 
 - claim_revision: `c0f52d55c6a5b7f573fabb120f3a3ba8eedf36cc`
