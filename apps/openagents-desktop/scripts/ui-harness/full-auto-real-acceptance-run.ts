@@ -120,13 +120,36 @@ const selectedThreadRef = async (page: Page): Promise<string> => {
 
 const renameSelectedThread = async (page: Page, title: string): Promise<void> => {
   const row = page.locator('[data-session-row][aria-current="page"]').first()
-  await row.click({ button: "right" })
-  await page.getByRole("menuitem", { name: "Rename" }).click()
-  await page.locator("#desktop-chat-rename-title").fill(title)
-  await page.getByRole("dialog", { name: "Rename chat" }).getByRole("button", { name: "Save" }).click()
-  await page.waitForFunction(expected =>
-    document.querySelector('[data-session-row][aria-current="page"] .oa-react-session-title')
-      ?.textContent === expected, title)
+  const key = await row.getAttribute("data-en-key")
+  if (key === null || !key.startsWith("sidebar-thread-")) {
+    throw new Error("cannot rename an acceptance row without its selected thread identity")
+  }
+  const threadRef = key.slice("sidebar-thread-".length)
+  // The evidence reviewer uses the same schema-decoded renderer bridge as
+  // the visible Rename dialog, after the verdict exists. Reloading then
+  // proves the durable title is what a fresh owner UI actually renders.
+  const renamed = await page.evaluate(async ({ targetThreadRef, targetTitle }) => {
+    const bridge = (window as unknown as {
+      openagentsDesktop?: {
+        historyThreads?: {
+          renameLocal?: (input: Readonly<{ threadRef: string; title: string }>) =>
+            Promise<Readonly<{ ok?: boolean; error?: string }>>
+        }
+      }
+    }).openagentsDesktop
+    return bridge?.historyThreads?.renameLocal?.({
+      threadRef: targetThreadRef,
+      title: targetTitle,
+    }) ?? { ok: false, error: "rename bridge unavailable" }
+  }, { targetThreadRef: threadRef, targetTitle: title })
+  if (renamed.ok !== true) throw new Error(renamed.error ?? "acceptance row rename failed")
+  await page.reload()
+  await page.waitForSelector('[data-en-key="shell-settings-toggle"]', { timeout: 60_000 })
+  const durableRow = page.locator(`[data-en-key="sidebar-thread-${threadRef}"]`)
+  await durableRow.waitFor({ state: "visible", timeout: 30_000 })
+  if (!(await durableRow.innerText()).includes(title)) {
+    throw new Error("the durable acceptance title did not render after reload")
+  }
 }
 
 const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void> => {
