@@ -752,6 +752,9 @@ const assignmentsForRegistrations = async (
   if (pylonRefs.length === 0) {
     return []
   }
+  if (pylonStore.listAssignmentsForPylonsIncludingTerminal !== undefined) {
+    return pylonStore.listAssignmentsForPylonsIncludingTerminal(pylonRefs, 200)
+  }
   if (pylonStore.listAssignmentsForPylons !== undefined) {
     return pylonStore.listAssignmentsForPylons(pylonRefs, 200)
   }

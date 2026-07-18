@@ -262,3 +262,42 @@ describe('agent credential/profile WRITES are Postgres-authoritative (CFG #8515)
     ])
   })
 })
+
+describe('OpenAuth owner-link writes stay deterministic at the Postgres cutover', () => {
+  test('targets the owner/agent/credential identity restored by migration 0078', async () => {
+    const batches: Array<ReadonlyArray<{ sql: string }>> = []
+    const database = {
+      batch: async (statements: ReadonlyArray<{ sql: string }>) => {
+        batches.push(statements)
+      },
+      prepare: (sql: string) => {
+        const statement = {
+          bind: () => statement,
+          sql,
+        }
+        return statement
+      },
+    } as unknown as D1Database
+    const store = makeD1AgentRegistrationStore(
+      database,
+      postgresIdentityDb({ includeCredential: true, includeUser: true }),
+    )
+
+    await store.linkOpenAuthAgent?.({
+      agentCredentialId: CREDENTIAL_ID,
+      agentUserId: USER_ID,
+      createdAt: '2026-07-18T20:00:00.000Z',
+      id: 'openauth_agent_link_portable_1',
+      linkKind: 'manual',
+      openauthUserId: 'owner_portable_1',
+      revokedAt: null,
+      status: 'active',
+      updatedAt: '2026-07-18T20:00:00.000Z',
+    })
+
+    expect(batches).toHaveLength(1)
+    expect(batches[0]?.[0]?.sql).toContain(
+      'ON CONFLICT(openauth_user_id, agent_user_id, agent_credential_id)',
+    )
+  })
+})

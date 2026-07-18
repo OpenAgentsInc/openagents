@@ -946,6 +946,13 @@ export type PylonApiStore = Readonly<{
     pylonRefs: ReadonlyArray<string>,
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiAssignmentRecord>>
+  /** Owner-scoped history/status reads need terminal assignments after their
+   * active leases have ended. Dispatch and capacity callers must keep using
+   * listAssignmentsForPylons, which intentionally returns active leases only. */
+  listAssignmentsForPylonsIncludingTerminal?: (
+    pylonRefs: ReadonlyArray<string>,
+    limit: number,
+  ) => Promise<ReadonlyArray<PylonApiAssignmentRecord>>
   listEventsForPylon: (
     pylonRef: string,
     limit: number,
@@ -2609,6 +2616,35 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
             FROM pylon_api_assignments
             WHERE pylon_ref IN (${placeholders})
               AND state IN ${activeLeaseAssignmentStateSql}
+              AND archived_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT ?`,
+        )
+        .bind(...pylonRefChunk, limit)
+        .all<PylonApiAssignmentRow>()
+
+      rows.push(...(result.results ?? []))
+    }
+
+    return mergeRowsByUpdatedAtDesc(rows, limit).map(rowToAssignment)
+  },
+
+  listAssignmentsForPylonsIncludingTerminal: async (pylonRefs, limit) => {
+    if (pylonRefs.length === 0) {
+      return []
+    }
+
+    const rows: PylonApiAssignmentRow[] = []
+
+    for (const pylonRefChunk of chunkRefsForD1Select(
+      uniqueOrderedRefs(pylonRefs),
+    )) {
+      const placeholders = pylonRefChunk.map(() => '?').join(', ')
+      const result = await db
+        .prepare(
+          `SELECT *
+            FROM pylon_api_assignments
+            WHERE pylon_ref IN (${placeholders})
               AND archived_at IS NULL
             ORDER BY updated_at DESC
             LIMIT ?`,

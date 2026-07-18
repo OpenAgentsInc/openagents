@@ -192,6 +192,9 @@ export type PostgresPylonDispatchStore = Readonly<{
   createEvent: PylonApiStore['createEvent']
   listAssignmentsForPylon: PylonApiStore['listAssignmentsForPylon']
   listAssignmentsForPylons: NonNullable<PylonApiStore['listAssignmentsForPylons']>
+  listAssignmentsForPylonsIncludingTerminal: NonNullable<
+    PylonApiStore['listAssignmentsForPylonsIncludingTerminal']
+  >
   listEventsForPylon: PylonApiStore['listEventsForPylon']
   listEventsForAssignment: PylonApiStore['listEventsForAssignment']
   listRegistrations: PylonApiStore['listRegistrations']
@@ -800,6 +803,19 @@ export const makePostgresPylonDispatchStore = (
             return rows.map(rowToAssignment)
           }),
 
+    listAssignmentsForPylonsIncludingTerminal: (pylonRefs, limit) =>
+      pylonRefs.length === 0
+        ? Promise.resolve([])
+        : withSql(async sql => {
+            const rows: Array<PylonApiAssignmentRow> = await sql`
+              SELECT * FROM pylon_assignments
+               WHERE pylon_ref = ANY(${uniqueRefsInOrder(pylonRefs)})
+                 AND archived_at IS NULL
+               ORDER BY updated_at DESC
+               LIMIT ${limit}`
+            return rows.map(rowToAssignment)
+          }),
+
     listEventsForPylon: (pylonRef, limit) =>
       withSql(async sql => {
         const rows: Array<PylonApiEventRow> = await sql`
@@ -1340,6 +1356,18 @@ export const makeDualWritePylonApiStore = (
             ? Promise.resolve([])
             : d1.listAssignmentsForPylons(pylonRefs, limit),
         () => postgres.listAssignmentsForPylons(pylonRefs, limit),
+      ),
+
+    listAssignmentsForPylonsIncludingTerminal: (pylonRefs, limit) =>
+      read(
+        'listAssignmentsForPylonsIncludingTerminal',
+        pylonRefs,
+        () =>
+          d1.listAssignmentsForPylonsIncludingTerminal === undefined
+            ? Promise.resolve([])
+            : d1.listAssignmentsForPylonsIncludingTerminal(pylonRefs, limit),
+        () =>
+          postgres.listAssignmentsForPylonsIncludingTerminal(pylonRefs, limit),
       ),
 
     listEventsForPylon: (pylonRef, limit) =>

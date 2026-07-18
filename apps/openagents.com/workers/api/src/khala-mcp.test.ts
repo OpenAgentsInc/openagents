@@ -151,6 +151,20 @@ const makeStore = (
     },
     listAssignmentsForPylon: async pylonRef =>
       assignments.filter(item => item.pylonRef === pylonRef),
+    listAssignmentsForPylons: async pylonRefs =>
+      assignments.filter(
+        item =>
+          pylonRefs.includes(item.pylonRef) &&
+          [
+            'accepted',
+            'blocked',
+            'offered',
+            'proof_submitted',
+            'running',
+          ].includes(item.state),
+      ),
+    listAssignmentsForPylonsIncludingTerminal: async pylonRefs =>
+      assignments.filter(item => pylonRefs.includes(item.pylonRef)),
     listEventsForAssignment: async () => [],
     listEventsForPylon: async () => [],
     listProviderJobLifecycleForPylons: async () => [],
@@ -455,6 +469,43 @@ describe('Khala MCP catalog', () => {
       state: 'active',
     })
     expect(JSON.stringify(status.structuredContent)).not.toContain('rawEvents')
+  })
+
+  test('khala.spawnStatus retains terminal child assignments after their active leases end', async () => {
+    const spawnRef = 'spawn.public.khala_coding.completed_spawn'
+    const status = await catalogFor({
+      assignments: [
+        assignment({
+          acceptedWorkRefs: ['accepted_work.public.khala_coding.completed'],
+          artifactRefs: ['artifact.public.khala_coding.completed'],
+          closeoutRefs: ['closeout.public.khala_coding.completed'],
+          proofRefs: ['proof.public.khala_coding.completed'],
+          state: 'closeout_submitted',
+          taskRefs: [
+            khalaCodingRequestIdRef('chatcmpl_completed'),
+            spawnRef,
+          ],
+        }),
+      ],
+    }).callTool(env, request, principal, 'khala.spawnStatus', { spawnRef })
+
+    expect(status.isError).toBeFalsy()
+    expect(status.structuredContent).toMatchObject({
+      aggregate: {
+        artifactRefCount: 1,
+        closeoutRefCount: 1,
+        proofRefCount: 1,
+      },
+      childCount: 1,
+      children: [
+        {
+          durableRequestId: 'chatcmpl_completed',
+          state: 'closeout_submitted',
+        },
+      ],
+      ok: true,
+      spawnRef,
+    })
   })
 
   test('khala.spawn reports capacity detail when requested count exceeds availability', async () => {

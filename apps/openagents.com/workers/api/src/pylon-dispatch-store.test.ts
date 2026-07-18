@@ -164,6 +164,10 @@ const makeFakeD1 = (overrides: Partial<PylonApiStore> = {}) => {
     listAssignmentsForPylons: track('listAssignmentsForPylons', [
       assignment('a1'),
     ]),
+    listAssignmentsForPylonsIncludingTerminal: track(
+      'listAssignmentsForPylonsIncludingTerminal',
+      [assignment('a1')],
+    ),
     listEventsForAssignment: track('listEventsForAssignment', []),
     listEventsForPylon: track('listEventsForPylon', []),
     listProviderJobLifecycleForPylons: track(
@@ -236,6 +240,10 @@ const makeFakePostgres = (
     listAssignmentsForPylons: track('listAssignmentsForPylons', [
       assignment('a1'),
     ]),
+    listAssignmentsForPylonsIncludingTerminal: track(
+      'listAssignmentsForPylonsIncludingTerminal',
+      [assignment('a1')],
+    ),
     listEventsForAssignment: track('listEventsForAssignment', []),
     listEventsForPylon: track('listEventsForPylon', []),
     listRegistrations: track('listRegistrations', [
