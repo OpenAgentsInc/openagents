@@ -295,6 +295,12 @@ policy, or turn Fable prose into target authority.
         "kind": "economics",
         "summary": "Preserve exact model identity plus pre-spend and post-spend usage truth.",
         "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "local_state_inventory",
+        "kind": "security",
+        "summary": "Expose a typed inventory, retention class, replica map, export, and verified deletion path for local and remote agent knowledge.",
+        "stance": "adapt_with_stronger_boundaries"
       }
     ]
   },

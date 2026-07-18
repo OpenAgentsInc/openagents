@@ -1,4 +1,4 @@
-# Cursor Product Teardown — 2026-07-11
+# Cursor Product Teardown — 2026-07-11 (local-storage audit updated 2026-07-18)
 
 Updated analysis of Cursor (Anysphere), revisiting OpenAgents episode 197's
 "Reverse Engineering Cursor" study and episode 195's "10x better" thesis
@@ -9,19 +9,24 @@ against what Cursor actually became through mid-2026.
   behind
 - Method: **transcript-grounded retrospective plus archival and public web
   evidence, plus a read-only local bundle survey of the installed Cursor
-  3.11.13 on this Mac (added 2026-07-11; §2).** The bundle pass used
+  3.11.13 on this Mac (added 2026-07-11; §2) and a privacy-safe persistence
+  audit of that profile (added 2026-07-18; §2.6).** The bundle pass used
   `plutil`, `codesign`, `spctl`, `file`, `strings`, and bounded `grep` of the
   shipped JS bundles, a names-only look at local state directories, and one
-  snapshot of the already-running process table — no launch, no sign-in, no
-  user-data file contents. Its evidence classes are:
+  snapshot of the already-running process table. The persistence pass used
+  filesystem metadata, SQLite schemas and aggregate queries, JSON key/type
+  inspection, file signatures, and bounded searches of the shipped retrieval
+  implementation. It did not reproduce prompts, source text, tokens, account
+  identifiers, chat titles, workspace names, or secret values. Its evidence
+  classes are:
   - `[source]` — the recovered episode-197-era reverse-engineering corpus,
     pinned in this repository's own Git history (see §1);
   - `[bundle]` — observed in the installed signed application bundle at
     `/Applications/Cursor.app` (3.11.13), surveyed 2026-07-11;
   - `[runtime]` — observed in the live process table, socket snapshot, or
-    names-only local filesystem state during that survey;
+    local filesystem state during those surveys;
   - `[public]` — a named public source (Cursor's own blog/changelog, press,
-    or community forum), fetched 2026-07-11;
+    or community forum), fetched 2026-07-11 or 2026-07-18 as identified;
   - `[inferred]` — reasoned conclusions from multiple observations;
   - `[limitation]` — a boundary on what this evidence can prove.
 - Transcripts [`195`](../transcripts/195.md) and [`197`](../transcripts/197.md)
@@ -86,18 +91,27 @@ per `product.json` `date` — the day before this survey), which makes the
 then-vs-now comparison against the era-197 survey of 2.0.43 direct: same
 Mac, same evidence conventions, eight months apart.
 
+The 2026-07-18 persistence audit confirmed the installed artifact was still
+3.11.13 / commit `3f21b08f0b436a07be29fbfe00b304fa15553350` and pinned the
+selected corpus: SHA-256 `ec977a9708ea0cdeee3820b108b5b97416ae4ad55e58a4bb093e7b1ca224e3f7`
+for `product.json`,
+`1cbca4aa324570b485ddd750d80fc36cd13132a1a1a7b669ee910b5ff346dfea`
+for `crepectl`, and
+`9a6a2495d10eddff622db06292d34004a583a4fcc08a0e0dcd07ee21bddbbfe0`
+for `workbench.glass.main.js` [bundle].
+
 ### 2.1 Identity and security posture
 
-| Field | Value |
-| --- | --- |
-| `CFBundleIdentifier` | `com.todesktop.230313mzl4w4u92` (unchanged ToDesktop-era id) |
-| `CFBundleShortVersionString` / `CFBundleVersion` | `3.11.13` |
-| `LSMinimumSystemVersion` | `12.0` |
-| URL scheme | `cursor:` (`urlProtocol` in `product.json`) |
-| Document types | the standard VS Code editor set (C/C++/web/source files, role Editor) — no agent/skill doc types |
-| Signing | `Developer ID Application: Hilary Stout (VDXQ22DGB9)`, hardened runtime (`flags=0x10000(runtime)`), thin arm64 |
-| Notarization | `spctl -a`: accepted, `source=Notarized Developer ID` |
-| Entitlements | exactly four: `automation.apple-events`, `cs.allow-jit`, `device.audio-input`, `device.camera` |
+| Field                                            | Value                                                                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `CFBundleIdentifier`                             | `com.todesktop.230313mzl4w4u92` (unchanged ToDesktop-era id)                                                   |
+| `CFBundleShortVersionString` / `CFBundleVersion` | `3.11.13`                                                                                                      |
+| `LSMinimumSystemVersion`                         | `12.0`                                                                                                         |
+| URL scheme                                       | `cursor:` (`urlProtocol` in `product.json`)                                                                    |
+| Document types                                   | the standard VS Code editor set (C/C++/web/source files, role Editor) — no agent/skill doc types               |
+| Signing                                          | `Developer ID Application: Hilary Stout (VDXQ22DGB9)`, hardened runtime (`flags=0x10000(runtime)`), thin arm64 |
+| Notarization                                     | `spctl -a`: accepted, `source=Notarized Developer ID`                                                          |
+| Entitlements                                     | exactly four: `automation.apple-events`, `cs.allow-jit`, `device.audio-input`, `device.camera`                 |
 
 Notable in the posture: **no `com.apple.security.app-sandbox`** (the host
 app is not App-Sandboxed, like ChatGPT/Claude desktop), but also **no
@@ -221,16 +235,16 @@ Bounded string counts in `workbench.glass.main.js` (the 46 MB agent-UI
 bundle; `workbench.desktop.main.js` shows the same fingerprints at slightly
 lower counts):
 
-| Fingerprint | Count | Fingerprint | Count |
-| --- | --- | --- | --- |
-| `composer` | 21,179 | `subagent` | 2,714 |
-| `worktree` | 2,133 | `bugbot` | 941 |
-| `cloud agent` | 260 | `bestOfN`/`best-of-n` | 217 |
-| `sideChat`/`side chat` | 248 | `Remote Control`/`remoteControl` | 150 |
-| `computerUse`/`computer use` | 59 | `Agents Window`/`agentsWindow` | 70 |
-| `planMode`/`plan mode` | 48 | `background agent` | 41 |
-| hook names (`beforeShellExecution` etc.) | 20 | `Design Mode`/`designMode` | 17 |
-| `AwaitTool`/`await_tool` | 8 | `kimi` | 5 |
+| Fingerprint                              | Count  | Fingerprint                      | Count |
+| ---------------------------------------- | ------ | -------------------------------- | ----- |
+| `composer`                               | 21,179 | `subagent`                       | 2,714 |
+| `worktree`                               | 2,133  | `bugbot`                         | 941   |
+| `cloud agent`                            | 260    | `bestOfN`/`best-of-n`            | 217   |
+| `sideChat`/`side chat`                   | 248    | `Remote Control`/`remoteControl` | 150   |
+| `computerUse`/`computer use`             | 59     | `Agents Window`/`agentsWindow`   | 70    |
+| `planMode`/`plan mode`                   | 48     | `background agent`               | 41    |
+| hook names (`beforeShellExecution` etc.) | 20     | `Design Mode`/`designMode`       | 17    |
+| `AwaitTool`/`await_tool`                 | 8      | `kimi`                           | 5     |
 
 - **Model slugs**: `"composer-1"`, `"composer-2"`, `"composer-2.5"`,
   `"composer-2.5-fast"`, alongside third-party `"claude-3.5-sonnet"`,
@@ -251,43 +265,332 @@ lower counts):
   configuration/worktrees, bugbot}`; `cursor.com/dashboard/cloud-agents`;
   `cursor.com/automations/new`.
 
-### 2.6 Local state shape (names only) and runtime snapshot
+### 2.6 Full local-persistence audit — 2026-07-18
 
-- `~/.cursor` now holds `agents/`, `chats/`, `projects/`, `plugins/`,
-  `skills/`, `skills-cursor/`, `extensions/`, `ai-tracking/`, `hooks.json`,
-  `mcp.json`, `agent-cli-state.json`, `cli-config.json`, `ide_state.json`,
-  `statsig-cache.json`, `argv.json`, and a `.gitignore` — an agent-CLI-era
-  layout versus the extensions-only `~/.cursor` of the 2.0.43 survey
-  [runtime, names only].
-- `~/Library/Application Support/Cursor/` remains VS Code-shaped: `User/`
-  (796 MB; `globalStorage`, `workspaceStorage`, `History`, `settings.json`,
-  `snippets`), `CachedData/` (219 MB), `logs/` (129 MB), plus `sentry/`,
-  `process-monitor/`, `Crashpad/`, and Chromium cache directories
-  [runtime, names only].
-- `[runtime]` Cursor 3.11.13 was running during the survey. The process
-  table showed, beside the main process and standard Electron helpers:
-  `Cursor Helper: conversation-search` (the 3.11 transcript-search index as
-  a dedicated utility process), `Cursor Helper (Plugin): extension-host
-  Agents Window [1-1]` (the Agents Window has its own extension host),
-  `mcp-process`, `shared-process`, per-workspace `fileWatcher` processes,
-  and Node workers running
-  `extensions/cursor-always-local/dist/gitWorker.js`. Renderer processes
-  register custom schemes `cursor-rpc-devtools` and `sentry-ipc`. `lsof`
-  showed only outbound TLS connections (AWS EC2 and Cloudflare edges) — no
-  local listening sockets in the snapshot.
+#### The short answer
+
+Cursor keeps substantially more than preferences and a disposable cache on
+this computer. The durable profile contains complete local chat/search text,
+agent event and tool-result blobs, attached and changed file material,
+checkpoints and original-file states, AI-code-attribution snapshots, local file
+history, terminal command/directory history, workspace paths and identifiers,
+screenshots supplied to chats, MCP configuration and approvals, downloaded
+agent runtimes, logs, machine/telemetry identifiers, browser cookies, and
+Cursor account credentials. The largest user-data database is a 48.5 MB
+SQLite file, with a separate 41.2 MB backup.
+
+The important negative is equally specific: **no persistent local codebase
+embedding/vector database was found in either Cursor-owned root.** Cursor's
+conversation-search index is local, but it is ordinary SQLite FTS5 over chat
+titles and bodies, not an embedding index. Cursor's codebase semantic index is
+the remote one: the current official security description says the client
+hashes the workspace into a Merkle tree, uploads changed files, and the server
+chunks and embeds them into Turbopuffer; search returns an obfuscated path and
+line range, then the client reads that source range locally. The installed
+client contains local Merkle/git-snapshot and Crepe index-building machinery,
+but this profile had no `index.bin`, `postings.bin`, `metadata.json`, vector
+store, `snapshots/` directory, or populated retrieval checkpoint directory at
+audit time. That distinction matters: **local full text and snapshots are
+present; semantic code embeddings are remote.** [runtime, bundle, public:
+[Cursor security](https://cursor.com/security),
+[secure codebase indexing](https://cursor.com/blog/secure-codebase-indexing),
+and [data-use overview](https://cursor.com/data-use)]
+
+#### Root map and observed size
+
+Sizes are point-in-time allocated sizes and will change with use. Counts below
+are aggregate deliberately: private workspace names, chat titles, prompts,
+source, tokens, and identifiers were not copied into this report.
+
+| Location                                                                            |  Observed size | What it owns                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------- | -------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `~/Library/Application Support/Cursor/`                                             |         1.1 GB | Main Electron/VS Code profile: global and workspace databases, chat search, local history, downloaded agent runtimes, workbench caches, logs, browser storage, cookies, crash/telemetry queues |
+| `~/.cursor/`                                                                        |          34 MB | Cursor Agent/ACP sessions, CLI chat stores, project-scoped agent state, AI-code tracking, skills, plugins, extensions, plans, hooks, MCP and CLI configuration                                 |
+| `~/Library/HTTPStorages/com.todesktop.230313mzl4w4u92/`                             |         168 KB | macOS URL-loading cache database plus WAL/SHM                                                                                                                                                  |
+| `~/Library/Preferences/com.todesktop.230313mzl4w4u92.plist`                         | 4 KB allocated | macOS application preferences                                                                                                                                                                  |
+| `~/Library/Caches/cursor-compile-cache/`                                            |         1.2 MB | Version/architecture-keyed native Node compile cache outside the main profile                                                                                                                  |
+| `~/Library/Preferences/ByHost/com.todesktop.230313mzl4w4u92.ShipIt.<host-id>.plist` |        present | Per-host Squirrel/ShipIt updater preference state                                                                                                                                              |
+
+The main profile breaks down as 789 MB under `User/`, 219 MB of
+commit-keyed `CachedData/`, 142 MB of logs, 9.9 MB of workspace state, 1.9 MB
+for the isolated `cursor-browser` Chromium partition, 1.5 MB of process-monitor
+logs, and smaller GPU/WebGPU, code, local/session storage, IndexedDB, Sentry,
+Crashpad, cookie, trust-token, DIPS, transport-security, and shared-dictionary
+stores. Most of the 789 MB `User/` number is not conversation data: 692 MB is
+four retained, complete Cursor Agent runtime versions at roughly 173 MB each.
+The compile cache was keyed `v24.5.0-arm64-<build-id>`; the host-specific
+ShipIt filename contains a machine identifier, redacted here.
+
+#### The main SQLite database: chats, tool data, file material, and credentials
+
+`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` is the
+center of gravity. Its schema is not stock VS Code alone:
+
+```sql
+CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+CREATE TABLE cursorDiskKV (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+CREATE TABLE composerHeaders (
+  composerId TEXT PRIMARY KEY,
+  workspaceId TEXT,
+  createdAt INTEGER,
+  lastUpdatedAt INTEGER,
+  isArchived INTEGER,
+  isSubagent INTEGER,
+  recency INTEGER,
+  checkpointAt INTEGER,
+  value TEXT
+);
+```
+
+On this profile, `ItemTable` held 221 rows / 1.11 MB of values,
+`cursorDiskKV` held 4,335 rows / 43.13 MB, and `composerHeaders` held 25
+conversation headers across six workspace identifiers. A second
+`state.vscdb.backup` retained another 41.2 MB copy, so deleting or rewriting
+only the live database is not a complete erasure.
+
+The `cursorDiskKV` families show exactly what fills it:
+
+| Key family                               |  Rows | Value bytes | Established content class                                                                                                                                                                                                                                    |
+| ---------------------------------------- | ----: | ----------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agentKv:blob:<content-id>`              | 2,937 |    30.03 MB | Agent messages and structured events, tool/file payloads, plaintext source-shaped blobs, binary protobuf-like records, and JPEG attachments                                                                                                                  |
+| `bubbleId:<conversation-id>:<bubble-id>` | 1,175 |     8.02 MB | JSON conversation bubbles; the largest single row was 1.49 MB                                                                                                                                                                                                |
+| `composerData:<conversation-id>`         |    32 |      656 KB | Full composer state, including context, text/rich text, model config, usage, attached code-chunk URIs, changed/added/removed files, original-file states, checkpoints, branches/worktrees, subagent links, todos, token breakdown, and encryption-key fields |
+| `ofsContent:<content-id>`                |    24 |      315 KB | Original-file/source content snapshots                                                                                                                                                                                                                       |
+| `checkpointId:<conversation-id>`         |    32 |      198 KB | JSON file checkpoint manifests                                                                                                                                                                                                                               |
+| `inlineDiff:*`                           |    14 |      180 KB | Inline-diff state and content                                                                                                                                                                                                                                |
+
+This is not merely a compressed summary or embedding of the user's work. File
+signatures and JSON schemas establish that the database contains recoverable
+full text, source-shaped bytes, images, structured conversation state, and
+file/change snapshots. Some opaque rows appear protobuf-like or otherwise
+binary encoded; encoding is not encryption. The audit did not decode or quote
+private row contents.
+
+`ItemTable` adds classic workbench state and several privacy-relevant records:
+
+- retained terminal command and directory histories;
+- recently opened paths, workspace metadata, repository paths, tabs, editor
+  view state, layout and startup caches;
+- cached server/feature-flag/admin configuration, telemetry state, theme and
+  command catalogs;
+- browser-automation history and AI-code-tracking summaries;
+- MCP OAuth/client-registration secret envelopes and a per-workspace Git IPC
+  authentication secret;
+- `cursorAuth/accessToken` and `cursorAuth/refreshToken`.
+
+The last point is unusually concrete: both Cursor account-token values were
+424-character, three-segment JWT-shaped **plain text** in `state.vscdb`, not an
+opaque OS-keychain reference. This report did not print or validate them.
+MCP/Git secret records use JSON envelopes whose payload is a byte-array
+`Buffer`; the storage shape alone does not prove whether each byte array is
+encrypted, so they are classified as protected/opaque rather than claimed
+safe. A cached scoped profile is also stored as readable JSON. The database
+file is mode `0644`, but its `~/Library/Application Support` parent is mode
+`0700` on this Mac, providing the effective local-account boundary.
+
+#### Conversation search is a second full-text copy
+
+`User/globalStorage/conversation-search.db` is a 287 KB SQLite database with
+schema user-version 7. It held 31 local conversations and a configured cap of
+10,000. The core virtual table is:
+
+```sql
+CREATE VIRTUAL TABLE conversation_fts USING fts5(
+  title,
+  body,
+  tokenize = 'unicode61 remove_diacritics 2',
+  prefix = '2 3'
+);
+```
+
+That means search stores indexed conversation titles and bodies locally in
+FTS content/segment/docsize tables. It is a searchable second representation
+of chat text, with source/scope/id, archive state, timestamps, and root/cache
+fingerprints in the companion `conversations` table. Its schema can also
+represent `cloud-cache` conversations, although all 31 rows in this snapshot
+were `local`. Cursor's 3.11 changelog independently calls this a local search
+index. [public: [Side Chats and Conversation Search](https://cursor.com/changelog/side-chat)]
+
+#### Cursor Agent, ACP, and CLI session stores
+
+`~/.cursor/acp-sessions/<session-id>/` contained 74 session directories and 71
+SQLite `store.db` files totaling 4.70 MB, plus WAL/SHM files for live/recent
+stores. Each session has a readable `meta.json` carrying `cwd`, `title`, and
+`schemaVersion`. The database schema is deliberately generic:
+
+```sql
+CREATE TABLE blobs (id TEXT PRIMARY KEY, data BLOB);
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+```
+
+Sampled stores contained JSON and binary blobs representing durable protocol
+events/messages; the largest store was 668 KB. `~/.cursor/chats/` uses the
+same blob/meta schema for Cursor Agent CLI chats. `~/.cursor/projects/`
+duplicates project association and per-project agent integration state; in
+this profile it included repo identifiers, MCP authentication/approval state,
+tool schemas and browser artifacts. `plans/`, `agents/`, `skills/`,
+`skills-cursor/`, `plugins/`, and `hooks.json` persist authored and installed
+instruction bundles independently of chat deletion.
+
+This tree has a weaker permission posture than the main profile: `~/.cursor`,
+its session directories, most metadata files, and most session databases were
+mode `0755`/`0644`. The home directory was `0750` and group `staff`; therefore
+another local account able to traverse that group boundary could potentially
+read the session database and metadata. `mcp.json` was correctly `0600`, but
+that exception does not protect the transcript stores.
+
+#### AI attribution stores source snapshots too
+
+`~/.cursor/ai-tracking/ai-code-tracking.db` (561 KB) is not just counters. Its
+schema includes:
+
+- `ai_code_hashes`: 491 content hashes tied to source category, file name and
+  extension, request/conversation id, timestamp, and model;
+- `tracked_file_content`: 17 rows containing the actual tracked file content
+  (14 KB total in this snapshot), git path, conversation, model and timestamp;
+- `scored_commits`: 19 commit/branch rows with commit message/date, line
+  additions/deletions split among tab/composer/human/blank categories, and two
+  AI-percentage versions;
+- `conversation_summaries`: title, TLDR, overview, bullets, model and mode
+  (empty here); and
+- deletion and tracking-state tables.
+
+So the AI-code attribution feature creates another durable map from source
+content and Git history back to conversations/models. Hashing does not replace
+the stored `tracked_file_content` copy.
+
+#### VS Code history, workspace state, and visible project artifacts
+
+- `User/History/` held 25 resource histories and 65 versioned file snapshots
+  (972 KB). Each resource has `entries.json` plus the retained file versions.
+  This is VS Code local history: it can preserve source text after the current
+  working file changes or is deleted.
+- `User/workspaceStorage/<workspace-hash>/` held per-workspace `state.vscdb`
+  databases, `workspace.json` with the original folder URI, database backups,
+  retrieval metadata (`embeddable_files.txt` and
+  `high_level_folder_description.txt`), and five screenshots attached during
+  work. The two observed workspace DBs held UI/extension state, not a vector
+  index.
+- `User/globalStorage/storage.json` retains window state, profile association,
+  theme/splash state, shutdown timing, and stable telemetry device/machine/SQM
+  identifiers. `workspace.json`, recently-opened state, tab state and CLI
+  `cwd` metadata make the mapping from hashes/ids back to real local folders
+  available on the same machine.
+
+#### What the retrieval/indexing code stores locally—and what it uploads
+
+There are three different mechanisms that should not be collapsed into
+"Cursor's index":
+
+1. **Conversation search:** local SQLite FTS5, full chat title/body (§2.6).
+2. **Codebase semantic search:** remote embeddings and metadata. Cursor's
+   official current description says indexing is on by default, the client
+   computes and syncs a Merkle tree, changed plaintext files are uploaded for
+   server-side chunking/embedding, vectors live in Turbopuffer, and an AWS
+   cache keys embeddings by chunk hash. Stored metadata includes obfuscated
+   relative paths and line ranges. Git indexing additionally stores commit
+   SHAs, parents and obfuscated file names remotely. Cursor acknowledges that
+   embedding reversal may be possible and path obfuscation leaks hierarchy.
+   [public: [security](https://cursor.com/security)]
+3. **Local retrieval/snapshot machinery:** the shipped native file-service
+   exposes Merkle, GitGraph, grep, diff and codebase-snapshot clients. The JS
+   registers codebases in workspace state, builds git packfile snapshots under
+   a profile-level `snapshots/` base, uploads them on a five-minute scheduler,
+   registers commit/tree hashes, advances a local pointer, and deletes each
+   packfile after upload. The bundled `crepectl build` can construct a
+   commit-pinned disk index with a cache path and memory-bounded spilling. Its
+   binary names `index.bin`, `postings.bin`, and `metadata.json`.
+
+On this machine, the retrieval extension's durable directory contained only
+an empty `checkpoints/` directory, and the newer `snapshots/` base was absent.
+No Crepe output files were present anywhere under the two Cursor roots. This
+proves absence in the audited profile, not that the shipped code can never
+materialize transient local hashes, packfiles, or indexes during another run.
+It also does not erase the remote index attached to the Cursor account. The
+official data-use page says embeddings and codebase metadata may remain in
+Cursor's database even though plaintext used to compute them is request-lived.
+
+#### Caches, logs, telemetry, and embedded browser state
+
+- `CachedData/` retained 11 commit-keyed workbench code caches totaling 219 MB;
+  old application versions are therefore represented after update.
+- `logs/` retained 860 files in 11 launch directories from 2026-06-22 through
+  2026-07-11, totaling 142 MB. They include window, renderer, extension-host,
+  terminal, Git, MCP, grep and indexing/retrieval diagnostics. Log files can
+  carry paths, commands, process details, request ids and error-adjacent
+  snippets even when telemetry policy says code is not intentionally sent.
+- `process-monitor/` retained timestamped process-observation logs (1.5 MB).
+  Sentry queue, Crashpad, GPU/WebGPU/code caches and Chromium shared
+  dictionaries are separate stores.
+- The main Chromium profile has `Cookies`, `DIPS`, `Trust Tokens`,
+  `SharedStorage`, `TransportSecurity`, `Network Persistent State`, Local
+  Storage LevelDB, Session Storage LevelDB, IndexedDB and WebStorage. The
+  dedicated `Partitions/cursor-browser/` profile repeats cookies, trust
+  tokens, DIPS, local/session storage, cache and GPU/WebGPU state for Cursor's
+  embedded browser. The macOS HTTP-storage SQLite database is a third network
+  metadata/cache surface.
+- `statsig-cache.json` (538 KB), its temporary sibling, `storage.json`, and
+  `machineid` retain feature-flag/experiment state and stable device
+  identifiers. `sentry/`, logs and update diagnostics persist separately from
+  the user's chat history.
+
+#### Deletion and retention reality
+
+There is no single on-disk object whose deletion means "Cursor forgot this
+conversation/project." A thorough local removal has to account for the live
+and backup `state.vscdb`, conversation FTS database, per-workspace databases
+and backups, VS Code local-history snapshots, `~/.cursor` Agent/ACP stores and
+project state, AI tracking, logs, caches, embedded-browser/network stores and
+macOS HTTP/preferences data. Archive is not deletion: archived state is a bit
+in the composer header and the conversation remains addressable.
+
+Cursor's public history documentation says regular Agent chat history is local
+SQLite while Background Agent chats are remote; exporting is required to keep
+an independent copy. Deleting the application bundle alone leaves both profile
+roots behind. Cursor support has historically identified
+`~/Library/Application Support/Cursor` and `~/.cursor` as the two primary
+clean-reset roots, but that advice omits the observed HTTPStorages,
+Preferences, and compile-cache locations and says nothing about remote
+codebase embeddings or cloud/background-agent data. Account deletion is the
+separate remote-data path; Cursor states complete removal may take up to 30
+days because of backups. [public: [chat history](https://docs.cursor.com/en/agent/chat/history),
+[security/account deletion](https://cursor.com/security)]
+
+`[limitation]` This was a static, read-only audit of one macOS stable profile.
+SQLite schemas and aggregate/type/signature checks establish storage classes,
+not the meaning of every opaque protobuf-like blob. Cursor was not relaunched,
+network traffic was not captured, Keychain contents were not requested, and
+no credential was decrypted or tested. Absence of a local vector store is
+bounded to the audited roots and time. Cloud/background-agent history,
+server-side caches, remote embeddings and provider retention cannot be proven
+from local disk; the remote description above is Cursor's current public
+claim, not an independent server audit.
+
+#### Runtime snapshot from the original 2026-07-11 pass
+
+`[runtime]` Cursor 3.11.13 was running during the original bundle survey. The
+process table showed, beside the main process and standard Electron helpers:
+`Cursor Helper: conversation-search` (the transcript-search index as a
+dedicated utility process), `Cursor Helper (Plugin): extension-host Agents
+Window [1-1]` (the Agents Window has its own extension host), `mcp-process`,
+`shared-process`, per-workspace `fileWatcher` processes, and Node workers
+running `extensions/cursor-always-local/dist/gitWorker.js`. Renderer processes
+register custom schemes `cursor-rpc-devtools` and `sentry-ipc`. `lsof` showed
+only outbound TLS connections (AWS EC2 and Cloudflare edges)—no local listening
+sockets in that snapshot.
 
 ### 2.7 Then vs now: 2.0.43 (era 197) → 3.11.13
 
-| Axis | 2.0.43, 2025-11 [source] | 3.11.13, built 2026-07-10 [bundle] |
-| --- | --- | --- |
-| Bundle id | `com.todesktop.230313mzl4w4u92` | unchanged |
-| VS Code base | 1.99.3 | **1.125.0** — upstream merges continued through the pivot |
-| Electron runtime | stock `Electron Framework.framework` | still stock: Electron 40.10.3 / Chrome 144.0.7559.236 / Node 24.15.0 |
-| Fork delta | observability + agent plumbing (Sentry/OTel, `cursor-proclist`, panels) | **a compiled-in agent platform**: 17 `cursor-*` extensions, 46 MB Glass UI bundle, React runtime, Seatbelt sandbox binary, Crepe local indexer, private Node runtime, update supervisor |
-| Local models | none | **still none** — cloud-only inference confirmed on a 2026-07-10 build |
-| Indexing | cloud-side, local metadata caches | + local Rust index builder (`crepectl`) |
-| Updater | Squirrel ("updates disabled by user preference" in logs) | Squirrel + ShipIt + first-party `cursor-update-supervisor`; feed `api2.cursor.sh/updates`, plain-HTTP backup URL |
-| `~/.cursor` | extensions only | agents/chats/projects/plugins/skills/hooks/mcp state tree |
+| Axis             | 2.0.43, 2025-11 [source]                                                | 3.11.13, built 2026-07-10 [bundle]                                                                                                                                                      |
+| ---------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bundle id        | `com.todesktop.230313mzl4w4u92`                                         | unchanged                                                                                                                                                                               |
+| VS Code base     | 1.99.3                                                                  | **1.125.0** — upstream merges continued through the pivot                                                                                                                               |
+| Electron runtime | stock `Electron Framework.framework`                                    | still stock: Electron 40.10.3 / Chrome 144.0.7559.236 / Node 24.15.0                                                                                                                    |
+| Fork delta       | observability + agent plumbing (Sentry/OTel, `cursor-proclist`, panels) | **a compiled-in agent platform**: 17 `cursor-*` extensions, 46 MB Glass UI bundle, React runtime, Seatbelt sandbox binary, Crepe local indexer, private Node runtime, update supervisor |
+| Local models     | none                                                                    | **still none** — cloud-only inference confirmed on a 2026-07-10 build                                                                                                                   |
+| Indexing         | cloud-side, local metadata caches                                       | + local Rust index builder (`crepectl`)                                                                                                                                                 |
+| Updater          | Squirrel ("updates disabled by user preference" in logs)                | Squirrel + ShipIt + first-party `cursor-update-supervisor`; feed `api2.cursor.sh/updates`, plain-HTTP backup URL                                                                        |
+| `~/.cursor`      | extensions only                                                         | agents/chats/projects/plugins/skills/hooks/mcp state tree                                                                                                                               |
 
 ### 2.8 Consequences for the recommendations
 
@@ -296,8 +599,8 @@ The bundle pass sharpens rather than overturns §6. Three notes:
 1. **Reject 1's premise is updated, its conclusion strengthened.** The
    era-197 "mostly telemetry and glue" description of the fork delta is
    stale for 3.x: the delta is now a full agent platform. But that platform
-   ships as *extensions plus native sidecar binaries beside a tracked
-   upstream base* — Cursor itself demonstrates that agent capability does
+   ships as _extensions plus native sidecar binaries beside a tracked
+   upstream base_ — Cursor itself demonstrates that agent capability does
    not require owning an editor fork's internals, which is exactly why
    OpenAgents should not build one.
 2. **Adapt 5 (isolation-by-default) is now bundle-verified**, not just
@@ -459,21 +762,21 @@ output needs review structure [public: changelogs cited above].
 
 Episode 195's ten demands, scored against what Cursor itself did:
 
-| 195 demand | Cursor's own verdict by mid-2026 | Status for OpenAgents |
-| --- | --- | --- |
-| Desktop app over TUI | Validated: rebuilt its product around an agent-first desktop surface [public: 2.0/3.0] | Contested lane; win on reliability, not novelty |
-| Mobile with the same work | Validated: iOS app with cloud agents, voice, Remote Control of desktop agents [public: 3.9] | Contested; OpenAgents' any-host portable-session model is deeper than remote-controlling one desktop |
-| Overnight/scheduled work | Validated: Automations with triggers and computer use [public: 3.8] | Contested; OpenAgents differentiates on budgets, receipts, restart-safety per the 195 follow-up |
-| CLI agents as subagents | Partially validated: subagents exist, `Await` coordinates them; single-conversation delegation across foreign harnesses (Codex+Claude in one graph) is not Cursor's shape | Open lane; this is the live #8712/Lane-C direction |
-| Discoverable history | Validated late: transcript search with local indexing, side chats [public: 3.11] | Contested; loss-accounting and provenance (#8674 discipline) remain undone there `[inferred]` |
-| Hassle-free integrations | Partially: marketplace + one customization surface, but MCP/plugin/skill/subagent vocabulary is still exposed [public: 3.9/3.10] | Contested; lifecycle-not-plumbing (D4) still open |
-| Open source | Not attempted | **Open lane** — the load-bearing differentiation seam |
-| Local + cloud inference mix | Not attempted (cloud-only; first-party models are cloud models; `[bundle]` no weights in 3.11.13, §2.4) | **Open lane** — post-R7 placement-class work |
-| Idle-compute market | Not attempted | Open, deferred behind its revisit gates |
-| Revenue sharing | Not attempted (no public evidence) | Open, deferred behind safe extension lifecycle |
+| 195 demand                  | Cursor's own verdict by mid-2026                                                                                                                                          | Status for OpenAgents                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Desktop app over TUI        | Validated: rebuilt its product around an agent-first desktop surface [public: 2.0/3.0]                                                                                    | Contested lane; win on reliability, not novelty                                                      |
+| Mobile with the same work   | Validated: iOS app with cloud agents, voice, Remote Control of desktop agents [public: 3.9]                                                                               | Contested; OpenAgents' any-host portable-session model is deeper than remote-controlling one desktop |
+| Overnight/scheduled work    | Validated: Automations with triggers and computer use [public: 3.8]                                                                                                       | Contested; OpenAgents differentiates on budgets, receipts, restart-safety per the 195 follow-up      |
+| CLI agents as subagents     | Partially validated: subagents exist, `Await` coordinates them; single-conversation delegation across foreign harnesses (Codex+Claude in one graph) is not Cursor's shape | Open lane; this is the live #8712/Lane-C direction                                                   |
+| Discoverable history        | Validated late: transcript search with local indexing, side chats [public: 3.11]                                                                                          | Contested; loss-accounting and provenance (#8674 discipline) remain undone there `[inferred]`        |
+| Hassle-free integrations    | Partially: marketplace + one customization surface, but MCP/plugin/skill/subagent vocabulary is still exposed [public: 3.9/3.10]                                          | Contested; lifecycle-not-plumbing (D4) still open                                                    |
+| Open source                 | Not attempted                                                                                                                                                             | **Open lane** — the load-bearing differentiation seam                                                |
+| Local + cloud inference mix | Not attempted (cloud-only; first-party models are cloud models; `[bundle]` no weights in 3.11.13, §2.4)                                                                   | **Open lane** — post-R7 placement-class work                                                         |
+| Idle-compute market         | Not attempted                                                                                                                                                             | Open, deferred behind its revisit gates                                                              |
+| Revenue sharing             | Not attempted (no public evidence)                                                                                                                                        | Open, deferred behind safe extension lifecycle                                                       |
 
 `[inferred]` Reading the table honestly: Cursor spent 2025–2026 validating
-the *market* for roughly six of the ten demands — the faster-horse company
+the _market_ for roughly six of the ten demands — the faster-horse company
 bought the car drawings. What it fumbled is everything OpenAgents' laws are
 about: predictability contracts, usage truth, identity truth, completeness
 truth. And what it never touched — the open engine, the typed public
@@ -503,14 +806,14 @@ named roadmap gate, issue, or contract.
    Cursor's Agents Window regressions show the failure mode recurs release
    after release when the promise is not executable. The decision-16 contract
    (episode 248's stable recent-work promise, #8675 acceptance) should be
-   treated as a *standing* regression suite across every future default
+   treated as a _standing_ regression suite across every future default
    change, with "user's chosen surface is restored on restart" as an explicit
    behavior contract in the packages/behavior-contracts registry.
    Owner: decision 16, D0 truthful-baseline gate, CUT-27 (#8707) installed-
    product acceptance.
 2. **Cloud handoff proves the portable-session market; win it on identity.**
-   Cursor's `&` handoff moves a conversation to *their* cloud only, and
-   Remote Control drives *one* desktop. The Rev 30/31 portable-session and
+   Cursor's `&` handoff moves a conversation to _their_ cloud only, and
+   Remote Control drives _one_ desktop. The Rev 30/31 portable-session and
    capability-broker packets (move a durable session between authorized
    local, owner-managed, and managed-cloud hosts without forking identity,
    authority, secrets, or receipts) are the strictly stronger contract.
@@ -548,17 +851,27 @@ named roadmap gate, issue, or contract.
    surfaces from #8712.
 7. **Price with usage truth in the loop.** Both Cursor pricing crises came
    from bills users could not predict from what they could see. OpenAgents'
-   exact-or-`not_measured` receipts must reach the *pre-spend* surface:
+   exact-or-`not_measured` receipts must reach the _pre-spend_ surface:
    before a fleet run, show the account/lane/budget that will be consumed;
    after, reconcile against exact rows. Owner: capability-truthful
    affordances ("no lane, no Send") and the usage-receipt law; D5 fleet
    controls.
+8. **Make local knowledge inspectable, bounded, and erasable as one product
+   contract.** Cursor's state is recoverable but fragmented across primary and
+   backup SQLite databases, FTS, file history, ACP stores, AI attribution,
+   logs, caches, browser partitions and remote embeddings. OpenAgents should
+   expose a typed per-session/per-workspace inventory with byte counts,
+   retention class, encryption state, remote replicas, export and verified
+   deletion—never call a chat deleted while its FTS, checkpoint, history,
+   log, backup or remote-index representation survives undisclosed. Owner:
+   private-state/storage truth, support-artifact redaction, and portable-
+   session lifecycle contracts.
 
 ### Reject
 
 1. **Do not fight for VS-Code-fork parity.** The incumbent itself demoted
    the editor; the era-197 corpus shows the fork's runtime delta was mostly
-   telemetry and glue [source]. *Correction 2026-07-11:* the 3.11.13 bundle
+   telemetry and glue [source]. _Correction 2026-07-11:_ the 3.11.13 bundle
    shows that description is stale — the delta is now a compiled-in agent
    platform (§2.4) — but it ships as extensions plus native sidecars beside
    a tracked upstream base, which strengthens the conclusion: the valuable
@@ -599,13 +912,13 @@ named roadmap gate, issue, or contract.
   remains is the part Cursor structurally cannot copy without ceasing to be
   Cursor: the open engine, typed public protocol, host-portable sessions
   with receipts, capability-truthful UI, and economic participation.
-- `[limitation]` Remaining boundaries after the §2 bundle pass: no network
-  capture or interactive UI/feature pass was performed (one read-only
+- `[limitation]` Remaining boundaries after the §2 bundle and persistence
+  passes: no network capture or interactive UI/feature pass was performed (one read-only
   process/socket snapshot only, no launch or sign-in); server-side behavior
   — Composer training lineage, cloud-agent internals, pricing enforcement —
   is unprovable from the client; compiled strings prove a feature surface
   exists in the build, not that it is enabled for every account; this is one
-  machine's stable-channel build; no access to private forums or usage data;
+  machine's stable-channel build and profile; no access to private forums or usage data;
   community-complaint prevalence is not quantified, and third-party ARR
   figures are estimates. Public claims remain bounded by the named sources
   as of 2026-07-11.
@@ -614,10 +927,19 @@ named roadmap gate, issue, or contract.
 
 Primary: read-only local survey of `/Applications/Cursor.app` 3.11.13 on
 2026-07-11 (`plutil`, `codesign`, `spctl`, `file`, `strings`, bounded
-`grep`; one live process/socket snapshot; names-only local state), the
+`grep`; one live process/socket snapshot), plus the 2026-07-18 privacy-safe
+local-persistence audit (filesystem metadata, SQLite schema/aggregate queries,
+JSON keys/types, signatures, and bounded shipped-code searches; no reproduced
+private values), the
 recovered era-197 corpus at openagents commit `ecc0a9054e`
 (`docs/re/cursor/`), and the Commander-era corpus in
-`OpenAgentsInc/dashboard` (`docs/internal/bi/cursor/`). Public: cursor.com blog/changelog (2.0, 2.3,
+`OpenAgentsInc/dashboard` (`docs/internal/bi/cursor/`). Public: Cursor's
+[Security](https://cursor.com/security),
+[Data Use & Privacy](https://cursor.com/data-use),
+[secure-codebase-indexing](https://cursor.com/blog/secure-codebase-indexing),
+[chat-history](https://docs.cursor.com/en/agent/chat/history), and
+[conversation-search](https://cursor.com/changelog/side-chat) pages;
+cursor.com blog/changelog (2.0, 2.3,
 3.0, 3.8–3.11, CLI 2026-01-16), TechCrunch (2026-03-22, 2026-04-17), CNBC
 (2026-06-16), Forbes, Yahoo Finance, qz.com, VentureBeat, datastudios.org,
 Vantage, finout.io, wearefounders.uk, eesel.ai, forum.cursor.com threads,
