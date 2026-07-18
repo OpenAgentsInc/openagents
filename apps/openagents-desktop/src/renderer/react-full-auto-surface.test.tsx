@@ -254,6 +254,10 @@ describe("ReactFullAutoSurface: read-only run view (FA-AC-55, FA-AC-56)", () => 
     const resume = container.querySelector('[data-en-key="full-auto-run-resume"]') as HTMLButtonElement;
     await interact(() => resume.click());
     expect(received).toContainEqual({ name: "DesktopFullAutoRunResumeRequested", payload: null });
+    const handoff = container.querySelector('[data-en-key="full-auto-run-handoff"]') as HTMLButtonElement;
+    expect(handoff.textContent).toContain("Switch to Claude");
+    await interact(() => handoff.click());
+    expect(received).toContainEqual({ name: "DesktopFullAutoRunHandoffRequested", payload: "fable-local" });
   });
 
   test("Stop is visibly distinct (destructive) and separate from Pause, dispatches DesktopFullAutoRunStopRequested", async () => {

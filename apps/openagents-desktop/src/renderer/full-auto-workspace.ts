@@ -30,6 +30,7 @@ import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
   decodeFullAutoRunListResult,
+  decodeFullAutoRunHandoffOutcome,
   decodeFullAutoRunOutcome,
   decodeFullAutoRunReportOutcome,
   unavailableFullAutoRunRendererHost,
@@ -52,6 +53,7 @@ export const FULL_AUTO_LAUNCHER_ROUTING_POLICY_LIMIT = 8
  * already uses; the FA-WIRE-01 ordered fallback picker sources from it too. */
 export const fullAutoLauncherLaneOptions: ReadonlyArray<Readonly<{ value: string; label: string }>> = [
   { value: "codex-local", label: "Codex" },
+  { value: "fable-local", label: "Claude" },
   { value: "acp:grok-cli", label: "Grok CLI" },
   { value: "acp:cursor-agent", label: "Cursor Agent" },
 ]
@@ -154,6 +156,7 @@ export const DesktopFullAutoRunPauseRequested = defineIntent("DesktopFullAutoRun
 export const DesktopFullAutoRunResumeRequested = defineIntent("DesktopFullAutoRunResumeRequested", Schema.Null)
 export const DesktopFullAutoRunStopRequested = defineIntent("DesktopFullAutoRunStopRequested", Schema.Null)
 export const DesktopFullAutoRunRetryNowRequested = defineIntent("DesktopFullAutoRunRetryNowRequested", Schema.Null)
+export const DesktopFullAutoRunHandoffRequested = defineIntent("DesktopFullAutoRunHandoffRequested", Schema.String)
 
 export const fullAutoWorkspaceIntents = [
   DesktopFullAutoLauncherOpened,
@@ -175,6 +178,7 @@ export const fullAutoWorkspaceIntents = [
   DesktopFullAutoRunResumeRequested,
   DesktopFullAutoRunStopRequested,
   DesktopFullAutoRunRetryNowRequested,
+  DesktopFullAutoRunHandoffRequested,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -463,6 +467,30 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
     DesktopFullAutoRunResumeRequested: () => runMutation(runRef => host.resume(runRef)),
     DesktopFullAutoRunStopRequested: () => runMutation(runRef => host.stop(runRef)),
     DesktopFullAutoRunRetryNowRequested: () => runMutation(runRef => host.retryNow(runRef)),
+    DesktopFullAutoRunHandoffRequested: (targetLaneRef: string) => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const runRef = current.fullAuto.activeRunRef
+      if (runRef === null) return
+      const raw = yield* Effect.promise(() => host.handoff({
+        runRef,
+        targetLaneRef,
+        reason: "Provider handoff requested from the dedicated Full Auto run view.",
+      }).catch(() => null))
+      const outcome = decodeFullAutoRunHandoffOutcome(raw)
+      if (outcome === null) {
+        yield* SubscriptionRef.update(state, next => withFullAuto(next, { actionError: "Provider handoff failed: an unexpected response was received." }))
+        return
+      }
+      if (!outcome.ok) {
+        yield* SubscriptionRef.update(state, next => withFullAuto(next, { actionError: outcome.error.message }))
+        return
+      }
+      yield* SubscriptionRef.update(state, next => withFullAuto(next, {
+        runs: upsertRun(next.fullAuto.runs, outcome.value.run),
+        actionError: null,
+      }))
+      yield* refreshActiveRun()
+    }),
   }
 }
 
@@ -720,6 +748,8 @@ export const fullAutoRunView = (fullAuto: FullAutoWorkspaceState): View => {
   const canResume = run.state === "paused"
   const canRetryNow = run.state === "stalled" && run.recoveryAction === "retry_now"
   const canStop = !["completed", "failed", "stopped", "cap_reached"].includes(run.state)
+  const handoffTargetLane = run.lane === "fable-local" ? "codex-local" : "fable-local"
+  const handoffTargetLabel = fullAutoLauncherLaneLabel(handoffTargetLane)
   return Stack(
     {
       key: "workspace-full-auto-run",
@@ -772,6 +802,15 @@ export const fullAutoRunView = (fullAuto: FullAutoWorkspaceState): View => {
             : []),
           ...(canRetryNow
             ? [Button({ key: "full-auto-run-retry-now", label: "Retry now", variant: "secondary", onPress: IntentRef("DesktopFullAutoRunRetryNowRequested"), a11y: { label: "Retry this stalled Full Auto run now" } })]
+            : []),
+          ...(canResume
+            ? [Button({
+                key: "full-auto-run-handoff",
+                label: `Switch to ${handoffTargetLabel}`,
+                variant: "secondary",
+                onPress: IntentRef("DesktopFullAutoRunHandoffRequested", StaticPayload(handoffTargetLane)),
+                a11y: { label: `Switch this paused Full Auto run to ${handoffTargetLabel}` },
+              })]
             : []),
           ...(canStop
             ? [Button({

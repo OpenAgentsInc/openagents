@@ -17,14 +17,33 @@ const titleFor = (text: string): string => text.replace(/\s+/g, " ").trim().slic
 const compareDesktopThreadsByLastAccess = (left: DesktopThread, right: DesktopThread): number =>
   right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
 
-export const makeThreadStore = (file: string) => {
+export type ThreadStoreOptions = Readonly<{
+  /** Thread ids owned by nonterminal FullAutoRuns. They remain durable in
+   * addition to the five-entry ordinary composer cache until terminal. */
+  protectedThreadIds?: () => ReadonlySet<string>
+}>
+
+export const makeThreadStore = (file: string, options: ThreadStoreOptions = {}) => {
+  const bounded = (threads: ReadonlyArray<DesktopThread>): DesktopThread[] => {
+    const sorted = [...threads].sort(compareDesktopThreadsByLastAccess)
+    let protectedIds: ReadonlySet<string> = new Set()
+    try {
+      protectedIds = options.protectedThreadIds?.() ?? protectedIds
+    } catch {
+      // A corrupt/unavailable auxiliary authority must not corrupt the chat
+      // cache. Normal LRU behavior remains the fail-safe fallback.
+    }
+    const protectedThreads = sorted.filter(thread => protectedIds.has(thread.id))
+    const ordinaryThreads = sorted.filter(thread => !protectedIds.has(thread.id)).slice(0, maxThreads)
+    return [...protectedThreads, ...ordinaryThreads].sort(compareDesktopThreadsByLastAccess)
+  }
   const read = (): DesktopThread[] => {
     try {
       const value = JSON.parse(readFileSync(file, "utf8")) as { threads?: unknown }
       const decoded = decode(Schema.Array(DesktopThreadSchema), value.threads) as ReadonlyArray<DesktopThread> | null
-      return decoded?.map(thread => thread.createdAt === undefined
+      return bounded(decoded?.map(thread => thread.createdAt === undefined
         ? { ...thread, createdAt: thread.updatedAt }
-        : thread).slice(0, maxThreads) ?? []
+        : thread) ?? [])
     } catch { return [] }
   }
   const write = (threads: DesktopThread[]): DesktopThread[] => {
@@ -32,15 +51,15 @@ export const makeThreadStore = (file: string) => {
     // presentation catalog. Retain the five most recently accessed threads
     // so an older-created conversation cannot disappear while its active turn
     // is still streaming or immediately before Full Auto continues it.
-    const bounded = [...threads].sort(compareDesktopThreadsByLastAccess).slice(0, maxThreads)
+    const retained = bounded(threads)
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     if (process.platform !== "win32") chmodSync(path.dirname(file), 0o700)
     const temporary = `${file}.tmp`
-    writeFileSync(temporary, JSON.stringify({ version: 1, threads: bounded }), { encoding: "utf8", mode: 0o600 })
+    writeFileSync(temporary, JSON.stringify({ version: 1, threads: retained }), { encoding: "utf8", mode: 0o600 })
     if (process.platform !== "win32") chmodSync(temporary, 0o600)
     renameSync(temporary, file)
     if (process.platform !== "win32") chmodSync(file, 0o600)
-    return bounded
+    return retained
   }
   return {
     list: (): DesktopThread[] => read(),

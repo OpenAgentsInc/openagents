@@ -392,6 +392,44 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
     }))
   })
 
+  test("a paused run handoff uses the main-owned host action and refreshes the switched lane", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const requests: Array<unknown> = []
+      const paused = baseRun({ runRef: "run-handoff", state: "paused", lane: "codex-local" })
+      const switched = { ...paused, lane: "fable-local" as const }
+      const { state, registry } = yield* makeHarness({
+        handoff: async request => {
+          requests.push(request)
+          return {
+            ok: true,
+            value: {
+              run: switched,
+              transition: {
+                handoffRef: "handoff-1",
+                from: "codex-local",
+                to: "fable-local",
+                disposition: "complete_within_bounds",
+                truncated: false,
+                reason: request.reason ?? "owner handoff",
+              },
+            },
+          }
+        },
+        get: async () => ({ ok: true, value: switched }),
+        report: async () => ({ ok: true, value: { turns: [], providerTransitions: [] } }),
+      }, { fullAuto: { ...emptyFullAutoWorkspaceState(), mode: "run", activeRunRef: paused.runRef, runs: [paused] } })
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoRunHandoffRequested", StaticPayload("fable-local"))))
+      expect(requests).toEqual([{
+        runRef: "run-handoff",
+        targetLaneRef: "fable-local",
+        reason: "Provider handoff requested from the dedicated Full Auto run view.",
+      }])
+      const next = yield* SubscriptionRef.get(state)
+      expect(next.fullAuto.runs[0]?.lane).toBe("fable-local")
+      expect(next.fullAuto.actionError).toBeNull()
+    }))
+  })
+
   test("FA-WIRE-01: fallback add/remove/wall-clock intents update the draft; Start submits the ordered policy + guardrails", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const startRequests: Array<Record<string, unknown>> = []

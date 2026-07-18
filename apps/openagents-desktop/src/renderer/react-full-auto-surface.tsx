@@ -292,6 +292,8 @@ const FullAutoRunView = ({ state, report }: {
   const canResume = run.state === "paused"
   const canRetryNow = run.state === "stalled" && run.recoveryAction === "retry_now"
   const canStop = !FULL_AUTO_RUN_TERMINAL_STATES.includes(run.state)
+  const handoffTargetLane = run.lane === "fable-local" ? "codex-local" : "fable-local"
+  const handoffTargetLabel = fullAutoLauncherLaneLabel(handoffTargetLane)
   return <section className="oa-react-full-auto-run" data-full-auto-run-ref={run.runRef} data-full-auto-run-state={run.state} aria-labelledby="react-full-auto-run-title">
     <header className="oa-react-full-auto-run-header">
       <div className="oa-react-full-auto-run-heading">
@@ -316,6 +318,7 @@ const FullAutoRunView = ({ state, report }: {
         {!canPause ? null : <Button data-en-key="full-auto-run-pause" variant="secondary" onClick={() => dispatch(report, "DesktopFullAutoRunPauseRequested")}>Pause</Button>}
         {!canResume ? null : <Button data-en-key="full-auto-run-resume" onClick={() => dispatch(report, "DesktopFullAutoRunResumeRequested")}>Resume</Button>}
         {!canRetryNow ? null : <Button data-en-key="full-auto-run-retry-now" variant="secondary" onClick={() => dispatch(report, "DesktopFullAutoRunRetryNowRequested")}>Retry now</Button>}
+        {!canResume ? null : <Button data-en-key="full-auto-run-handoff" variant="secondary" onClick={() => dispatch(report, "DesktopFullAutoRunHandoffRequested", handoffTargetLane)}>Switch to {handoffTargetLabel}</Button>}
         {!canStop ? null : <Button data-en-key="full-auto-run-stop" variant="destructive" onClick={() => dispatch(report, "DesktopFullAutoRunStopRequested")} aria-label="Stop this Full Auto run. This cannot be undone.">Stop</Button>}
         <Button data-en-key="full-auto-run-refresh" variant="ghost" onClick={() => dispatch(report, "DesktopFullAutoRunRefreshed")}>Refresh</Button>
       </div>

@@ -2,9 +2,10 @@
  * Evidence-gathering script for openagents#8997 (Full Auto run view pixel
  * proof) and openagents#8976 (six named Full Auto/provider-handoff sidebar
  * tests). Drives the REAL Desktop UI through `launch-isolated-app.ts` --
- * real clicks, real typing, real Codex-local dispatch (Codex reads
- * `~/.codex/auth.json` directly; Claude is NOT available under isolated
- * proof mode, see that module's header) -- against a disposable scratch git
+ * real clicks, real typing, and real native-provider dispatch (Codex reads
+ * its ordinary file-backed auth; an explicitly armed Claude proof lets the
+ * real SDK resolve its ordinary session, never through a host Keychain probe
+ * or credential copy) -- against a disposable scratch git
  * workspace so Full Auto can genuinely write files without touching any
  * product checkout.
  *
@@ -19,10 +20,9 @@
  *     run's first turn may still be active, observing the run stays
  *     addressable afterward.
  *
- * What this does NOT prove (documented honestly in the receipt): TEST
- * 01/02/03 and the literal Claude-provider half of TEST 05, since Claude
- * auth is unavailable under the isolated-proof Keychain-mock gate in this
- * sandboxed session.
+ * This focused driver proves one provider-specific Full Auto row plus the
+ * thread-pressure composition. The six-row bidirectional/restart driver
+ * builds on the same launcher below.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -34,8 +34,9 @@ const main = async (): Promise<void> => {
   const launchCwd = process.argv[2];
   const outDir = process.argv[3];
   const turnCap = Number(process.argv[4] ?? "3");
+  const laneRef = process.argv[5] ?? "codex-local";
   if (launchCwd === undefined || outDir === undefined) {
-    throw new Error("usage: fa-evidence-run.ts <scratch-workspace-dir> <out-dir> [turn-cap]");
+    throw new Error("usage: fa-evidence-run.ts <scratch-workspace-dir> <out-dir> [turn-cap] [lane-ref]");
   }
   mkdirSync(outDir, { recursive: true });
   const log: LogEntry[] = [];
@@ -58,7 +59,12 @@ const main = async (): Promise<void> => {
   };
 
   record("launching_isolated_app", { launchCwd });
-  const desktop = await launchIsolatedDesktopApp({ launchCwd });
+  const desktop = await launchIsolatedDesktopApp({
+    launchCwd,
+    ...(laneRef === "fable-local"
+      ? { extraEnv: { OPENAGENTS_DESKTOP_USE_DEFAULT_CLAUDE_SESSION: "1" } }
+      : {}),
+  });
   record("launched", { userDataPath: desktop.userDataPath });
   const { page } = desktop;
 
@@ -96,6 +102,8 @@ const main = async (): Promise<void> => {
 
     const laneFieldValue = await page.inputValue('[data-en-key="full-auto-launcher-lane-field"]');
     record("lane_field_default", { laneFieldValue });
+    await page.selectOption('[data-en-key="full-auto-launcher-lane-field"]', laneRef);
+    record("lane_selected", { laneRef });
 
     await page.fill('[data-en-key="full-auto-launcher-turn-cap-field"]', String(turnCap));
     await shot(page, "02-launcher-filled.png");

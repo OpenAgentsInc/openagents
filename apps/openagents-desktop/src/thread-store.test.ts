@@ -124,6 +124,45 @@ describe("H2 local thread fork persistence", () => {
     }
   })
 
+  test("protects an in-flight Full Auto run across six ordinary chats and restart, then releases it at terminal", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-full-auto-protection-"))
+    const file = path.join(root, "threads.json")
+    const protectedIds = new Set(["full-auto-active"])
+    try {
+      writeFileSync(file, JSON.stringify({
+        version: 1,
+        threads: [{
+          id: "full-auto-active",
+          title: "Overnight run",
+          createdAt: "2026-07-17T00:00:00.000Z",
+          updatedAt: "2026-07-17T00:00:00.000Z",
+          notes: [{ key: "turn-running", role: "system", text: "turn running", timestamp: "00:00" }],
+        }],
+      }))
+      const store = makeThreadStore(file, { protectedThreadIds: () => protectedIds })
+
+      // Exact escaped incident pressure: six ordinary chats arrive before
+      // the run thread is touched again.
+      for (let index = 0; index < 6; index += 1) store.newThread(`Ordinary ${index}`)
+
+      expect(store.open("full-auto-active")?.notes[0]?.text).toBe("turn running")
+      expect(store.list()).toHaveLength(6)
+      expect(store.list().filter(thread => thread.id !== "full-auto-active")).toHaveLength(5)
+
+      const reopened = makeThreadStore(file, { protectedThreadIds: () => protectedIds })
+      expect(reopened.open("full-auto-active")).not.toBeNull()
+
+      // Terminal settlement removes the id from the durable protection
+      // authority. The next ordinary cache write can evict it normally.
+      protectedIds.clear()
+      reopened.newThread("After terminal")
+      expect(reopened.open("full-auto-active")).toBeNull()
+      expect(reopened.list()).toHaveLength(5)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("creates distinct seeded threads while leaving the seed and first fork unmutated", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-history-fork-"))
     try {

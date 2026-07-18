@@ -17,10 +17,11 @@
  *     mode is requested against any other profile.
  *   - `OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` enables Chromium's mock
  *     keychain and disables the native session vault (main.ts /
- *     src/isolated-app-proof.ts) -- this harness can never prove
- *     authenticated Claude/Sync; only Codex-local (which reads
- *     `~/.codex/auth.json` directly, independent of Electron's userData/
- *     session model) is live under it.
+ *     src/isolated-app-proof.ts). A separately gated caller may still ask
+ *     the Claude Agent SDK to use its ordinary authenticated SDK session;
+ *     this harness itself never probes Keychain, copies credentials, or
+ *     claims provider readiness. Codex-local continues to read its normal
+ *     file-backed auth independently of Electron userData/session state.
  *   - `OPENAGENTS_DESKTOP_PREVIEW=1` requires the isolated proof gate above
  *     (main.ts: "OpenAgents Desktop preview requires an isolated OS-temporary
  *     userData profile") -- it is impossible to combine preview mode with a

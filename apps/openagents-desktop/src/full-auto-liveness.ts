@@ -122,10 +122,12 @@ export const recoveryActionForCause = (cause: FullAutoStallCause | null): FullAu
  */
 export const classifyFullAutoDispatchFailureReason = (reason: string | null | undefined): FullAutoStallCause => {
   if (reason === null || reason === undefined || reason.length === 0) return "unknown_error"
-  // FA-RUN-02 (#8970): the exact fail-closed string provider-lane.ts's
-  // dispatchTurn returns when the underlying thread/session store has
-  // evicted or never held the conversation -- the incident's precise shape.
-  if (reason === "That conversation no longer exists.") return "provider_session_missing"
+  if (reason === "host_thread_missing") return "host_thread_missing"
+  if (reason === "provider_session_missing") return "provider_session_missing"
+  // Backward compatibility for rows persisted before #9001 added the typed
+  // host failure. This display string has always come from the Desktop
+  // ThreadStore check in provider-lane.ts, not from a provider session.
+  if (reason === "That conversation no longer exists.") return "host_thread_missing"
   // reconcileFullAutoThreads's FA-H3 defense-in-depth guard: the durable
   // lease and the local-turn journal disagree about whether a turn is
   // already in flight.

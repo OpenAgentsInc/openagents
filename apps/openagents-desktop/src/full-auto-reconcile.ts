@@ -203,6 +203,9 @@ export const makeSerialTaskQueue = (): (<A>(task: () => Promise<A>) => Promise<A
 export type FullAutoDispatchResult = Readonly<{
   ok: boolean
   reason?: string
+  /** Host/provider ownership of a dispatch failure, kept separate from the
+   * provider's human-readable detail so liveness never has to infer it. */
+  failureCause?: FullAutoDispatchFailureCause
   /**
    * FA-RT-01 (#8987): OPTIONAL typed failure class. When present (and the
    * record carries a routing policy with an untried admitted candidate),
@@ -212,6 +215,7 @@ export type FullAutoDispatchResult = Readonly<{
    */
   failureClass?: FullAutoRotationReason
 }>
+export type FullAutoDispatchFailureCause = "host_thread_missing" | "provider_session_missing"
 export type FullAutoDispatch = (input: Readonly<{
   threadRef: string
   /** The exact leased continuation turn ref -- the dispatched turn MUST use
@@ -221,6 +225,15 @@ export type FullAutoDispatch = (input: Readonly<{
   /** FA-H6: the record's bound execution profile, when one exists. */
   profile?: FullAutoProfile
 }>) => Promise<FullAutoDispatchResult>
+
+export type FullAutoContinuationMessageCompiler = (input: Readonly<{
+  threadRef: string
+  turnRef: string
+  record: FullAutoRecord
+  profile?: FullAutoProfile
+  turnCap: number
+  attempt: number
+}>) => string
 
 export type FullAutoWorkspaceBlockReason = "workspace_mismatch" | "workspace_unbound"
 
@@ -287,6 +300,14 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
   clearStaleLeases?: boolean
   now?: () => Date
   dispatch: FullAutoDispatch
+  /** #9000: compile the private host-authoritative mission immediately
+   * before EACH attempt. A rotation therefore observes the handoff recorded
+   * by the prior attempt instead of reusing stale/generic prompt text. */
+  compileDispatchMessage?: FullAutoContinuationMessageCompiler
+  onDispatched?: (threadRef: string, result: Readonly<{
+    turnRef: string
+    profile?: FullAutoProfile
+  }>) => void
   onCapReached?: (threadRef: string) => void
   /** FA-H2: the record was disabled because its workspace binding failed. */
   onWorkspaceBlocked?: (threadRef: string, block: Readonly<{
@@ -519,12 +540,24 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       // skips. Each rotation attempt is its own leased turn identity.
       const turnRef = `turn.full-auto.${randomUUID()}`
       if (!input.registry.claimPending(threadRef, turnRef)) break
-      let failure: Readonly<{ reason: string; failureClass: FullAutoRotationReason | null }>
+      let failure: Readonly<{
+        reason: string
+        failureCause: FullAutoDispatchFailureCause | null
+        failureClass: FullAutoRotationReason | null
+      }>
       try {
+        const message = input.compileDispatchMessage?.({
+          threadRef,
+          turnRef,
+          record,
+          ...(profile === undefined ? {} : { profile }),
+          turnCap: effectiveTurnCap,
+          attempt,
+        }) ?? FULL_AUTO_CONTINUE_MESSAGE
         const result = await input.dispatch({
           threadRef,
           turnRef,
-          message: FULL_AUTO_CONTINUE_MESSAGE,
+          message,
           ...(profile === undefined ? {} : { profile }),
         })
         if (result.ok) {
@@ -546,16 +579,22 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
           ) {
             input.registry.bindProfile(threadRef, profile)
           }
+          input.onDispatched?.(threadRef, {
+            turnRef,
+            ...(profile === undefined ? {} : { profile }),
+          })
           dispatched.push(threadRef)
           break
         }
         failure = {
           reason: result.reason ?? "dispatch_failed",
+          failureCause: result.failureCause ?? null,
           failureClass: result.failureClass ?? null,
         }
       } catch (error) {
         failure = {
           reason: error instanceof Error ? `${error.name}: ${error.message}` : "dispatch_threw",
+          failureCause: null,
           failureClass: null,
         }
       }
@@ -582,7 +621,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       }
       // A full unsuccessful cycle (or a non-rotatable failure) consumes
       // exactly ONE failure-budget step -- existing FA-H5 semantics.
-      failThread(failure.reason)
+      failThread(failure.failureCause ?? failure.reason)
       break
     }
   }

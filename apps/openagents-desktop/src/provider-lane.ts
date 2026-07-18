@@ -214,6 +214,9 @@ export type ProviderLaneDispatchResult = Readonly<{
   error?: string
   /** Preserve the provider's typed terminal reason across the IPC boundary. */
   reason?: FableLocalFailureReason
+  /** Host-store ownership is not a provider session failure. Keep this
+   * machine-readable so Full Auto liveness never infers from display copy. */
+  failureCause?: "host_thread_missing"
 }>
 
 /** Host services the dispatcher folds every lane through — narrow structural
@@ -323,7 +326,7 @@ export const makeProviderLaneDispatcher = (
     const requestedModel = admission.model
     const store = deps.threads()
     if (store.open(request.threadRef) === null) {
-      return { ok: false, error: "That conversation no longer exists." }
+      return { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
     }
     lane.prepare?.(request, sender, requestedModel)
     const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: lane.laneRef }
@@ -343,7 +346,9 @@ export const makeProviderLaneDispatcher = (
     if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
     lane.bound?.(request)
     const saved = store.upsert(request.threadRef, user)
-    if (saved === null) return { ok: false, error: "That conversation no longer exists." }
+    if (saved === null) {
+      return { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
+    }
     // History authority is main's own thread store — the renderer supplies
     // only the new message. The just-appended user note is the prompt, not
     // history.
@@ -518,7 +523,7 @@ export const makeProviderLaneDispatcher = (
     await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
     lane.completed?.(request)
     return thread === null
-      ? { ok: false, error: "That conversation no longer exists." }
+      ? { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
       : { ok: true, thread }
   }
 

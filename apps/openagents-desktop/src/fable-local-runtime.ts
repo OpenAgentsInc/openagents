@@ -42,7 +42,6 @@
  * IPC wiring lives in main.ts.
  */
 import { createHash } from "node:crypto"
-import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { access } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -122,6 +121,10 @@ export const FABLE_LOCAL_TIMEOUT_MS = 180_000
  * while a question is pending — waiting on the user is not model latency.
  */
 export const FABLE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
+/** Explicit owner/proof arming for the ordinary Claude Code session. The
+ * host performs no Keychain probe: the real SDK either authenticates through
+ * its normal custody path or returns a typed provider failure. */
+export const FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV = "OPENAGENTS_DESKTOP_USE_DEFAULT_CLAUDE_SESSION"
 /** The one interactive tool this lane answers through a real UI path. */
 export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
 
@@ -387,28 +390,17 @@ export type FableLocalRuntimeOptions = Readonly<{
 const bounded = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 
-const currentClaudeSessionPresent = async (
-  home: string,
-  allowSystemKeychain: boolean,
-): Promise<boolean> => {
+const currentClaudeSessionPresent = async (home: string): Promise<boolean> => {
   try {
     await access(join(home, ".credentials.json"))
     return true
   } catch {
-    // Claude Code on macOS normally stores the active login in Keychain.
+    // Automated account discovery must never probe macOS Keychain: the
+    // `security` CLI can open a blocking owner-password dialog. The ordinary
+    // session is admitted only by explicit file-backed custody; pooled homes
+    // below use their own file-backed OAuth token.
+    return false
   }
-  if (!allowSystemKeychain || process.platform !== "darwin") return false
-  return new Promise(resolve => {
-    try {
-      const child = spawn("security", ["find-generic-password", "-s", "Claude Code-credentials"], {
-        stdio: "ignore",
-      })
-      child.once("error", () => resolve(false))
-      child.once("close", code => resolve(code === 0))
-    } catch {
-      resolve(false)
-    }
-  })
 }
 
 /**
@@ -442,7 +434,7 @@ export const discoverReadyFableClaudeHomes = async (
     .filter(entry => entry.provider === "claude_agent" && entry.home !== defaultHome)
     .sort((left, right) => left.ref.localeCompare(right.ref))
   const ready: FableLocalAccountHome[] = []
-  if (await currentClaudeSessionPresent(defaultHome, root === homedir())) {
+  if (env[FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "1" || await currentClaudeSessionPresent(defaultHome)) {
     ready.push({ ref: "claude", home: defaultHome, source: "current_session" })
   }
   for (const entry of candidates) {

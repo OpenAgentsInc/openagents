@@ -68,9 +68,9 @@ const makeClock = (startIso: string) => {
 }
 
 describe("classifyFullAutoDispatchFailureReason (bounded reason -> stall-cause lookup)", () => {
-  test("maps the exact FA-RUN-02 (#8970) incident string to provider_session_missing", () => {
+  test("maps the exact FA-RUN-02 (#8970) incident string to host_thread_missing", () => {
     expect(classifyFullAutoDispatchFailureReason("That conversation no longer exists.")).toBe(
-      "provider_session_missing",
+      "host_thread_missing",
     )
   })
   test("maps the FA-H3 in-flight guard to stale_lease", () => {
@@ -202,7 +202,7 @@ describe("classifyFullAutoRunLiveness (FA-AC-47: liveness distinct from a health
         now: clock.now(),
       })
       expect(projection.projectedState).toBe("retrying")
-      expect(projection.cause).toBe("provider_session_missing")
+      expect(projection.cause).toBe("host_thread_missing")
       expect(projection.nextRetryAt).toBe(new Date(Date.parse(lastFailureAt) + fullAutoFailureBackoffMs(2)).toISOString())
       expect(projection.recoveryAction).toBe("none")
     })
@@ -225,8 +225,8 @@ describe("classifyFullAutoRunLiveness (FA-AC-47: liveness distinct from a health
         now: clock.now(),
       })
       expect(projection.projectedState).toBe("stalled")
-      expect(projection.cause).toBe("provider_session_missing")
-      expect(projection.recoveryAction).toBe("retry_now")
+      expect(projection.cause).toBe("host_thread_missing")
+      expect(projection.recoveryAction).toBe("stop_only")
     })
   })
 
@@ -346,7 +346,7 @@ describe("settleFullAutoRunLiveness (the single mutating entry point)", () => {
       clock.advance(fullAutoFailureBackoffMs(1) + FULL_AUTO_LIVENESS_RETRY_GRACE_MS + 1_000)
       const second = settleFullAutoRunLiveness(runRegistry, first.run, { threadRecord: record, turnRunning: false }, clock.now)
       expect(second.run.state).toBe("stalled")
-      expect(second.projection.cause).toBe("provider_session_missing")
+      expect(second.projection.cause).toBe("host_thread_missing")
     })
   })
 
@@ -523,12 +523,12 @@ describe("decideFullAutoLivenessNotification (attention signals: dedup, permissi
  * classifier -- the exact fail-closed string production dispatchTurn
  * returns (pinned by the FA-RUN-02 #8970 regression in
  * tests/full-auto-restart.e2e.test.ts) all the way through to a bounded,
- * owner-actionable `provider_session_missing` classification with a real
- * retry ETA and then, once retries exhaust their window, a Stalled
- * disposition with a `retry_now` recovery affordance.
+ * owner-actionable `host_thread_missing` classification with a real retry
+ * ETA and then, once the schedule exhausts its window, a fail-closed Stalled
+ * disposition with a `stop_only` recovery affordance.
  */
 describe("End-to-end: the FA-RUN-02 (#8970) incident's exact failure string produces an actionable stall (not just the raw string)", () => {
-  test("repeated 'That conversation no longer exists.' dispatch failures classify as Retrying-with-ETA, then Stalled with provider_session_missing and a retry_now affordance once the schedule is exhausted", async () => {
+  test("repeated 'That conversation no longer exists.' dispatch failures classify as Retrying-with-ETA, then Stalled with host_thread_missing and a stop_only affordance once the schedule is exhausted", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-liveness-incident-"))
     try {
       const clock = makeClock("2026-07-17T00:00:00.000Z")
@@ -569,7 +569,7 @@ describe("End-to-end: the FA-RUN-02 (#8970) incident's exact failure string prod
       // Actionable: a real typed cause and a real retry ETA -- not just the
       // raw provider string, and not a generic failed-turn banner.
       expect(afterFirstFailure.run.state).toBe("retrying")
-      expect(afterFirstFailure.projection.cause).toBe("provider_session_missing")
+      expect(afterFirstFailure.projection.cause).toBe("host_thread_missing")
       expect(afterFirstFailure.projection.nextRetryAt).not.toBeNull()
 
       // Advance past the FIRST backoff window plus grace with no further
@@ -583,11 +583,11 @@ describe("End-to-end: the FA-RUN-02 (#8970) incident's exact failure string prod
         clock.now,
       )
       expect(overdue.run.state).toBe("stalled")
-      expect(overdue.projection.cause).toBe("provider_session_missing")
-      expect(overdue.projection.recoveryAction).toBe("retry_now")
+      expect(overdue.projection.cause).toBe("host_thread_missing")
+      expect(overdue.projection.recoveryAction).toBe("stop_only")
       // The last transition names WHY, distinctly from the low-level
       // "That conversation no longer exists." string.
-      expect(overdue.run.transitions.at(-1)?.reason).toContain("provider_session_missing")
+      expect(overdue.run.transitions.at(-1)?.reason).toContain("host_thread_missing")
       expect(overdue.run.transitions.at(-1)?.actor).toBe("liveness_monitor")
     } finally {
       rmSync(root, { recursive: true, force: true })

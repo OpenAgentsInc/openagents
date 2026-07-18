@@ -245,6 +245,28 @@ test("background Full Auto exposes durably projected progress without renderer o
 })
 
 describe("provider lane SPI with a never-hand-wired fixture lane", () => {
+  test("attributes a missing host thread before any provider or journal work", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-host-thread-missing-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const result = await makeProviderLaneDispatcher(harness.deps).dispatchTurn(
+        harness.lane,
+        startRequest("thread.evicted"),
+        null,
+      )
+      expect(result).toMatchObject({
+        ok: false,
+        error: "That conversation no longer exists.",
+        failureCause: "host_thread_missing",
+      })
+      expect(harness.runMessages).toEqual([])
+      expect(harness.journal.list()).toEqual([])
+      expect(harness.checkpoints).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("projects and revalidates the same bounded spec context across two lane refs", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-spec-lanes-"))
     try {

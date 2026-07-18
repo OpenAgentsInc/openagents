@@ -26,6 +26,7 @@ import {
   FABLE_DELEGATE_TOOL_NAME,
   FABLE_FIXTURE_DELEGATE_TASK,
   FABLE_LOCAL_DISALLOWED_TOOLS,
+  FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV,
   FABLE_LOCAL_MODEL,
   FABLE_STREAM_CLOSE_TIMEOUT_MS,
   discoverReadyFableClaudeHomes,
@@ -77,6 +78,15 @@ describe("discoverReadyFableClaudeHomes", () => {
     const root = mkdtempSync(join(tmpdir(), "fable-local-empty-"))
     mkdirSync(join(root, ".claude-pylon-a"))
     expect(await discoverReadyFableClaudeHomes({ PYLON_ACCOUNT_HOME_ROOT: root })).toEqual([])
+  })
+
+  test("explicit proof arming admits the ordinary SDK session without a credential file or probe", async () => {
+    const root = mkdtempSync(join(tmpdir(), "fable-local-owner-session-"))
+    mkdirSync(join(root, ".claude"))
+    expect(await discoverReadyFableClaudeHomes({
+      PYLON_ACCOUNT_HOME_ROOT: root,
+      [FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV]: "1",
+    })).toEqual([{ ref: "claude", home: join(root, ".claude"), source: "current_session" }])
   })
 })
 

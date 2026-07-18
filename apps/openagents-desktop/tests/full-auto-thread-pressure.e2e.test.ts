@@ -147,7 +147,7 @@ const makeFullAutoRuntime = (root: string) => {
    * thread to dispatch: was the addressed thread openable right then? */
   const continuations: Array<{ threadRef: string; turnRef: string; openableAtDispatch: boolean }> = []
   /** Every typed dispatch failure, with its liveness classification -- a
-   * retention regression must show up here as `provider_session_missing`,
+   * retention regression must show up here as `host_thread_missing`,
    * never as a generic/unknown error. */
   const failures: Array<{ threadRef: string; reason: string; cause: string }> = []
 
@@ -169,7 +169,13 @@ const makeFullAutoRuntime = (root: string) => {
         }
         continuations.push({ threadRef, turnRef, openableAtDispatch: store.open(threadRef) !== null })
         const result = await dispatcher.dispatchTurn(lane, { turnRef, threadRef, message, fullAuto: true }, null)
-        return result.ok ? { ok: true } : { ok: false, reason: result.error ?? "dispatch_failed" }
+        return result.ok
+          ? { ok: true }
+          : {
+              ok: false,
+              reason: result.error ?? "dispatch_failed",
+              ...(result.failureCause === undefined ? {} : { failureCause: result.failureCause }),
+            }
       },
       onDispatchFailed: (threadRef, failure) => {
         failures.push({
@@ -367,7 +373,7 @@ describe("FA-PRESS-01: active-run thread retention under cache pressure (#8989)"
   )
 
   test(
-    "typed defect class: a continuation that DOES address an unopenable thread fails through the real engine as the exact incident string, classified provider_session_missing (never unknown_error), fail-closed BEFORE provider execution, with FA-H5 failure state persisted and the lease released",
+    "typed defect class: a continuation that DOES address an unopenable thread is classified host_thread_missing (never provider_session_missing), fail-closed BEFORE provider execution, with FA-H5 failure state persisted and the lease released",
     async () => {
       const root = mkdtempSync(path.join(tmpdir(), "oa-fa-press-defect-class-"))
       try {
@@ -389,12 +395,12 @@ describe("FA-PRESS-01: active-run thread retention under cache pressure (#8989)"
         expect(await runtime.reconcile()).toEqual([])
 
         // The failure surfaced as the typed defect class -- the exact
-        // provider-lane.ts fail-closed string, classified to the liveness
-        // vocabulary's provider_session_missing bucket, not a generic error.
+        // provider-lane.ts typed host cause, classified to the liveness
+        // vocabulary's host_thread_missing bucket, not a provider error.
         expect(runtime.failures).toEqual([{
           threadRef: fullAutoThread.id,
-          reason: "That conversation no longer exists.",
-          cause: "provider_session_missing",
+          reason: "host_thread_missing",
+          cause: "host_thread_missing",
         }])
         expect(runtime.failures[0]!.cause).not.toBe("unknown_error")
         // The continuation honestly addressed an unopenable thread...
@@ -409,7 +415,7 @@ describe("FA-PRESS-01: active-run thread retention under cache pressure (#8989)"
         const record = runtime.registry.record(fullAutoThread.id)
         expect(record?.enabled).toBe(true)
         expect(record?.consecutiveFailures).toBe(1)
-        expect(record?.blockedReason).toBe("That conversation no longer exists.")
+        expect(record?.blockedReason).toBe("host_thread_missing")
         expect(record?.pendingTurnRef ?? null).toBeNull()
       } finally {
         rmSync(root, { recursive: true, force: true })

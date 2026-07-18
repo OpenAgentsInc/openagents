@@ -316,6 +316,11 @@ import {
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
 import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
+import {
+  appendFullAutoQueuedInstruction,
+  compileFullAutoMissionPacket,
+  renderFullAutoMissionPrompt,
+} from "./full-auto-mission.ts"
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import {
@@ -1166,7 +1171,10 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
   return request === null ? unavailableFleetStageResult() : submitFleetBrief(request)
 })
 
-const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+let protectedDesktopThreadRefs = (): ReadonlySet<string> => new Set()
+const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"), {
+  protectedThreadIds: protectedDesktopThreadRefs,
+})
 const runtimeControlOutcomes = openDesktopRuntimeControlOutcomeStore(
   path.join(app.getPath("userData"), "runtime-control-outcomes", "ledger.json"),
 )
@@ -1239,6 +1247,11 @@ const fullAutoRunProjectionPublisher = makeFullAutoRunProjectionPublisher({
 const fullAutoRunRegistry = wrapFullAutoRunRegistryWithProjectionPublish(
   fullAutoRunRegistryRaw,
   fullAutoRunProjectionPublisher,
+)
+protectedDesktopThreadRefs = () => new Set(
+  fullAutoRunRegistry.list()
+    .filter(run => !FULL_AUTO_RUN_TERMINAL_STATES.has(run.state) && run.threadRef !== undefined)
+    .map(run => run.threadRef!),
 )
 /** FA-HO-01 (#8975): the durable cross-provider handoff receipt store, kept
  * independent of `fullAutoRunRegistry.transitions` (lifecycle-state edges,
@@ -4052,6 +4065,25 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     // FA-H3: only the startup pass may clear a stale (crashed mid-dispatch)
     // lease; a mid-session pass treats a held lease as in-flight and skips.
     ...(options?.startup === true ? { clearStaleLeases: true } : {}),
+    compileDispatchMessage: ({ threadRef, record, profile, turnCap }) => {
+      const run = fullAutoRunRegistry.findByThreadRef(threadRef)
+      const previousHandoff = providerHandoffRegistry.list(
+        run === null ? { threadRef } : { runRef: run.runRef },
+      ).at(-1) ?? null
+      const priorAcceptedOutcome = localTurnJournal.list()
+        .filter(turn => turn.threadRef === threadRef && turn.disposition === "completed")
+        .toSorted((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .at(-1) ?? null
+      return renderFullAutoMissionPrompt(compileFullAutoMissionPacket({
+        run,
+        record,
+        threadRef,
+        profile,
+        turnCap,
+        priorAcceptedOutcome,
+        previousHandoff,
+      }))
+    },
     dispatch: async ({ threadRef, turnRef, message, profile }) => {
       // FA-H3 defense in depth: even if a lease were somehow bypassed, never
       // start a Full Auto continuation on a thread that already has a
@@ -4086,7 +4118,9 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
             return dispatchCodexLocalTurn({
               turnRef,
               threadRef,
-              message: promotedFollowup?.message ?? message,
+              message: promotedFollowup === null
+                ? message
+                : appendFullAutoQueuedInstruction(message, promotedFollowup.message),
               fullAuto: true,
               ...(promotedFollowup === null ? {} : {
                 queueRef: promotedFollowup.queueRef,
@@ -4135,15 +4169,47 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // next admitted candidate in the same pass. Untyped failures classify
       // to null and keep the existing FA-H5 budget semantics.
       const failureClass = classifyFullAutoDispatchFailure(result.reason, result.error)
+      const failureCause = (result as { failureCause?: unknown }).failureCause === "host_thread_missing"
+        ? "host_thread_missing" as const
+        : undefined
       return {
         ok: false,
         reason: result.error ?? "dispatch_failed",
+        ...(failureCause === undefined ? {} : { failureCause }),
         ...(failureClass === null ? {} : { failureClass }),
       }
+    },
+    onDispatched: (dispatchedThreadRef, result) => {
+      const run = fullAutoRunRegistry.findByThreadRef(dispatchedThreadRef)
+      if (run !== null) fullAutoRunRegistry.recordAttempt(run.runRef, "success", { turnRef: result.turnRef })
     },
     // FA-RT-01 (#8987): a rotation is an owner-visible fact on the thread,
     // like every other Full Auto outcome.
     onRotated: (rotatedThreadRef, rotation) => {
+      const run = fullAutoRunRegistry.findByThreadRef(rotatedThreadRef)
+      if (run !== null) fullAutoRunRegistry.recordAttempt(run.runRef, "failure")
+      const reason = `automatic owner-admitted rotation after ${rotation.reason.replace(/_/g, " ")}`
+      const envelope = buildProviderHandoffEnvelope({
+        run,
+        sourceLaneRef: rotation.fromLane,
+        targetLaneRef: rotation.toLane,
+        thread: threads().open(rotatedThreadRef),
+        reason,
+        actor: "turn_resolution",
+        at: rotation.at,
+      })
+      providerHandoffRegistry.record({
+        ...(run === null ? {} : { runRef: run.runRef }),
+        threadRef: rotatedThreadRef,
+        from: rotation.fromLane,
+        to: rotation.toLane,
+        actor: "turn_resolution",
+        at: rotation.at,
+        reason,
+        disposition: providerHandoffDispositionForEnvelope(envelope),
+        truncated: envelope.contextTruncated,
+        envelopeSchema: envelope.schema,
+      })
       appendFullAutoSystemNote(
         rotatedThreadRef,
         `Full Auto switched from ${rotation.fromLane} to ${rotation.toLane} (${rotation.reason.replace(/_/g, " ")}) and is continuing.`,
@@ -4191,6 +4257,8 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     // FA-H5 (#8878): a failed dispatch (thrown OR ok:false) is a typed,
     // owner-visible outcome -- never a silently dormant enabled record.
     onDispatchFailed: (failedThreadRef, failure) => {
+      const run = fullAutoRunRegistry.findByThreadRef(failedThreadRef)
+      if (run !== null) fullAutoRunRegistry.recordAttempt(run.runRef, "failure")
       console.error(
         "[openagents-desktop] full auto continuation dispatch failed",
         failedThreadRef,
