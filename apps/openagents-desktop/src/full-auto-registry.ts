@@ -33,6 +33,9 @@ export const FULL_AUTO_BLOCKED_REASON_LIMIT = 300
 export const FULL_AUTO_ROUTING_POLICY_LIMIT = 8
 /** FA-RT-01 (#8987): bound on the durable rotation history (oldest evicted). */
 export const FULL_AUTO_ROTATION_HISTORY_LIMIT = 20
+/** FA-GD-01 (#8991): bound on the durable per-continuation decision history
+ * (oldest evicted, same discipline as rotationHistory). */
+export const FULL_AUTO_DECISION_HISTORY_LIMIT = 40
 
 /** #8928: durable provenance for every transition to disabled. Older rows
  * legitimately omit this additive field; every current disable path supplies
@@ -44,6 +47,10 @@ export const FullAutoDisabledBySchema = Schema.Literals([
   "workspace_guard",
   "continuation_cap",
   "dispatch_failure_limit",
+  /** FA-GD-01 (#8991): a typed owner-configured guardrail (max wall clock,
+   * max turns) terminated the loop. The generalized failure budget keeps the
+   * existing dispatch_failure_limit attribution -- same failure class. */
+  "guardrail",
 ])
 export type FullAutoDisabledBy = typeof FullAutoDisabledBySchema.Type
 
@@ -110,6 +117,86 @@ export const FullAutoRoutingPolicySchema = Schema.Array(FullAutoRoutingCandidate
   Schema.isMaxLength(FULL_AUTO_ROUTING_POLICY_LIMIT),
 )
 
+const PositiveCount = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThan(0),
+  Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+)
+
+/**
+ * FA-GD-01 (#8991): the OWNER-CONFIGURABLE guardrail set. Every field is
+ * optional; an absent field means "the built-in default applies" (the 20-turn
+ * cap and 5-consecutive-failure disable keep their exact existing semantics
+ * when the corresponding field is absent -- see full-auto-reconcile.ts).
+ *
+ * This schema is deliberately the COMPLETE configurable surface. The
+ * non-overridable core guardrails (workspace binding, own-capacity-only
+ * dispatch, no rate-limit-reset triggering -- see
+ * FULL_AUTO_NON_OVERRIDABLE_GUARDRAILS in full-auto-reconcile.ts) have NO
+ * field here on purpose: there is structurally nothing to write, in config or
+ * env, that relaxes them. Unknown keys on a durable/hand-edited guardrails
+ * object are dropped at decode and can never reach enforcement.
+ */
+export const FullAutoGuardrailsSchema = Schema.Struct({
+  /** Hard wall-clock bound for the whole enabled span, measured from the
+   * record's durable `enabledAt` anchor. */
+  maxWallClockMs: Schema.optional(PositiveCount),
+  /** Generalizes the FULL_AUTO_MAX_CONTINUATIONS (20) cap. Absent = the
+   * existing cap semantics, byte-for-byte. */
+  maxTurns: Schema.optional(PositiveCount),
+  /** Generalizes FULL_AUTO_MAX_CONSECUTIVE_FAILURES (5). Absent = existing
+   * failure-budget semantics unchanged. */
+  maxPerTurnFailures: Schema.optional(PositiveCount),
+  /** Durable pointer to an external token/spend budget. Desktop has no local
+   * token-usage source to enforce against yet (the run report's usage block
+   * is honestly `unknown`), so this is carried as an owner-visible ref for a
+   * future enforcer -- stored, surfaced, never fabricated into enforcement. */
+  tokenBudgetRef: Schema.optional(Ref),
+})
+export type FullAutoGuardrails = typeof FullAutoGuardrailsSchema.Type
+
+/**
+ * FA-GD-01 (#8991): the typed per-continuation decision vocabulary. Exactly
+ * one durable decision fact is appended per between-turn continuation
+ * decision the reconciler takes (continue on success, rotate on a typed
+ * same-pass failover, pause_low_confidence on the no-progress detector,
+ * stop_guardrail on any guardrail/cap termination).
+ */
+export const FullAutoContinuationDecisionKindSchema = Schema.Literals([
+  "continue",
+  "rotate",
+  "pause_low_confidence",
+  "stop_guardrail",
+])
+export type FullAutoContinuationDecisionKind = typeof FullAutoContinuationDecisionKindSchema.Type
+
+export const FullAutoContinuationDecisionSchema = Schema.Struct({
+  at: Schema.String,
+  decision: FullAutoContinuationDecisionKindSchema,
+  reason: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FULL_AUTO_BLOCKED_REASON_LIMIT),
+  ),
+  /** Turn-budget slots remaining AFTER this decision, against the effective
+   * (guardrail-or-default) turn cap. Absent when not meaningful. */
+  budgetRemaining: Schema.optional(Cursor),
+  /** Optional pointer to the governing goal/run (e.g. a FullAutoRun runRef).
+   * The thread registry itself has no goal source; the reconciler leaves it
+   * absent rather than inventing one. */
+  goalRef: Schema.optional(Ref),
+})
+export type FullAutoContinuationDecision = typeof FullAutoContinuationDecisionSchema.Type
+
+/** FA-GD-01 (#8991): who resumed a low-confidence pause. Resume is always an
+ * explicit command by one of the owner-facing surfaces, never the loop. */
+export const FullAutoResumeActorSchema = Schema.Literals([
+  "owner_ui",
+  "control_api",
+  "cli",
+  "mcp",
+])
+export type FullAutoResumeActor = typeof FullAutoResumeActorSchema.Type
+
 export const FullAutoProfileSchema = Schema.Struct({
   /** L6 #8901: durable ProviderLane.laneRef. Optional keeps every rev-7 row decodable. */
   lane: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
@@ -172,6 +259,39 @@ export const FullAutoRecordSchema = Schema.Struct({
    * carries no cap for the same never-quarantine reason as the record bound.
    */
   rotationHistory: Schema.optional(Schema.Array(FullAutoRotationRecordSchema)),
+  /**
+   * FA-GD-01 (#8991): when the record was last granted (transitioned
+   * disabled -> enabled, or created enabled). The durable anchor for the
+   * maxWallClockMs guardrail and the low-confidence no-progress detector.
+   * Optional so every pre-#8991 row still decodes.
+   */
+  enabledAt: Schema.optional(Schema.String),
+  /** FA-GD-01 (#8991): owner-configurable guardrails; see the schema doc for
+   * why the non-overridable core set has no field here. */
+  guardrails: Schema.optional(FullAutoGuardrailsSchema),
+  /**
+   * FA-GD-01 (#8991): the durable low-confidence pause. A paused record stays
+   * `enabled: true` (it keeps eviction protection and the owner's grant) but
+   * reconciliation never dispatches it until an explicit resume clears these
+   * fields. `pausedReason` present <=> the record is paused.
+   */
+  pausedReason: Schema.optional(Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FULL_AUTO_BLOCKED_REASON_LIMIT),
+  )),
+  pausedAt: Schema.optional(Schema.String),
+  /** FA-GD-01 (#8991): stamped by resume; the no-progress detector anchors
+   * here (falling back to enabledAt) so pre-resume evidence can never
+   * immediately re-pause a just-resumed loop. */
+  lastResumedAt: Schema.optional(Schema.String),
+  resumedBy: Schema.optional(FullAutoResumeActorSchema),
+  /**
+   * FA-GD-01 (#8991): bounded per-continuation decision history, most recent
+   * last. Capped at FULL_AUTO_DECISION_HISTORY_LIMIT write-side (oldest
+   * evicted); decode carries no cap for the same never-quarantine reason as
+   * the record bound.
+   */
+  decisionHistory: Schema.optional(Schema.Array(FullAutoContinuationDecisionSchema)),
 })
 export type FullAutoRecord = typeof FullAutoRecordSchema.Type
 
@@ -190,6 +310,24 @@ export const projectFullAutoRotationHistory = (
     toLane: entry.toLane,
     reason: entry.reason,
     at: entry.at,
+  }))
+
+/**
+ * FA-GD-01 (#8991): the public-safe projection of a record's continuation
+ * decision history, mirroring projectFullAutoRotationHistory's explicit
+ * field-by-field discipline. Exported as the seam for the control-API
+ * status/turns surfaces to wire (a follow-up; this issue touches no control
+ * server files).
+ */
+export const projectFullAutoDecisionHistory = (
+  record: FullAutoRecord,
+): ReadonlyArray<FullAutoContinuationDecision> =>
+  (record.decisionHistory ?? []).slice(-FULL_AUTO_DECISION_HISTORY_LIMIT).map(entry => ({
+    at: entry.at,
+    decision: entry.decision,
+    reason: entry.reason,
+    ...(entry.budgetRemaining === undefined ? {} : { budgetRemaining: entry.budgetRemaining }),
+    ...(entry.goalRef === undefined ? {} : { goalRef: entry.goalRef }),
   }))
 
 /**
@@ -213,6 +351,10 @@ export type FullAutoSetOptions = Readonly<{
    * Callers MUST validate through full-auto-routing.ts first; this option is
    * durable plumbing, not the admission gate. */
   routingPolicy?: ReadonlyArray<FullAutoRoutingCandidate>
+  /** FA-GD-01 (#8991): bind the owner-configured guardrails at enable time.
+   * Like routingPolicy, this option only applies on ENABLE; guardrails
+   * otherwise survive transitions durably. */
+  guardrails?: FullAutoGuardrails
   /** FA-H2/FA-H5: typed reason recorded when DISABLING a record. */
   blockedReason?: string
   /** #8928: required by every current call that transitions to disabled. */
@@ -262,6 +404,44 @@ export type FullAutoRegistry = Readonly<{
     threadRef: string,
     rotation: Readonly<{ fromLane: string; toLane: string; reason: FullAutoRotationReason }>,
   ) => FullAutoRecord | null
+  /**
+   * FA-GD-01 (#8991): bind (or, with null, clear) the owner-configurable
+   * guardrails. Invalid shapes (non-positive limits, unknown keys are
+   * stripped by decode) fail closed here. Missing record is a null no-op.
+   */
+  bindGuardrails: (
+    threadRef: string,
+    guardrails: FullAutoGuardrails | null,
+  ) => FullAutoRecord | null
+  /**
+   * FA-GD-01 (#8991): append one typed continuation decision fact (stamped
+   * with now()), evicting the oldest beyond FULL_AUTO_DECISION_HISTORY_LIMIT.
+   * The reason is truncated to the blocked-reason bound. Missing record is a
+   * null no-op.
+   */
+  recordDecision: (
+    threadRef: string,
+    decision: Readonly<{
+      decision: FullAutoContinuationDecisionKind
+      reason: string
+      budgetRemaining?: number
+      goalRef?: string
+    }>,
+  ) => FullAutoRecord | null
+  /**
+   * FA-GD-01 (#8991): transition an ENABLED record to the durable
+   * low-confidence paused state (pausedReason + pausedAt), releasing any
+   * held dispatch lease. Null no-op when the record is missing, disabled, or
+   * already paused -- pausing never invents or re-stamps state.
+   */
+  pause: (threadRef: string, reason: string) => FullAutoRecord | null
+  /**
+   * FA-GD-01 (#8991): the explicit resume command. Clears the paused fields,
+   * stamps lastResumedAt/resumedBy, and returns the record. Null no-op when
+   * the record is missing or not currently paused -- resume can never be
+   * used to re-enable a disabled record or to touch a healthy one.
+   */
+  resume: (threadRef: string, actor: FullAutoResumeActor) => FullAutoRecord | null
 }>
 
 export class FullAutoRegistryError extends Error {
@@ -409,6 +589,17 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
         // blockedReason. An enable-time routingPolicy option rebinds it.
         routingPolicy: (enabled ? options?.routingPolicy : undefined) ?? existing?.routingPolicy,
         rotationHistory: existing?.rotationHistory,
+        // FA-GD-01 (#8991): guardrails are a durable grant like routingPolicy
+        // (enable-time option rebinds); decision history is evidence and
+        // always survives; enabledAt re-stamps only on a fresh disabled ->
+        // enabled grant (the wall-clock anchor must not reset on a redundant
+        // re-enable); the paused fields NEVER survive a set() -- enabling is
+        // a fresh grant and a disabled record is not paused.
+        guardrails: (enabled ? options?.guardrails : undefined) ?? existing?.guardrails,
+        decisionHistory: existing?.decisionHistory,
+        enabledAt: enabled
+          ? (existing?.enabled === true ? existing.enabledAt ?? timestamp : timestamp)
+          : existing?.enabledAt,
         pendingTurnRef: enabled ? existing?.pendingTurnRef ?? undefined : undefined,
         pendingStartedAt: enabled ? existing?.pendingStartedAt ?? undefined : undefined,
         lastFailureAt: enabled ? undefined : existing?.lastFailureAt,
@@ -493,6 +684,54 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
       const history = [...(records[index]!.rotationHistory ?? []), entry]
         .slice(-FULL_AUTO_ROTATION_HISTORY_LIMIT)
       return update(index, { rotationHistory: history })
+    },
+    bindGuardrails: (threadRef, guardrails) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      if (guardrails === null) return update(index, { guardrails: undefined })
+      // Fail closed on shape: non-positive limits throw here rather than
+      // persisting an unenforceable durable guardrail.
+      return update(index, {
+        guardrails: Schema.decodeUnknownSync(FullAutoGuardrailsSchema)(guardrails),
+      })
+    },
+    recordDecision: (threadRef, decision) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      const entry = Schema.decodeUnknownSync(FullAutoContinuationDecisionSchema)(compactRecordInput({
+        at: now().toISOString(),
+        decision: decision.decision,
+        reason: decision.reason.slice(0, FULL_AUTO_BLOCKED_REASON_LIMIT),
+        budgetRemaining: decision.budgetRemaining,
+        goalRef: decision.goalRef,
+      }))
+      const history = [...(records[index]!.decisionHistory ?? []), entry]
+        .slice(-FULL_AUTO_DECISION_HISTORY_LIMIT)
+      return update(index, { decisionHistory: history })
+    },
+    pause: (threadRef, reason) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      const existing = records[index]!
+      if (!existing.enabled || existing.pausedReason !== undefined) return null
+      return update(index, {
+        pausedReason: reason.slice(0, FULL_AUTO_BLOCKED_REASON_LIMIT),
+        pausedAt: now().toISOString(),
+        pendingTurnRef: undefined,
+        pendingStartedAt: undefined,
+      })
+    },
+    resume: (threadRef, actor) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      const existing = records[index]!
+      if (!existing.enabled || existing.pausedReason === undefined) return null
+      return update(index, {
+        pausedReason: undefined,
+        pausedAt: undefined,
+        lastResumedAt: now().toISOString(),
+        resumedBy: actor,
+      })
     },
   }
 }

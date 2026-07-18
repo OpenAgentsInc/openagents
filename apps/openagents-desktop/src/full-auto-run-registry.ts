@@ -163,6 +163,9 @@ export const FullAutoRunActorSchema = Schema.Literals([
   "continuation_cap",
   /** FA-H5: 5-consecutive-failure disable. */
   "dispatch_failure_limit",
+  /** FA-GD-01 (#8991): a typed owner-configured guardrail (max wall clock,
+   * max turns) terminated the underlying loop. */
+  "guardrail",
   /** The in-flight turn a Pause was waiting on resolved. */
   "turn_resolution",
   /** Reconciliation observed the bound thread record changed underneath the
@@ -853,6 +856,17 @@ export const settleFullAutoRunFromThreadState = (
         to: "failed",
         actor: "workspace_guard",
         reason: blockedReason ?? "workspace binding failed",
+      })
+      return result.ok ? result.run : run
+    }
+    // FA-GD-01 (#8991): a typed guardrail termination is a deliberate,
+    // owner-configured bound being met -- Stopped (with the guardrail's
+    // typed blockedReason), not Failed and not the defensive stall below.
+    if (disabledBy === "guardrail") {
+      const result = runRegistry.transition(run.runRef, {
+        to: "stopped",
+        actor: "guardrail",
+        reason: blockedReason ?? "guardrail limit reached",
       })
       return result.ok ? result.run : run
     }

@@ -72,6 +72,7 @@ export const FullAutoRunClientActor = S.Literals([
   "thread_state_sync",
   "legacy_migration",
   "liveness_monitor",
+  "guardrail",
 ]);
 export type FullAutoRunClientActor = typeof FullAutoRunClientActor.Type;
 

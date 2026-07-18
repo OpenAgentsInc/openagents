@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Autonomous Run Contract"
 artifact_type: "prd"
-spec_revision: 11
+spec_revision: 12
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-17T20:30:00.000Z"
+updated_at: "2026-07-17T22:30:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-criterion-disposition-map"
@@ -29,6 +29,8 @@ tool_metadata:
   openagents_revision_8_note: "Rev 8 generalizes the durable loop over the L1 ProviderLane SPI. The additive optional profile.lane defaults legacy rows to codex-local; reconciliation capability-gates the selected lane; built-in Codex and Claude use one lane-keyed instruction/background-question policy; and control start/enable, OpenAPI, MCP, and CLI accept an optional lane selector. Claude background questions deny immediately with proceed-with-judgment guidance instead of parking without a renderer."
   openagents_revision_9_issue: "8902 (L7 lane-independent ProductSpec/AssuranceSpec workflow)"
   openagents_revision_9_note: "Rev 9 projects a bounded, read-only ProductSpec/AssuranceSpec context through the shared ProviderLane dispatcher for every lane; adds specs/** unmet obligations to Full Auto candidate discovery; and re-runs the authority packages after each dispatched turn to append an evidence-only system note. Provider lanes receive no parsing, admission, verification, release, or public-claim authority."
+  openagents_revision_12_issue: "8991 (FA-GD-01, epic #8967)"
+  openagents_revision_12_note: "Rev 12 adds guardrails, budgets, and confidence-gated continuation (FA-GD-01 #8991). The durable per-thread registry record gains OPTIONAL owner-configurable `guardrails` ({maxWallClockMs, maxTurns generalizing the 20-cap with cap semantics preserved when absent, maxPerTurnFailures generalizing the 5-failure budget, tokenBudgetRef -- the latter carried as an owner-visible ref only, honestly unenforced until a local token-usage source exists}), a durable `enabledAt` wall-clock anchor, a bounded typed per-continuation `decisionHistory` ({at, decision: continue|rotate|pause_low_confidence|stop_guardrail, reason, budgetRemaining?, goalRef?}, oldest-evicted at 40), and a durable low-confidence paused state (`pausedReason`/`pausedAt`, cleared only by an explicit attributed resume that stamps `lastResumedAt`/`resumedBy`). A NON-OVERRIDABLE core guardrail set -- workspace binding (FA-H2), own-capacity-only lane admission, and no rate-limit-reset triggering -- is enforced in code with no config/env surface at all (FULL_AUTO_NON_OVERRIDABLE_GUARDRAILS; unknown guardrail keys are dropped at decode), proven immune by test. A deterministic no-progress detector (3 consecutive settled failed/interrupted_by_restart turns after the lastResumedAt ?? enabledAt anchor) pauses the run durably with a typed reason instead of continuing blind; guardrail violations terminate with typed blockedReason/disabledBy=guardrail that flow into the FA-RUN-04 report's threadFailureHistory and settle the bound FullAutoRun to Stopped with the new typed `guardrail` actor. Legacy registry files without the new optional fields decode and behave exactly as before. Control-server/OpenAPI/UI wiring for bind-guardrails/resume and the decision-history projection is an explicit follow-up seam (the resume API and public-safe projection are exported; no control route ships in this revision). Adds FA-AC-68."
   openagents_revision_11_issue: "8987 (FA-RT-01, epic #8967)"
   openagents_revision_11_note: "Rev 11 adds the multi-lane never-halt routing policy (FA-RT-01 #8987): the durable per-thread registry record gains OPTIONAL `routingPolicy` (an ordered, bounded list of admitted lane/account candidates, validated fail-closed at bind time by full-auto-routing.ts -- unknown/unadmitted/Full-Auto-ineligible lanes refuse the whole policy) and OPTIONAL `rotationHistory` (bounded typed {fromLane,toLane,reason,at} facts, oldest-evicted). On a typed account_exhausted/rate_limited/provider_error dispatch failure, reconciliation rotates to the next admitted candidate in the SAME pass under a fresh exactly-once lease instead of entering failure backoff; a full unsuccessful cycle through the candidates consumes exactly one FA-H5 failure-budget step, and existing cap/disable/backoff semantics are proven unchanged by regression tests. A v1/v2-era registry file without the new fields decodes and behaves exactly as single-lane. Rotation within an owner-admitted ordered policy is NOT autonomous provider selection: the candidate set and its order are chosen by a human at policy bind time; the loop only fails over inside that grant. Adds FA-AC-67."
   openagents_revision_10_issue: "8968 (FA-RUN-00, epic #8967 child 1 of 12)"
@@ -136,6 +138,7 @@ in:
   - a superseding AssuranceSpec design/admission/execution/review pass covering the FA-AC-38..66 obligations this revision adds, reconciling rather than discarding the existing 37/37 `needs_design` FA-AC-01..37 obligation set per each criterion's disposition below (FA-AS-01, #8978)
   - packaged release and product-promise admission gated on the above, including a signed build from an exact tag containing the run model passing the owner restart-resume observation (FA-REL-01, #8979)
   - a multi-lane never-halt routing policy on the durable per-thread registry record: an OPTIONAL ordered, bounded list of admitted lane/account candidates (`routingPolicy`) validated fail-closed at bind time (unknown, unadmitted, or Full-Auto-ineligible lanes refuse the whole policy at validation, never at dispatch), plus an OPTIONAL bounded typed rotation history (`rotationHistory`: fromLane/toLane/reason/at, oldest-evicted) surfaced through the control-API status projections; on a typed account_exhausted/rate_limited/provider_error dispatch failure the reconciler rotates to the next admitted candidate in the same pass under a fresh exactly-once lease, a full unsuccessful cycle consumes exactly one FA-H5 failure-budget step, and legacy single-lane records behave exactly as before (FA-RT-01, #8987)
+  - typed guardrails, budgets, and confidence-gated continuation on the durable per-thread registry record: OPTIONAL owner-configurable `guardrails` (maxWallClockMs against a durable `enabledAt` anchor; maxTurns generalizing the 20-continuation cap with existing cap semantics preserved byte-for-byte when absent; maxPerTurnFailures generalizing the 5-consecutive-failure budget; tokenBudgetRef as an owner-visible unenforced ref until a local token-usage source exists), a NON-OVERRIDABLE code-enforced core set with no config or env surface (workspace binding, own-capacity-only lane admission, no rate-limit-reset triggering), a bounded typed per-continuation decision history (continue/rotate/pause_low_confidence/stop_guardrail with reason and remaining budget, oldest-evicted), and a deterministic no-progress detector that transitions the record to a durable `pausedReason`-carrying paused state instead of continuing blind -- resume is an explicit attributed command, guardrail terminations carry typed reasons into the FA-RUN-04 report and settle the bound run to Stopped with a typed guardrail actor, and legacy records without the new optional fields decode and behave exactly as before (FA-GD-01, #8991)
 out:
   - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface remains same-machine loopback only
   - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action
@@ -768,6 +771,41 @@ that issue lands.
   public-safe projection), and `full-auto-routing.test.ts` (fail-closed
   policy validation and the control-record rotationHistory projection
   bound).
+- **FA-AC-68:** Owner-configurable guardrails and the confidence gate bound
+  every unattended run. Each configured guardrail class provably halts a
+  synthetic run with its typed reason and durable attribution: maxWallClockMs
+  (against the durable `enabledAt` anchor, failing CLOSED when a
+  guardrail-bearing record lacks the anchor) and maxTurns terminate with
+  `guardrail_max_wall_clock`/`guardrail_max_turns` and
+  `disabledBy: "guardrail"`; maxPerTurnFailures tightens the FA-H5 budget
+  while keeping its `dispatch_failure_limit` attribution; tokenBudgetRef is
+  carried durably as an owner-visible ref and never fabricated into
+  enforcement. Absent guardrails preserve the existing 20-cap and 5-failure
+  semantics byte-for-byte. Every between-turn decision persists as a typed,
+  bounded, oldest-evicted decision record (continue / rotate /
+  pause_low_confidence / stop_guardrail with reason and remaining budget)
+  that survives restart and disable/enable, with a public-safe explicit
+  field-by-field projection. A deterministic no-progress detector (three
+  consecutive settled failed/interrupted_by_restart turns after the
+  lastResumedAt ?? enabledAt anchor) transitions the record to a durable
+  `pausedReason`-carrying paused state instead of continuing blind; the
+  pause survives restart, only an explicit attributed resume
+  (`resumeFullAuto`) clears it, and pre-resume evidence can never
+  immediately re-pause the resumed loop. The non-overridable core set --
+  workspace binding, own-capacity-only admission, no rate-limit-reset
+  triggering -- is enforced in code with no config/env surface: unknown
+  guardrail keys are dropped at decode, and no environment variable or
+  hand-edited durable field relaxes any of the three (proven by the
+  immunity test). Guardrail terminations flow into the FA-RUN-04 report's
+  threadFailureHistory and settle the bound FullAutoRun to Stopped with the
+  typed `guardrail` actor. Legacy registry files without the new optional
+  fields decode unquarantined and behave exactly as before.
+  Proof: FA-GD-01 (#8991); `tests/full-auto-guardrails.test.ts` (guardrail
+  schema/legacy decode, decision records, per-class typed halts, durable
+  pause + restart survival + explicit resume, non-overridable immunity, run
+  report pickup); control-server/OpenAPI/UI wiring for bind-guardrails,
+  resume, and the decision-history projection is an explicit named
+  follow-up seam, not claimed by this revision.
 
 ## Criterion Disposition Map (Rev 9 -> Rev 10)
 

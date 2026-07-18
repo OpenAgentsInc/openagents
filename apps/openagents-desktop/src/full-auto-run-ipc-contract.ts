@@ -87,6 +87,8 @@ const FullAutoRunStateSchema = Schema.Literals([
 const FullAutoRunActorSchema = Schema.Literals([
   "owner_ui", "control_api", "cli", "mcp", "workspace_guard", "continuation_cap",
   "dispatch_failure_limit", "turn_resolution", "thread_state_sync", "legacy_migration", "liveness_monitor",
+  // FA-GD-01 (#8991): guardrail stops (wall clock / turn / failure budgets).
+  "guardrail",
 ])
 const FullAutoRunObjectiveSourceSchema = Schema.Literals(["user", "control_caller", "legacy_migration"])
 const FullAutoRunTransitionRecordSchema = Schema.Struct({
