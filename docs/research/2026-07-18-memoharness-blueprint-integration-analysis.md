@@ -8,6 +8,9 @@ runtime authority
 Companion paper summary:
 [`2026-07-18-memoharness-paper-summary.md`](./2026-07-18-memoharness-paper-summary.md)
 
+Language-placement input:
+[`2026-07-17-effect-vs-rust-architecture-analysis.md`](../fable/2026-07-17-effect-vs-rust-architecture-analysis.md)
+
 ## Executive answer
 
 OpenAgents should combine MemoHarness with the active, TypeScript Blueprint
@@ -33,6 +36,11 @@ The right synthesis is therefore:
    promote itself or gain write authority.
 5. Keep every external effect behind the existing Action Submission and
    reviewed executor boundary.
+6. Implement the learning, memory, retrieval, optimization, adaptation,
+   evidence, and promotion system in **TypeScript/Effect**. Use **Rust only for
+   narrow process-opaque execution helpers** when correctness is defined by OS
+   enforcement or hard latency, never for the Blueprint or MemoHarness control
+   plane.
 
 This is an extension of the active OpenAgents kernel, not a revival of the
 deprecated standalone Blueprint workspace, the removed Sarah map, or the
@@ -46,15 +54,15 @@ bounded owner decision
 There are several things named Blueprint. They should not be treated as one
 runtime.
 
-| Surface                                                                                                                     | Current status                                                                                                           | Relevance to MemoHarness                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| OpenAgents Worker kernel under [`workers/api/src/blueprint`](../../apps/openagents.com/workers/api/src/blueprint/README.md) | Active product-owned schemas, services, repositories, projections, fixtures, and exports                                 | Primary home for harness optimization records and private/safe projections                                  |
-| [`packages/blueprint-contracts`](../../packages/blueprint-contracts/README.md)                                              | Active, deliberately narrow cross-consumer security and gate package                                                     | Home for stable cross-runtime safety predicates and state machines, not every experimental optimizer schema |
-| Pylon runtime adapters under [`packages/runtime/src/blueprint`](../../apps/pylon/packages/runtime/src/blueprint/)           | Active typed registry lookup, bounded tool-menu construction, run evidence, Action Submission, and contribution adapters | Natural consumer for approved harness bundles and case-adaptation receipts                                  |
-| Worker chat program runtime                                                                                                 | Implemented and tested                                                                                                   | Useful typed execution shell, but not proof that live Khala traffic is Blueprint-controlled                 |
-| Khala-to-Blueprint adapter                                                                                                  | Implemented and tested, but no production call site was found in this audit                                              | Candidate integration seam, not a currently mounted learning loop                                           |
-| QA/Khala failure-to-GEPA feedback                                                                                           | Implemented, evidence-only, negative-feedback oriented                                                                   | A small seed for failure learning, not a MemoHarness experience bank                                        |
-| Deprecated Rust Blueprint workspace and historical Sarah/Blueprint-map documents                                            | Reference material only                                                                                                  | Do not restore as an execution dependency or product direction                                              |
+| Surface                                                                                                                                            | Current status                                                                                                           | Relevance to MemoHarness                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| OpenAgents API/Blueprint kernel under the legacy [`workers/api/src/blueprint`](../../apps/openagents.com/workers/api/src/blueprint/README.md) path | Active product-owned schemas, services, repositories, projections, fixtures, and exports                                 | Primary home for harness optimization records and private/safe projections                                  |
+| [`packages/blueprint-contracts`](../../packages/blueprint-contracts/README.md)                                                                     | Active, deliberately narrow cross-consumer security and gate package                                                     | Home for stable cross-runtime safety predicates and state machines, not every experimental optimizer schema |
+| Pylon runtime adapters under [`packages/runtime/src/blueprint`](../../apps/pylon/packages/runtime/src/blueprint/)                                  | Active typed registry lookup, bounded tool-menu construction, run evidence, Action Submission, and contribution adapters | Natural consumer for approved harness bundles and case-adaptation receipts                                  |
+| API chat program runtime                                                                                                                           | Implemented and tested                                                                                                   | Useful typed execution shell, but not proof that live Khala traffic is Blueprint-controlled                 |
+| Khala-to-Blueprint adapter                                                                                                                         | Implemented and tested, but no production call site was found in this audit                                              | Candidate integration seam, not a currently mounted learning loop                                           |
+| QA/Khala failure-to-GEPA feedback                                                                                                                  | Implemented, evidence-only, negative-feedback oriented                                                                   | A small seed for failure learning, not a MemoHarness experience bank                                        |
+| Deprecated Rust Blueprint workspace and historical Sarah/Blueprint-map documents                                                                   | Reference material only                                                                                                  | Do not restore as an execution dependency or product direction                                              |
 
 The kernel README states the boundary directly: the OpenAgents product surface
 owns the Effect-first Blueprint kernel, while the deprecated Rust workspace is
@@ -63,6 +71,102 @@ Blueprint, Khala, semantic planners, StudyPackets, and DSPy/GEPA-class
 optimizers may propose typed candidates, but may not self-admit, self-verify,
 self-promote, dispatch, merge, release, spend, settle, or change a public claim
 ([`INVARIANTS.md`](../../INVARIANTS.md)).
+
+## Language and process split
+
+The Effect-versus-Rust analysis is a clean-sheet workload-placement argument,
+not a status report or sequencing authority. Its bright line nevertheless fits
+this design directly:
+
+- correctness defined by typed coordination, durable state, policy, and
+  recovery belongs in the Effect application kernel;
+- correctness defined by what the operating system enforces or by hard
+  sub-frame/sub-buffer latency belongs in a small Rust helper process;
+- native code never links into the kernel address space, owns kernel state, or
+  gains policy/action authority.
+
+MemoHarness is overwhelmingly the first kind of workload. Its core operations
+are schema validation, experiment scheduling, durable evidence capture,
+semantic retrieval, policy composition, evaluation, projection, and promotion.
+None requires a Rust control plane. The correct target is approximately **all
+MemoHarness/Blueprint logic in Effect**, with Rust remaining an optional
+execution substrate already below the harness.
+
+### Component-by-component decision
+
+| Component to build                                                                                               | Language/runtime                                                                                     | Proposed ownership                                                                                                   | Why                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HarnessPolicyBundle`, six dimension policies, typed deltas, experience/pattern/adaptation records               | TypeScript with Effect Schema                                                                        | A new narrow shared package such as `packages/harness-optimization-contract/` once more than one runtime consumes it | These are W1 typed protocol contracts. One schema identity must feed the API, Pylon, QA, tests, and any generated clients.                                                                    |
+| Blueprint integration, Program Registry refs, Module Versions, Optimizer Runs, Release Gates, Action Submissions | TypeScript/Effect                                                                                    | Existing Blueprint schemas/services plus stable security predicates in `packages/blueprint-contracts`                | These are authority and coordination decisions. Rust would create a second policy owner.                                                                                                      |
+| Experience metadata repository, bank snapshots, tombstones, pattern support graph                                | TypeScript/Effect services over Cloud SQL                                                            | OpenAgents API/Blueprint repository layer                                                                            | Transactionality, tenant scope, deletion propagation, and replay are W2 durable-coordination work, not native compute.                                                                        |
+| Private raw trajectory storage                                                                                   | TypeScript/Effect service over Cloud Storage, storing opaque access-controlled objects by digest/ref | OpenAgents artifact/storage boundary                                                                                 | The kernel owns retention and access policy. Raw bytes do not justify a native daemon or a second database.                                                                                   |
+| Program Run → normalized experience compiler                                                                     | TypeScript/Effect                                                                                    | Blueprint service and QA-runner adapters                                                                             | It joins typed evidence, verifier output, resource receipts, and diagnoses under privacy policy.                                                                                              |
+| Global pattern distillation and harness-search controller                                                        | TypeScript/Effect, calling models through existing provider adapters                                 | Blueprint optimizer service / QA runner                                                                              | The hard part is interruption, retries, experiment lineage, budgets, and candidate admission. Model inference is a dependency, not an excuse to move the controller.                          |
+| Remote embedding generation                                                                                      | TypeScript/Effect provider adapter                                                                   | Central semantic-retrieval service                                                                                   | Provider calls, retry, quotas, redaction, and model-version receipts are coordination work.                                                                                                   |
+| Similarity retrieval, tenant filters, diversity, and Top-K policy                                                | TypeScript/Effect; database-native vector operations may execute inside Cloud SQL                    | Central semantic-retrieval service, consumed by Pylon/Khala                                                          | The kernel must filter by tenant, consent, source authority, release state, and bank snapshot before results become eligible. An ANN engine may rank candidates but never decide eligibility. |
+| Test-time patch compatibility and adaptation composition                                                         | TypeScript/Effect                                                                                    | Blueprint/Pylon runtime service                                                                                      | This is the most policy-sensitive step and must share Program Signature, risk, tool-scope, and release-gate types.                                                                            |
+| Correctness-first reward calculation, scorecards, ablations, and promotion proposal                              | TypeScript/Effect                                                                                    | Optimizer/evaluation services                                                                                        | Reward is evidence; release is independent authority. Both require deterministic, inspectable coordination.                                                                                   |
+| Public/operator projections and UI                                                                               | TypeScript/Effect plus existing TypeScript renderers                                                 | OpenAgents API and clients                                                                                           | Projection safety and clients should consume the canonical schemas directly.                                                                                                                  |
+| OS containment for an evaluated tool run                                                                         | Rust helper process, if the selected execution backend needs owned containment                       | A separately admitted containment helper below the kernel                                                            | Seatbelt, namespaces, seccomp/Landlock, restricted tokens, and egress enforcement are OS truth. The helper applies an already-decided profile and returns an enforcement receipt.             |
+| PTY hosting and terminal byte capture                                                                            | Rust helper process when p99/restore requirements require it                                         | A separately admitted PTY helper below the kernel                                                                    | PTY lifecycle and frame/byte timing are native workloads. Transcript interpretation, retention, and experience diagnosis stay in Effect.                                                      |
+| Local inference or local embedding model                                                                         | Rust or vendored native helper, only when that provider lane is admitted                             | A local-inference provider helper below the same Effect adapter seam                                                 | Native model runtimes are W8. The helper returns bounded inference/vector results; routing, retrieval eligibility, and promotion remain Effect decisions.                                     |
+| Cryptographic digests, JSON encoding, ordinary compression, token/cost arithmetic                                | TypeScript/Effect by default                                                                         | The service already producing the record                                                                             | These are not sufficient reasons to create a Rust process. Move only after a measured reversal test.                                                                                          |
+
+### All six MemoHarness dimensions remain Effect-owned
+
+The presence of native tools does not move harness policy into Rust.
+
+| Dimension        | Policy owner                                                                                           | Possible native execution below it                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| D1 Context       | Effect `ContextPack`, source authority, selection/compression policy                                   | A local embedding helper may produce vectors, but cannot select tenant-visible context                |
+| D2 Tools         | Effect Program Signature, tool scopes, bounded tool menu, approval policy                              | Rust containment or PTY helper may execute an already-admitted tool request                           |
+| D3 Generation    | Effect model/provider/sampling/retry/token policy and Module Version                                   | A Rust local-inference helper may implement one provider lane                                         |
+| D4 Orchestration | Effect topology, controller, budget, continuation, interruption, and stop policy                       | Rust helpers are supervised leaves, never orchestrators                                               |
+| D5 Memory        | Effect experience repository, semantic retrieval policy, bank snapshots, retention, and deletion       | A measured local vector index could rank opaque refs later, but cannot own/filter the bank            |
+| D6 Output        | Effect output schema, verifier composition, proof projection, receipts, and Action Submission boundary | An OS-specific verifier may report observations; Effect decides how those observations enter evidence |
+
+This also means there should be no `crates/memoharness`, Rust Blueprint kernel,
+Rust experience-bank daemon, or native optimizer service. MemoHarness is a
+policy over executions, not a new execution authority.
+
+### Cross-language boundary if a native helper is needed
+
+No Rust work is required for BP-MH1 through BP-MH4. If a later experiment uses
+owned containment, PTY hosting, or local inference, the cross-language seam
+should be deliberately smaller than the full harness contract:
+
+1. Define `NativeHarnessExecutionRequest`, `NativeHarnessExecutionEvent`, and
+   `NativeHarnessExecutionReceipt` once in an Effect Schema package.
+2. Generate versioned JSON Schema/golden fixtures and, where tooling permits,
+   Rust `serde` types. Never maintain equivalent TypeScript and Rust structures
+   by hand.
+3. Use bounded newline-delimited JSON or length-prefixed frames over stdio or a
+   local authenticated socket. Include protocol version, helper binary version,
+   process generation, request id, capability set, frame bounds, and typed
+   overload/cancellation errors.
+4. Send only the minimum already-authorized execution material. The helper gets
+   no database connection, experience-bank query, release state, Action
+   Submission authority, provider credential store, or general command channel.
+5. The helper reports observations and effective enforcement. The Effect kernel
+   validates, stores, signs/attests, evaluates, and decides what follows.
+6. Containment absence fails the applicable run closed. Optional PTY or local
+   inference absence disables that capability honestly; it must not create a
+   silent fallback with broader authority.
+
+The existing
+[`oa-desktop-audio`](../../crates/oa-desktop-audio/src/main.rs) process is a
+useful shape reference: it uses a closed newline-delimited JSON control channel
+and keeps native device/transport state in the child process. It is not a
+MemoHarness dependency and should not be generalized into one.
+
+The existing
+[`openagents-cloud-contract`](../../crates/openagents-cloud-contract/src/lib.rs)
+plus
+[`packages/cloud-contract`](../../packages/cloud-contract/README.md) arrangement
+is a current Rust-authoritative, hand-maintained mirror. Whatever its migration
+history, it should **not** be copied for new harness contracts. MemoHarness has
+TypeScript/Effect consumers first, so its schema authority belongs on the
+Effect side; native helpers consume generated artifacts and drift fixtures.
 
 ## What already maps well
 
@@ -99,7 +203,7 @@ flags.
 That is the correct authority model for MemoHarness executions. A harness
 optimizer may learn from a Program Run; the run itself must never become
 permission to mutate a repository, send an email, deploy, spend, or publish a
-claim. The current Worker invariant also rejects raw prompts, provider payloads,
+claim. The current OpenAgents app invariant also rejects raw prompts, provider payloads,
 private source, customer data, raw run logs, secrets, and source archives from
 Program Run intake
 ([`apps/openagents.com/INVARIANTS.md`](../../apps/openagents.com/INVARIANTS.md)).
@@ -159,13 +263,18 @@ formed; it cannot affect who may authorize or execute it.
 
 ### The routes are real, but the learning loop is not
 
-The Worker mounts Blueprint routes for the program registry, Program Runs,
+The OpenAgents API code under the historically named `workers/api` path mounts
+Blueprint routes for the program registry, Program Runs,
 Action Submissions, contributions, contract exports, and Tassadar modules
 ([`blueprint-routes.ts`](../../apps/openagents.com/workers/api/src/blueprint-routes.ts),
-[`index.ts`](../../apps/openagents.com/workers/api/src/index.ts)). D1 migrations
-exist for Program Runs, Action Submissions, and Probe contributions. The Pylon
-registry client can consume static fixtures, inline assignments, or the
-OpenAgents HTTP registry.
+[`index.ts`](../../apps/openagents.com/workers/api/src/index.ts)). Historical SQL
+migrations exist for Program Runs, Action Submissions, and Probe contributions.
+The path name must not be read as Cloudflare runtime authority: current
+production infrastructure is Google Cloud, and new MemoHarness persistence
+must target Cloud SQL for transactional metadata and Cloud Storage for private
+trace objects. It must not add D1, R2, Durable Object, or Worker dependencies.
+The Pylon registry client can consume static fixtures, inline assignments, or
+the OpenAgents HTTP registry.
 
 This is meaningful infrastructure, but it is not a dual-layer experience bank.
 The current system has:
@@ -181,7 +290,7 @@ The current system has:
 - replay and simulation primitives, but no frozen-bank, label-free test-time
   adaptation protocol.
 
-The Worker’s
+The API module
 [`chat-program-runtime-khala.ts`](../../apps/openagents.com/workers/api/src/blueprint/services/chat-program-runtime-khala.ts)
 adapts a typed Khala request into the Blueprint chat runtime and can emit GEPA
 feedback. However, this audit found no non-test production caller outside the
@@ -310,20 +419,48 @@ an Action Submission and should never grant external-effect authority.
 
 ## Exact integration points
 
-### Worker kernel
+### Effect contract and API kernel
 
-Add experimental schemas in a focused Worker module such as
-`workers/api/src/blueprint/schemas/harness-optimization.ts`. Keep private
-experience repositories and public/operator projection logic beside the
-existing Program Run repositories. Only move stable, genuinely cross-consumer
-security contracts into `packages/blueprint-contracts`; that package is
-currently intentionally narrow and should not become a dumping ground for
-every research record.
+Start the contract as Effect Schema. Because the intended consumers include
+the OpenAgents API, Pylon runtime, and QA runner, the first stable cross-consumer
+version should live in a focused shared package such as
+`packages/harness-optimization-contract/`, not in a Rust crate and not as three
+app-local copies. A short-lived experiment may begin beside the existing
+Blueprint schemas, but it must move to the shared package before a second
+runtime consumes it.
+
+Keep `packages/blueprint-contracts` narrow: it should continue to own stable
+Blueprint security predicates and ordered gate machines. The larger research
+record family should have its own package and export only public-safe or
+operator-safe projections to consumers that do not need private records.
+
+Implement services, repositories, and route composition in TypeScript/Effect
+beside the current Blueprint Program Run infrastructure under
+`apps/openagents.com/workers/api/src/blueprint/`. Despite the legacy directory
+name, persistence is Cloud SQL and Cloud Storage. Repositories should be Effect
+services with injectable layers, transaction-scoped Cloud SQL access, and an
+opaque private-object service; business logic should not call raw drivers or
+GCS directly.
 
 Extend the Program Registry projection with safe bundle, pattern, and
 adaptation-policy refs only after private-data and authority predicates cover
 the new surface. Preserve the existing rule that raw typed output and metadata
 stay repository-private unless a separately tested projection admits them.
+
+### Native execution helpers
+
+Do not add native code to implement the experience bank, retrieval, optimizer,
+GEPA reflection, reward, release gate, or adaptation logic. Existing Rust
+daemons such as `oa-node`, `oa-workroomd`, and `oa-codex-control` do not become
+MemoHarness owners merely because evaluated executions may run through them.
+They remain execution backends and receipt producers under their existing
+contracts.
+
+If a BP-MH experiment needs a native capability not already supplied by an
+admitted backend, create a separately scoped helper only after its ProductSpec,
+authority contract, and reversal test exist. Prefer a capability-specific name
+and contract—containment, PTY, or local inference—over a generic “harness”
+daemon. The helper must remain process-opaque and authority-free.
 
 ### Pylon
 
@@ -331,6 +468,14 @@ Pylon’s typed signature lookup should remain the deterministic selection stage
 after a semantic route is chosen. MemoHarness-style case retrieval is a
 different problem: it needs a central embedding/similarity service over scoped
 experience projections. Do not implement it as prompt keyword matching.
+
+The current
+[`tas/semantic-retrieval.ts`](../../apps/pylon/src/tas/semantic-retrieval.ts)
+provides a small deterministic cosine/Top-K primitive and useful ordering
+fixtures. It is not a production multi-tenant experience-bank authority. The
+central Effect retrieval service must own bank snapshots, tenant/consent
+filters, similarity thresholds, diversity, release-state filters, and audit
+receipts; Pylon should receive bounded eligible refs rather than the raw bank.
 
 The sequence should be:
 
@@ -374,6 +519,49 @@ can emit normalized success and failure diagnoses. GEPA can remain one
 optimizer kind, but the evidence schema should not assume GEPA; ablation,
 scorecard search, retained-failure replay, and human-curated candidates already
 exist as Blueprint optimizer kinds.
+
+This compiler and optimizer coordinator belong in TypeScript/Effect. They may
+call model providers and dispatch evaluated runs through existing execution
+adapters, including native helpers, but they own no native process state and
+receive only typed execution/evidence receipts.
+
+## Language-specific verification
+
+The two-language split is only defensible if the contract is more trustworthy
+than either implementation.
+
+### Effect-side gates
+
+- Schema encode/decode and version-migration fixtures for every public record;
+- Layer-replaced repositories, provider adapters, clock, embedding service, and
+  evaluator;
+- deterministic TestClock coverage for leases, expiry, retries, bank freezing,
+  retention, and tombstone propagation;
+- state-machine/property tests proving experience cannot promote, adaptation
+  cannot widen authority, and deleted evidence cannot remain retrievable;
+- real Cloud SQL transaction tests for snapshot membership, idempotent intake,
+  and deletion/pattern invalidation;
+- projection tests proving raw trajectories, embeddings, customer data, and
+  provider payloads never enter public/operator exports;
+- static/global/adapted evaluation fixtures and exact reward/cost receipts.
+
+### Rust-helper gates, only where a helper exists
+
+- generated-schema/golden-fixture conformance in both directions;
+- black-box tests against the real binary plus a schema-faithful fake for fast
+  Effect tests;
+- protocol-version, binary-version, generation, frame-bound, overload,
+  cancellation, crash, and parent-disconnect tests;
+- platform-specific containment tests or emulator-backed PTY latency/restore
+  tests as appropriate;
+- proof that the helper cannot reach the experience database, release state,
+  provider credential store, or Action Submission executor;
+- receipt validation showing actual enforcement/capability state, including
+  honest refusal or degradation when unavailable.
+
+Rust unit tests cannot substitute for Effect authority tests, and Effect fakes
+cannot substitute for real OS/native helper tests. The retained cross-language
+fixture corpus is the join.
 
 ## Security, privacy, and authority constraints
 
@@ -456,7 +644,8 @@ misleading when harness policy can materially change the result.
 
 ### BP-MH0 — reconcile the boundary
 
-- Normalize stale Omega/OpenAgents naming in the active Worker and Pylon
+- **Language: documentation and TypeScript/Effect contract cleanup only.**
+- Normalize stale Omega/OpenAgents naming in the active API and Pylon
   contracts.
 - Make production versus candidate/dogfood selection explicit.
 - Update current architecture docs so “implemented adapter” is not described as
@@ -464,15 +653,21 @@ misleading when harness policy can materially change the result.
 
 ### BP-MH1 — model the evidence
 
+- **Language: TypeScript/Effect only.** Create the canonical shared Effect
+  Schema package before multiple runtimes consume the records.
 - Add `HarnessPolicyBundle`, `HarnessPolicyDelta`,
   `HarnessExecutionExperience`, and safe projection schemas.
 - Define private trace storage, tenant scope, retention, correction, deletion,
   and tombstone propagation.
+- Implement Cloud SQL metadata and Cloud Storage trace repositories as injected
+  Effect services; add no D1 or Rust persistence path.
 - Add property/state-machine tests for authority, projection safety, bundle
   compatibility, and lifecycle counterexamples.
 
 ### BP-MH2 — compile offline executions
 
+- **Language: TypeScript/Effect only.** Native execution backends may supply
+  receipts, but do not own compilation or diagnosis.
 - Convert existing Program Runs and QA outcomes into normalized experiences.
 - Record exact calls, tokens, cache state, latency, verifier outcome, and
   six-dimension diagnosis.
@@ -480,6 +675,8 @@ misleading when harness policy can materially change the result.
 
 ### BP-MH3 — propose global candidates
 
+- **Language: TypeScript/Effect only.** Provider/model calls remain injected
+  dependencies of the optimizer coordinator.
 - Extend Optimizer Runs with parent bundle, typed delta, experiment split, and
   scorecard refs.
 - Produce non-production Module Versions only.
@@ -487,6 +684,9 @@ misleading when harness policy can materially change the result.
 
 ### BP-MH4 — add frozen-bank case adaptation
 
+- **Language: TypeScript/Effect only.** Use Cloud SQL/database-native vector
+  operations or a remote embedding adapter behind an Effect service before
+  considering a local native index.
 - Add tenant-safe semantic retrieval over safe experience/pattern projections.
 - Restrict adaptation to released patch catalogs and compatibility predicates.
 - Record adaptation receipts with no-label/no-feedback guarantees.
@@ -494,10 +694,23 @@ misleading when harness policy can materially change the result.
 
 ### BP-MH5 — controlled production evaluation
 
+- **Language: Effect control plane plus existing admitted execution backends.**
+  No new Rust is implied by production evaluation.
 - Begin with a low-risk evidence-only continuation program.
 - Run the three-way static/global/adapted ablation.
 - Require privacy, transfer, variance, cost, rollback, and operator review gates
   before any broader runtime use.
+
+### BP-MH-N — optional native capability, conditional
+
+- **Language: a small Rust helper plus an Effect-owned generated contract.**
+- Open this packet only if an experiment requires owned OS containment, PTY
+  guarantees, or local inference that no admitted backend provides.
+- Require a measured reversal test, process isolation, no kernel authority,
+  generated contract fixtures, real-binary tests, and fail-closed/degraded
+  behavior before integration.
+- Do not put retrieval, memory, optimizer, policy, promotion, or repository
+  logic into the helper.
 
 Each packet is independently reviewable. None requires reopening the closed
 Blueprint-as-company-brain program.
@@ -533,6 +746,11 @@ agent harness a first-class, versioned, evidence-bearing product artifact, then
 use Blueprint’s existing authority boundaries to ensure learning remains
 auditable and promotion remains independent.
 
+The language corollary is equally direct: the adaptive system is an Effect
+coordination problem. Rust can make a selected execution more truthful to the
+OS or more predictable to the clock, but it must not decide which experience is
+remembered, which policy is selected, or which candidate is released.
+
 ## Conclusion
 
 Blueprint and MemoHarness are complementary, not competing designs. Blueprint
@@ -548,3 +766,10 @@ both the current static harness and a globally optimized static candidate, the
 same contracts can graduate through shadow and dogfood. Until then, the paper
 should guide the experiment design—not be treated as justification for wiring
 self-modifying behavior into live Khala, Pylon, or action execution.
+
+Implementation should begin and remain in TypeScript/Effect through the
+experience, optimizer, retrieval, and adaptation packets. Native Rust belongs
+only in separately admitted, process-opaque helpers for containment, PTY, or
+local inference, behind Effect-owned generated contracts. That split combines
+MemoHarness’s learning loop with Blueprint’s authority discipline without
+creating either a second Rust control plane or an in-process native trust hole.
