@@ -418,6 +418,10 @@ specification are needed before treating the result as robust.
 
 ## 12. OpenAgents relevance
 
+The codebase-specific Blueprint integration audit and recommended delivery
+sequence are documented in
+[`2026-07-18-memoharness-blueprint-integration-analysis.md`](./2026-07-18-memoharness-blueprint-integration-analysis.md).
+
 This paper reinforces the earlier OpenAgents research note on evolving the
 harness before changing model weights:
 [`2026-07-04-harness-optimization-evolve-the-harness-audit.md`](./2026-07-04-harness-optimization-evolve-the-harness-audit.md).
