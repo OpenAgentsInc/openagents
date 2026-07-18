@@ -1088,7 +1088,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Codex preflight validates the current account configuration with the
-  bundled Codex parser before a provider probe turn. Automatic repair is
+  user's validated installed Codex parser before a provider probe turn. Automatic repair is
   limited to an explicitly disabled MCP stanza whose only field is
   `enabled = false`: main backs up the source, removes only that inert stanza,
   and requires a successful second parse. Every other parse failure remains
@@ -1601,15 +1601,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   secrets, and raw provider errors. OAuth and elicitations retain exact causal
   thread/server identity; dynamic tools require declared namespace grants; a
   turn cannot select an unreconciled or unauthorized extension.
-  Codex launches the native executable resolved from the exact pinned
-  `@openai/codex` optional platform package, never an ambient PATH executable;
-  one immutable main-process `CodexRuntimeResolution` authority selects that
-  absolute identity once per application lifetime and is shared by app-server,
-  local/preflight, child, connect, status, and maintenance consumers. NVM/PATH
-  changes cannot alter it. Discovery and probing preserve typed missing-package,
-  wrong-target/architecture, non-file/non-executable, spawn, timeout,
-  malformed-version, and incompatible-version failures. Paths and raw probe
-  output remain main-private; public projections are bounded and path-free.
+  Codex launches the user's existing native executable; OpenAgents never
+  packages, copies, or re-signs Codex or app-server. One immutable main-process
+  `CodexRuntimeResolution` authority selects an absolute identity once per
+  application lifetime from the documented standalone location, the official
+  ChatGPT app resource, or an absolute launch-PATH candidate, and shares it
+  across app-server, local/preflight, child, connect, status, and maintenance
+  consumers. Later NVM/PATH changes cannot alter it. Discovery and probing
+  preserve typed missing-install, wrong-architecture, non-file/non-executable,
+  spawn, timeout, malformed-version, and incompatible-version failures. The
+  ordinary current-session child removes any inherited fleet/account
+  `CODEX_HOME` override so Codex uses `~/.codex` and reuses the user's existing
+  config, sessions, and credentials. Paths and raw probe output remain main-private;
+  public projections are bounded and path-free.
   Claude execution imports the exact pinned Agent SDK. The compatibility
   catalog fails closed unless observed versions equal the bundled/tested lock
   versions, and reports missing, malformed, or unverified updates without
@@ -2114,14 +2118,13 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable
   while the host action is in flight, and never render callback, owner, or
   credential fields; `session_ready` is not presented as live Sync.
-- Desktop Codex update discovery starts only after the React workbench is
-  interactive and checks only Codex for the launch advisory. The renderer may
-  request an update but never chooses or executes a package command: main uses
-  the detected install channel, pins the existing version and digest, refuses
-  channel jumps, scrubs auth-home variables, and reports success only after a
-  fresh binary version probe. Official GitHub release notes are bounded,
-  optional presentation data; registry/version-probe truth remains update
-  authority, and missing notes never fabricate failure or success.
+- Desktop Codex discovery selects and version-probes the user's existing
+  installation without reading or mutating credential material. Desktop does
+  not install, update, or repair that external installation and does not offer
+  an OpenAgents update as a Codex repair. Missing, malformed, or incompatible
+  installations project a bounded instruction to install/update Codex and
+  restart OpenAgents. Optional official release notes never fabricate runtime
+  success; the executable probe and app-server protocol remain authority.
   Runtime Gateway maintenance schemas admit only `codex`; Desktop Settings
   must never query, project, or offer Claude Code/OpenCode maintenance during
   the Codex-only MVP. Broader Pylon-core maintenance definitions are dormant

@@ -6,7 +6,7 @@ import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervis
 import { makeCodexHostServices } from "../src/codex-host-services.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 
 const root = mkdtempSync(join(tmpdir(), "oa-codex-host-smoke-"))
 const supervisor = createCodexAppServerSupervisor({ strictGeneratedDecoding: true })
@@ -33,7 +33,7 @@ try {
   if (settled.state !== "settled" || !settled.stdoutPreview.includes("cap09-command-ok")) throw new Error(`live command failed: ${JSON.stringify(settled)}`)
   if (readFileSync(join(root, "live.txt"), "utf8") !== "written through exact app-server") throw new Error("live fs write missing on host")
   host.close()
-  console.log("Verified bounded filesystem and command services through the exact packaged Codex app-server.")
+  console.log("Verified bounded filesystem and command services through the exact installed Codex app-server.")
 } finally {
   supervisor.close()
   rmSync(root, { recursive: true, force: true })

@@ -459,7 +459,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           text: "",
           usage: null,
           threadId: input.resumeThreadId,
-          detail: "the package-owned Codex app-server executable is unavailable",
+          detail: "the installed Codex app-server executable is unavailable",
           preContent: true,
           policyDenied: false,
           quotaExhausted: false,

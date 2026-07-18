@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 
 const object = (value: unknown): Record<string, unknown> | null => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : []

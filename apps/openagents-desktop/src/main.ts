@@ -1040,9 +1040,8 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     decide: command => Number(Effect.runSync(service.decide(command))),
   }
 }, () => hostLifecycle.voice(), {
-  // Desktop Codex is application-owned: status comes from the exact authority
-  // used by turns and repair means updating/reinstalling OpenAgents. Desktop
-  // never probes the ambient Claude/OpenCode maintenance catalog.
+  // Desktop reuses one validated user-installed Codex identity and its normal
+  // CODEX_HOME. It never packages or repairs Codex inside the signed app.
   status: async () => {
     const codexResolution = await codexRuntimeAuthority.inspect()
     const codex = publicCodexRuntimeProjection(codexResolution)
@@ -1052,14 +1051,16 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
           harness: "codex" as const,
           installed: codexResolution.executablePath !== null,
           installedVersion: codex.observedVersion,
-          latestVersion: codex.expectedVersion,
-          channel: "desktop-bundle" as const,
+          latestVersion: null,
+          channel: codex.provenance === "chatgpt_app" || codex.provenance === "standalone_install"
+            ? "native" as const
+            : "unknown" as const,
           advisory: codex.compatible ? "current" as const : "unknown" as const,
-          updateSupported: !codex.compatible,
+          updateSupported: false,
           runtimeState: codex.state,
           recoveryMessage: codex.recoveryMessage,
         }],
-      codexReleaseNotes: await fetchCodexReleaseNotes(codex.expectedVersion).then(notes =>
+      codexReleaseNotes: codex.observedVersion === null ? null : await fetchCodexReleaseNotes(codex.observedVersion).then(notes =>
         notes === null ? null : {
           version: notes.version,
           title: notes.title,
@@ -1070,14 +1071,11 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   },
   update: async () => {
     const resolution = await codexRuntimeAuthority.inspect()
-    const update = resolution.state === "ready" ? null : await desktopUpdateHost.check()
     return {
       outcome: resolution.state === "ready" ? "already_current" as const : "failed" as const,
       failureReason: resolution.state === "ready"
         ? null
-        : update?.phase === "available" || update?.phase === "staged"
-          ? "repair_openagents_update_available"
-          : "repair_openagents",
+        : "install_or_update_codex",
       beforeVersion: resolution.observedVersion,
       afterVersion: resolution.observedVersion,
       receiptId: null,

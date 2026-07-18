@@ -299,7 +299,7 @@ describe("makeProviderAccountsService", () => {
         { ref: "claude-pylon-3", provider: "claude_agent", email: null, readiness: "ready" },
       ],
       runtimes: [
-        { kind: "codex_cli", state: "compatible", expectedVersion: "0.144.1", observedVersion: "0.144.1", reason: "verified" },
+        { kind: "codex_cli", state: "compatible", expectedVersion: ">=0.144.1", observedVersion: "0.144.1", reason: "verified" },
         { kind: "claude_agent_sdk", state: "compatible", expectedVersion: "0.3.172", observedVersion: "0.3.172", reason: "verified" },
       ],
     })

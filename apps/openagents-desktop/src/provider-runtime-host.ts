@@ -1,13 +1,8 @@
 import { spawn } from "node:child_process"
-import { createHash } from "node:crypto"
-import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs"
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { createRequire } from "node:module"
+import { homedir } from "node:os"
 import path from "node:path"
-
-import {
-  bundledCodexVersion,
-  evaluateCodexBinaryCompatibility,
-} from "@openagentsinc/codex-app-server-protocol/compatibility"
 
 import {
   classifyProviderRuntimeCompatibility,
@@ -20,8 +15,6 @@ const require = createRequire(import.meta.url)
 export type CodexRuntimeTarget = Readonly<{
   platform: NodeJS.Platform
   arch: string
-  packageName: string
-  triple: string
   executable: string
 }>
 
@@ -30,36 +23,36 @@ export const codexRuntimeTarget = (
   arch: string = process.arch,
 ): CodexRuntimeTarget | null => {
   const key = `${platform}:${arch}`
-  const targets: Record<string, Readonly<{ packageName: string; triple: string; executable: string }>> = {
-    "darwin:arm64": { packageName: "@openai/codex-darwin-arm64", triple: "aarch64-apple-darwin", executable: "codex" },
-    "darwin:x64": { packageName: "@openai/codex-darwin-x64", triple: "x86_64-apple-darwin", executable: "codex" },
-    "linux:arm64": { packageName: "@openai/codex-linux-arm64", triple: "aarch64-unknown-linux-musl", executable: "codex" },
-    "linux:x64": { packageName: "@openai/codex-linux-x64", triple: "x86_64-unknown-linux-musl", executable: "codex" },
-    "win32:arm64": { packageName: "@openai/codex-win32-arm64", triple: "aarch64-pc-windows-msvc", executable: "codex.exe" },
-    "win32:x64": { packageName: "@openai/codex-win32-x64", triple: "x86_64-pc-windows-msvc", executable: "codex.exe" },
+  const targets: Record<string, Readonly<{ executable: string }>> = {
+    "darwin:arm64": { executable: "codex" },
+    "darwin:x64": { executable: "codex" },
+    "linux:arm64": { executable: "codex" },
+    "linux:x64": { executable: "codex" },
+    "win32:arm64": { executable: "codex.exe" },
+    "win32:x64": { executable: "codex.exe" },
   }
   const target = targets[key]
   return target === undefined ? null : { platform, arch, ...target }
 }
 
-export type BundledCodexResolutionOptions = Readonly<{
+export type InstalledCodexResolutionOptions = Readonly<{
   resourcesPath?: string | null
+  env?: NodeJS.ProcessEnv
+  homeDir?: string
+  candidatePaths?: ReadonlyArray<string>
   exists?: (value: string) => boolean
   isFile?: (value: string) => boolean
   isExecutable?: (value: string) => boolean
   hasExpectedArchitecture?: (value: string, target: CodexRuntimeTarget) => boolean
-  sha256?: (value: string) => string | null
+  canonicalize?: (value: string) => string
   platform?: NodeJS.Platform
   arch?: string
-  /** Test seam for dependency-graph resolution; never an ambient PATH lookup. */
-  resolveFromDependencyGraph?: (target: CodexRuntimeTarget) => string | null
 }>
 
 export const codexRuntimeStates = [
   "ready",
   "unsupported_target",
-  "missing_package",
-  "wrong_target",
+  "missing_install",
   "wrong_architecture",
   "not_file",
   "not_executable",
@@ -69,7 +62,7 @@ export const codexRuntimeStates = [
   "incompatible_version",
 ] as const
 export type CodexRuntimeState = (typeof codexRuntimeStates)[number]
-export type CodexRuntimeSource = "dependency_graph" | "packaged_unpacked"
+export type CodexRuntimeSource = "standalone_install" | "chatgpt_app" | "path"
 
 export type CodexRuntimeResolution = Readonly<{
   state: CodexRuntimeState
@@ -80,11 +73,11 @@ export type CodexRuntimeResolution = Readonly<{
   expectedVersion: string
   observedVersion: string | null
   capabilities: ReadonlyArray<"exec_json" | "app_server" | "device_auth">
-  recovery: "none" | "repair_openagents"
+  recovery: "none" | "install_or_update_codex"
 }>
 
 export type CodexRuntimeCandidate = Readonly<{
-  state: "candidate" | "unsupported_target" | "missing_package" | "wrong_target" | "wrong_architecture" | "not_file" | "not_executable" | "unverified_binary"
+  state: "candidate" | "unsupported_target" | "missing_install" | "wrong_architecture" | "not_file" | "not_executable"
   source: CodexRuntimeSource | null
   target: CodexRuntimeTarget | null
   executablePath: string | null
@@ -101,27 +94,6 @@ const regularFileByDefault = (value: string): boolean => {
 const executableByDefault = (value: string): boolean => {
   if (process.platform === "win32") return true
   try { accessSync(value, constants.X_OK); return true } catch { return false }
-}
-
-const sha256ByDefault = (value: string): string | null => {
-  try {
-    return createHash("sha256").update(readFileSync(value)).digest("hex")
-  } catch {
-    return null
-  }
-}
-
-const hasReviewedManifest = (
-  value: string,
-  target: CodexRuntimeTarget,
-  sha256: (value: string) => string | null,
-): boolean => {
-  const digest = sha256(value)
-  return digest !== null && evaluateCodexBinaryCompatibility({
-    version: bundledCodexVersion,
-    target: target.triple,
-    sha256: digest,
-  })._tag === "Compatible"
 }
 
 const expectedMacCpuType = (arch: string): number | null =>
@@ -153,33 +125,47 @@ const expectedArchitectureByDefault = (value: string, target: CodexRuntimeTarget
   }
 }
 
-const resolveCodexFromDependencyGraph = (target: CodexRuntimeTarget): string | null => {
-  try {
-    const codexEntrypoint = require.resolve("@openai/codex/bin/codex.js")
-    const codexRequire = createRequire(codexEntrypoint)
-    const packageJson = codexRequire.resolve(`${target.packageName}/package.json`)
-    return path.join(path.dirname(packageJson), "vendor", target.triple, "bin", target.executable)
-  } catch {
-    return null
-  }
-}
-
-const candidateMatchesTarget = (
-  candidate: string,
+const installedCodexCandidates = (
   target: CodexRuntimeTarget,
-  source: CodexRuntimeSource,
-): boolean => {
-  const normalized = candidate.split(path.sep).join("/")
-  if (!path.isAbsolute(candidate)) return false
-  const aliasLayout = normalized.includes(`/node_modules/${target.packageName}/vendor/${target.triple}/bin/${target.executable}`)
-  if (source === "packaged_unpacked" || aliasLayout) return aliasLayout
-  // pnpm materializes npm aliases under a target-qualified store directory,
-  // while the package's own manifest name remains `@openai/codex`.
-  return normalized.includes(`-${target.platform}-${target.arch}/node_modules/@openai/codex/vendor/${target.triple}/bin/${target.executable}`)
+  options: InstalledCodexResolutionOptions,
+): ReadonlyArray<Readonly<{ path: string; source: CodexRuntimeSource }>> => {
+  if (options.candidatePaths !== undefined) {
+    return options.candidatePaths.map(value => ({ path: value, source: "path" as const }))
+  }
+  const env = options.env ?? process.env
+  const home = options.homeDir ?? homedir()
+  const paths = target.platform === "win32" ? path.win32 : path.posix
+  const candidates: Array<Readonly<{ path: string; source: CodexRuntimeSource }>> = []
+  if (target.platform === "win32") {
+    const localAppData = env.LOCALAPPDATA
+    if (localAppData !== undefined && localAppData !== "") {
+      candidates.push({
+        path: paths.join(localAppData, "Programs", "OpenAI", "Codex", "bin", target.executable),
+        source: "standalone_install",
+      })
+    }
+  } else {
+    candidates.push({ path: paths.join(home, ".local", "bin", target.executable), source: "standalone_install" })
+    if (target.platform === "darwin") {
+      candidates.push({ path: "/Applications/ChatGPT.app/Contents/Resources/codex", source: "chatgpt_app" })
+      candidates.push({ path: paths.join(home, "Applications", "ChatGPT.app", "Contents", "Resources", "codex"), source: "chatgpt_app" })
+      candidates.push({ path: "/opt/homebrew/bin/codex", source: "path" })
+    }
+    candidates.push({ path: "/usr/local/bin/codex", source: "path" })
+    candidates.push({ path: "/usr/bin/codex", source: "path" })
+  }
+  const delimiter = target.platform === "win32" ? ";" : ":"
+  for (const directory of (env.PATH ?? "").split(delimiter)) {
+    if (directory !== "" && paths.isAbsolute(directory)) {
+      candidates.push({ path: paths.join(directory, target.executable), source: "path" })
+    }
+  }
+  const seen = new Set<string>()
+  return candidates.filter(candidate => !seen.has(candidate.path) && seen.add(candidate.path))
 }
 
-export const discoverBundledCodexRuntime = (
-  options: BundledCodexResolutionOptions = {},
+export const discoverInstalledCodexRuntime = (
+  options: InstalledCodexResolutionOptions = {},
 ): CodexRuntimeCandidate => {
   const target = codexRuntimeTarget(options.platform, options.arch)
   if (target === null) return { state: "unsupported_target", source: null, target: null, executablePath: null }
@@ -187,45 +173,26 @@ export const discoverBundledCodexRuntime = (
   const isFile = options.isFile ?? regularFileByDefault
   const isExecutable = options.isExecutable ?? executableByDefault
   const hasExpectedArchitecture = options.hasExpectedArchitecture ?? expectedArchitectureByDefault
-  const sha256 = options.sha256 ?? sha256ByDefault
-  const dependencyCandidate = (options.resolveFromDependencyGraph ?? resolveCodexFromDependencyGraph)(target)
-  if (dependencyCandidate !== null) {
-    const executablePath = executableOutsideAsar(dependencyCandidate, exists)
-    if (executablePath !== null) {
-      const source = dependencyCandidate.includes(`${path.sep}app.asar${path.sep}`)
-        ? "packaged_unpacked" as const
-        : "dependency_graph" as const
-      if (!candidateMatchesTarget(executablePath, target, source)) return { state: "wrong_target", source, target, executablePath }
-      if (!isFile(executablePath)) return { state: "not_file", source, target, executablePath }
-      if (!isExecutable(executablePath)) return { state: "not_executable", source, target, executablePath }
-      if (!hasExpectedArchitecture(executablePath, target)) return { state: "wrong_architecture", source, target, executablePath }
-      if (!hasReviewedManifest(executablePath, target, sha256)) return { state: "unverified_binary", source, target, executablePath }
-      return { state: "candidate", source, target, executablePath }
+  const canonicalize = options.canonicalize ?? (value => realpathSync(value))
+  const targetPaths = target.platform === "win32" ? path.win32 : path.posix
+  let firstFailure: CodexRuntimeCandidate | null = null
+  for (const candidate of installedCodexCandidates(target, options)) {
+    if (!targetPaths.isAbsolute(candidate.path) || !exists(candidate.path)) continue
+    const executablePath = canonicalize(candidate.path)
+    const failure = !isFile(executablePath)
+      ? "not_file" as const
+      : !isExecutable(executablePath)
+        ? "not_executable" as const
+        : !hasExpectedArchitecture(executablePath, target)
+          ? "wrong_architecture" as const
+          : null
+    if (failure !== null) {
+      firstFailure ??= { state: failure, source: candidate.source, target, executablePath }
+      continue
     }
+    return { state: "candidate", source: candidate.source, target, executablePath }
   }
-  const resourcesPath = options.resourcesPath ?? (
-    process as NodeJS.Process & { resourcesPath?: string }
-  ).resourcesPath
-  if (typeof resourcesPath !== "string" || resourcesPath.length === 0) {
-    return { state: "missing_package", source: null, target, executablePath: null }
-  }
-  const executablePath = path.join(
-    resourcesPath,
-    "app.asar.unpacked",
-    "node_modules",
-    target.packageName,
-    "vendor",
-    target.triple,
-    "bin",
-    target.executable,
-  )
-  if (!exists(executablePath)) return { state: "missing_package", source: "packaged_unpacked", target, executablePath: null }
-  if (!candidateMatchesTarget(executablePath, target, "packaged_unpacked")) return { state: "wrong_target", source: "packaged_unpacked", target, executablePath }
-  if (!isFile(executablePath)) return { state: "not_file", source: "packaged_unpacked", target, executablePath }
-  if (!isExecutable(executablePath)) return { state: "not_executable", source: "packaged_unpacked", target, executablePath }
-  if (!hasExpectedArchitecture(executablePath, target)) return { state: "wrong_architecture", source: "packaged_unpacked", target, executablePath }
-  if (!hasReviewedManifest(executablePath, target, sha256)) return { state: "unverified_binary", source: "packaged_unpacked", target, executablePath }
-  return { state: "candidate", source: "packaged_unpacked", target, executablePath }
+  return firstFailure ?? { state: "missing_install", source: null, target, executablePath: null }
 }
 
 export const executableOutsideAsar = (
@@ -244,15 +211,15 @@ export const executableOutsideAsar = (
 }
 
 /**
- * Resolves only the optional native package owned by the pinned Codex
- * dependency. Forge moves native packages out of `app.asar`; package
- * resolution is the development path and the exact `app.asar.unpacked`
- * package location is the installed path. Ambient PATH is never consulted.
+ * Resolves the user's existing Codex installation. OpenAgents never packages,
+ * copies, re-signs, or substitutes this executable. Discovery is bounded to
+ * the documented standalone location, the official ChatGPT app resource, and
+ * absolute directories already present in the launch environment's PATH.
  */
-export const resolveBundledCodexExecutable = (
-  options: BundledCodexResolutionOptions = {},
+export const resolveInstalledCodexExecutable = (
+  options: InstalledCodexResolutionOptions = {},
 ): string | null => {
-  const candidate = discoverBundledCodexRuntime(options)
+  const candidate = discoverInstalledCodexRuntime(options)
   return candidate.state === "candidate" ? candidate.executablePath : null
 }
 
@@ -264,7 +231,7 @@ export const resolveBundledCodexExecutable = (
  * before a local Claude turn starts.
  */
 export const resolveBundledClaudeExecutable = (
-  options: BundledCodexResolutionOptions = {},
+  options: InstalledCodexResolutionOptions = {},
 ): string | null => {
   const exists = options.exists ?? existsSync
   const packageName = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`
@@ -306,7 +273,7 @@ type VersionChild = Readonly<{
   kill: (signal?: NodeJS.Signals) => boolean
 }>
 
-export type CodexRuntimeAuthorityOptions = BundledCodexResolutionOptions & Readonly<{
+export type CodexRuntimeAuthorityOptions = InstalledCodexResolutionOptions & Readonly<{
   readClaudeVersion?: () => string | null
   spawnVersion?: (executable: string) => VersionChild | null
   timeoutMs?: number
@@ -330,16 +297,14 @@ const defaultSpawnVersion = (executable: string): VersionChild | null => {
 }
 
 const resolutionFromCandidate = (candidate: CodexRuntimeCandidate): CodexRuntimeResolution => ({
-  state: candidate.state === "candidate"
-    ? "spawn_failed"
-    : candidate.state === "unverified_binary" ? "incompatible_version" : candidate.state,
+  state: candidate.state === "candidate" ? "spawn_failed" : candidate.state,
   source: candidate.source,
   target: candidate.target,
   executablePath: candidate.executablePath,
   expectedVersion: supportedProviderRuntimeVersions.codex_cli,
   observedVersion: null,
   capabilities: [],
-  recovery: "repair_openagents",
+  recovery: "install_or_update_codex",
 })
 
 const probeCodexRuntime = (
@@ -370,7 +335,7 @@ const probeCodexRuntime = (
         expectedVersion: supportedProviderRuntimeVersions.codex_cli,
         observedVersion,
         capabilities: state === "ready" ? ["exec_json", "app_server", "device_auth"] : [],
-        recovery: state === "ready" ? "none" : "repair_openagents",
+        recovery: state === "ready" ? "none" : "install_or_update_codex",
       })
     }
     child.stdout?.on("data", (chunk: Buffer | string) => {
@@ -400,13 +365,14 @@ export type CodexRuntimeAuthority = Readonly<{
 }>
 
 /**
- * One process-lifetime package-owned Codex identity. Discovery runs exactly
- * once; ambient PATH/NVM changes cannot alter any subsequent consumer.
+ * One process-lifetime user-installed Codex identity. Discovery runs exactly
+ * once so a PATH or version-manager change cannot swap the executable beneath
+ * an active Desktop process.
  */
 export const makeCodexRuntimeAuthority = (
   options: CodexRuntimeAuthorityOptions = {},
 ): CodexRuntimeAuthority => {
-  const candidate = discoverBundledCodexRuntime(options)
+  const candidate = discoverInstalledCodexRuntime(options)
   let inspection: Promise<CodexRuntimeResolution> | null = null
   return Object.freeze({
     executable: () => candidate.state === "candidate" ? candidate.executablePath : null,
@@ -418,7 +384,7 @@ export const codexRuntimeAuthority = makeCodexRuntimeAuthority()
 
 export type PublicCodexRuntimeProjection = Readonly<{
   state: CodexRuntimeState
-  provenance: "bundled_dependency" | "bundled_installed" | "unavailable"
+  provenance: "standalone_install" | "chatgpt_app" | "path" | "unavailable"
   expectedVersion: string
   observedVersion: string | null
   compatible: boolean
@@ -430,16 +396,14 @@ export const publicCodexRuntimeProjection = (
   resolution: CodexRuntimeResolution,
 ): PublicCodexRuntimeProjection => ({
   state: resolution.state,
-  provenance: resolution.source === "dependency_graph"
-    ? "bundled_dependency"
-    : resolution.source === "packaged_unpacked" ? "bundled_installed" : "unavailable",
+  provenance: resolution.source ?? "unavailable",
   expectedVersion: resolution.expectedVersion,
   observedVersion: resolution.observedVersion,
   compatible: resolution.state === "ready",
   capabilities: resolution.capabilities,
   recoveryMessage: resolution.state === "ready"
     ? null
-    : "Repair or update OpenAgents to restore its bundled Codex runtime.",
+    : "Install or update Codex, then restart OpenAgents. Your existing Codex sign-in is reused.",
 })
 
 export const inspectProviderRuntimeCompatibility = async (
@@ -456,7 +420,7 @@ export const inspectProviderRuntimeCompatibility = async (
     ? classifyProviderRuntimeCompatibility("codex_cli", `codex-cli ${codexResolution.observedVersion}`)
     : codexResolution.state === "incompatible_version"
       ? classifyProviderRuntimeCompatibility("codex_cli", `codex-cli ${codexResolution.observedVersion}`)
-      : codexResolution.state === "unsupported_target" || codexResolution.state === "missing_package" || codexResolution.state === "wrong_target" || codexResolution.state === "wrong_architecture" || codexResolution.state === "not_file" || codexResolution.state === "not_executable"
+      : codexResolution.state === "unsupported_target" || codexResolution.state === "missing_install" || codexResolution.state === "wrong_architecture" || codexResolution.state === "not_file" || codexResolution.state === "not_executable"
         ? classifyProviderRuntimeCompatibility("codex_cli", null)
         : classifyProviderRuntimeCompatibility("codex_cli", "")
   return [

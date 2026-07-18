@@ -241,7 +241,7 @@ export type CodexChildSpawn = (input: Readonly<{
   cwd: string
 }>) => ChildLike | null
 
-/** Shared pinned bundled Codex spawn (children, local chat, and preflight). */
+/** Shared validated installed Codex spawn (children, local chat, and preflight). */
 export const defaultSpawnCodex: CodexChildSpawn = input => {
   try {
     const executable = codexRuntimeAuthority.executable()

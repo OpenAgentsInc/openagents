@@ -74,7 +74,7 @@ export type ExtensionGrant = typeof ExtensionGrantSchema.Type
 /**
  * Provider disagreement stays explicit (CUT-23 completion criterion). Every
  * current extension kind is consumed by the Claude Agent SDK lane only; the
- * bundled Codex runtime has no equivalent user-MCP/plugin/skill contract, so
+ * installed Codex integration has no equivalent user-MCP/plugin/skill contract, so
  * it is `unsupported` — never silently emulated.
  */
 export const ExtensionProviderSupportSchema = Schema.Struct({

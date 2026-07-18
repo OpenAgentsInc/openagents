@@ -1,9 +1,7 @@
 import { Effect } from "effect"
 import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import {
-  bundledCodexExecutableSha256,
-} from "@openagentsinc/codex-app-server-protocol/compatibility"
 import { bundledCodex01441ProtocolManifest } from "@openagentsinc/codex-app-server-protocol/parity"
 
 import {
@@ -57,7 +55,9 @@ export const codexAppServerPoolIdentity = (
   target: CodexAppServerPoolTarget,
 ): CodexAppServerPoolIdentity => ({
   binary: target.binary,
-  binarySha256: target.binarySha256 ?? bundledCodexExecutableSha256,
+  binarySha256: target.binarySha256 ?? (target.spawnImpl === undefined
+    ? createHash("sha256").update(readFileSync(target.binary)).digest("hex")
+    : createHash("sha256").update(`test-spawn:${target.binary}`).digest("hex")),
   codexHome: target.env.CODEX_HOME ?? null,
   accountRef: target.accountRef,
   hostTarget: target.hostTarget,

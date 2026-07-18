@@ -316,15 +316,18 @@ After traffic promotion, download the public DMG to a fresh path, verify its
 signed SHA-256/length, mount it, and run the packaged smoke from pristine
 temporary user data. Require `[openagents-desktop smoke] OK`, lifecycle
 teardown `{"ok":true,"active":0}`, the unpacked renderer and worker boundary,
-and the bundled Codex artifact oracle:
+and the external Codex integration oracle:
 
 ```sh
-pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
-  --app /tmp/openagents-release-mount/OpenAgents.app --signed
+pnpm exec vp test --run apps/openagents-desktop/tests/package-macos.test.ts \
+  apps/openagents-desktop/tests/release-staging.test.ts
+CODEX_BIN="$(command -v codex)" \
+  pnpm --dir apps/openagents-desktop run smoke:codex-turn-control
 ```
 
-Require `state:"ready"`, `source:"desktop-bundle"`, `minimalPath:true`,
-`signatureVerified:true`, and equal expected/observed versions. Then record
+Require no `@openai/codex` package or Codex executable in the staged/signed
+app, installed-Codex discovery `state:"ready"`, and a completed real turn using
+the ordinary authenticated Codex home. Then record
 clean install, account readiness, a coding turn, interruption/resume,
 first-launch/rollback boundary, reinstall, diagnostics, and the repeated
 mobile-feed probe. Experimental candidates remain under the OS temporary

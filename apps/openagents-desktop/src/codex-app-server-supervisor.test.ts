@@ -11,6 +11,7 @@ import {
 
 const target = (overrides: Partial<CodexAppServerPoolTarget> = {}): CodexAppServerPoolTarget => ({
   binary: "/Applications/OpenAgents.app/codex",
+  binarySha256: "fixture-codex-sha256",
   env: { CODEX_HOME: "/accounts/codex-primary" },
   cwd: "/workspace",
   accountRef: "codex-primary",

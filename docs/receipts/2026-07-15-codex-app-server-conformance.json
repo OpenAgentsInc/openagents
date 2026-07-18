@@ -162,7 +162,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -1137,7 +1137,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -1228,7 +1228,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -1306,7 +1306,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -1540,7 +1540,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -2411,7 +2411,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-notification-and-thread-item-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -2919,7 +2919,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -3881,7 +3881,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -3972,7 +3972,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -4050,7 +4050,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -4284,7 +4284,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-wire-schema-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {
@@ -5142,7 +5142,7 @@
         "productPresentation": "policy:main-private-native-only",
         "authority": "owner-local-policy",
         "fixture": "generated-notification-and-thread-item-corpus",
-        "realBinaryProof": "codex-binary-manifest-smoke",
+        "realBinaryProof": "installed-codex-protocol-smoke",
         "policy": "supported"
       },
       {

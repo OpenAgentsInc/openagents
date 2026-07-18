@@ -30,7 +30,7 @@ const classify = (method: string): Readonly<{ owner: string; surface: string; au
   if (/^(?:turn\/|thread\/compact|thread\/rollback|thread\/realtime|thread\/start)/u.test(method)) return { owner: "CAP-07", surface: "desktop:composer-steer-queue-and-turn-control", authority: "composer-admission-authority", smoke: "codex-turn-control-smoke" }
   if (method === "initialize" || method === "initialized") return { owner: "CAP-01", surface: "desktop:supervisor-handshake", authority: "supervisor-pool-authority", smoke: "codex-supervisor-smoke" }
   if (method.startsWith("mock/")) return { owner: "protocol", surface: "policy:test-only-unavailable", authority: "none", smoke: "not-applicable" }
-  return { owner: "CAP-00", surface: "policy:main-private-native-only", authority: "owner-local-policy", smoke: "codex-binary-manifest-smoke" }
+  return { owner: "CAP-00", surface: "policy:main-private-native-only", authority: "owner-local-policy", smoke: "installed-codex-protocol-smoke" }
 }
 
 const key = (member: ProtocolMember): string => `${member.direction}\0${member.method}`

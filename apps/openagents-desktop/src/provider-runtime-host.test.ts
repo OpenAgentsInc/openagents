@@ -4,14 +4,13 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 
 import {
-  executableOutsideAsar,
-  discoverBundledCodexRuntime,
+  discoverInstalledCodexRuntime,
   inspectProviderRuntimeCompatibility,
   makeCodexRuntimeAuthority,
   publicCodexRuntimeProjection,
   readInstalledClaudeAgentSdkVersion,
   resolveBundledClaudeExecutable,
-  resolveBundledCodexExecutable,
+  resolveInstalledCodexExecutable,
 } from "./provider-runtime-host.ts"
 
 const child = (output: string, code = 0, delay = 0) => {
@@ -35,124 +34,103 @@ const child = (output: string, code = 0, delay = 0) => {
   return value
 }
 
-const bundledCodex = "/checkout/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
-const bundledOptions = {
+const installedCodex = "/Users/example/.local/bin/codex"
+const installedOptions = {
   platform: "darwin" as const,
   arch: "arm64",
-  resolveFromDependencyGraph: () => bundledCodex,
-  exists: (value: string) => value === bundledCodex,
+  candidatePaths: [installedCodex],
+  exists: (value: string) => value === installedCodex,
   isFile: () => true,
   isExecutable: () => true,
   hasExpectedArchitecture: () => true,
-  sha256: () => "29915529b97697def1a957b0505e770aa6a45744435d62fc263e98d7619e167a",
+  canonicalize: (value: string) => value,
 }
 
 describe("provider runtime host", () => {
-  test("the clean checkout resolves the pinned native Codex and Claude SDK packages", () => {
-    expect(resolveBundledCodexExecutable()).toContain("@openai+codex")
+  test("resolves the user's documented standalone Codex install and bundled Claude SDK", () => {
+    expect(resolveInstalledCodexExecutable(installedOptions)).toBe(installedCodex)
     expect(resolveBundledClaudeExecutable()).toContain("@anthropic-ai+claude-agent-sdk-darwin-arm64")
     expect(readInstalledClaudeAgentSdkVersion()).toBe("0.3.172")
   })
 
-  test("the installed app resolves the exact package-owned unpacked Claude binary", () => {
-    const resolved = resolveBundledClaudeExecutable({
-      resourcesPath: "/Applications/OpenAgents.app/Contents/Resources",
-      exists: value => value.endsWith("/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"),
-    })
-    expect(resolved).toBe(
-      "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude",
-    )
-    expect(resolved).not.toContain("/app.asar/")
-  })
-
-  test("the installed app resolves the exact package-owned unpacked Codex binary", () => {
-    const resolved = resolveBundledCodexExecutable({
+  test("finds Codex without a login-shell PATH on macOS", () => {
+    const candidates: string[] = []
+    const result = discoverInstalledCodexRuntime({
       platform: "darwin",
       arch: "arm64",
-      resolveFromDependencyGraph: () => null,
-      resourcesPath: "/Applications/OpenAgents.app/Contents/Resources",
-      exists: value => value.includes("/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/"),
+      homeDir: "/Users/example",
+      env: { PATH: "/usr/bin:/bin" },
+      exists: value => { candidates.push(value); return value === "/Applications/ChatGPT.app/Contents/Resources/codex" },
       isFile: () => true,
       isExecutable: () => true,
       hasExpectedArchitecture: () => true,
-      sha256: () => "29915529b97697def1a957b0505e770aa6a45744435d62fc263e98d7619e167a",
+      canonicalize: value => value,
     })
-    expect(resolved).toBe(
-      "/Applications/OpenAgents.app/Contents/Resources/app.asar.unpacked/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
-    )
-    expect(resolved).not.toContain("/.codex")
+    expect(result).toMatchObject({ state: "candidate", source: "chatgpt_app" })
+    expect(result.executablePath).toBe("/Applications/ChatGPT.app/Contents/Resources/codex")
+    expect(candidates[0]).toBe("/Users/example/.local/bin/codex")
   })
 
-  test("an Electron virtual ASAR executable is translated before spawn", () => {
-    const virtual = "/Applications/OpenAgents.app/Contents/Resources/app.asar/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
-    const unpacked = virtual.replace("/app.asar/", "/app.asar.unpacked/")
-    expect(executableOutsideAsar(virtual, value => value === unpacked)).toBe(unpacked)
-    expect(executableOutsideAsar(virtual, () => false)).toBeNull()
-    expect(executableOutsideAsar("/checkout/node_modules/codex", value => value.startsWith("/checkout")))
-      .toBe("/checkout/node_modules/codex")
+  test("uses the documented Windows standalone install location", () => {
+    const expected = "C:\\Users\\Example\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe"
+    const result = discoverInstalledCodexRuntime({
+      platform: "win32",
+      arch: "x64",
+      env: { LOCALAPPDATA: "C:\\Users\\Example\\AppData\\Local", PATH: "" },
+      exists: value => value === expected,
+      isFile: () => true,
+      isExecutable: () => true,
+      canonicalize: value => value,
+    })
+    expect(result).toMatchObject({ state: "candidate", source: "standalone_install", executablePath: expected })
   })
 
-  test("concurrent observations return redacted compatible facts", async () => {
+  test("supports current installed Codex versions including prereleases", async () => {
     const result = await inspectProviderRuntimeCompatibility({
-      ...bundledOptions,
-      spawnVersion: () => child("codex-cli 0.144.1\n"),
+      ...installedOptions,
+      spawnVersion: () => child("codex-cli 0.145.0-alpha.18\n"),
       readClaudeVersion: () => "0.3.172",
     })
     expect(result.map(item => item.state)).toEqual(["compatible", "compatible"])
-    expect(JSON.stringify(result)).not.toContain("/private")
+    expect(result[0]).toMatchObject({ expectedVersion: ">=0.144.1", observedVersion: "0.145.0-alpha.18" })
   })
 
-  test("missing, malformed, incompatible, crash, and update states fail closed", async () => {
-    expect((await inspectProviderRuntimeCompatibility({ platform: "darwin", arch: "arm64", resolveFromDependencyGraph: () => null, resourcesPath: null, readClaudeVersion: () => null }))[0]?.state).toBe("missing")
-    expect((await inspectProviderRuntimeCompatibility({ ...bundledOptions, spawnVersion: () => child("garbage"), readClaudeVersion: () => "0.4.0" })).map(item => item.state)).toEqual(["malformed", "incompatible"])
-    expect((await inspectProviderRuntimeCompatibility({ ...bundledOptions, spawnVersion: () => child("", 1), readClaudeVersion: () => "0.3.172" }))[0]?.state).toBe("malformed")
-  })
-
-  test("a hung version process is killed and settles malformed", async () => {
-    const hung = child("codex-cli 0.144.1", 0, 100)
-    const result = await inspectProviderRuntimeCompatibility({
-      ...bundledOptions,
-      spawnVersion: () => hung,
-      readClaudeVersion: () => "0.3.172",
-      timeoutMs: 5,
-    })
-    expect(result[0]?.state).toBe("malformed")
+  test("missing, malformed, incompatible, crash, and timeout states fail closed", async () => {
+    const missing = { ...installedOptions, exists: () => false }
+    expect((await inspectProviderRuntimeCompatibility({ ...missing, readClaudeVersion: () => null }))[0]?.state).toBe("missing")
+    expect((await inspectProviderRuntimeCompatibility({ ...installedOptions, spawnVersion: () => child("garbage"), readClaudeVersion: () => "0.4.0" })).map(item => item.state)).toEqual(["malformed", "incompatible"])
+    expect((await inspectProviderRuntimeCompatibility({ ...installedOptions, spawnVersion: () => child("", 1), readClaudeVersion: () => "0.3.172" }))[0]?.state).toBe("malformed")
+    const hung = child("codex-cli 0.145.0", 0, 100)
+    expect((await inspectProviderRuntimeCompatibility({ ...installedOptions, spawnVersion: () => hung, readClaudeVersion: () => "0.3.172", timeoutMs: 5 }))[0]?.state).toBe("malformed")
     expect(hung.kills()).toBe(1)
   })
 
-  test("classifies package, target, file, executable, and architecture failures", () => {
-    const base = { ...bundledOptions }
-    expect(discoverBundledCodexRuntime({ ...base, resolveFromDependencyGraph: () => null, resourcesPath: null }).state).toBe("missing_package")
-    expect(discoverBundledCodexRuntime({ ...base, resolveFromDependencyGraph: () => "/tmp/codex", exists: () => true }).state).toBe("wrong_target")
-    expect(discoverBundledCodexRuntime({ ...base, isFile: () => false }).state).toBe("not_file")
-    expect(discoverBundledCodexRuntime({ ...base, isExecutable: () => false }).state).toBe("not_executable")
-    expect(discoverBundledCodexRuntime({ ...base, hasExpectedArchitecture: () => false }).state).toBe("wrong_architecture")
-    expect(discoverBundledCodexRuntime({ ...base, sha256: () => "unreviewed" }).state).toBe("unverified_binary")
-    expect(discoverBundledCodexRuntime({ ...base, platform: "aix" }).state).toBe("unsupported_target")
+  test("rejects absent, non-file, non-executable, wrong-architecture, and unsupported candidates", () => {
+    expect(discoverInstalledCodexRuntime({ ...installedOptions, exists: () => false }).state).toBe("missing_install")
+    expect(discoverInstalledCodexRuntime({ ...installedOptions, isFile: () => false }).state).toBe("not_file")
+    expect(discoverInstalledCodexRuntime({ ...installedOptions, isExecutable: () => false }).state).toBe("not_executable")
+    expect(discoverInstalledCodexRuntime({ ...installedOptions, hasExpectedArchitecture: () => false }).state).toBe("wrong_architecture")
+    expect(discoverInstalledCodexRuntime({ ...installedOptions, platform: "aix" }).state).toBe("unsupported_target")
   })
 
-  test("pins one absolute bundled identity across PATH and NVM drift", async () => {
-    let resolutions = 0
+  test("pins one absolute installed identity across PATH drift", async () => {
+    let canonicalizations = 0
     const authority = makeCodexRuntimeAuthority({
-      ...bundledOptions,
-      resolveFromDependencyGraph: () => {
-        resolutions++
-        return bundledCodex
-      },
+      ...installedOptions,
+      canonicalize: value => { canonicalizations++; return value },
       spawnVersion: executable => {
-        expect(executable).toBe(bundledCodex)
-        return child("codex-cli 0.144.1\n")
+        expect(executable).toBe(installedCodex)
+        return child("codex-cli 0.145.0-alpha.18\n")
       },
     })
     const before = process.env.PATH
     try {
-      process.env.PATH = "/Users/example/.nvm/versions/node/v1/bin:/tmp/global-codex"
-      expect(authority.executable()).toBe(bundledCodex)
-      process.env.PATH = "/Users/example/.nvm/versions/node/v99/bin"
-      expect(authority.executable()).toBe(bundledCodex)
+      process.env.PATH = "/tmp/global-codex"
+      expect(authority.executable()).toBe(installedCodex)
+      process.env.PATH = "/tmp/other-codex"
       expect((await authority.inspect()).state).toBe("ready")
       expect((await authority.inspect()).state).toBe("ready")
-      expect(resolutions).toBe(1)
+      expect(canonicalizations).toBe(1)
     } finally {
       process.env.PATH = before
     }
@@ -160,29 +138,21 @@ describe("provider runtime host", () => {
 
   test("public projection is bounded and excludes private paths and raw output", async () => {
     const resolution = await makeCodexRuntimeAuthority({
-      ...bundledOptions,
-      spawnVersion: () => child("corrupt output from /Users/private/.nvm/bin/codex"),
+      ...installedOptions,
+      spawnVersion: () => child("corrupt output from /Users/private/bin/codex"),
     }).inspect()
     const serialized = JSON.stringify(publicCodexRuntimeProjection(resolution))
     expect(serialized).not.toContain("/Users/private")
     expect(serialized).not.toContain("executablePath")
-    expect(serialized.length).toBeLessThan(400)
+    expect(serialized.length).toBeLessThan(450)
   })
 
   test("every production Codex consumer uses the single authority and never a bare binary", () => {
     const root = import.meta.dirname
     for (const file of ["codex-child-runtime.ts", "codex-connect.ts", "main.ts"]) {
       const source = readFileSync(path.join(root, file), "utf8")
-      expect(source).not.toContain("resolveBundledCodexExecutable")
       expect(source).not.toMatch(/spawn\(\s*["']codex["']/u)
       expect(source).toContain("codexRuntimeAuthority")
     }
-    const main = readFileSync(path.join(root, "main.ts"), "utf8")
-    expect(main).toContain("never probes the ambient Claude/OpenCode maintenance catalog")
-    expect(main).toContain("const codexResolution = await codexRuntimeAuthority.inspect()")
-    expect(main).toContain('harness: "codex" as const')
-    expect(main).not.toContain("collectHarnessMaintenanceStatus({}, ambientHarnesses)")
-    expect(main).not.toContain("runHarnessMaintenanceUpdate")
-    expect(main).toContain("await desktopUpdateHost.check()")
   })
 })

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import config, {
@@ -9,10 +8,6 @@ import config, {
   canonicalArtifactPath,
 } from "../forge.config.ts";
 import { desktopReleaseArtifactName } from "../scripts/release-artifact-name.ts";
-import {
-  packagedCodexPath,
-  verifyPackagedCodexRuntime,
-} from "../scripts/codex-runtime-artifact-smoke.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8");
@@ -63,13 +58,13 @@ describe("CUT-26 macOS artifact contract", () => {
     );
     expect(mainSource).not.toContain(': path.join(app.getPath("appData"), "OpenAgentsDesktopDev")');
   });
-  test("freezes independent identity, DMG+ZIP outputs, ASAR, and provider executable unpacking", () => {
+  test("freezes independent identity, DMG+ZIP outputs, ASAR, and external Codex ownership", () => {
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).toBe("com.openagents.desktop");
     expect(OPENAGENTS_DESKTOP_BUNDLE_ID).not.toContain("khala");
     expect(OPENAGENTS_DESKTOP_PROTOCOL).toBe("openagents");
     const asar = config.packagerConfig?.asar as { unpack?: string; unpackDir?: string };
     expect(asar.unpack).toContain("claude-agent-sdk");
-    expect(asar.unpack).toContain("@openai/codex");
+    expect(asar.unpack).not.toContain("@openai/codex");
     expect(asar.unpackDir).toBe("dist/{renderer,workers}");
     const ignore = config.packagerConfig?.ignore;
     expect(typeof ignore).toBe("function");
@@ -220,62 +215,11 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(source).not.toContain("@openagents.com");
   });
 
-  test("signed release gate proves the exact bundled Codex under minimal PATH", () => {
-    const fixture = mkdtempSync(path.join(tmpdir(), "openagents-codex-artifact-"));
-    try {
-      const executable = packagedCodexPath(fixture, "darwin", "arm64");
-      mkdirSync(path.dirname(executable), { recursive: true });
-      writeFileSync(executable, "fixture-codex", { mode: 0o755 });
-      chmodSync(executable, 0o755);
-      const calls: Array<{ file: string; args: ReadonlyArray<string>; path: string | undefined }> =
-        [];
-      const receipt = verifyPackagedCodexRuntime({
-        appPath: fixture,
-        platform: "darwin",
-        arch: "arm64",
-        requireSignature: true,
-        exec: (file, args, options) => {
-          calls.push({ file, args, path: options?.env?.PATH });
-          if (file === "/usr/bin/file") return "Mach-O 64-bit executable arm64";
-          if (file === "/usr/bin/codesign") return "";
-          return "codex-cli 0.144.1";
-        },
-      });
-      expect(receipt).toMatchObject({
-        state: "ready",
-        source: "desktop-bundle",
-        minimalPath: true,
-        signatureVerified: true,
-      });
-      expect(calls.at(-1)).toMatchObject({
-        file: executable,
-        path: "/usr/bin:/bin:/usr/sbin:/sbin",
-      });
-      expect(JSON.stringify(receipt)).not.toContain(fixture);
-      expect(JSON.stringify(receipt)).not.toContain("fixture-codex");
-      const x64Executable = packagedCodexPath(fixture, "darwin", "x64");
-      mkdirSync(path.dirname(x64Executable), { recursive: true });
-      writeFileSync(x64Executable, "fixture-codex-x64", { mode: 0o755 });
-      chmodSync(x64Executable, 0o755);
-      expect(
-        verifyPackagedCodexRuntime({
-          appPath: fixture,
-          platform: "darwin",
-          arch: "x64",
-          exec: (file) =>
-            file === "/usr/bin/file" ? "Mach-O 64-bit executable x86_64" : "codex-cli 0.144.1",
-        }),
-      ).toMatchObject({ state: "ready", arch: "x64" });
-      expect(() =>
-        verifyPackagedCodexRuntime({
-          appPath: fixture,
-          platform: "darwin",
-          arch: "arm64",
-          exec: (file) => (file === "/usr/bin/file" ? "Mach-O x86_64" : "codex-cli 0.144.1"),
-        }),
-      ).toThrow("wrong architecture");
-    } finally {
-      rmSync(fixture, { recursive: true, force: true });
-    }
+  test("the signed artifact contains no Codex package or nested Codex signer target", () => {
+    const source = readFileSync(path.join(root, "forge.config.ts"), "utf8");
+    const manifest = readFileSync(path.join(root, "package.json"), "utf8");
+    expect(source).not.toContain('"codex",');
+    expect(source).not.toContain("verifyPackagedCodexRuntime");
+    expect(manifest).not.toContain('"@openai/codex"');
   });
 });

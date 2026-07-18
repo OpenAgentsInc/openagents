@@ -109,16 +109,19 @@ and ambient-authority denial, replaceable exactly-once host lifecycle,
 public-safe operation correlation through Sync causality, and a real bundle
 build plus Electron teardown receipt.
 
-For a packaged macOS app, the focused runtime oracle is:
+For a packaged macOS app, verify that the release contains no Codex package,
+then exercise the user's installed Codex and ordinary login:
 
 ```bash
-pnpm --dir apps/openagents-desktop run smoke:artifact:codex-runtime -- \
-  --app /path/to/OpenAgents.app --signed
+pnpm exec vp test --run apps/openagents-desktop/tests/package-macos.test.ts \
+  apps/openagents-desktop/tests/release-staging.test.ts
+CODEX_BIN="$(command -v codex)" \
+  pnpm --dir apps/openagents-desktop run smoke:codex-turn-control
 ```
 
-It probes the exact unpacked, signed Codex under a minimal GUI PATH and prints
-a public-safe identity receipt. Signed Forge makes run the same oracle after
-notarization and Gatekeeper verification.
+The first gate proves `@openai/codex` is absent from the staged/signed closure.
+The second starts app-server from the installed executable with the normal
+`~/.codex` session and completes real steer, queue, interrupt, and review turns.
 
 ## Architecture
 

@@ -2,13 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { bundledCodexExecutableSha256 } from "@openagentsinc/codex-app-server-protocol/compatibility"
 import { decodeBundledServerRequestResponse } from "@openagentsinc/codex-app-server-protocol/decode"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
 import { denyCodexReverseRpc } from "../src/codex-reverse-rpc-arbiter.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 
 const root = mkdtempSync(join(tmpdir(), "openagents-codex-supervisor-"))
 const codexHome = join(root, "home")
@@ -20,7 +19,6 @@ const supervisor = createCodexAppServerSupervisor({
 try {
   const target = {
     binary,
-    binarySha256: bundledCodexExecutableSha256,
     env: { ...process.env, CODEX_HOME: codexHome },
     cwd: root,
     accountRef: "smoke-isolated",

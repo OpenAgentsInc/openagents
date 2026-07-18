@@ -2,12 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { bundledCodexExecutableSha256 } from "@openagentsinc/codex-app-server-protocol/compatibility"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
 import { makeCodexControlPlaneRegistry } from "../src/codex-control-plane.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 
 const root = mkdtempSync(join(tmpdir(), "openagents-codex-control-plane-"))
 const codexHome = join(root, "home")
@@ -20,7 +19,6 @@ const registry = makeCodexControlPlaneRegistry({ supervisor, receiptRoot: join(r
 try {
   const plane = await registry.forTarget({
     binary,
-    binarySha256: bundledCodexExecutableSha256,
     env: { ...process.env, CODEX_HOME: codexHome },
     cwd: root,
     accountRef: "control-plane-smoke-isolated",

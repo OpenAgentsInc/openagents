@@ -8,7 +8,7 @@ import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervis
 import { makeCodexExperimentalRuntime } from "../src/codex-experimental-runtime.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 const root = mkdtempSync(join(tmpdir(), "oa-codex-experimental-"))
 const port = await new Promise<number>((resolve, reject) => { const server = createServer(); server.once("error", reject); server.listen(0, "127.0.0.1", () => { const address = server.address(); if (typeof address !== "object" || address === null) return reject(new Error("ephemeral port missing")); server.close(error => error === undefined ? resolve(address.port) : reject(error)) }) })
 const execServer = spawn(binary, ["exec-server", "--listen", `ws://127.0.0.1:${port}`], { cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"] })

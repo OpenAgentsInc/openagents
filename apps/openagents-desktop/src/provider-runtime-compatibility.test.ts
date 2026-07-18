@@ -7,10 +7,11 @@ import {
 } from "./provider-runtime-compatibility.ts"
 
 describe("provider runtime compatibility", () => {
-  test("accepts only the exact bundled and receipted Codex CLI version", () => {
+  test("accepts installed Codex versions at or beyond the exercised protocol floor", () => {
     expect(classifyProviderRuntimeCompatibility("codex_cli", "codex-cli 0.144.1")).toMatchObject({ state: "compatible", reason: "verified" })
-    expect(classifyProviderRuntimeCompatibility("codex_cli", "codex 0.144.2")).toMatchObject({ state: "incompatible", observedVersion: "0.144.2" })
-    expect(supportedProviderRuntimeVersions.codex_cli).toBe("0.144.1")
+    expect(classifyProviderRuntimeCompatibility("codex_cli", "codex 0.145.0-alpha.18")).toMatchObject({ state: "compatible", observedVersion: "0.145.0-alpha.18" })
+    expect(classifyProviderRuntimeCompatibility("codex_cli", "codex 0.143.9")).toMatchObject({ state: "incompatible", observedVersion: "0.143.9" })
+    expect(supportedProviderRuntimeVersions.codex_cli).toBe(">=0.144.1")
   })
 
   test("accepts only the exact bundled and receipted Claude Agent SDK version", () => {

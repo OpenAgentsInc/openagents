@@ -2,7 +2,7 @@
  * Main-process-only Codex account connect service (#8574, #8640 unblock).
  *
  * Uses the proven Pylon isolated custody module in-process and launches only
- * the package-owned Codex native executable. The installed artifact therefore
+ * the user's validated installed Codex executable. The OpenAgents artifact therefore
  * needs neither a Bun executable nor `apps/pylon/src/index.ts` from a checkout.
  *
  * SAFETY (repo law): this service NEVER sets or touches the default
@@ -265,7 +265,7 @@ const codexDevicePrompt = (raw: string): Readonly<{ url: string; code: string }>
 
 /**
  * Installed-artifact custody path. It calls the bundled Pylon custody module
- * and package-owned Codex executable directly; no Bun binary, source checkout,
+ * and the user's installed Codex executable directly; no Bun binary, source checkout,
  * or `apps/pylon/src/index.ts` exists in this execution path.
  */
 export const makeInstalledCodexCustody = (

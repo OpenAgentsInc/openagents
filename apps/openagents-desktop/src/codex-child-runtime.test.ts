@@ -39,7 +39,7 @@ import {
   type CodexChildAccount,
 } from "./codex-child-runtime.ts"
 
-test("the bundled Codex runtime default is a model it actually serves", () => {
+test("the installed Codex runtime default is a model the exercised protocol serves", () => {
   expect(CODEX_CHILD_MODEL).toBe("gpt-5.5")
 })
 

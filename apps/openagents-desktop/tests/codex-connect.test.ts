@@ -382,7 +382,7 @@ describe("installed package Codex custody", () => {
     }
   })
 
-  test("the installed default fails explicitly when the packaged Codex executable is absent", async () => {
+  test("the installed default fails explicitly when the installed Codex executable is absent", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "openagents-installed-codex-missing-"))
     try {
       const service = makeCodexConnectService("/Applications/OpenAgents.app/Contents/Resources/app.asar/dist", {

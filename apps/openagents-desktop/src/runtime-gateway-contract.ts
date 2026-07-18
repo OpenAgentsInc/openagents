@@ -82,11 +82,11 @@ export const DesktopHarnessMaintenanceEntrySchema = Schema.Struct({
   installed: Schema.Boolean,
   installedVersion: Schema.NullOr(Schema.String),
   latestVersion: Schema.NullOr(Schema.String),
-  channel: Schema.Literals(["desktop-bundle", "npm-global", "bun-global", "pnpm-global", "homebrew", "native", "unknown"]),
+  channel: Schema.Literals(["npm-global", "bun-global", "pnpm-global", "homebrew", "native", "unknown"]),
   advisory: Schema.Literals(["current", "behind_latest", "unknown"]),
   updateSupported: Schema.Boolean,
   runtimeState: Schema.optional(Schema.Literals([
-    "ready", "unsupported_target", "missing_package", "wrong_target",
+    "ready", "unsupported_target", "missing_install",
     "wrong_architecture", "not_file", "not_executable", "spawn_failed",
     "timeout", "malformed_version", "incompatible_version",
   ])),

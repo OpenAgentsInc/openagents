@@ -130,7 +130,6 @@ const exeSuffix = (targetKey: DesktopTargetKey): string =>
 const cleanStagedTree = (targetKey: DesktopTargetKey): Array<StagedFile> => {
   const { platform, arch } = desktopTargets[targetKey];
   const header = headerFor(targetKey);
-  const codexTriple = "fixture-triple";
   return [
     {
       path: "dist/main.js",
@@ -166,20 +165,6 @@ const cleanStagedTree = (targetKey: DesktopTargetKey): Array<StagedFile> => {
       executable: true,
       header,
       sha256: digest("e"),
-    },
-    {
-      path: `node_modules/@openai/codex/bin/codex.js`,
-      byteLength: 10,
-      executable: false,
-      header: new Uint8Array([0x23, 0x21]),
-      sha256: digest("f"),
-    },
-    {
-      path: `node_modules/@openai/codex-${platform}-${arch}/vendor/${codexTriple}/bin/codex${exeSuffix(targetKey)}`,
-      byteLength: 100,
-      executable: true,
-      header,
-      sha256: digest("0"),
     },
   ];
 };
@@ -335,11 +320,8 @@ describe("DIST-03 staging plan (fixture target selection, no production runners)
     expect(win.map((pkg) => pkg.name)).toEqual([
       "@anthropic-ai/claude-agent-sdk",
       "@anthropic-ai/claude-agent-sdk-win32-arm64",
-      "@openai/codex",
-      "@openai/codex-win32-arm64",
     ]);
-    const codexAlias = win.find((pkg) => pkg.name === "@openai/codex-win32-arm64");
-    expect(codexAlias?.version).toBe(`${pins.codex}-win32-arm64`);
+    expect(win.some((pkg) => pkg.name.startsWith("@openai/codex"))).toBe(false);
     const linux = requiredRuntimePackages(descriptorFor("linux-x64"), pins);
     expect(linux.map((pkg) => pkg.name)).toContain("@anthropic-ai/claude-agent-sdk-linux-x64");
   });
@@ -510,7 +492,7 @@ describe("DIST-03 staged-tree oracle", () => {
     const injected = [
       ...cleanStagedTree("win32-x64"),
       {
-        path: "node_modules/@openai/codex/vendor/helper.exe",
+        path: "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/helper.exe",
         byteLength: 96,
         executable: true,
         header: dosStub,
@@ -520,14 +502,14 @@ describe("DIST-03 staged-tree oracle", () => {
     expect(stagedTreeViolations(auditInput("win32-x64", injected))).toContainEqual(
       expect.objectContaining({
         kind: "unknown_executable_identity",
-        path: "node_modules/@openai/codex/vendor/helper.exe",
+        path: "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/helper.exe",
       }),
     );
     // A native-module extension without a provable native header.
     const fakeNode = [
       ...cleanStagedTree("darwin-arm64"),
       {
-        path: "node_modules/@openai/codex/build/fake.node",
+        path: "node_modules/@anthropic-ai/claude-agent-sdk/build/fake.node",
         byteLength: 32,
         executable: false,
         header: new Uint8Array([0x00, 0x01, 0x02]),
@@ -537,7 +519,7 @@ describe("DIST-03 staged-tree oracle", () => {
     expect(stagedTreeViolations(auditInput("darwin-arm64", fakeNode))).toContainEqual(
       expect.objectContaining({
         kind: "unknown_executable_identity",
-        path: "node_modules/@openai/codex/build/fake.node",
+        path: "node_modules/@anthropic-ai/claude-agent-sdk/build/fake.node",
       }),
     );
   });
@@ -548,7 +530,7 @@ describe("DIST-03 staged-tree oracle", () => {
       const files = [
         ...base,
         {
-          path: "node_modules/@openai/codex/vendor/link",
+          path: "node_modules/@anthropic-ai/claude-agent-sdk/vendor/link",
           byteLength: 1,
           executable: false,
           header: new Uint8Array(0),
@@ -558,7 +540,7 @@ describe("DIST-03 staged-tree oracle", () => {
       expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
         expect.objectContaining({
           kind: "source_checkout_dependency",
-          path: "node_modules/@openai/codex/vendor/link",
+          path: "node_modules/@anthropic-ai/claude-agent-sdk/vendor/link",
           detail: "symlink escapes the staging workspace",
         }),
       );
@@ -566,7 +548,7 @@ describe("DIST-03 staged-tree oracle", () => {
     const bounded = [
       ...base,
       {
-        path: "node_modules/@openai/codex/vendor/link",
+        path: "node_modules/@anthropic-ai/claude-agent-sdk/vendor/link",
         byteLength: 1,
         executable: false,
         header: new Uint8Array(0),
@@ -576,14 +558,14 @@ describe("DIST-03 staged-tree oracle", () => {
     expect(stagedTreeViolations(auditInput("darwin-arm64", bounded))).toEqual([]);
   });
 
-  test("one missing provider runtime package fails before maker work", () => {
+  test("one missing bundled provider runtime package fails before maker work", () => {
     const files = cleanStagedTree("darwin-arm64").filter(
-      (file) => !file.path.startsWith("node_modules/@openai/codex-darwin-arm64/"),
+      (file) => !file.path.startsWith("node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/"),
     );
     expect(stagedTreeViolations(auditInput("darwin-arm64", files))).toContainEqual(
       expect.objectContaining({
         kind: "missing_runtime_package",
-        detail: expect.stringContaining("@openai/codex-darwin-arm64"),
+        detail: expect.stringContaining("@anthropic-ai/claude-agent-sdk-darwin-arm64"),
       }),
     );
   });
@@ -607,7 +589,7 @@ describe("DIST-03 staged-tree oracle", () => {
     );
   });
 
-  test("admits the target-correct Codex Linux bubblewrap sandbox helper", () => {
+  test("rejects a packaged Codex Linux bubblewrap helper", () => {
     const files = [
       ...cleanStagedTree("linux-x64"),
       {
@@ -618,16 +600,15 @@ describe("DIST-03 staged-tree oracle", () => {
         sha256: digest("8"),
       },
     ];
-    expect(stagedTreeViolations(auditInput("linux-x64", files))).toEqual([]);
-    expect(stagedTreeViolations(auditInput("linux-arm64", files))).toContainEqual(
+    expect(stagedTreeViolations(auditInput("linux-x64", files))).toContainEqual(
       expect.objectContaining({
-        kind: "foreign_architecture_binary",
+        kind: "unallowlisted_binary",
         path: expect.stringContaining("codex-resources/bwrap"),
       }),
     );
   });
 
-  test("admits the target-correct Codex Windows command and sandbox helpers", () => {
+  test("rejects packaged Codex Windows command and sandbox helpers", () => {
     const files = [
       ...cleanStagedTree("win32-x64"),
       ...["codex-command-runner.exe", "codex-windows-sandbox-setup.exe"].map((name, index) => ({
@@ -638,16 +619,15 @@ describe("DIST-03 staged-tree oracle", () => {
         sha256: digest(String(index + 1)),
       })),
     ];
-    expect(stagedTreeViolations(auditInput("win32-x64", files))).toEqual([]);
-    expect(stagedTreeViolations(auditInput("win32-arm64", files))).toContainEqual(
+    expect(stagedTreeViolations(auditInput("win32-x64", files))).toContainEqual(
       expect.objectContaining({
-        kind: "foreign_architecture_binary",
+        kind: "unallowlisted_binary",
         path: expect.stringContaining("codex-resources/codex-command-runner.exe"),
       }),
     );
   });
 
-  test("script executables are admitted only inside dist/ or a required runtime package", () => {
+  test("script executables from an unowned Codex package are rejected", () => {
     const script = {
       byteLength: 32,
       executable: true,
@@ -661,7 +641,9 @@ describe("DIST-03 staged-tree oracle", () => {
         path: "node_modules/@openai/codex/bin/codex-launcher.sh",
       },
     ];
-    expect(stagedTreeViolations(auditInput("darwin-arm64", admitted))).toEqual([]);
+    expect(stagedTreeViolations(auditInput("darwin-arm64", admitted))).toContainEqual(
+      expect.objectContaining({ kind: "unallowlisted_binary", path: "node_modules/@openai/codex/bin/codex-launcher.sh" }),
+    );
     const foreign = [
       ...cleanStagedTree("darwin-arm64"),
       {
@@ -745,7 +727,6 @@ describe("DIST-03 staged-tree oracle", () => {
           "dist/main.js",
           "package.json",
           "node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
-          "node_modules/@openai/codex/bin/codex.js",
         ],
       }),
     ).toEqual([]);
@@ -769,9 +750,7 @@ describe("DIST-03 planned ASAR placement (mirror of the packaging boundary)", ()
     expect(plannedAsarPlacement("dist/builtin-skills/manifest.json")).toBe("extra-resource");
     expect(plannedAsarPlacement("dist/renderer/boot.js")).toBe("unpacked");
     expect(plannedAsarPlacement("dist/workers/codex-history-worker.js")).toBe("unpacked");
-    expect(plannedAsarPlacement("node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex")).toBe(
-      "unpacked",
-    );
+    expect(plannedAsarPlacement("node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex")).toBe("asar");
     expect(plannedAsarPlacement("node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs")).toBe(
       "unpacked",
     );
@@ -814,11 +793,7 @@ describe("DIST-03 native component ledger (§9)", () => {
       provenance: "locked-dependency",
       asarPlacement: "unpacked",
     });
-    expect(
-      byDestination.get("node_modules/@openai/codex-darwin-arm64/vendor/fixture-triple/bin/codex"),
-    ).toMatchObject({ name: "@openai/codex-darwin-arm64", fileKind: "executable" });
-    // Aggregate package entries (destination = the package directory) do not exist.
-    expect(byDestination.has("node_modules/@openai/codex-darwin-arm64")).toBe(false);
+    expect([...byDestination.keys()].some(destination => destination.includes("@openai/codex"))).toBe(false);
     // Non-executable data files are not closure entries.
     expect(byDestination.has("dist/main.js")).toBe(false);
   });
@@ -957,14 +932,12 @@ describe("DIST-03 native component ledger (§9)", () => {
   test("closure ownership resolves package, workspace crate, and app resources", () => {
     const descriptor = descriptorFor("darwin-arm64");
     const versions = versionsFor("darwin-arm64");
-    expect(
-      closureOwnerForDestination(
-        "node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex",
-        descriptor,
-        versions,
-        "0.1.0",
-      ),
-    ).toMatchObject({ name: "@openai/codex-darwin-arm64", provenance: "locked-dependency" });
+    expect(closureOwnerForDestination(
+      "node_modules/@openai/codex-darwin-arm64/vendor/t/bin/codex",
+      descriptor,
+      versions,
+      "0.1.0",
+    )).toMatchObject({ name: "@openai/codex-darwin-arm64", version: "unknown" });
     expect(
       closureOwnerForDestination("native/arm64/oa-desktop-audio", descriptor, versions, "0.1.0"),
     ).toEqual({ name: "oa-desktop-audio", version: "0.1.0", provenance: "workspace-crate" });
@@ -1111,7 +1084,6 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
         return JSON.stringify({
           dependencies: {
             "@anthropic-ai/claude-agent-sdk": pins.claudeAgentSdk,
-            "@openai/codex": pins.codex,
           },
         });
       },
@@ -1191,12 +1163,12 @@ describe("DIST-03 stageTarget orchestration (fixture io)", () => {
   });
 
   test("fails typed and BEFORE native build/maker work when a runtime package is unavailable", async () => {
-    const io = fixtureIo({ targetKey: "win32-arm64", unavailable: ["@openai/codex-win32-arm64"] });
+    const io = fixtureIo({ targetKey: "win32-arm64", unavailable: ["@anthropic-ai/claude-agent-sdk-win32-arm64"] });
     const result = await stageTarget(descriptorFor("win32-arm64"), io);
     expect(result).toMatchObject({
       ok: false,
       failure: "missing_runtime_package",
-      missingPackages: [`@openai/codex-win32-arm64@${pins.codex}-win32-arm64`],
+      missingPackages: [`@anthropic-ai/claude-agent-sdk-win32-arm64@${pins.claudeAgentSdk}`],
     });
     expect(io.log).not.toContainEqual("buildApplication");
     expect(io.log.some((line) => line.startsWith("cargo:"))).toBe(false);

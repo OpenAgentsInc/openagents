@@ -1,19 +1,18 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { bundledCodexExecutableSha256 } from "@openagentsinc/codex-app-server-protocol/compatibility"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
 import { openCodexDurableQueue } from "../src/codex-durable-queue.ts"
 import { makeCodexTurnState } from "../src/codex-turn-state.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 const root = mkdtempSync(join(tmpdir(), "openagents-codex-turn-control-"))
 const supervisor = createCodexAppServerSupervisor({ nativeJournalRoot: join(root, "native"), strictGeneratedDecoding: true })
 const queue = openCodexDurableQueue(join(root, "queue.json"))
 try {
   const env = { ...process.env }; delete env.CODEX_HOME
-  const lease = await supervisor.acquire({ binary, binarySha256: bundledCodexExecutableSha256, env, cwd: root, accountRef: "codex-current", hostTarget: "local-desktop-smoke", requestTimeoutMs: 120_000 })
+  const lease = await supervisor.acquire({ binary, env, cwd: root, accountRef: "codex-current", hostTarget: "local-desktop-smoke", requestTimeoutMs: 120_000 })
   const state = makeCodexTurnState({ receiptPath: join(root, "steer-receipts.json") })
   const terminal = new Map<string, () => void>()
   const remove = lease.subscribe(notification => {

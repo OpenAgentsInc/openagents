@@ -216,7 +216,7 @@ export const makeCodexPreflight = (options: CodexPreflightOptions): CodexPreflig
       }
       if (options.appServer !== undefined) {
         const binary = options.appServer.binary()
-        if (binary === null) return finishWith("probe_failed", "package-owned Codex app-server unavailable")
+        if (binary === null) return finishWith("probe_failed", "installed Codex app-server unavailable")
         let skill: Readonly<{ skillRoot: string; skillPath: string }>
         try {
           skill = options.appServer.installProductSpecSkill(account)

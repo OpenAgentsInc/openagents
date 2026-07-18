@@ -142,17 +142,15 @@ export interface TargetStagingPlan {
 
 interface DesktopManifestPins {
   readonly claudeAgentSdk: string;
-  readonly codex: string;
 }
 
 export const readDesktopManifestPins = (manifestSource: string): DesktopManifestPins => {
   const manifest = JSON.parse(manifestSource) as { dependencies?: Record<string, string> };
   const claudeAgentSdk = manifest.dependencies?.["@anthropic-ai/claude-agent-sdk"];
-  const codex = manifest.dependencies?.["@openai/codex"];
-  if (claudeAgentSdk === undefined || codex === undefined) {
+  if (claudeAgentSdk === undefined) {
     throw new Error("desktop provider runtime version pins are missing from package.json");
   }
-  return { claudeAgentSdk, codex };
+  return { claudeAgentSdk };
 };
 
 export const requiredRuntimePackages = (
@@ -169,12 +167,6 @@ export const requiredRuntimePackages = (
     {
       name: `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`,
       version: pins.claudeAgentSdk,
-      role: "provider-runtime",
-    },
-    { name: "@openai/codex", version: pins.codex, role: "provider-runtime" },
-    {
-      name: `@openai/codex-${platform}-${arch}`,
-      version: `${pins.codex}-${platform}-${arch}`,
       role: "provider-runtime",
     },
   ];
@@ -421,7 +413,6 @@ export interface StagingViolation {
  * proven fails closed as `unknown_executable_identity`.
  */
 export const executableDestinationAllowlist: ReadonlyArray<RegExp> = [
-  /^node_modules\/@openai\/codex-(?:darwin|win32|linux)-(?:arm64|x64)\/vendor\/[^/]+\/(?:bin\/(?:codex|codex-code-mode-host)(?:\.exe)?|codex-path\/rg(?:\.exe)?|codex-resources\/(?:bwrap|zsh\/bin\/zsh|codex-command-runner\.exe|codex-windows-sandbox-setup\.exe))$/,
   /^node_modules\/@anthropic-ai\/claude-agent-sdk-(?:darwin|win32|linux)-(?:arm64|x64)(?:-musl)?\/claude(?:\.exe)?$/,
   /^native\/(?:arm64|x64)\/oa-desktop-audio(?:\.exe)?$/,
 ];
@@ -600,7 +591,7 @@ export const stagedTreeViolations = (
 
 /**
  * Deterministic placement plan for a staged file, mirroring forge.config.ts:
- * provider runtime packages and the renderer/worker entries are asar-unpacked
+ * the bundled Claude runtime package and renderer/worker entries are asar-unpacked
  * (child processes and worker_threads need real files); native/ and
  * dist/builtin-skills ship as extraResource; everything else packs into
  * app.asar. The post-package live gate verifies reality against this plan.
@@ -610,7 +601,7 @@ export const plannedAsarPlacement = (filePath: string): NativeComponentAsarPlace
     return "extra-resource";
   }
   if (/^dist\/(?:renderer|workers)\//.test(filePath)) return "unpacked";
-  if (/^node_modules\/(?:@anthropic-ai\/claude-agent-sdk|@openai\/codex)/.test(filePath)) {
+  if (/^node_modules\/@anthropic-ai\/claude-agent-sdk/.test(filePath)) {
     return "unpacked";
   }
   return "asar";
@@ -1451,11 +1442,7 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
       const resolveFromApp = createRequire(path.join(stagedSourceApp, "package.json"));
       let packageRoot: string;
       try {
-        if (pkg.name === "@openai/codex") {
-          packageRoot = path.dirname(
-            path.dirname(resolveFromApp.resolve("@openai/codex/bin/codex.js")),
-          );
-        } else if (pkg.name.startsWith("@anthropic-ai/claude-agent-sdk-")) {
+        if (pkg.name.startsWith("@anthropic-ai/claude-agent-sdk-")) {
           const resolveFromSdk = createRequire(
             resolveFromApp.resolve("@anthropic-ai/claude-agent-sdk"),
           );
@@ -1464,13 +1451,6 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
           // The SDK does not export ./package.json; resolve its entry and take
           // the installed package directory.
           packageRoot = path.dirname(resolveFromApp.resolve(pkg.name));
-        } else if (pkg.name.startsWith("@openai/codex-")) {
-          // Platform packages are optionalDependencies of @openai/codex;
-          // resolve them from the codex package's own dependency context.
-          const resolveFromCodex = createRequire(
-            resolveFromApp.resolve("@openai/codex/bin/codex.js"),
-          );
-          packageRoot = path.dirname(resolveFromCodex.resolve(`${pkg.name}/package.json`));
         } else {
           packageRoot = path.dirname(resolveFromApp.resolve(`${pkg.name}/package.json`));
         }

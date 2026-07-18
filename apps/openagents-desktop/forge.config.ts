@@ -18,7 +18,6 @@ import {
 } from "./scripts/macos-gatekeeper.ts";
 import { desktopReleaseArtifactName } from "./scripts/release-artifact-name.ts";
 import { MakerAppImage } from "./scripts/maker-appimage.ts";
-import { verifyPackagedCodexRuntime } from "./scripts/codex-runtime-artifact-smoke.ts";
 import {
   assertPackagedAsarAdmissible,
   stagedTreePath,
@@ -214,7 +213,6 @@ const macCodeSignableBasenames = new Set([
   "OpenAgents Helper",
   "Electron Framework",
   "chrome_crashpad_handler",
-  "codex",
   "claude",
   "codex-code-mode-host",
   "rg",
@@ -260,13 +258,14 @@ const config: ForgeConfig = {
         "OpenAgents uses the microphone only while you explicitly run a voice session.",
     },
     asar: {
-      // Both provider packages resolve and spawn native executables relative
-      // to their installed package. Executables cannot run inside app.asar.
+      // The Claude provider package resolves and spawns native executables
+      // relative to its installed package. Codex is deliberately external:
+      // OpenAgents reuses the user's installed CLI and never puts it in ASAR.
       // Keep the renderer on a real, bounded filesystem path. With
       // GrantFileProtocolExtraPrivileges disabled, Chromium does not admit the
       // top-level file URL through ASAR on the installed artifact even though
       // Electron's Node-side ASAR APIs can list it.
-      unpack: "**/node_modules/{@anthropic-ai/claude-agent-sdk*,@openai/codex*}/**/*",
+      unpack: "**/node_modules/@anthropic-ai/claude-agent-sdk*/**/*",
       // `unpack` glob matching is rooted differently by Electron Packager;
       // the prior brace expression left these files inside app.asar. The
       // dedicated directory option is the authoritative real-file boundary.
@@ -505,15 +504,6 @@ const config: ForgeConfig = {
             ...gatekeeperImageChecks(artifact),
             ...gatekeeperAppChecks(appPath),
           ]);
-          // A signed shell is insufficient: prove the exact unpacked native
-          // runtime is signed, executable, target-correct, and version-pinned
-          // with no global Codex/NVM resolution available.
-          verifyPackagedCodexRuntime({
-            appPath,
-            platform: result.platform,
-            arch: result.arch,
-            requireSignature: true,
-          });
         }
       }
       return makeResults.map((result) => ({

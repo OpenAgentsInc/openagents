@@ -69,7 +69,7 @@ export const CodexLocalFullAutoStateChannel = "openagents:codex-local:full-auto:
  * turn — the renderer never learned the background turnRef before the state
  * broadcast existed, so this channel resolves it main-side by threadRef. */
 export const CodexLocalFullAutoInterruptChannel = "openagents:codex-local:full-auto:interrupt" as const
-/** Exact packaged Codex compatibility identity; thread handoff remains disabled
+/** Exact installed Codex compatibility identity; thread handoff remains disabled
  * unless a separately verified official-app continuity proof cites this ref. */
 export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
 

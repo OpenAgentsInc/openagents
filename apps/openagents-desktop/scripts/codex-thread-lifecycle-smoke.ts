@@ -2,18 +2,17 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { bundledCodexExecutableSha256 } from "@openagentsinc/codex-app-server-protocol/compatibility"
 import { createCodexAppServerSupervisor } from "../src/codex-app-server-supervisor.ts"
 import { makeCodexThreadLifecycleRegistry } from "../src/codex-thread-lifecycle.ts"
 
 const binary = process.env.CODEX_BIN
-if (!binary) throw new Error("CODEX_BIN must name the exact packaged Codex executable")
+if (!binary) throw new Error("CODEX_BIN must name the exact installed Codex executable")
 const root = mkdtempSync(join(tmpdir(), "openagents-codex-lifecycle-"))
 const home = join(root, "home"); mkdirSync(home)
 const supervisor = createCodexAppServerSupervisor({ nativeJournalRoot: join(root, "native"), strictGeneratedDecoding: true })
 const registry = makeCodexThreadLifecycleRegistry({ supervisor, receiptRoot: join(root, "receipts") })
 try {
-  const lifecycle = await registry.forTarget({ binary, binarySha256: bundledCodexExecutableSha256, env: { ...process.env, CODEX_HOME: home }, cwd: root, accountRef: "lifecycle-smoke", hostTarget: "local-desktop-smoke" })
+  const lifecycle = await registry.forTarget({ binary, env: { ...process.env, CODEX_HOME: home }, cwd: root, accountRef: "lifecycle-smoke", hostTarget: "local-desktop-smoke" })
   const started = await lifecycle.start({ model: "gpt-5.6-sol", cwd: root, approvalPolicy: "never", sandbox: "read-only", ephemeral: false, threadSource: "appServer" }) as { thread?: { id?: string } }
   const threadId = started.thread?.id
   if (!threadId) throw new Error("thread/start omitted thread id")
