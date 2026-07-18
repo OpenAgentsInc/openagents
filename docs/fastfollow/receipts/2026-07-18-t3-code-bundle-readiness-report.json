@@ -1,0 +1,203 @@
+{
+  "schema": "openagents.fast_follow.bundle_readiness_report.v0_1",
+  "report_ref": "report.t3code.bundle.fbe3da416d3af10e",
+  "report_key_digest": "sha256:fbe3da416d3af10e97925363845303bce3c26eef2a5a1c06a8b46fcdbcd476b2",
+  "report_key": {
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "continuation_ordinal": 7,
+    "target_commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+    "source_commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "latest_observation_digest": "sha256:b79aa7494163b04d42a43ae186b23529bedec7929a685f413cafd679e331454f",
+    "evaluator_version": "t3-fast-follow-bundle-readiness-0.1"
+  },
+  "scope_boundary": {
+    "artifact_kind": "deterministic_public_safe_bundle_readiness_audit",
+    "is_host_full_auto_run_report": false,
+    "is_host_transcript_analyzer": false,
+    "reason": "The host packet exposes no terminal run report, raw-evidence pointer, analyzer output, or report/analyzer digest. Repository evidence cannot be relabeled as those host-owned runtime artifacts.",
+    "provider_completion_is_verdict": false
+  },
+  "artifact_chain": [
+    {
+      "kind": "FastFollowManifest",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+      "ref": "run.full-auto.mrqbkgry.bbok6dv9",
+      "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+      "landed_commit": "0b602415fd5670528f869e04954c89082f7ff7a0"
+    },
+    {
+      "kind": "StudyPacket",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-study-packet.json",
+      "ref": "study.t3code.2395916f28f524b8",
+      "content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+      "landed_commit": "54930552e16372e6a4d1399eba05e794b3391645"
+    },
+    {
+      "kind": "GapAssessment",
+      "path": "docs/fastfollow/gaps/2026-07-18-t3-code-full-auto-gap-assessment.json",
+      "ref": "gap.t3code.436c6d129a5c90f2",
+      "content_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb",
+      "landed_commit": "e26595aa45e2a2643e7d7987d440fc83e19f5357"
+    },
+    {
+      "kind": "WorkProposalAndDisposition",
+      "path": "docs/fastfollow/candidates/2026-07-18-t3-code-worktree-creation-proposal.json",
+      "ref": "proposal.t3code.worktree.6d065d3a97fe0795",
+      "content_digest": "sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4",
+      "landed_commit": "1de6a3171662e7ccce36f6bb072f6dd6c5c79231"
+    },
+    {
+      "kind": "PreHandoffCheckpoint",
+      "path": "docs/fastfollow/receipts/2026-07-18-t3-code-full-auto-pre-handoff-checkpoint.json",
+      "ref": "checkpoint.t3code.handoff.cd5ba965d092e6aa",
+      "content_digest": "sha256:119435c72c40cb3f1e5814aac156502695181d5c5010d1d9160af8a16bb49cf9",
+      "landed_commit": "ddbd73f96d0b1a3708875a004f680e558d2a7c66"
+    },
+    {
+      "kind": "HandoffNonTransitionObservation",
+      "path": "docs/fastfollow/receipts/2026-07-18-t3-code-full-auto-handoff-non-transition.json",
+      "ref": "observation.t3code.handoff.95214e30bb97984f",
+      "content_digest": "sha256:b79aa7494163b04d42a43ae186b23529bedec7929a685f413cafd679e331454f",
+      "landed_commit": "75895d39bc21b44f32e4004060f66280bda0492b"
+    }
+  ],
+  "mission_identity": {
+    "objective_digest": "sha256:4e89bf2494ca69c1b46935472f6a90529ea6f54323579cd58e7576e8a3f63e4f",
+    "done_condition_digest": "sha256:f29129899b05e4abb15900a6bbfdfec4b6c4065204157843be3d6698bc98731a",
+    "retained_across_ordinals": [5, 6, 7],
+    "raw_text_included": false
+  },
+  "bundle_report": {
+    "schema": "openagents.fast_follow.bundle_report.v0_1",
+    "artifact_count": 6,
+    "source": {
+      "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+      "license": "MIT",
+      "mutation_status": "clean"
+    },
+    "target": {
+      "pinned_commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+      "pinned_tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+      "artifact_chain_head_before_report": "75895d39bc21b44f32e4004060f66280bda0492b",
+      "artifact_chain_tree_before_report": "42bb061c41c5de693e49cab76f070cfd86ac1059"
+    },
+    "work_summary": {
+      "study_patterns": 5,
+      "gap_rows": 5,
+      "no_material_delta_dispositions": 4,
+      "candidate_proposals": 1,
+      "candidate_identity": "t3.worktree_parallelism.v1|c9ff26d921aa5fcc155e05a43846d79b7c48560b|T3UI-04|typed-worktree-create",
+      "product_implementation_performed": false
+    },
+    "verification_summary": {
+      "fast_follow_test_files_passed": 2,
+      "fast_follow_tests_passed": 13,
+      "fast_follow_tests_failed": 0,
+      "distribution_verification": "passed",
+      "target_product_tests_executed": false,
+      "source_tests_executed": false,
+      "reason": "This run's completed work units are evidence artifacts; inspected target/source tests remain evidence references, not executions."
+    },
+    "runtime_observation": {
+      "current_lane_at_ordinal_7": "codex-local",
+      "requested_target_lane": "fable-local",
+      "previous_handoff": null,
+      "claude_participation": "not_observed",
+      "restart_boundary": "not_observed",
+      "terminal_state": "not_observed",
+      "turn_cap": 8,
+      "remaining_turns_including_ordinal_7": 2
+    }
+  },
+  "bundle_report_digest": "sha256:864220c931bd4969038d383ba97626caff772c050c04ec8870d1fb4f08725e8f",
+  "bundle_analyzer": {
+    "schema": "openagents.fast_follow.bundle_analyzer.v0_1",
+    "findings": [
+      {
+        "id": "T3-BUNDLE-01",
+        "severity": "info",
+        "classification": "artifact_chain_complete_for_evidence_stage",
+        "finding": "Manifest, StudyPacket, GapAssessment, and proposal/disposition artifacts exist at exact committed refs and recomputable content digests."
+      },
+      {
+        "id": "T3-BUNDLE-02",
+        "severity": "blocking",
+        "classification": "real_provider_handoff_missing",
+        "finding": "A Codex-to-Claude transition was requested after ordinal 5, but host packets for ordinals 6 and 7 both remained codex-local with previousHandoff=null. Request text is not execution evidence."
+      },
+      {
+        "id": "T3-BUNDLE-03",
+        "severity": "blocking",
+        "classification": "runtime_terminal_evidence_missing",
+        "finding": "No explicit Completed, Failed, Stopped, or Cap-reached host state is exposed, and no restart boundary is receipted."
+      },
+      {
+        "id": "T3-BUNDLE-04",
+        "severity": "blocking",
+        "classification": "host_report_analyzer_missing",
+        "finding": "The host packet supplies no FullAutoRunReport digest or private analyzer digest. The bundle-level digests in this file are not substitutes."
+      },
+      {
+        "id": "T3-BUNDLE-05",
+        "severity": "warning",
+        "classification": "turn_cap_risk",
+        "finding": "Only one continuation remains after ordinal 7. Without a host lane transition and terminal closeout, the mission cannot meet its owner-defined done condition within the supplied cap."
+      },
+      {
+        "id": "T3-BUNDLE-06",
+        "severity": "info",
+        "classification": "no_false_claim_detected",
+        "finding": "The artifact chain makes no T3 parity, signed-release, deployment, promise, credential, or public capability claim; provider completion remains unverified."
+      }
+    ],
+    "root_cause_boundary": {
+      "confirmed": "host transition evidence is absent from two consecutive post-request packets",
+      "not_confirmed": "whether the host ignored, rejected, or never interpreted the request, or whether fable-local admission failed",
+      "target_product_defect_proven": false,
+      "duplicate_candidate_created": false
+    },
+    "recommended_host_action": "At the host-owned durable run boundary, pause if necessary, revalidate and switch to admitted fable-local, resume exactly once, then expose the transition, restart, terminal report, and analyzer refs in the mission packet. If that command is attempted and still yields codex-local/null handoff, capture the command/refusal receipt as a reproducible strict bug under #8967.",
+    "overall_disposition": "blocked_host_evidence_missing"
+  },
+  "bundle_analyzer_digest": "sha256:7a1a5e3048f88d19baab9ae97a3a09024526a0884a4237cd66c1dc2d2b06c47c",
+  "done_condition_matrix": [
+    {"gate":"fresh manifest bound to exact repositories","status":"evidence_present","ref":"sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc"},
+    {"gate":"StudyPacket exists","status":"evidence_present","ref":"sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7"},
+    {"gate":"GapAssessment exists","status":"evidence_present","ref":"sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb"},
+    {"gate":"proposal/disposition exists","status":"evidence_present","ref":"sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4"},
+    {"gate":"both real providers participated","status":"not_observed","ref":null},
+    {"gate":"visible transition receipted","status":"not_observed","ref":null},
+    {"gate":"restart boundary receipted","status":"not_observed","ref":null},
+    {"gate":"explicit terminal state","status":"not_observed","ref":null},
+    {"gate":"host report digest non-null","status":"not_observed","ref":null},
+    {"gate":"host analyzer digest non-null","status":"not_observed","ref":null},
+    {"gate":"no duplicate continuation","status":"no_duplicate_observed_through_ordinal_7","ref":"turn.full-auto.1b0fb974-0b4b-4d8f-97b2-4101bf722c13"},
+    {"gate":"source repository unmodified","status":"evidence_present","ref":"8b5469863ae1dd696e696de30240ec3da607962d"},
+    {"gate":"no false parity/release/public claim","status":"evidence_present","ref":"T3-BUNDLE-06"},
+    {"gate":"scoped changes committed and pushed","status":"evidence_present_through_preimage","ref":"75895d39bc21b44f32e4004060f66280bda0492b"},
+    {"gate":"final receipt exists","status":"not_yet_produced","ref":null}
+  ],
+  "host_full_auto_run": {
+    "report_digest": null,
+    "analyzer_digest": null,
+    "terminal_state": null,
+    "explicit_non_conflation": "The non-null bundle_report_digest and bundle_analyzer_digest above audit repository evidence only and do not satisfy these host-owned runtime fields."
+  },
+  "independently_owned_gates": [
+    {"issue":8978,"gate":"independent AssuranceSpec admission and review"},
+    {"issue":8979,"gate":"packaged/signed release and owner observation"},
+    {"issue":8993,"gate":"live Desktop update feed and first containing tag"}
+  ],
+  "classification": {
+    "visibility": "public_safe_repository_artifact",
+    "contains_raw_objective_or_transcript": false,
+    "contains_local_paths": false,
+    "contains_credentials_or_provider_private_state": false,
+    "provider_completion_is_verdict": false,
+    "owner_acceptance_claimed": false,
+    "release_or_public_capability_claimed": false
+  },
+  "report_content_digest": "sha256:d6dd1a1bb58e5814c376c29743dbaa267617defd540bde20d3fb49fe68f503fc"
+}
