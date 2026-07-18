@@ -1,0 +1,102 @@
+{
+  "schema": "openagents.fast_follow.manifest.v0_1",
+  "profile": "selected_source_evidence_package",
+  "do_not_edit": true,
+  "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+  "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+  "compiler": {
+    "version": "0.1.0",
+    "profile_version": "t3-selected-source-v1",
+    "content_digest": "sha256:266b20f094060dd2e3fd50ee71c7a822b89807168f2ee2f849584e031168ee53"
+  },
+  "spec": {
+    "path": "FASTFOLLOW.md",
+    "id": "openagents.fast_follow",
+    "revision": 3,
+    "document_digest": "sha256:5ec8a75f0efa2fa4234622fd7746b433ec50bf97fe25ce3d83b1107df19bc43c",
+    "intent_digest": "sha256:88cc577f951c82c30bcafd34ed06614e416eb3bf4d24b91b9fc36881a6ddac70"
+  },
+  "selection": {
+    "work_lane": ["verification", "gap_analysis"],
+    "source_id": "pingdotgg.t3code",
+    "authority": "evidence_only"
+  },
+  "target": {
+    "repository": "OpenAgentsInc/openagents",
+    "commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+    "tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+    "authority_digests": [
+      {"path":"AGENTS.md","byte_size":61003,"content_digest":"sha256:0914b573f412792991a542cc0a8e8d2faa113b24bd1df51d5701a80bf7e6199e"},
+      {"path":"INVARIANTS.md","byte_size":150943,"content_digest":"sha256:42e4eaa0d95219b99dd12627d02eb1860310b0387ca68f5e55a5081550df6459"},
+      {"path":"docs/fastfollow/README.md","byte_size":8998,"content_digest":"sha256:9ad42a3075ef00b631f97ec642d59988d3c70b336d6bcfcbd769d46b010996e4"},
+      {"path":"docs/fastfollow/FAST_FOLLOW_SPEC.md","byte_size":18097,"content_digest":"sha256:c3a00055402f707b88e9e67b23f5fb2469fbe97edb3cb18aa8a4b0083cf7f360"},
+      {"path":"docs/fastfollow/FAST_FOLLOW_MANIFEST.md","byte_size":2322,"content_digest":"sha256:3b8e563dbb4e3c4e99994e10129ff9891039bc73b5ba54914ccdfc59da16a13d"},
+      {"path":"FASTFOLLOW.md","byte_size":57504,"content_digest":"sha256:5ec8a75f0efa2fa4234622fd7746b433ec50bf97fe25ce3d83b1107df19bc43c"},
+      {"path":"docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md","byte_size":237893,"content_digest":"sha256:3a530080417d7f8970491e5184444775dc8a48bc028dccd14c793fab314b45d6"},
+      {"path":"docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md","byte_size":9877,"content_digest":"sha256:c67ea2eabf60bfbb70bfa3d32e60bad62d33285f6a4c857bf7ff3782dc0c5af4"},
+      {"path":"docs/fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md","byte_size":4237,"content_digest":"sha256:0d9d02f3f390706c3542af12d1cd41e1ce89b980de02d81446131ebc3ae70e48"},
+      {"path":"docs/sol/receipts/2026-07-18-full-auto-real-owner-acceptance.md","byte_size":8559,"content_digest":"sha256:4065cc583049059b772c8f7555f678bbec5eddfab9199d28685eb61e426000e0"},
+      {"path":"specs/openagents/fast-follow.product-spec.md","byte_size":19846,"content_digest":"sha256:d04a6e08d702ec0936717dcf4e8ed20a2c98aedaa252a72daf3896f71a3d6d87"},
+      {"path":"specs/desktop/full-auto.product-spec.md","byte_size":93239,"content_digest":"sha256:dc1f390741c06393b3054231eb7b6f52849b9c92a05b00b3736ea85df12a6911"},
+      {"path":"specs/desktop/full-auto.assurance-spec.md","byte_size":261221,"content_digest":"sha256:6d8f7682d23b862e607f2f735b812f7beba0ee342ab16ea66a5b603c0532d66f"}
+    ]
+  },
+  "source": {
+    "source_kind": "public_git",
+    "source_id": "pingdotgg.t3code",
+    "canonical_ref": "https://github.com/pingdotgg/t3code",
+    "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+    "visibility": "public",
+    "evidence_confidence": "verified_bytes",
+    "provenance": {"origin":"https://github.com/pingdotgg/t3code","license":"known_permissive","license_ref":"LICENSE"},
+    "selected_corpus": [
+      {"path":"LICENSE","byte_size":1070,"content_digest":"sha256:935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43"},
+      {"path":"apps/web/src/components","byte_size":2629786,"content_digest":"sha256:e419b232a13ed846fa7f6379e494797541aa8f949e7aa00d4b556e8760e176d3"},
+      {"path":"apps/web/src/browser","byte_size":126084,"content_digest":"sha256:a3703a250604f991486da7722d1fbaf1a37f75c41973817e3904d16a95be6212"},
+      {"path":"apps/web/src/cloud","byte_size":74323,"content_digest":"sha256:0a71596ed566611bc876631e6238e5ef68b0d0eaaadd5d9a7e82d3652bc0c8ba"},
+      {"path":"apps/server/src/provider","byte_size":1594398,"content_digest":"sha256:6cefc687fa2594f47ec26b51238dc888fb234e1ef76eaac36f3c551f4a5489c8"},
+      {"path":"packages/client-runtime/src","byte_size":799287,"content_digest":"sha256:c5390c45ef7d03127d2de7dea56e9395d8c7ab091c86e8081676162e07b7a174"},
+      {"path":"packages/contracts/src","byte_size":496408,"content_digest":"sha256:067dd350eabc655c5a754eb7f6d81a2fd26a8855969b813840579b2a52468534"},
+      {"path":"packages/effect-acp/src","byte_size":649837,"content_digest":"sha256:97da896be1d6c185c2dece338b554f8707fe9f9dc1af841425f03ee1c4b95be3"},
+      {"path":"apps/server/src/auth/dpop.ts","byte_size":3000,"content_digest":"sha256:985ac8166ffebcce35afec71abe0958dc40821cdad33ddb25752b58d02b5592f"},
+      {"path":"packages/shared/src/dpop.ts","byte_size":5657,"content_digest":"sha256:78cfc7850062f7222ebb7c174636586db224f369e5dc01f644951f79d83817f7"}
+    ],
+    "copying_allowed": true
+  },
+  "lesson_graph": [
+    {"lesson_ref":"pingdotgg.t3code#provider_neutral_cqrs","kind":"architecture","stance":"adapt_with_stronger_boundaries","directive_refs":["amp.day2_routing_and_specialists","runtime_protocol_provider_lanes"]},
+    {"lesson_ref":"pingdotgg.t3code#effect_projection_kernel","kind":"architecture","stance":"adapt","directive_refs":["effect_runtime_topology"]},
+    {"lesson_ref":"pingdotgg.t3code#worktree_parallelism","kind":"product_ux","stance":"adapt_with_stronger_boundaries","directive_refs":["subagent_supervision"]},
+    {"lesson_ref":"pingdotgg.t3code#acp_peer_profiles","kind":"protocol","stance":"adapt","directive_refs":["runtime_protocol_provider_lanes"]},
+    {"lesson_ref":"pingdotgg.t3code#dpop_environment_access","kind":"security","stance":"study","directive_refs":["amp.day4_placement_and_remote_control","authority_isolation_receipts"]}
+  ],
+  "directive_graph": [
+    {"directive_ref":"amp.day2_routing_and_specialists","priority":490,"source_refs":["pingdotgg.t3code#provider_neutral_cqrs"],"target_scopes":["apps/openagents-desktop","apps/pylon","packages/pylon-core"],"acceptance_refs":["FF-AC-04","FF-AC-05","FF-AC-12"]},
+    {"directive_ref":"amp.day4_placement_and_remote_control","priority":470,"source_refs":["pingdotgg.t3code#dpop_environment_access"],"target_scopes":["apps/openagents-desktop","apps/openagents-mobile","apps/pylon","packages/pylon-core","packages/world-client"],"acceptance_refs":["FF-AC-04","FF-AC-06","FF-AC-08"]},
+    {"directive_ref":"runtime_protocol_provider_lanes","priority":100,"source_refs":["pingdotgg.t3code#provider_neutral_cqrs","pingdotgg.t3code#acp_peer_profiles"],"target_scopes":["apps/openagents-desktop","packages/agent-client-protocol","packages/codex-app-server-protocol","packages/provider-lane"],"acceptance_refs":["FF-AC-02","FF-AC-09"]},
+    {"directive_ref":"effect_runtime_topology","priority":95,"source_refs":["pingdotgg.t3code#effect_projection_kernel"],"target_scopes":["apps/openagents-desktop","packages","crates"],"acceptance_refs":["FF-AC-03"]},
+    {"directive_ref":"subagent_supervision","priority":92,"source_refs":["pingdotgg.t3code#worktree_parallelism"],"target_scopes":["apps/openagents-desktop","apps/openagents-mobile","packages/agent-runtime-schema","packages/world-client"],"acceptance_refs":["FF-AC-02","FF-AC-09"]},
+    {"directive_ref":"authority_isolation_receipts","priority":100,"source_refs":["pingdotgg.t3code#dpop_environment_access"],"target_scopes":["apps/openagents-desktop","apps/pylon","crates","packages/environment-auth","packages/assurance-spec"],"acceptance_refs":["FF-AC-04","FF-AC-09","FF-AC-11"]}
+  ],
+  "work_units": [
+    {"unit_ref":"fast_follow.t3.amp.day2_routing_and_specialists.6000d6db56c0c312","directive_ref":"amp.day2_routing_and_specialists","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:6000d6db56c0c312ba30bd798be9588c8675eb7bba48a52d7a1b098ba99cad20"},
+    {"unit_ref":"fast_follow.t3.amp.day4_placement_and_remote_control.0af88d2900e14375","directive_ref":"amp.day4_placement_and_remote_control","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:0af88d2900e14375ebd2426866538978bd7c963f477575f12a990772166d4a01"},
+    {"unit_ref":"fast_follow.t3.runtime_protocol_provider_lanes.7739e45b09a54fa7","directive_ref":"runtime_protocol_provider_lanes","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:7739e45b09a54fa7b11a5310c1eae17ee679a0f2b4fbe0be789d4d731b63ccb7"},
+    {"unit_ref":"fast_follow.t3.effect_runtime_topology.66444f63cfb817d0","directive_ref":"effect_runtime_topology","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:66444f63cfb817d07ddc8e716af83cc2673e35344d4d7691f948e21a9dd2993d"},
+    {"unit_ref":"fast_follow.t3.subagent_supervision.887bf3027b982e29","directive_ref":"subagent_supervision","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:887bf3027b982e29823f475e443f840aa6d65b4ae5606a7f7660da9cca4faec0"},
+    {"unit_ref":"fast_follow.t3.authority_isolation_receipts.aa9a3eed1d00cda0","directive_ref":"authority_isolation_receipts","stage":"gap_analysis","authority":"evidence_only","dedupe_identity":"sha256:aa9a3eed1d00cda0654f12c8399db8a27cb13e9c6b14ff011bb8ae19806ad8d0"}
+  ],
+  "classification": {
+    "manifest_visibility": "public",
+    "external_instructions": "untrusted_study_data",
+    "grants_runtime_authority": false,
+    "provider_completion_is_verdict": false
+  },
+  "source_mutation_baseline": {
+    "status": "clean",
+    "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9"
+  },
+  "manifest_content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc"
+}
