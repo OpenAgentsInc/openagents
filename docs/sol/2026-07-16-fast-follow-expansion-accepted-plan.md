@@ -2983,6 +2983,15 @@ later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-37-desktop-canonical-export-search-catalog-ingestion-receipt.md`
 - residual: broader historical-session backfill, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `fc39cc8fdbe901507869d5795eede1b294fb7922`
+- implementation_revision: `d48e9c29529f8024df7fd498bc35bd47b5b62b5a`
+- status: released; FF-D1-37 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-37-desktop-canonical-export-search-catalog-ingestion-receipt.md`
+- released_at: `2026-07-18T01:38:52Z`
+- residual: broader historical-session backfill, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
