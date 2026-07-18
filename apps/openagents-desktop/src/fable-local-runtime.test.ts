@@ -29,6 +29,7 @@ import {
   FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV,
   FABLE_LOCAL_MODEL,
   FABLE_STREAM_CLOSE_TIMEOUT_MS,
+  classifyFableSdkResultFailure,
   discoverReadyFableClaudeHomes,
   fableThreadWorkspaceSlug,
   makeFableLocalRuntime,
@@ -449,6 +450,23 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(sink.events.at(-1)).toEqual({ kind: "turn_failed", reason: "session_failed", detail: "error_during_execution" })
   })
 
+  test("preserves Claude authentication and organization-access refusals as account recovery facts", () => {
+    expect(classifyFableSdkResultFailure(
+      "success",
+      "Failed to authenticate: OAuth session expired and could not be refreshed",
+    )).toEqual({
+      reason: "account_reconnect_required",
+      detail: "Failed to authenticate: OAuth session expired and could not be refreshed",
+    })
+    expect(classifyFableSdkResultFailure(
+      "success",
+      "Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead",
+    )).toMatchObject({ reason: "account_reconnect_required" })
+    expect(classifyFableSdkResultFailure("success", "Usage limit reached")).toMatchObject({
+      reason: "budget_exceeded",
+    })
+  })
+
   test("maps a max-turns result to budget_exceeded", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {
@@ -501,7 +519,12 @@ describe("makeFableLocalRuntime.runTurn", () => {
       return captured.length === 1
         ? (async function* () {
             yield { type: "system", subtype: "init", session_id: "session-dead" }
-            yield { type: "result", subtype: "error_during_execution", is_error: true }
+            yield {
+              type: "result",
+              subtype: "success",
+              is_error: true,
+              result: "Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead",
+            }
           })()
         : (async function* () {
             yield { type: "system", subtype: "init", session_id: "session-live" }

@@ -477,6 +477,37 @@ type SdkRecord = Record<string, unknown> & {
   session_id?: unknown
 }
 
+/**
+ * Classify an already-selected Claude SDK result. Claude Code can return
+ * `subtype: "success"` together with `is_error: true`; the useful typed fact
+ * then lives in `result`, not in the subtype. Preserve known account/access
+ * and quota facts so Full Auto can rotate immediately and explain why,
+ * instead of degrading every refusal to an opaque provider error.
+ */
+export const classifyFableSdkResultFailure = (
+  subtype: string | null,
+  resultText: string | null,
+): Readonly<{ reason: FableLocalFailureReason; detail: string }> => {
+  const detail = resultText?.trim() || subtype || "provider error"
+  const lower = detail.toLowerCase()
+  if (
+    lower.includes("failed to authenticate") ||
+    lower.includes("oauth session expired") ||
+    lower.includes("disabled claude subscription access") ||
+    lower.includes("use an anthropic api key instead")
+  ) {
+    return { reason: "account_reconnect_required", detail }
+  }
+  if (
+    lower.includes("usage limit") ||
+    lower.includes("quota") ||
+    lower.includes("purchase more credits")
+  ) {
+    return { reason: "budget_exceeded", detail }
+  }
+  return { reason: "session_failed", detail }
+}
+
 const contentBlocks = (message: unknown): ReadonlyArray<Record<string, unknown>> => {
   const content = (message as { content?: unknown } | undefined)?.content
   return Array.isArray(content)
@@ -1523,7 +1554,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         return finish(failure("budget_exceeded", "turn budget reached"))
       }
       if (resultIsError || (resultSubtype !== null && resultSubtype.startsWith("error"))) {
-        return finish(failure("session_failed", resultSubtype ?? "provider error"))
+        const classified = classifyFableSdkResultFailure(resultSubtype, resultText)
+        return finish(failure(classified.reason, classified.detail))
       }
       // The final text authority order: the SDK result text, then complete
       // assistant blocks, then accumulated stream deltas — so a build that
@@ -1562,7 +1594,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         // Claude home gets the turn. Same lane, same provider — never a
         // silent substitution. Once content streamed, no rerun: a partial
         // reply must fail honestly rather than double-answer.
-        const rotatable = result.reason === "session_failed" &&
+        const rotatable = (result.reason === "session_failed" || result.reason === "account_reconnect_required") &&
           !attempt.sawContent &&
           !control.interrupted
         if (!rotatable || index === ready.length - 1) return emitFailure(result)

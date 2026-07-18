@@ -482,7 +482,15 @@ export type FullAutoRunRegistry = Readonly<{
   recordAttempt: (
     runRef: string,
     outcome: "success" | "failure",
-    options?: Readonly<{ turnRef?: string; reason?: string }>,
+    options?: Readonly<{
+      turnRef?: string
+      reason?: string
+      /** The profile that actually accepted a successful dispatch. An
+       * automatic fallback can differ from the profile shown when the pass
+       * began; persisting it atomically with success keeps the run monitor,
+       * handoff affordance, and next continuation on the same lane truth. */
+      profile?: FullAutoProfile
+    }>,
   ) => FullAutoRun | null
   reviseObjective: (
     runRef: string,
@@ -670,6 +678,9 @@ export const openFullAutoRunRegistry = (
       consecutiveFailures: outcome === "success" ? undefined : (current.consecutiveFailures ?? 0) + 1,
       lastFailureAt: outcome === "success" ? undefined : timestamp,
       lastProgressAt: outcome === "success" ? timestamp : current.lastProgressAt,
+      ...(outcome === "success" && options?.profile !== undefined
+        ? { profile: options.profile }
+        : {}),
       pendingTurnRef: undefined,
       pendingStartedAt: undefined,
     }))

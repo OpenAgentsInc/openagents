@@ -151,8 +151,9 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
   "model_substituted",
   // Codex-local lane reasons (EP250 codex-first-class, additive): the direct
   // local Codex chat lane shares this envelope so the existing renderer
-  // stream path renders codex turns identically. Fable turns never emit
-  // these two.
+  // stream path renders codex turns identically. `account_reconnect_required`
+  // is also emitted by Fable when Claude reports an expired/disabled account;
+  // `no_codex_account` remains Codex-only.
   "no_codex_account",
   "account_reconnect_required",
   "incompatible_workflow",

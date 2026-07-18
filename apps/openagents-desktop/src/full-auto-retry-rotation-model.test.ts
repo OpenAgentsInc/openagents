@@ -92,7 +92,10 @@ describe("Full Auto retry/rotation exhaustive model (FA-AS-01 formal-adjacent ob
   test("every FullAutoRotationReasonSchema literal classifies to itself as a rotation-eligible dispatch-failure reason (exhaustive over the real exported literal set, not a hand-guessed subset)", () => {
     const rotationReasons = [...FullAutoRotationReasonSchema.literals]
     expect(rotationReasons.sort()).toEqual(["account_exhausted", "provider_error", "rate_limited"].sort())
-    // account_exhausted / rate_limited direct reasons.
+    for (const reason of rotationReasons) {
+      expect(classifyFullAutoDispatchFailure(reason)).toBe(reason)
+    }
+    // Adapter-specific account exhaustion aliases.
     expect(classifyFullAutoDispatchFailure("budget_exceeded")).toBe("account_exhausted")
     expect(classifyFullAutoDispatchFailure("no_claude_account")).toBe("account_exhausted")
     expect(classifyFullAutoDispatchFailure("no_codex_account")).toBe("account_exhausted")

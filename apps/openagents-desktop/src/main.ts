@@ -4180,7 +4180,12 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     },
     onDispatched: (dispatchedThreadRef, result) => {
       const run = fullAutoRunRegistry.findByThreadRef(dispatchedThreadRef)
-      if (run !== null) fullAutoRunRegistry.recordAttempt(run.runRef, "success", { turnRef: result.turnRef })
+      if (run !== null) {
+        fullAutoRunRegistry.recordAttempt(run.runRef, "success", {
+          turnRef: result.turnRef,
+          ...(result.profile === undefined ? {} : { profile: result.profile }),
+        })
+      }
     },
     // FA-RT-01 (#8987): a rotation is an owner-visible fact on the thread,
     // like every other Full Auto outcome.

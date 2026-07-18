@@ -270,6 +270,13 @@ export const classifyFullAutoDispatchFailure = (
   detail?: string,
 ): FullAutoRotationReason | null => {
   switch (reason) {
+    // Provider adapters may already return the canonical rotation taxonomy.
+    // Preserve those typed facts directly instead of requiring an older
+    // adapter-specific alias before the ordered fallback policy can act.
+    case "account_exhausted":
+    case "rate_limited":
+    case "provider_error":
+      return reason
     case "budget_exceeded":
     case "no_claude_account":
     case "no_codex_account":

@@ -222,6 +222,33 @@ describe("FullAutoRun registry: concurrent runs, draft/start, rerun, eviction (F
     })
   })
 
+  test("a successful fallback attempt atomically projects the lane that actually accepted the dispatch", () => {
+    withTempDir("oa-full-auto-run-success-profile-", root => {
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+      const started = registry.startNew({
+        ...draftInput(),
+        threadRef: "thread-rotated",
+        profile: { lane: "fable-local", model: "claude-opus-4-8" },
+        actor: "control_api",
+        reason: "start on Claude",
+      })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+
+      registry.recordAttempt(started.run.runRef, "failure", { reason: "provider_error" })
+      const accepted = registry.recordAttempt(started.run.runRef, "success", {
+        turnRef: "turn.full-auto.codex-fallback",
+        profile: { lane: "codex-local", model: "gpt-5.6-sol" },
+      })
+
+      expect(accepted?.profile).toEqual({ lane: "codex-local", model: "gpt-5.6-sol" })
+      expect(accepted?.successfulAttempts).toBe(1)
+      expect(accepted?.failedAttempts).toBe(1)
+      expect(openFullAutoRunRegistry(path.join(root, "runs.json")).get(started.run.runRef)?.profile)
+        .toEqual({ lane: "codex-local", model: "gpt-5.6-sol" })
+    })
+  })
+
   test("bounds local concurrent admission without mutating an existing run or minting an extra draft", () => {
     withTempDir("oa-full-auto-run-capacity-", root => {
       const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
