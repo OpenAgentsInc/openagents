@@ -171,9 +171,7 @@ function MessageList({ messages }: { messages: UIMessage[] }) {
               }
               if (part.type.startsWith("tool-") || part.type === "dynamic-tool") {
                 return (
-                  <p className="mt-2 text-xs text-[var(--muted-foreground)]" key={`${message.id}-${index}`}>
-                    Codex is using a tool…
-                  </p>
+                  <ToolEventInspector key={`${message.id}-${index}`} part={part} />
                 );
               }
               return null;
@@ -183,6 +181,74 @@ function MessageList({ messages }: { messages: UIMessage[] }) {
       ))}
     </div>
   );
+}
+
+function ToolEventInspector({ part }: { part: UIMessage["parts"][number] }) {
+  const event = part as unknown as Record<string, unknown>;
+  const toolName =
+    typeof event.toolName === "string"
+      ? event.toolName
+      : part.type === "dynamic-tool"
+        ? "harness event"
+        : part.type.slice("tool-".length);
+  const state = typeof event.state === "string" ? event.state : "received";
+  const details = [
+    ["Input", event.input],
+    ["Output", event.output],
+    ["Error", event.errorText ?? event.error],
+  ] as const;
+
+  return (
+    <details className="group mt-3 overflow-hidden rounded-lg border border-sky-300/15 bg-sky-400/[0.045]" open={state === "input-streaming"}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs marker:content-none">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-sky-400/15 font-mono text-[10px] text-sky-300">
+          ›_
+        </span>
+        <span className="font-medium text-sky-100">{toolName}</span>
+        <span className="rounded bg-white/7 px-1.5 py-0.5 font-mono text-[10px] text-[var(--muted-foreground)]">
+          {state}
+        </span>
+        <span className="ml-auto text-[11px] text-[var(--muted-foreground)] group-open:hidden">
+          Show data
+        </span>
+        <span className="ml-auto hidden text-[11px] text-[var(--muted-foreground)] group-open:inline">
+          Hide data
+        </span>
+      </summary>
+      <div className="space-y-3 border-t border-sky-300/10 px-3 py-3">
+        {details.map(([label, value]) =>
+          value === undefined ? null : (
+            <EventField key={label} label={label} value={value} />
+          ),
+        )}
+        <details className="rounded border border-white/8 bg-black/15">
+          <summary className="cursor-pointer px-2.5 py-2 font-mono text-[11px] text-[var(--muted-foreground)]">
+            Raw UI message part
+          </summary>
+          <pre className="max-h-72 overflow-auto border-t border-white/8 p-2.5 text-[11px] leading-5 text-slate-300">
+            {serializeEvent(part)}
+          </pre>
+        </details>
+      </div>
+    </details>
+  );
+}
+
+function EventField({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div>
+      <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--muted-foreground)]">
+        {label}
+      </p>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-white/8 bg-black/15 p-2.5 text-[11px] leading-5 text-slate-300">
+        {serializeEvent(value)}
+      </pre>
+    </div>
+  );
+}
+
+function serializeEvent(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? String(value);
 }
 
 function StartupState({ message }: { message: string }) {
