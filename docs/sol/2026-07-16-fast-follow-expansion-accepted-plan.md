@@ -3398,6 +3398,72 @@ later packets.
 - released_at: `2026-07-18T03:05:39Z`
 - residual: historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-43 — Desktop terminal thread-event authority relation ledger
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-42. Canonical
+search can preserve superseded and reverted authority already present in an
+export artifact, but Desktop has no private durable boundary for terminal
+authority relations observed by a later real producer. The actual `main.ts`
+and renderer surfaces remain actively owned, while historical exports without
+their original receipt identity cannot be backfilled honestly. This packet
+therefore adds only a new owner-private terminal-relation ledger and focused
+proof. It does not create, infer, authorize, or compose an authority producer.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-event-authority-relation-ledger.ts`
+- `apps/openagents-desktop/src/thread-event-authority-relation-ledger.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: `openagents.thread_event_authority.v1`, the accepted-then-one-
+terminal relation history, owner-private atomic persistence, and no invented
+authority. No accepted fact, event body, receipt, artifact byte, path,
+producer, host, renderer, Sync, provider, or release authority is added.
+
+Required behavior:
+
+- admit only exact ref-only `superseded` or `reverted` relations decoded by
+  the shared authority schema; accepted facts remain owned by the confirmed
+  timeline source;
+- persist at most one terminal relation for an exact thread/event identity in
+  a bounded owner-private atomic catalog;
+- make exact replay idempotent while rejecting conflicting relation refs,
+  terminal transitions, malformed input, extra fields, capacity overflow, and
+  corrupt persisted state;
+- list only exact decoded terminal relations for one validated thread ref,
+  with deterministic order and no path, body, summary, prompt, provider, or
+  native-error projection; and
+- reopen identical state after restart with owner-private directory and file
+  permissions where the platform supports them.
+
+Proof: focused relation-ledger and shared authority/search/export tests;
+Desktop and shared-package typechecks; Fast Follow, behavior-contract,
+ProductSpec, Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only private persistence for already observed
+terminal authority relations. Real supersession/reversion observation and
+producer composition, merging those facts with confirmed accepted timelines,
+historical-session backfill, the actual Desktop `main.ts` call site, Desktop
+UI consumption and pixels, named-group authority/publication,
+installed/runtime-rendered evidence, and Day 1 completion remain later
+packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-43-20260718`
+- base: `de18ab353fe45aa726080deb2216c67a2e521fab`
+- worktree/branch: `openagents-ff-d1-43` / detached `origin/main`
+- scope: persist exact already-observed superseded/reverted thread-event authority relations without inventing producer authority
+- paths: the FF-D1-43 owned implementation paths above
+- hot files: two new Desktop ledger/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: shared authority v1 exact decoding, accepted-then-one-terminal history, deterministic private persistence, and no inferred authority
+- dependencies: FF-D1-23/31 authority schema/projection and FF-D1-42 search host released; no relevant open bug issue or competing claim; active `main.ts`/UI and unavailable historical receipt identity explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T03:27:35Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
