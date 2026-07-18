@@ -310,6 +310,45 @@ describe("Full Auto exactly-once dispatch (FA-H3 #8876)", () => {
     }
   })
 
+  test("a staggered second start overlaps the first provider turn instead of waiting for that reconciliation pass", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-staggered-threads-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-first", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "codex-local" } })
+
+      let resolveFirstStarted: (() => void) | null = null
+      let resolveSecondStarted: (() => void) | null = null
+      let release: (() => void) | null = null
+      const firstStarted = new Promise<void>(resolve => { resolveFirstStarted = resolve })
+      const secondStarted = new Promise<void>(resolve => { resolveSecondStarted = resolve })
+      const gate = new Promise<void>(resolve => { release = resolve })
+      const dispatch = async ({ threadRef }: { threadRef: string }) => {
+        if (threadRef === "thread-first") resolveFirstStarted!()
+        if (threadRef === "thread-second") resolveSecondStarted!()
+        await gate
+        return { ok: true }
+      }
+
+      const firstPass = reconcile(registry, { dispatch })
+      await firstStarted
+      registry.set("thread-second", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "fable-local" } })
+      const secondPass = reconcile(registry, { dispatch })
+      await Promise.race([
+        secondStarted,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("staggered thread waited behind first pass")), 1_000)),
+      ])
+      expect(registry.record("thread-first")?.pendingTurnRef).toMatch(/^turn\.full-auto\./)
+      expect(registry.record("thread-second")?.pendingTurnRef).toMatch(/^turn\.full-auto\./)
+
+      release!()
+      const [firstResult, secondResult] = await Promise.all([firstPass, secondPass])
+      expect(firstResult).toEqual(["thread-first"])
+      expect(secondResult).toEqual(["thread-second"])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("audit probe (a): two overlapping reconcile passes against one enabled thread dispatch it exactly ONCE (durable lease), and continuationCount increments by exactly 1", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-overlap-"))
     try {

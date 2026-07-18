@@ -314,7 +314,7 @@ import {
   reconcileLocalTurns,
 } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import {
   appendFullAutoQueuedInstruction,
@@ -4036,15 +4036,13 @@ const appendFullAutoSystemNote = (threadRef: string, text: string): void => {
  * Both share this exact wiring so a background continuation and a
  * post-restart resume are the same durable decision, not two.
  *
- * FA-H3 (#8876): every invocation runs through a promise-chain mutex, so
- * overlapping triggers (turn completion + startup + any future continue-now)
- * serialize instead of interleaving the snapshot/dispatch sequence. The
- * durable per-thread lease inside reconcileFullAutoThreads is the second,
- * restart-surviving half of the same exactly-once guarantee.
+ * FA-H3 (#8876): invocations may overlap so a newly admitted run is not
+ * blocked behind another provider's long turn. The durable per-thread lease
+ * inside reconcileFullAutoThreads is the sole dispatch mutex: overlapping
+ * passes skip an already-claimed thread while distinct threads proceed.
  */
-const fullAutoReconcileQueue = makeSerialTaskQueue()
 const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): Promise<void> =>
-  fullAutoReconcileQueue(() => reconcileFullAutoThreads({
+  reconcileFullAutoThreads({
     registry: fullAutoRegistry,
     nonterminalThreadRefs: () => new Set(localTurnJournal.nonterminal().map(record => record.threadRef)),
     // FA-H2 (#8875): the exact same workspace resolution the codex-local
@@ -4284,7 +4282,7 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     // is caught as a side effect of ordinary Full Auto activity, not only by
     // the periodic watchdog below.
     sweepFullAutoRunLiveness()
-  }))
+  })
 
 /**
  * FA-RUN-03 (#8971): the main-owned liveness/stall sweep. Re-evaluates every
@@ -4339,15 +4337,14 @@ const sweepFullAutoRunLiveness = (): void => {
  * The bounded periodic trigger that actually closes the 2026-07-17 incident
  * gap: without it, a run with no OTHER reconciliation trigger firing (no
  * turn ever completes, nothing else toggles Full Auto) would never be
- * re-evaluated at all. This is a periodic CALLER INTO the one existing
- * serialized queue (`fullAutoReconcileQueue`, the same queue turn completion
- * and startup already use) -- never a second scheduler or a parallel
- * dispatch mechanism. Cheap (no provider calls) and interval-bounded well
+ * re-evaluated at all. This remains a liveness-only sweep, never a scheduler
+ * or dispatch mechanism. Cheap (no provider calls) and interval-bounded well
  * above the liveness SLO window so it cannot itself cause dispatch pressure.
  */
 const FULL_AUTO_LIVENESS_WATCHDOG_INTERVAL_MS = 60_000
-const runFullAutoLivenessSweep = (): Promise<void> =>
-  fullAutoReconcileQueue(() => Promise.resolve(sweepFullAutoRunLiveness()))
+const runFullAutoLivenessSweep = async (): Promise<void> => {
+  sweepFullAutoRunLiveness()
+}
 const fullAutoLivenessWatchdog = setInterval(() => {
   void runFullAutoLivenessSweep().catch(() => {})
 }, FULL_AUTO_LIVENESS_WATCHDOG_INTERVAL_MS)
