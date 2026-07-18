@@ -8,7 +8,9 @@
  * approval gates hold - intelligence never upgrades authority.
  */
 
-export const ArtanisMindModelDefault = 'gemini-3.5-flash'
+import { DEFAULT_GEMMA4_MODEL_ID } from './inference/gemma4-model'
+
+export const ArtanisMindModelDefault = DEFAULT_GEMMA4_MODEL_ID
 export type ArtanisMindServedVia =
   | 'google_direct'
   | 'openagents_khala'
@@ -73,6 +75,7 @@ export type ArtanisMindImage = Readonly<{
 }>
 
 const geminiBody = (
+  model: string,
   system: string,
   prompt: string,
   maxOutputTokens: number,
@@ -88,13 +91,16 @@ const geminiBody = (
       ],
       role: 'user',
     }],
-    // gemini-3.5-flash spends "thinking" tokens from the same output
-    // budget; without disabling it a 1024 cap leaves ~90 chars of text
-    // (live truncation incident, topic 479e4480, 2026-06-10).
+    // Gemma 4 supports thinking levels rather than Gemini's numeric thinking
+    // budget. Minimal preserves its reasoning behavior while keeping Sarah's
+    // conversational turns responsive. Keep the old setting for explicit
+    // legacy Gemini callers of this shared completion seam.
     generationConfig: {
       maxOutputTokens,
       temperature: 0.2,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: model.startsWith('gemma-4-')
+        ? { thinkingLevel: 'minimal' }
+        : { thinkingBudget: 0 },
     },
     systemInstruction: { parts: [{ text: system }] },
   })
@@ -138,13 +144,18 @@ const usageFromGeminiResponse = (payload: unknown): ArtanisMindUsage | null => {
 const textFromGeminiResponse = (payload: unknown): GeminiCandidateText => {
   const candidate = (payload as {
     candidates?: ReadonlyArray<{
-      content?: { parts?: ReadonlyArray<{ text?: string }> }
+      content?: { parts?: ReadonlyArray<{ text?: string; thought?: boolean }> }
       finishReason?: string
     }>
   }).candidates?.[0]
   const parts = candidate?.content?.parts
   if (parts === undefined) return { kind: 'empty' }
-  const text = parts.map(part => part.text ?? '').join('')
+  // Gemma 4 can return private scratchpad parts before its answer. Those are
+  // metered through usageMetadata but must never become user-visible chat text.
+  const text = parts
+    .filter(part => part.thought !== true)
+    .map(part => part.text ?? '')
+    .join('')
   if (text === '') return { kind: 'empty' }
   // MAX_TOKENS means the model was cut off mid-output - the text is a
   // truncated fragment, not a complete answer.
@@ -166,6 +177,7 @@ const artanisMindCompleteOnce = async (input: Readonly<{
   | { ok: false; truncated: boolean; failure: ArtanisMindFailure }
 > => {
   const body = geminiBody(
+    input.model,
     input.system,
     input.prompt,
     input.maxOutputTokens,

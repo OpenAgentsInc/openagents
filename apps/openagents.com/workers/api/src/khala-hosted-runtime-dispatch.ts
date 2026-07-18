@@ -73,6 +73,7 @@ import {
 } from '@openagentsinc/khala-sync-server'
 import { sanitizeSarahConversationResponse } from '@openagentsinc/sarah'
 
+import { DEFAULT_GEMMA4_MODEL_ID } from './inference/gemma4-model'
 import { parseJsonUnknown } from './json-boundary'
 import {
   hostedKhalaUsageRef,
@@ -98,7 +99,7 @@ class HostedRuntimeDispatchError extends Error {
 export const HOSTED_RUNTIME_LANE = 'hosted_khala'
 
 /** Default hosted model (matches `artanisMindComplete`'s own default). */
-export const DEFAULT_HOSTED_RUNTIME_MODEL = 'gemini-3.5-flash'
+export const DEFAULT_HOSTED_RUNTIME_MODEL = DEFAULT_GEMMA4_MODEL_ID
 
 /** Provider ref stamped on the runtime events' `source`/metadata. */
 export const HOSTED_RUNTIME_PROVIDER_REF = 'openagents-khala'

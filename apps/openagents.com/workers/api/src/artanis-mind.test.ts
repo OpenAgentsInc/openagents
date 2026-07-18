@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ArtanisMindModelDefault,
   ArtanisMindEscalatedMaxOutputTokens,
   artanisMindComplete,
 } from './artanis-mind'
@@ -47,9 +48,13 @@ describe('artanis cloud mind', () => {
 
   test('serves directly through Google AI Studio', async () => {
     const seen: string[] = []
-    const fetchImpl: typeof fetch = async input => {
+    let requestBody: {
+      generationConfig?: { thinkingConfig?: Record<string, unknown> }
+    } | undefined
+    const fetchImpl: typeof fetch = async (input, init) => {
       const url = String(input)
       seen.push(url)
+      requestBody = JSON.parse(String(init?.body)) as typeof requestBody
       return new Response(geminiOk, { status: 200 })
     }
     const result = await artanisMindComplete({
@@ -62,10 +67,57 @@ describe('artanis cloud mind', () => {
     if ('error' in result) return
     expect(result.servedVia).toBe('google_direct')
     expect(result.gatewayId).toBeNull()
+    expect(result.model).toBe('gemma-4-31b-it')
     expect(result.text).toContain('verify')
     expect(seen).toEqual([
-      expect.stringContaining('generativelanguage.googleapis.com'),
+      expect.stringContaining(
+        `/models/${ArtanisMindModelDefault}:generateContent`,
+      ),
     ])
+    expect(requestBody?.generationConfig?.thinkingConfig).toEqual({
+      thinkingLevel: 'minimal',
+    })
+  })
+
+  test('never exposes Gemma private thought parts as Sarah response text', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(JSON.stringify({
+        candidates: [{
+          content: { parts: [
+            { text: 'private scratchpad', thought: true },
+            { text: 'Hello — what should we work on?' },
+          ] },
+        }],
+      }), { status: 200 })
+    const result = await artanisMindComplete({
+      apiKey: 'k',
+      fetchImpl,
+      prompt: 'Hello',
+      system: 'You are Sarah.',
+    })
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.text).toBe('Hello — what should we work on?')
+  })
+
+  test('keeps numeric thinking disabled for explicit legacy Gemini calls', async () => {
+    let requestBody: {
+      generationConfig?: { thinkingConfig?: Record<string, unknown> }
+    } | undefined
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as typeof requestBody
+      return new Response(geminiOk, { status: 200 })
+    }
+    await artanisMindComplete({
+      apiKey: 'k',
+      fetchImpl,
+      model: 'gemini-3.5-flash',
+      prompt: 'p',
+      system: 's',
+    })
+    expect(requestBody?.generationConfig?.thinkingConfig).toEqual({
+      thinkingBudget: 0,
+    })
   })
 
   test('never returns truncated MAX_TOKENS text; escalates the cap once and uses the complete answer', async () => {

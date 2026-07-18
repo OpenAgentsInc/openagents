@@ -47,6 +47,7 @@
 import { Effect, Redacted } from 'effect'
 
 import { parseJsonRecord } from '../json-boundary'
+import { DEFAULT_GEMMA4_MODEL_ID } from './gemma4-model'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -64,7 +65,7 @@ export const GEMMA4_ADAPTER_ID = 'google-gemma4'
 // slug verified live under #8594 (dense, default). The MoE variant
 // `gemma-4-26b-a4b-it` is available via the SAME path if a future override needs
 // it (GEMMA4_MODEL env), but the dense model leads.
-export const DEFAULT_GEMMA4_MODEL_ID = 'gemma-4-31b-it'
+export { DEFAULT_GEMMA4_MODEL_ID } from './gemma4-model'
 
 export const GENERATIVE_LANGUAGE_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta'

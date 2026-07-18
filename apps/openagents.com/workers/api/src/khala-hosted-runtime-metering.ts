@@ -1,7 +1,7 @@
 // Exact usage recording for the hosted-Khala chat lane.
 //
 // THE GAP THIS CLOSES. `khala-hosted-runtime-dispatch.ts` drives REAL
-// `gemini-3.5-flash` inference on OpenAgents' own key for a mobile chat turn,
+// Gemma 4 inference on OpenAgents' own key for a mobile chat turn,
 // but historically recorded NO usage and debited NO credits — so a user's
 // credit balance never moved from chatting, contradicting the MVP contract
 // (#8467: "$10 free per account, everything uses credits"). This module is the
@@ -22,15 +22,14 @@
 import { Effect } from 'effect'
 
 import type { ArtanisMindUsage } from './artanis-mind'
+import { DEFAULT_GEMMA4_MODEL_ID } from './inference/gemma4-model'
 import type { TokenUsageLedgerShape } from './token-usage-ledger'
 
 /** The single lane this metering seam serves. */
 export const HOSTED_KHALA_LANE = 'hosted_khala' as const
 
-/** Published pricing/attribution alias for the hosted Gemini-Flash lane. The
- * ONE Gemini-Flash row the pricing table exposes; the charge re-solves from it,
- * never a new rate. */
-export const HOSTED_KHALA_PRICING_MODEL = 'gemini-3.5-flash' as const
+/** Exact model attribution for Sarah's hosted Gemma 4 lane. */
+export const HOSTED_KHALA_PRICING_MODEL = DEFAULT_GEMMA4_MODEL_ID
 
 /** Provider ref stamped on the exact token-usage row + metering context. */
 export const HOSTED_KHALA_PROVIDER = 'google-ai-studio' as const

@@ -56,7 +56,13 @@ describe('hosted Khala exact usage recording', () => {
 
     const outcome = await recordHostedTurnUsage({ ledger }, input)
 
-    expect(rows).toEqual([hostedKhalaTokenUsageEventBody(input)])
+    const expectedRow = hostedKhalaTokenUsageEventBody(input)
+    expect(rows).toEqual([expectedRow])
+    expect(expectedRow.model).toBe('gemma-4-31b-it')
+    expect(expectedRow.safeMetadata).toMatchObject({
+      model: 'gemma-4-31b-it',
+      provider: 'google-ai-studio',
+    })
     expect(outcome).toEqual({
       insertedTokenUsage: true,
       tokenUsageEventRef: 'event.inference.served-tokens.khala-hosted.turn-1',
