@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "openagents.com: Public Trust Surface and Remote Supervision Client"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:12:48.000Z"
+updated_at: "2026-07-18T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents.com/"
@@ -25,7 +25,8 @@ tool_metadata:
   openagents_revision_3_note: "Rev 3 folds in back-catalog direction from episodes 200-237: the product-promise state machine exactly as defined in episode 234 (GREEN/YELLOW/RED/RED-Elected/PLANNED/WITHDRAWN, versioned promise slugs, human page plus programmatic agent registry, Forum as report path); the permanent I-AM-AN-AGENT homepage block and /AGENTS.md invariant (230); the public treasury page with donate flow and the Artanis pattern — an autonomous steward with bounded, receipted treasury spend authority (235); the BOLT12 agent tip flow (agent creates wallet and reusable offer from AGENTS.md instructions alone) and money-moderated Forum ranking (231, 235); episode-237 clearing-layer doctrine in positioning (accepted outcome as the atomic unit, confidence tiers as priced products, accepted outcomes per kilowatt-hour, 'the real product is the receipt that proves the wiring worked'); the open-lane stance and protocol refusals (Bitcoin/Lightning/Nostr only, never a token, no shitcoin acceptance); API-parity and agent-crawlable earnings/registry APIs (212, 224); and don't-break-userspace plus one-click data export as web-surface laws (204, 227)."
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with public promise, copy, settlement, and proof gates intact"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the Khala public API surface with self-serve keys and per-request routing disclosure (242, 243, 244); the live tokens-served counter law — realtime, strictly monotonic, converging exactly to the ledger sum, with internal dogfood demand distinguishable from external demand (243); the /stats page with per-day token history and model-family mix (244); agents.md as the standing agent front door and the Forum as the agent community surface (238, 244); the seller path — run a Pylon — and the live money loop rendered legibly (238, 247); refer-once-earn-forever referral attribution on homepage, landing pages, and sites, with the affiliate program and sell-in-public revenue graphs (239, 247); Observer at openagents.com/observer with shareable CONFIRMED/REFUTED QA run views, videos, and exact accounting (252); /trace/{uuid} as the reusable public evidence grammar and the proof-first project board direction (252-notes, 253-notes); trace visibility tiers with pay-for-privacy and free-tier data-policy candor (242, 243, 245); benchmark publications as receipts-not-vibes with cost-per-accepted-outcome and latency percentiles (243); pricing as a thin margin over BYO tokens plus premium bulk services (255); the Verse visualization direction (240, 241, 243)."
-  openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
+  openagents_revision_4_note: "Rev 4 binds Cursor web/cloud-agent and Remote Control parity: start and supervise background work, search history, review changes and artifacts, intervene, rerun, and hand back to Desktop across optional local, owner-managed, or managed placement, without making the browser or cloud the canonical runtime or transcript owner."
+  openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
 
 ## Problem
@@ -69,6 +70,8 @@ instead of believed.
 
 ```productspec-scope
 in:
+  - Meet the web, background-agent, automation-review, and Remote Control rows of `specs/openagents/cursor-capability-parity.product-spec.md`; Cursor cloud breadth is the floor while local-first custody and optional placement remain the stronger contract.
+  - Launch bounded work or automations onto an explicitly selected reachable owner-local, owner-managed, OpenAgents-managed, or compatible audited-provider target, then search, monitor, inspect logs/diffs/artifacts, answer, approve, steer, queue, pause, stop, rerun, and hand the same session back to Desktop or mobile.
   - Present the thread as a durable, addressable, cross-surface work object: stable IDs and URLs, search across text, file, repository, author, and date, cross-references between threads, and remote control — while local-first custody holds and the web renders synced typed facts, never becoming the canonical transcript authority.
   - Make every visibility transition explicit and receipted: changing a thread or trace from private to shared shows the exact before and after audiences, requires confirmation, and records a receipt; no silent visibility expansion on workspace join, no ambiguous unlisted state, and an irreversible-copy warning before any public disclosure.
   - Ship remote supervision parity: an attention inbox, fleet and agent-graph views, approvals, questions, steer-and-queue controls, and continuation links that hand a session to Desktop or mobile without forking identity, history, or authority — deepening the same work rather than starting another chat.
@@ -135,6 +138,12 @@ cut:
   criterion: When a public project or stats page renders progress, every figure derives from authority records with a generation timestamp and staleness indication, and no manually editable or unreceipted percent-complete appears.
 - id: AC-13
   criterion: When an agent fetches the programmatic promise registry, every promise carries its versioned slug, current state from the defined state machine, evidence references, and the Forum report path, and the human /promises page renders the same states without divergence.
+- id: AC-14
+  criterion: When the Cursor web and cloud-agent parity corpus runs, the browser can launch or resume bounded work, search session history, monitor background state, inspect logs, changes, and artifacts, answer or approve, steer or queue, pause or stop, rerun, and continue on another surface without opening Cursor or forking identity.
+- id: AC-15
+  criterion: When work is launched from the web, the target picker distinguishes owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider placement and discloses harness, model, custody, reachability, cost, index/data flows, and retention before admission; the browser itself never gains workspace execution authority.
+- id: AC-16
+  criterion: When the selected owner-local target is unreachable or a managed target is not configured, the web renders the exact unavailable capability and recovery options without silently moving execution, copying the canonical transcript to cloud, or claiming the command was accepted.
 ```
 
 ## Success Metrics
@@ -181,6 +190,11 @@ cut:
   target_status: provisional
   target_owner: "owner"
   window: within 120 days of referral attribution shipping
+- id: SM-8
+  metric: cursor_web_remote_and_cloud_agent_journeys_completed_without_cursor_fallback
+  target: "100% across the maintained web parity corpus"
+  target_status: committed
+  window: every release candidate
 ```
 
 ## Solution
@@ -256,6 +270,11 @@ dividends — rather than pooling value at the top.
   projects to a general offering?
 
 ## Related Artifacts
+
+- Cursor parity contract and capability ledger:
+  `specs/openagents/cursor-capability-parity.product-spec.md`
+- Cursor product and local-state evidence:
+  `docs/teardowns/2026-07-11-cursor-product-teardown.md`
 
 - Roadmap reconciliation and AC-by-AC gap crosswalk:
   `docs/sol/MASTER_ROADMAP.md` revision 119 and

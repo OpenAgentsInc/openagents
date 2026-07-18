@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Fast Follow Learning and Work Generation"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-17T23:20:00Z"
+updated_at: "2026-07-18T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -24,6 +24,8 @@ tool_metadata:
   openagents_assurance_level: "cross-source-learning-authority"
   openagents_surface_reconciliation: "docs/sol/MASTER_ROADMAP.md revision 119 maps docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md into staged Full Auto, distribution, T3, and Fast Follow outcomes without granting FastFollowSpec dispatch or promotion authority"
   openagents_full_auto_baseline: "Full Auto now has a durable one-active-run-per-profile core with liveness, bounded reports, private analysis, and provider handoff; the legacy composer toggle remains only the entry bridge pending the dedicated launcher/run view, and no native five-slot portfolio or autonomous provider rotation is claimed"
+  openagents_revision_4_note: "Rev 4 adds a release-grade competitor parity ledger to Fast Follow: exact evidence and freshness for every observed capability, target-owned disposition and acceptance links, and a prohibition on treating stronger architecture as permission to omit a competitor outcome. The owner-directed Cursor target lives in the sibling parity ProductSpec; Fast Follow remains evidence and candidate generation, not admission."
+  openagents_cursor_parity_spec: "specs/openagents/cursor-capability-parity.product-spec.md"
 ---
 
 ## Problem
@@ -59,6 +61,7 @@ concurrently without creating a second unsafe autonomy system.
 
 ```productspec-scope
 in:
+  - a competitor capability-ledger projection that maps each evidenced user-observable capability to exact source version/date/evidence, target surface and owner, ProductSpec/acceptance refs, placement and data posture, implementation/assurance refs, disposition, and freshness without promoting the source into product authority
   - a discoverable nearest-scope `FASTFOLLOW.md` authored format with stable identity, independent format version and semantic revision, lifecycle, exact document digest, and canonical intent digest
   - typed target, source, lesson, directive, work-generation, reuse, guardrail, and authority blocks with stable IDs and complete referential integrity
   - one directive combining any number of lessons from any number of source projects into one bounded target outcome and target scope
@@ -225,6 +228,14 @@ a claim-aware supervisor, not in the authored learning document.
   authority boundaries, and the two five-slot capacity profiles have committed
   automated checks. Any future breaking validation change bumps the format and
   freezes a conformance corpus.
+- **FF-AC-16:** For an owner-admitted parity target such as Cursor, the compiler
+  emits a complete capability ledger whose rows pin source version, observation
+  date, evidence, target surface/owner/spec/acceptance refs, placement and data
+  classes, implementation/assurance refs, disposition, and freshness. A new or
+  changed upstream capability updates evidence and proposes a gap without
+  granting mutation authority; no row may disappear, use “not needed,” or treat
+  stronger target architecture as sufficient unless an owner-approved
+  substitute preserves the user outcome.
 
 ## Success Metrics
 
@@ -259,6 +270,12 @@ a claim-aware supervisor, not in the authored learning document.
   window: every no-material-delta refresh
   segment: unchanged source and target intent combinations
   source: gap_disposition_and_candidate_dedupe_receipts
+- id: fast_follow_parity_ledger_completeness
+  metric: evidenced_competitor_capabilities_with_current_complete_target_dispositions
+  target: "100% for every owner-admitted parity target"
+  window: every source refresh and release candidate
+  segment: Cursor and future explicitly admitted parity programs
+  source: capability_ledger_validation_and_freshness_receipts
 ```
 
 ## Risks

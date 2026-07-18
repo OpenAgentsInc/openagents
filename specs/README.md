@@ -22,6 +22,15 @@ issues/packets, implementation, AssuranceSpec, formal models where warranted,
 and product-promise registry retain their separate authorities. Validate the
 tree with:
 
+[`openagents/cursor-capability-parity.product-spec.md`](openagents/cursor-capability-parity.product-spec.md)
+is the cross-surface breadth contract for competing with Cursor. It requires a
+current evidence-pinned capability ledger and equivalent supported outcomes
+across Desktop, web, mobile, CLI, background execution, automation, ecosystem,
+and data lifecycle. Sibling surface specs own their exact interactions and
+proof; the parity spec prevents stronger trust architecture from being used as
+an excuse for missing capability. It does not claim the capabilities have
+shipped or replace roadmap, assurance, acceptance, or release authority.
+
 ```sh
 node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs
 ```
@@ -45,12 +54,12 @@ unless TLC reports a violation for each mutation. Deadlock checking is left on.
 
 ## Property Map
 
-| Spec | Checked properties | Source seams |
-| --- | --- | --- |
-| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisor.cfg`) | `ActiveAssignmentsNeverExceedAdvertisedCapacity`, `ClaimUniquenessUnderRacingSupervisors`, `PausedRunsClaimNothing`, `SupervisorReviveHonorsAutoRevivableGuard` | `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts`; `apps/pylon/src/orchestration/store.ts` (`tryClaimWorkUnit`, `expireWorkClaims`, `releaseWorkClaim`, `reconcileWorkClaims`, `isAutoRevivableFleetRun`) |
-| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisorLiveness.cfg`) | `TerminationUnderBoundedClaims`, `DrainEventuallyTerminates` | Same supervisor/store seams; liveness is checked at a smaller bound so the racing/TTL/reclaim safety state space remains practical. The termination property has no `phase = "idle"` disjunct; operator lifecycle intervention is modeled separately as authority. |
-| `approval-protocol/ApprovalProtocol.tla` | `NoLostApprovals`, `NoDuplicateApprovalResponses`, `NoStaleApproveApplication` (action property: approve applies only at the recorded epoch), `AllIssuedRequestsEventuallyClose` (leads-to, falsifiable) | Desktop approval RPCs, Inbox `approval_required`, Codex/Claude approval bridges. `StaleApproveAttempt` models the stale retry; the mutation drops Approve's epoch guard in a copy of THIS spec. |
-| `session-thread-mapping/SessionThreadMapping.tla` | `NoOrphanThreadBinding`, `NoDoubleBind`, `PersistedMappingConsistent`, `CrashReloadEventuallyRestoresBindings` | Khala Code Desktop session catalog, thread list reload/reconcile, and session persistence paths. `Bind` and `PersistBinding` are split so crash-before-persist divergence is reachable. |
+| Spec                                                                                       | Checked properties                                                                                                                                                                                       | Source seams                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisor.cfg`)         | `ActiveAssignmentsNeverExceedAdvertisedCapacity`, `ClaimUniquenessUnderRacingSupervisors`, `PausedRunsClaimNothing`, `SupervisorReviveHonorsAutoRevivableGuard`                                          | `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts`; `apps/pylon/src/orchestration/store.ts` (`tryClaimWorkUnit`, `expireWorkClaims`, `releaseWorkClaim`, `reconcileWorkClaims`, `isAutoRevivableFleetRun`)                                               |
+| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisorLiveness.cfg`) | `TerminationUnderBoundedClaims`, `DrainEventuallyTerminates`                                                                                                                                             | Same supervisor/store seams; liveness is checked at a smaller bound so the racing/TTL/reclaim safety state space remains practical. The termination property has no `phase = "idle"` disjunct; operator lifecycle intervention is modeled separately as authority. |
+| `approval-protocol/ApprovalProtocol.tla`                                                   | `NoLostApprovals`, `NoDuplicateApprovalResponses`, `NoStaleApproveApplication` (action property: approve applies only at the recorded epoch), `AllIssuedRequestsEventuallyClose` (leads-to, falsifiable) | Desktop approval RPCs, Inbox `approval_required`, Codex/Claude approval bridges. `StaleApproveAttempt` models the stale retry; the mutation drops Approve's epoch guard in a copy of THIS spec.                                                                    |
+| `session-thread-mapping/SessionThreadMapping.tla`                                          | `NoOrphanThreadBinding`, `NoDoubleBind`, `PersistedMappingConsistent`, `CrashReloadEventuallyRestoresBindings`                                                                                           | Khala Code Desktop session catalog, thread list reload/reconcile, and session persistence paths. `Bind` and `PersistBinding` are split so crash-before-persist divergence is reachable.                                                                            |
 
 ## Mutation Proofs
 

@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Remote-first Portable Coding Sessions"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-12T00:00:00Z"
-updated_at: "2026-07-12T00:00:00Z"
+updated_at: "2026-07-18T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -21,6 +21,8 @@ tool_metadata:
   openagents_epic: "8566"
   openagents_lane: "PORT-00 through PORT-08 (#8745-#8753)"
   openagents_assurance_level: "cross-host-authority"
+  openagents_revision_2_note: "Rev 2 binds Cursor-class cloud/background-agent and Remote Control parity while preserving the stronger any-host session identity: managed infrastructure is optional, placement is explicit, and moving a session never creates a cloud-canonical duplicate."
+  openagents_sibling_spec: "specs/openagents/cursor-capability-parity.product-spec.md"
 ---
 
 ## Problem
@@ -45,11 +47,13 @@ process memory.
 
 ```productspec-scope
 in:
+  - Cursor-class background-agent, cloud-agent, web, mobile Remote Control, CLI resume, and workstation handback outcomes over one portable identity
   - owner-minted host-independent coding-session and WorkContext identity
   - canonical nested agent graph with independent transcript and activity cursors
   - one generation-fenced attachment covering the root and every descendant
   - content-addressed secret-free checkpoint and exact repository post-image
   - owner-local, owner-managed, OpenAgents-managed, and audited-provider targets
+  - per-session placement choice and disclosure without a mandatory OpenAgents-managed server when the selected target and reachability mode can operate owner-local or owner-managed
   - target-scoped provider, SCM, tool, and API capability leases
   - typed stop, checkpoint, detach, attach, move, abort, resume, and failback commands
   - Effect Native mobile any-host control and persona-neutral voice modality
@@ -97,6 +101,11 @@ editable input modality over those actions; text always remains available.
 - Offline, lost ACK, replay/order, restart, update, revocation, expiry,
   migration, rollback, and reclaim faults converge without fork, leak, silent
   substitution, orphan, false authority, or repository data loss.
+- Cursor-class background and remote-control journeys can start owner-local,
+  owner-managed, or OpenAgents-managed, survive client closure, accept web or
+  mobile intervention, and return to Desktop under the same session refs; no
+  journey creates a second cloud-canonical transcript or silently changes
+  placement, custody, model, harness, or authority.
 
 ## Success Metrics
 
@@ -131,6 +140,9 @@ editable input modality over those actions; text always remains available.
   when movement works; broker and scan failures fail closed.
 - Target-provider breadth can race ahead of the session fence. PORT-01 and
   PORT-02 remain the critical path before adapters or UI claim portability.
+- A superficial Cursor Remote Control clone can preserve vendor-cloud lock-in.
+  Placement disclosure and the local/owner-managed path are acceptance
+  requirements, not later enterprise options.
 
 ## Owner Gates
 

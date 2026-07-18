@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop: Trust-Complete Coding Workbench"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:12:48.000Z"
+updated_at: "2026-07-18T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-desktop/"
@@ -24,7 +24,8 @@ tool_metadata:
   openagents_source_transcripts: "docs/transcripts/200.md through docs/transcripts/255.md plus the episode-256 draft transcript (Full Auto Implementation Audit and Roadmap)"
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with owner gates and proof rungs intact"
   openagents_revision_3_note: "Rev 3 elevates Full Auto to the roadmap-defining flagship per the episode-256 draft transcript (owner: an AFK-reliable multi-account multi-provider autonomous mode is 'important enough of an unserved need to build the whole short-term roadmap of the company around'). Full Auto becomes a dedicated run mode launched beside New Session (lightning action, one-time objective/workspace/provider-policy setup, full-screen read-only run view, explicit Play/Pause/Stop, no composer while running — 'steering is not Full Auto'); adds automatic model/account/provider failover on limits (the overnight Fable-limit halt is the named incumbent failure), same-thread cross-provider handoff with end-to-end acceptance proof (the live Claude-error -> Codex-continues-same-chat moment), active-run thread retention (the five-thread cache eviction root cause), and the run -> bounded report -> transcript analysis -> replayable fixture iteration loop. Also folds in back-catalog direction from episodes 200-237: the episode-206 Guidance Module lineage (between-turn decision engine with shared state/budget/environment, confidence-gated actions, hard guardrails over soft guidance, budget-bound autonomy); episode-237 clearing-layer doctrine (scoped-in-advance done, rubric grading, dereferenceable receipts, draft/verified/reviewed/bonded confidence tiers); episode-225 account-visibility peeves (at-a-glance identity, rate-limit burn-down, API-key fallback); episode-204 don't-break-userspace; episode-227 one-click full data export; the one-app cockpit/earning thesis deferred to its own contract."
-  openagents_sibling_specs: "specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
+  openagents_revision_4_note: "Rev 4 makes complete Cursor-class capability parity explicit rather than assuming trust advantages compensate for missing breadth. It binds the exhaustive parity ledger, restores editor depth, computer use, voice, automation, remote/background, marketplace, light/high-contrast themes, and agent-first/classic workbench outcomes to scope, and requires an unbundled harness/model/provider/placement/index architecture with inspectable local and remote data lifecycle."
+  openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
 ## Problem
@@ -80,10 +81,21 @@ acceptance without falling back to another agent interface, because the
 surface makes delegation inspectable instead of faith-based and makes walking
 away rational instead of reckless.
 
+The breadth bar is now explicit: a Cursor user must not need Cursor for any
+maintained Cursor-class daily workflow. OpenAgents reaches that breadth through
+replaceable harness, model, placement, indexing, and extension planes rather
+than recreating Cursor's closed bundle or cloud-canonical custody.
+
 ## Scope
 
 ```productspec-scope
 in:
+  - Satisfy `specs/openagents/cursor-capability-parity.product-spec.md` as the exhaustive breadth contract: every current Cursor capability is present, admitted, or visibly tracked as a gap, and no trust advantage excuses a missing user outcome.
+  - Ship two complete densities over one canonical state graph: a classic coding workbench with editor, files, symbols, search, diagnostics, source control, diff, terminal, preview, extensions, settings, themes, and keymaps; and an agent-first operations window optimized for concurrent sessions, plans, worktrees, subagents, attention, and review.
+  - Match Cursor-class AI editing and repository intelligence: low-latency completion and next-edit prediction, inline ask/edit/generate, multi-file apply/review/undo, explicit file/symbol/path/docs/web context, and hybrid local lexical/symbol/path search plus selectable local or remote semantic embeddings with visible scope, freshness, custody, cost, export, rebuild, and deletion.
+  - Unbundle workbench/editor, harness runtime, model/provider, execution placement, sync/relay, and persistence/indexing so each can be replaced independently without changing canonical session identity; support owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider execution where the selected capability permits it.
+  - Cover Cursor-class agent and ecosystem breadth: ask, plan, execute, review/debug, design, and custom modes; browser and receipted computer use; side chats and conversation search; checkpoints and compaction; CLI and protocol clients; remote/background agents; schedules and event-triggered automations; skills, MCP, rules, hooks, plugins, extensions, team bundles, and signed marketplace discovery under isolation.
+  - Make local and remote state inspectable: inventory chats, object graphs, search indexes, embeddings, manifests, checkpoints, worktrees, terminal/browser state, extension state, auth material, telemetry, and caches with per-category location, size, retention, sync, export, reset, revocation, and verified deletion.
   - Consume one generated, versioned engine protocol with the hierarchy Thread -> Turn -> Item, extended with Work Unit (task identity plus delivery lifecycle), Authority Manifest, Execution Receipt, and Delivery Receipt; the renderer holds projections only and never conversation, tool, Git, or PTY authority.
   - Record every input durably before scheduling (client-chosen idempotent IDs, causal parent, typed delivery intent), and expose steer, queue, and interrupt as three explicit verbs with typed composer admission states; queue never silently becomes steer.
   - Key composer draft, queue, attachments, and stop/steer targeting per thread; every user action resolves unambiguously to exactly one thread, a dispatched queue item leaves the queue, and queued items are visible, editable, and cancellable before promotion.
@@ -131,17 +143,16 @@ out:
   - No terminal TUI as a product surface; the terminal is a workbench tool inside the app, not the app.
   - Steering a running Full Auto session is out of this revision: the first contract is hardcore press-play-and-walk-away; a steerable Full Auto is a later, separately admitted mode.
   - In-app rate-limit reset triggering is deliberately withheld until the surrounding reliability contracts are proven; accidentally consuming a reset at full quota is an unacceptable failure mode.
-  - Voice is the next contract, not this one: the one-toggle bidirectional voice stream (talk and watch the right actions happen), with possible free and paid tiers, ships as its own spec after the workroom core holds.
+  - Voice remains independently specifiable and sequenceable, but Cursor-class voice input and bidirectional agent control are part of the parity target and cannot be permanently omitted from Desktop.
   - Multiplayer capacity contribution and the Pylon provider/earning mode (the Go Online button, wallet, and seed-derived Nostr/Lightning identity of the one-app cockpit thesis) are separate later contracts; contribution is off by default and there is no hidden background compute.
   - No ambient screen-recording or inferred-memory capability in this revision; any future ambient memory is a separate spec bound to private-by-construction custody.
-  - No computer-use or OS-automation capability in this revision.
   - No additional provider integrations before one provider is complete under the eleven-predicate closure bar (known, decoded, owned, retained, projected, presented, authorized, recovered, fast, receipted, shipped).
   - No third-party plugin execution inside the trusted engine or shell process; extensions run under declared isolation profiles with signatures and receipts or they do not run.
 cut:
-  - CUT-DSK-01: Light theme and theme switching are cut; the single dark Khala theme remains the only visual identity.
+  - CUT-DSK-01: Arbitrary unreviewed theme code is cut; first-party dark, light, high-contrast, system-following, and accessible theme switching are required, and portable declarative themes may be admitted through the extension isolation path.
   - CUT-DSK-02: Simultaneous token-by-token mirroring of every child agent is cut; the roster shows live typed lifecycle and any child transcript opens on demand.
-  - CUT-DSK-03: Editor-first IDE ambitions are cut; the workbench deepens supervision and review, not general text editing.
-  - CUT-DSK-04: A public plugin marketplace is cut from this revision; signed ingestion of existing open formats (MCP, MCPB, skills) with provenance comes first.
+  - CUT-DSK-03: Forking and owning a proprietary editor runtime is cut; complete editing workflow parity is still required through replaceable, typed editor components.
+  - CUT-DSK-04: Unsigned or trusted-process marketplace execution is cut; public discovery and signed ingestion of extensions, MCP/MCPB, skills, rules, hooks, and plugins with provenance, compatibility, permissions, isolation, rollback, and receipts are required.
   - CUT-DSK-05: Sub-brands are cut; the desktop app is "OpenAgents," not a separately branded client.
   - CUT-DSK-06: A chat box inside the Full Auto run view is cut; the run view is read-only with Play, Pause, and Stop only.
 ```
@@ -197,6 +208,22 @@ cut:
   criterion: When host caches face pressure, a thread bound to an active Full Auto run is never evicted or rendered unopenable; a continuation that addresses an unopenable thread surfaces as a typed defect with an owner-visible reason, never a generic conversation-not-found error.
 - id: AC-24
   criterion: When a Full Auto run ends for any reason, it produces a bounded run report covering objective, turns, dispositions, provider/account rotations, failures, and evidence links, and any failed run can be reproduced as a replayable fixture run.
+- id: AC-25
+  criterion: When the Cursor parity corpus runs, every required row in `specs/openagents/cursor-capability-parity.product-spec.md` maps to a Desktop command, route, adapter, or explicit cross-surface continuation plus current acceptance evidence; no supported workflow silently disappears between the classic workbench and agent-first window.
+- id: AC-26
+  criterion: When a user performs Cursor-class editing work, completion, next-edit prediction, inline generation, multi-file apply, review, accept/reject/undo, semantic context, diagnostics, Git, terminal, preview, settings, keymaps, and first-party theme switching operate in one project without requiring another editor.
+- id: AC-27
+  criterion: When a user launches browser automation or computer use, the admission view states the exact browser partition, OS/network scope, secrets policy, and approvals; each action is receipted, and unavailable enforcement fails closed without removing the supported workflow.
+- id: AC-28
+  criterion: When a user configures a session, they can select compatible harness, model/provider/account, execution placement, sync posture, and indexing backend independently; the resulting session keeps one identity and reports selected and effective values plus all data flows.
+- id: AC-29
+  criterion: When a user inspects storage for a repository, Desktop enumerates every local and remote data class, size, freshness, retention, and sync state and proves complete export, chat-preserving index reset, repository-knowledge deletion, account/device revocation, and full deletion with remote tombstone receipts where applicable.
+- id: AC-30
+  criterion: When extensions, plugins, skills, MCP servers, rules, hooks, or subagents are discovered, installed, imported, updated, disabled, or removed, Desktop shows provenance, permissions, compatibility, isolation, and rollback; no untrusted code executes in the shell or trusted engine process.
+- id: AC-31
+  criterion: When background agents or automations are launched from schedule, repository, issue/PR, webhook, or manual triggers, they may use an admitted local, owner-managed, or OpenAgents-managed placement, survive client closure, accept typed intervention, enforce caps and idempotency, and return reviewable outcomes and receipts.
+- id: AC-32
+  criterion: When a clean Cursor profile is migrated, supported settings, keybindings, rules, skills, and MCP configuration import through an allowlist, credentials and proprietary state do not, and every item receives an imported, skipped, or rejected reason.
 ```
 
 ## Success Metrics
@@ -264,6 +291,21 @@ cut:
   target_status: provisional
   target_owner: "owner"
   window: per release cycle from Full Auto run-mode availability
+- id: SM-12
+  metric: cursor_parity_desktop_rows_with_owner_accepted_evidence
+  target: "100% before a full-parity claim"
+  target_status: committed
+  window: every release candidate
+- id: SM-13
+  metric: cursor_switcher_daily_workflows_requiring_another_editor_or_agent_client
+  target: "0% across the maintained parity corpus"
+  target_status: committed
+  window: every release candidate and rolling 30-day dogfood
+- id: SM-14
+  metric: durable_data_classes_with_inspect_export_retention_and_verified_deletion_controls
+  target: "100%"
+  target_status: committed
+  window: before a full-parity claim
 ```
 
 ## Solution
@@ -354,6 +396,11 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   first-class capacity source?
 
 ## Related Artifacts
+
+- Cursor parity contract and exact capability ledger:
+  `specs/openagents/cursor-capability-parity.product-spec.md`
+- Cursor product and local-state evidence:
+  `docs/teardowns/2026-07-11-cursor-product-teardown.md`
 
 - Roadmap reconciliation and AC-by-AC gap crosswalk:
   `docs/sol/MASTER_ROADMAP.md` revision 119 and

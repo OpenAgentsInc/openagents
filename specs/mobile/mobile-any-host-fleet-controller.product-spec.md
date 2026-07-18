@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-17T23:25:00.000Z"
+updated_at: "2026-07-18T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-mobile/"
@@ -25,7 +25,8 @@ tool_metadata:
   openagents_revision_3_note: "Rev 3 adds Full Auto run supervision as a first-class mobile object per the episode-256 draft transcript: active runs listed with live run state, remote Play/Pause/Stop as typed durable commands, rotation/failure visibility, and run reports in the attention inbox — the AFK scenario (owner away for a day or two while runs continue) is the anchor journey this surface exists for. Also folds in the back-catalog founding texts: episode 225 ('I want to be able to talk to my Forge, talk to my Probes when I'm at the store... carrying around my laptop like a jackass') and episode 228's untethered North Star ('say what the software you want is... go live your life and then come back'), plus episode 200's portfolio-manager frame (people supervise fleets, set policies, allocate budgets, review outcomes)."
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to the T3 mobile accepted packet ledger or another exact admitted issue/plan, with owner gates and proof rungs intact; closed #8980 is bounded first-screen/simulator evidence, not continuing dispatch authority"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
-  openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
+  openagents_revision_4_note: "Rev 4 makes Cursor mobile and Remote Control breadth a floor: launch and supervise local or background/cloud sessions, voice, notifications/live status, search/history, changes and artifacts, and workstation handback, while retaining the stronger any-host, no-credential, exactly-once command, portable-session, and receipt laws."
+  openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
 ## Problem
@@ -73,6 +74,9 @@ desk-bound.
 
 ```productspec-scope
 in:
+  - Meet the mobile and Remote Control rows of `specs/openagents/cursor-capability-parity.product-spec.md`: no Cursor mobile workflow is omitted merely because OpenAgents supports more hosts or stronger custody.
+  - Launch new bounded agent work and resume existing work on an explicitly selected owner-local, owner-managed, OpenAgents-managed, or compatible audited-provider target; managed cloud is an option, not the identity or mandatory custody layer.
+  - Match Cursor-class mobile continuity with searchable session history, side conversations, voice input/control, privacy-generic push, lock-screen/live run status, questions and approvals, changes/diff/artifact review, rerun, and one-action workstation handback under the same session refs.
   - Operate strictly as a remote control: the phone issues the same typed commands as Desktop and web against the same durable session refs (steer, queue, stop, approve, answer), never executes agent work, holds no desktop token or raw provider credential, and never receives raw filesystem paths.
   - Resolve every command to exactly one outcome across intermittent connectivity: durable admission acknowledgements, worker epochs, and ordered replay guarantee that a command sent from a dead zone lands once or fails visibly, never twice and never silently.
   - Ship an any-host environment directory as the first product layer: discovery, QR and manual pairing that exchanges a bootstrap credential for a scoped session credential, cached offline environment truth, and reachability presented as classed hints rather than proof.
@@ -135,6 +139,12 @@ cut:
   criterion: When a user enrolls a device, changes a visibility mode, revokes a grant, or adjusts policy, the complete flow is achievable through screens and buttons with no terminal command required.
 - id: AC-13
   criterion: When a Full Auto run is active on any connected host, the phone lists it with live run state, current provider/account lane, and rotation history; Pause, Resume, and Stop from the phone are typed durable commands whose outcomes are receipted; and when the run ends its bounded run report is retrievable from the attention inbox.
+- id: AC-14
+  criterion: When the Cursor mobile parity corpus runs, a user can launch or resume work, search history, use voice, answer or approve, steer or queue, inspect changes and artifacts, monitor background state, receive privacy-generic attention, and hand the same session back to Desktop without opening Cursor or forking identity.
+- id: AC-15
+  criterion: When a user launches work from mobile, the target picker distinguishes owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider placement and discloses reachability, custody, harness, model, cost, and retained data before admission; unavailable targets fail visibly.
+- id: AC-16
+  criterion: When voice, push, or lock-screen controls are used, every input is editable or confirmable according to policy, resolves through the same typed command and exactly-once outcome path as touch controls, and neither notification nor transcription state becomes execution authority.
 ```
 
 ## Success Metrics
@@ -175,6 +185,11 @@ cut:
   target_status: provisional
   target_owner: "owner"
   window: within 90 days of fleet supervision shipping
+- id: SM-7
+  metric: cursor_mobile_parity_journeys_completed_without_cursor_or_desktop_fallback
+  target: "100% across the maintained mobile parity corpus"
+  target_status: committed
+  window: every release candidate
 ```
 
 ## Solution
