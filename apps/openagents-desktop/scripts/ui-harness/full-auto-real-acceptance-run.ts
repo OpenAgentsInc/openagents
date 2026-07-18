@@ -158,9 +158,10 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
   // lane. A real owner profile can contain enough hydrated peers that cycling
   // is not a deterministic way to name a native target. Use the exact same
   // trusted renderer -> main selection action underneath the chip, then
-  // reload the renderer projection and require the visible label before any
-  // turn is sent. Main still performs admission and writes the transition
-  // receipt; this merely removes catalog order from the acceptance driver.
+  // reselect the exact visible row through its ordinary UI handler and
+  // require the visible label before any turn is sent. Main still performs
+  // admission and writes the transition receipt; this merely removes catalog
+  // order from the acceptance driver.
   const outcome = await page.evaluate(async ({ threadRef, laneRef }) => {
     const bridge = (globalThis as typeof globalThis & {
       openagentsDesktop?: {
@@ -177,9 +178,13 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
   ) {
     throw new Error(`could not select ${label}: ${JSON.stringify(outcome)}`)
   }
-  await page.reload()
-  const hydratedButton = page.locator('[data-en-key="shell-provider-select"]')
-  await hydratedButton.waitFor({ state: "visible", timeout: 60_000 })
+  const row = page.locator(`[data-en-key="sidebar-thread-${threadRef}"]`)
+  await row.waitFor({ state: "visible", timeout: 30_000 })
+  await row.click()
+  await page.waitForFunction(threadRef =>
+    document.querySelector(`[data-en-key="sidebar-thread-${threadRef}"]`)
+      ?.getAttribute("aria-current") === "page",
+  threadRef, { timeout: 30_000 })
   await page.waitForFunction(expected =>
     document.querySelector('[data-en-key="shell-provider-select"]')
       ?.textContent?.trim().startsWith(expected) === true,
