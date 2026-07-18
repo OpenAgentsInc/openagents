@@ -451,7 +451,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-04"
+export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-05"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -2280,7 +2280,8 @@ const confirmedKhalaState = (
     : resolveLiveAgentGraphSelection(agentGraph, previousGraphView.selectedAgentRef)
   const workGroup = projectMobileWorkGroup(
     thread?.timeline?.run ?? null,
-    thread?.timeline?.events ?? [],
+    (thread?.timeline?.events ?? []).filter(event =>
+      event.runRef === thread?.timeline?.run?.runRef),
   )
   const runtimeEntries = (thread?.timeline?.events ?? []).flatMap<KhalaState["entries"][number]>(event => {
     const item = event.item

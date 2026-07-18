@@ -325,6 +325,46 @@ const confirmedEvents = (
     .slice(-MAX_CONFIRMED_AGENT_TIMELINE_EVENTS)
 }
 
+/** A thread scope contains every retained run, so its transcript projection
+ * must retain events from prior runs instead of collapsing to the newest run.
+ * Per-run sequence numbers restart at zero; thread history therefore orders by
+ * durable creation time before applying the same public bound. */
+const confirmedEventsForThread = (
+  rows: ReadonlyArray<ConfirmedEntity>,
+): ReadonlyArray<ConfirmedAgentTimelineEvent> => {
+  const byRef = new Map<string, ConfirmedAgentTimelineEvent>()
+  for (const row of rows) {
+    try {
+      const event = decodeAgentRunEventEntity(JSON.parse(row.postImageJson) as unknown)
+      const projected: ConfirmedAgentTimelineEvent = {
+        eventRef: event.id,
+        runRef: event.runId,
+        sequence: event.sequence,
+        eventType: event.type,
+        summary: event.summary,
+        status: event.status,
+        artifactRefs: event.artifactRefs,
+        item: projectedTimelineItem(event.payloadJson),
+        createdAt: event.createdAt,
+        version: Number(row.version),
+      }
+      const previous = byRef.get(projected.eventRef)
+      if (previous === undefined || previous.version < projected.version) {
+        byRef.set(projected.eventRef, projected)
+      }
+    } catch {
+      // Ignore malformed/pre-contract rows; confirmed replacement self-heals.
+    }
+  }
+  return [...byRef.values()]
+    .sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt) ||
+      left.runRef.localeCompare(right.runRef) ||
+      left.sequence - right.sequence ||
+      left.eventRef.localeCompare(right.eventRef))
+    .slice(-MAX_CONFIRMED_AGENT_TIMELINE_EVENTS)
+}
+
 const interactionTimelineItem = (
   interaction: ConfirmedRuntimeInteraction,
 ): ConfirmedAgentTimelineItem => {
@@ -383,12 +423,15 @@ const interactionTimelineEvents = (
     version: interaction.version,
   }))
 
-const mergeTimelineEvents = (
+const mergeThreadTimelineEvents = (
   events: ReadonlyArray<ConfirmedAgentTimelineEvent>,
   interactions: ReadonlyArray<ConfirmedAgentTimelineEvent>,
 ): ReadonlyArray<ConfirmedAgentTimelineEvent> => [...events, ...interactions]
   .sort((left, right) =>
-    left.sequence - right.sequence || left.eventRef.localeCompare(right.eventRef))
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.runRef.localeCompare(right.runRef) ||
+    left.sequence - right.sequence ||
+    left.eventRef.localeCompare(right.eventRef))
   .slice(-MAX_CONFIRMED_AGENT_TIMELINE_EVENTS)
 
 export const createKhalaSyncAgentTimeline = (input: Readonly<{
@@ -449,8 +492,8 @@ export const createKhalaSyncAgentTimeline = (input: Readonly<{
             run,
             events: run === null
               ? []
-              : mergeTimelineEvents(
-                  confirmedEvents(run.runRef, eventRows),
+              : mergeThreadTimelineEvents(
+                  confirmedEventsForThread(eventRows),
                   interactionTimelineEvents(
                     run.runRef,
                     confirmedRuntimeInteractions(threadRef, interactionRows),

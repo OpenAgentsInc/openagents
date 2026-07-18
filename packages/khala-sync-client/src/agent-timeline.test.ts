@@ -272,6 +272,91 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
     }
   })
 
+  test("retains prior-run events when a thread starts a newer run", () => {
+    const store = openKhalaSyncStore(":memory:")
+    const thread = "thread.timeline.history"
+    const later = "2026-07-10T20:01:00.000Z"
+    const runRow = (runRef: string, version: number, createdAt: string) =>
+      new ChangelogEntry({
+        scope: threadScope(thread),
+        version: SyncVersion.make(version),
+        entityType: EntityType.make(AGENT_RUN_ENTITY_TYPE),
+        entityId: EntityId.make(runRef),
+        op: "upsert",
+        postImageJson: canonicalJson(encodeAgentRunEntity(decodeAgentRunEntity({
+          runId: runRef,
+          routeId: thread,
+          userId: "owner.private",
+          teamId: null,
+          projectId: null,
+          runtime: "openagents_native",
+          backend: "hosted",
+          status: "running",
+          goalId: null,
+          goal: "private",
+          repository: {
+            provider: "github",
+            owner: "private-owner",
+            repo: "private-repo",
+            ref: "main",
+          },
+          createdAt,
+          updatedAt: createdAt,
+          startedAt: createdAt,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+        }))),
+        mutationRef: `mutation.${runRef}`,
+        committedAt: createdAt,
+      })
+    const eventRow = (runRef: string, eventRef: string, version: number, createdAt: string) =>
+      new ChangelogEntry({
+        scope: threadScope(thread),
+        version: SyncVersion.make(version),
+        entityType: EntityType.make(AGENT_RUN_EVENT_ENTITY_TYPE),
+        entityId: EntityId.make(eventRef),
+        op: "upsert",
+        postImageJson: canonicalJson(encodeAgentRunEventEntity(decodeAgentRunEventEntity({
+          id: eventRef,
+          runId: runRef,
+          sequence: 1,
+          type: "runtime.activity",
+          summary: eventRef,
+          status: "running",
+          source: "provider-private-source",
+          payloadJson: null,
+          artifactRefs: [],
+          externalEventId: null,
+          createdAt,
+        }))),
+        mutationRef: `mutation.${eventRef}`,
+        committedAt: createdAt,
+      })
+    try {
+      Effect.runSync(store.applyConfirmed(
+        threadScope(thread),
+        [
+          runRow("run.timeline.history.1", 1, NOW),
+          eventRow("run.timeline.history.1", "event.timeline.history.1", 2, NOW),
+          runRow("run.timeline.history.2", 3, later),
+          eventRow("run.timeline.history.2", "event.timeline.history.2", 4, later),
+        ],
+        SyncVersion.make(4),
+      ))
+      const timeline = createKhalaSyncAgentTimeline({ store, session: session() })
+      const snapshot = Effect.runSync(timeline.snapshotForThread(thread))
+
+      expect(snapshot.run?.runRef).toBe("run.timeline.history.2")
+      expect(snapshot.events.map(event => event.eventRef)).toEqual([
+        "event.timeline.history.1",
+        "event.timeline.history.2",
+      ])
+    } finally {
+      Effect.runSync(store.close())
+    }
+  })
+
   test("bounds the public timeline to the newest 500 ordered events", () => {
     const store = openKhalaSyncStore(":memory:")
     try {
