@@ -3131,6 +3131,17 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-18T02:12:12Z`
 
+### CLAIM-STATUS
+
+- implementation: imported FF-D1-38's decoded invoker into sandboxed preload and exposed exactly one `openagentsDesktop.threadSearch.query(value)` method
+- fail-closed proof: malformed input still prevents invocation; malformed replies and thrown native errors still collapse through FF-D1-38; the preload exposes no raw `ipcRenderer`, selectable channel, subscription, receipt, artifact byte, path, or event body
+- built proof: the production Desktop build emitted `dist/preload.cjs` with the fixed search channel and `threadSearch.query` delegation present
+- focused proof: bridge/preload and accepted-event projection tests 13/13 passed; Desktop and agent-runtime-schema typechecks passed; Desktop production build passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13 plus typecheck/distribution, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec reproduced only the recorded environment-profile digest snapshot mismatch, 189/190; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-39-desktop-canonical-event-search-preload-receipt.md`
+- residual: historical-session backfill, main-process handler and host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -161,5 +163,14 @@ describe("Desktop canonical accepted-event search bridge", () => {
         { query: "event" },
       ),
     ).resolves.toEqual({ status: "unavailable", reason: "transport_unavailable" });
+  });
+
+  test("exposes only the fixed query method through sandboxed preload", () => {
+    const preload = readFileSync(new URL("./preload.cts", import.meta.url), "utf8");
+    expect(preload).toContain("invokeDesktopThreadEventSearch(");
+    expect(preload).toContain("threadSearch: {");
+    expect(preload).toContain("query: (value: unknown)");
+    expect(preload).not.toContain("threadSearch: ipcRenderer");
+    expect(preload).not.toContain("query: ipcRenderer.invoke");
   });
 });
