@@ -181,7 +181,17 @@ describe("React Native renderer host boundaries", () => {
       () => Effect.succeed(undefined),
       { theme: khalaTheme },
     )
+    const assistantHeading = renderReactNativeView(
+      Markdown({
+        key: "assistant-heading-scale",
+        blocks: [{ kind: "heading", level: 2, children: [{ kind: "text", text: "Status" }] }],
+      }),
+      { React: { createElement }, ReactNative: reactNative },
+      () => Effect.succeed(undefined),
+      { theme: khalaTheme },
+    )
     const assistantParagraph = assistant.props.children as ReactElementLike
+    const heading = assistantHeading.props.children as ReactElementLike
 
     expect(assistantParagraph.props.style).toMatchObject({
       fontSize: khalaTheme.typeScale.body.fontSize,
@@ -190,6 +200,11 @@ describe("React Native renderer host boundaries", () => {
     expect(assistantParagraph.props.style).toMatchObject({
       fontSize: (user.props.style as Record<string, unknown>).fontSize,
       lineHeight: (user.props.style as Record<string, unknown>).lineHeight,
+    })
+    expect(heading.props.style).toMatchObject({
+      fontSize: (user.props.style as Record<string, unknown>).fontSize,
+      lineHeight: (user.props.style as Record<string, unknown>).lineHeight,
+      fontWeight: "700",
     })
   })
 

@@ -3963,7 +3963,7 @@ const renderMarkdownBlock = (
   const bodyType = typeScaleValue(theme, "body")
   switch (block.kind) {
     case "heading":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { color: textColor, fontSize: block.level <= 2 ? 20 : 18, fontWeight: "700", lineHeight: 26, marginBottom: 4 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { color: textColor, ...bodyType, fontWeight: "700", marginBottom: 4 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "paragraph":
       return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true, style: { color: textColor, ...bodyType, marginBottom: 8 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "list":
