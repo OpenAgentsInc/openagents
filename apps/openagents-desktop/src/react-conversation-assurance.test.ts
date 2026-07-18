@@ -10,6 +10,14 @@ const shell = read("apps/openagents-desktop/src/renderer/react-primitive-adapter
 const releaseAcceptance = read("apps/openagents-desktop/scripts/run-release-acceptance.ts")
 const gates = read("docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.assurance-gates.md")
 
+// Bug #8998 pre-push-gate fixup: strip `/* ... */` CSS comments before the
+// raw-hex-color purity check below. A doc comment referencing an issue
+// number (e.g. "FA-UX-02 (#8997): ...") is plain prose, not a color value --
+// but "8997" is coincidentally valid hex, so the unstripped regex false-
+// positived on that comment and blocked every push touching this CSS file
+// regardless of whether an actual hex color was ever introduced.
+const stripCssComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//gu, "")
+
 const transcriptHoverGeometryViolations = (css: string): ReadonlyArray<string> => {
   const geometry = /(?:^|;)\s*(?:display|height|min-height|max-height|width|min-width|max-width|margin(?:-[a-z]+)?|padding(?:-[a-z]+)?|border(?:-[a-z]+)?-width|font-size|line-height|gap|grid-template(?:-[a-z]+)?|flex-basis)\s*:/imu
   return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/gu)]
@@ -71,7 +79,7 @@ describe("revision 3 conversation-first assurance gates", () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)')
     expect(styles).toContain('var(--en-color-background)')
     expect(styles).toContain('var(--en-color-textPrimary)')
-    expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+    expect(stripCssComments(styles)).not.toMatch(/#[0-9a-f]{3,8}\b/i)
   })
 
   test("documents every owner-directed hierarchy and release gate", () => {
