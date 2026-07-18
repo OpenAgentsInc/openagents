@@ -881,6 +881,12 @@ const executeAutomaticRotation = async (): Promise<Readonly<{
   artifactDigest: string
 }>> => {
   await desktop?.close()
+  desktop = null
+  // Playwright has observed the old process exit, but macOS view services
+  // can release their shared endpoint a beat later. Give that owner-profile
+  // relaunch boundary one bounded settle interval so the fresh Electron app
+  // cannot inherit a disconnect from the process we deliberately closed.
+  await new Promise(resolve => setTimeout(resolve, 1_500))
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: false })
   const page = desktop.page
   await page.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
