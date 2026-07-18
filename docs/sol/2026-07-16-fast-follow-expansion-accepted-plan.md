@@ -3075,6 +3075,62 @@ later packets.
 - released_at: `2026-07-18T02:00:36Z`
 - residual: historical-session backfill, preload and main-process registration, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-39 — Desktop canonical accepted-event search preload exposure
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-38. The bounded
+accepted-event search IPC contract is released, but the sandboxed renderer has
+no method that can invoke it. Active work still owns Desktop `main.ts`,
+renderer, installed-runtime, Full Auto, mobile, T3, and teardown surfaces.
+`preload.cts` and the focused bridge test are unclaimed, so this packet exposes
+only the existing decoded invoker through the narrow host bridge. It does not
+register a handler, compose acquisition, or add UI.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/preload.cts`
+- `apps/openagents-desktop/src/thread-event-search-bridge-contract.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-39-desktop-canonical-event-search-preload-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-38 fixed-channel search bridge and the sandboxed preload
+capability surface. No receipt, artifact byte, path, event body, handler, host
+composition, renderer, Sync, provider, or release authority is added.
+
+Required behavior:
+
+- expose one `threadSearch.query(value)` method through `openagentsDesktop`;
+- delegate only through FF-D1-38's validated invoker and its fixed IPC channel;
+- never expose raw `ipcRenderer`, channel selection, subscriptions, receipts,
+  artifact bytes, filesystem paths, event bodies, or native errors;
+- preserve FF-D1-38's invalid-request and transport-failure collapse; and
+- build the actual sandboxed preload artifact successfully with the new import
+  and method wired.
+
+Proof: focused bridge/preload and accepted-event projection tests; Desktop
+typecheck and build; shared-package typecheck; Fast Follow, behavior-contract,
+ProductSpec, Sol, AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only sandboxed preload exposure of the existing
+bounded search contract. Historical-session backfill, main-process handler and
+host composition, Desktop `main.ts`/UI consumption and pixels, authoritative
+supersession/reversion producers, named-group authority/publication,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-39-20260718`
+- base: `afe51fd0e5396a5f13bcbd83f3cabe47b48928a5`
+- worktree/branch: `openagents-ff-d1-39` / detached `origin/main`
+- scope: expose FF-D1-38's exact decoded canonical accepted-event search invoker through sandboxed Desktop preload
+- paths: the FF-D1-39 owned implementation paths above
+- hot files: sandboxed preload, focused bridge test, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: fixed-channel decoded invocation, no raw Electron authority, and no receipt/artifact/event-body projection
+- dependencies: FF-D1-38 released; no relevant open bug issue or competing claim; active `main.ts`/UI, Full Auto, mobile, T3, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T02:12:12Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
