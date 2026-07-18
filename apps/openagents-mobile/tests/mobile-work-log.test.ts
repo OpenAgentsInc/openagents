@@ -102,6 +102,24 @@ describe("T3M-A2 mobile grouped work log", () => {
     })
   })
 
+  test("prefers server-authored model and provider identity over runtime labels", () => {
+    const started = {
+      ...event(1, { kind: "connected", turnRef: "turn.mobile.work.1", lane: "hosted_khala" }),
+      source: {
+        lane: "hosted_khala",
+        adapterKind: "openagents_native",
+        surface: "server",
+        providerRef: "google-ai-studio",
+        modelRef: "gemma-4-31b-it",
+      },
+    }
+    expect(projectMobileWorkGroup({
+      ...run("running"),
+      runtime: "openagents_native",
+      backend: "hosted",
+    }, [started])?.identityLabel).toBe("Gemma 4 31B · Google AI Studio")
+  })
+
   test("names collapsed and safety-bound remainders exactly", () => {
     const events = Array.from({ length: MOBILE_WORK_LOG_MAX_ITEMS + 7 }, (_, index) =>
       event(index + 1, { kind: "heartbeat", detail: `Heartbeat ${index + 1}` }))

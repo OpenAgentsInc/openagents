@@ -183,6 +183,62 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
     }
   })
 
+  test("projects authoritative provider and model identity from runtime events", () => {
+    const store = openKhalaSyncStore(":memory:")
+    const startedEvent = entry(
+      2,
+      AGENT_RUN_EVENT_ENTITY_TYPE,
+      "event.gemma.started",
+      canonicalJson(encodeAgentRunEventEntity(decodeAgentRunEventEntity({
+        id: "event.gemma.started",
+        runId: RUN,
+        sequence: 0,
+        type: "turn.started",
+        summary: "Turn started",
+        status: "running",
+        source: "runtime.openagents_native",
+        payloadJson: JSON.stringify({
+          schema: "openagents.khala_runtime_event.v1",
+          eventId: "event.gemma.started",
+          turnId: RUN,
+          threadId: "thread.timeline.1",
+          sequence: 0,
+          observedAt: NOW,
+          source: {
+            lane: "hosted_khala",
+            adapterKind: "openagents_native",
+            surface: "server",
+            providerRef: "google-ai-studio",
+            modelRef: "gemma-4-31b-it",
+          },
+          visibility: "private",
+          redactionClass: "private_ref",
+          causalityRefs: [],
+          kind: "turn.started",
+        }),
+        artifactRefs: [],
+        externalEventId: "event.gemma.started",
+        createdAt: NOW,
+      }))),
+    )
+    try {
+      Effect.runSync(store.applyConfirmed(scope, [runEntry, startedEvent], SyncVersion.make(2)))
+      const timeline = createKhalaSyncAgentTimeline({ store, session: session() })
+      expect(Effect.runSync(timeline.snapshot(RUN)).events[0]).toMatchObject({
+        item: { kind: "connected", lane: "hosted_khala" },
+        source: {
+          lane: "hosted_khala",
+          adapterKind: "openagents_native",
+          surface: "server",
+          providerRef: "google-ai-studio",
+          modelRef: "gemma-4-31b-it",
+        },
+      })
+    } finally {
+      Effect.runSync(store.close())
+    }
+  })
+
   test("discovers the confirmed latest run from the canonical thread route", () => {
     const store = openKhalaSyncStore(":memory:")
     const thread = "thread.timeline.1"

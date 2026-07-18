@@ -111,6 +111,8 @@ export interface KhalaEntry {
   readonly attachments?: ReadonlyArray<ChatMessageImageAttachment>
   readonly interaction?: KhalaInteraction
   readonly work?: MobileWorkGroup
+  /** Server-authored route identity shown separately from assistant prose. */
+  readonly provenanceLabel?: string
 }
 
 export type KhalaInteractionStatus = "pending" | "resolved" | "expired" | "revoked"
@@ -279,6 +281,7 @@ const interactionBody = (
   state: KhalaState,
   entry: KhalaEntry,
   accessibility: MobileAccessibilityProfile,
+  showProvenance: boolean,
 ): ReadonlyArray<View> => {
   if (entry.work !== undefined) {
     return [renderMobileWorkLog(
@@ -291,7 +294,11 @@ const interactionBody = (
   const interaction = entry.interaction
   if (interaction === undefined) {
     const textViews = entry.role === "assistant" && entry.status === "done"
-      ? mobileAssistantContentViews(entry.key, entry.text)
+      ? mobileAssistantContentViews(
+          entry.key,
+          entry.text,
+          showProvenance ? entry.provenanceLabel : undefined,
+        )
       : [Text({
           key: `${entry.key}-text`,
           content: entry.status === "thinking" ? "Khala is thinking…" : entry.text,
@@ -385,6 +392,51 @@ const runtimeControlViews = (
       })
     }),
   )]
+}
+
+const compactRuntimeStatusViews = (
+  state: KhalaState,
+  assistantLabel: string,
+): ReadonlyArray<View> => {
+  const turn = state.runtimeTurn
+  if (turn === null || (turn.status !== "queued" && turn.status !== "running" &&
+      turn.status !== "waiting_for_input")) return []
+  const work = state.entries.find(entry => entry.work?.runRef === turn.runRef)?.work
+  const status = state.runtimeControlSubmittingAction === "cancel"
+    ? `Stopping ${assistantLabel}…`
+    : turn.status === "queued"
+      ? `Starting ${assistantLabel}…`
+      : turn.status === "waiting_for_input"
+        ? `${assistantLabel} is waiting for you`
+        : `${assistantLabel} is thinking…`
+  const detail = turn.status === "queued"
+    ? "Waiting for the hosted runtime"
+    : turn.status === "waiting_for_input"
+      ? work?.identityLabel ?? "OpenAgents hosted runtime"
+      : work === undefined
+        ? "Connecting to the hosted runtime"
+        : `Generating with ${work.identityLabel}`
+  return [Stack({
+    key: "assistant-runtime-status",
+    direction: "column",
+    gap: "0.5",
+    style: { width: "full" },
+    a11y: { role: "region", label: `${status} ${detail}` },
+  }, [
+    Text({
+      key: "assistant-runtime-status-label",
+      content: status,
+      variant: "caption",
+      color: "accent",
+      weight: "medium",
+    }),
+    Text({
+      key: "assistant-runtime-status-identity",
+      content: detail,
+      variant: "caption",
+      color: "textMuted",
+    }),
+  ])]
 }
 
 const agentBadgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
@@ -857,9 +909,15 @@ export const renderKhalaSurface = (
   composerPathDiscovery: MobileComposerPathDiscoveryState = { state: "idle" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
   fullAutoRun: FullAutoRunHeaderView | null = null,
-  runtimeDetails: "visible" | "hidden" = "visible",
+  runtimeDetails: "visible" | "hidden" | Readonly<{
+    mode: "compact"
+    assistantLabel: string
+  }> = "visible",
 ): View => {
-  const presentedEntries = runtimeDetails === "hidden"
+  const compactRuntime = typeof runtimeDetails === "object"
+    ? runtimeDetails
+    : null
+  const presentedEntries = runtimeDetails !== "visible"
     ? state.entries
         .filter(entry => entry.work === undefined)
         .map(entry => entry.role === "assistant"
@@ -870,6 +928,13 @@ export const renderKhalaSurface = (
     presentedEntries,
     state.transcriptVisibleCount,
   )
+  const requestedScrollTargetIsVisible = state.transcriptScrollToKey !== null &&
+    visibleEntries.some(entry => entry.key === state.transcriptScrollToKey)
+  const transcriptScrollToKey = requestedScrollTargetIsVisible
+    ? state.transcriptScrollToKey
+    : runtimeDetails !== "visible" && state.transcriptPinned
+      ? visibleEntries[visibleEntries.length - 1]?.key ?? null
+      : state.transcriptScrollToKey
   const unreadBoundaryIndex = mobileTranscriptUnreadBoundaryIndex(
     visibleEntries.length,
     state.transcriptUnreadCount,
@@ -897,7 +962,7 @@ export const renderKhalaSurface = (
       ...(entry.role !== "assistant" && entry.createdAt !== undefined
         ? { timestamp: localTranscriptTime(entry.createdAt) }
         : {}),
-      body: interactionBody(state, entry, accessibility),
+      body: interactionBody(state, entry, accessibility, compactRuntime !== null),
     },
   ])
   const hiddenRetainedCount = Math.max(0, presentedEntries.length - visibleEntries.length)
@@ -942,7 +1007,7 @@ export const renderKhalaSurface = (
         height: "full",
         // Owner-private chat is conversational, so keep its first message
         // close to the compact row instead of reserving dashboard-like space.
-        ...(runtimeDetails === "hidden" ? { paddingTop: "2" as const } : {}),
+        ...(runtimeDetails !== "visible" ? { paddingTop: "2" as const } : {}),
       },
     },
     [
@@ -969,7 +1034,7 @@ export const renderKhalaSurface = (
       ...(authority === "sync" && state.threadHistory !== null && state.entries.length === 0
         ? [Text({
             key: "khala-empty-history",
-            content: runtimeDetails === "hidden"
+            content: runtimeDetails !== "visible"
               ? "Start the conversation below."
               : "No confirmed messages yet. Start this chat below.",
             variant: "body",
@@ -1005,7 +1070,7 @@ export const renderKhalaSurface = (
         pinToEnd: state.transcriptPinned,
         onPinnedChange: IntentRef(TranscriptPinnedChanged, ComponentValueBinding()),
         preserveScrollAnchor: true,
-        ...(state.transcriptScrollToKey === null ? {} : { scrollToKey: state.transcriptScrollToKey }),
+        ...(transcriptScrollToKey === null ? {} : { scrollToKey: transcriptScrollToKey }),
         virtualize: true,
         estimatedItemSize: 180,
         style: { width: "full", flex: 1 },
@@ -1019,8 +1084,11 @@ export const renderKhalaSurface = (
             style: { width: "full", minHeight: accessibility.minTouchTarget },
           })]
         : []),
-      ...(runtimeDetails === "hidden" ? [] : runtimeControlViews(state, accessibility)),
-      ...(runtimeDetails === "hidden"
+      ...(compactRuntime === null
+        ? []
+        : compactRuntimeStatusViews(state, compactRuntime.assistantLabel)),
+      ...(runtimeDetails !== "visible" ? [] : runtimeControlViews(state, accessibility)),
+      ...(runtimeDetails !== "visible"
         ? []
         : renderMobileComposerRunControl(state.runtimeTurn, runAdmission, accessibility)),
       ...codingComposerContextViews(

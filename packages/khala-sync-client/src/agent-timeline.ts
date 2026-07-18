@@ -111,6 +111,18 @@ export const ConfirmedAgentRunSchema = Schema.Struct({
 })
 export type ConfirmedAgentRun = typeof ConfirmedAgentRunSchema.Type
 
+/** Public-safe provider identity copied from the canonical runtime event.
+ * This is observed transport metadata, not model-authored prose. */
+export const ConfirmedAgentTimelineSourceSchema = Schema.Struct({
+  lane: TimelineLabelSchema,
+  adapterKind: Schema.optionalKey(TimelineLabelSchema),
+  surface: Schema.optionalKey(TimelineLabelSchema),
+  providerRef: Schema.optionalKey(TimelineRefSchema),
+  modelRef: Schema.optionalKey(TimelineRefSchema),
+})
+export type ConfirmedAgentTimelineSource =
+  typeof ConfirmedAgentTimelineSourceSchema.Type
+
 export const ConfirmedAgentTimelineEventSchema = Schema.Struct({
   eventRef: TimelineRefSchema,
   runRef: TimelineRefSchema,
@@ -120,6 +132,7 @@ export const ConfirmedAgentTimelineEventSchema = Schema.Struct({
   status: Schema.NullOr(Schema.String.check(Schema.isMaxLength(256))),
   artifactRefs: Schema.Array(TimelineRefSchema).check(Schema.isMaxLength(100)),
   item: Schema.optionalKey(Schema.NullOr(ConfirmedAgentTimelineItemSchema)),
+  source: Schema.optionalKey(ConfirmedAgentTimelineSourceSchema),
   createdAt: TimelineTimestampSchema,
   version: TimelineIntSchema,
 })
@@ -290,6 +303,24 @@ const projectedTimelineItem = (payloadJson: string | null): ConfirmedAgentTimeli
   }
 }
 
+const projectedTimelineSource = (
+  payloadJson: string | null,
+): ConfirmedAgentTimelineSource | undefined => {
+  if (payloadJson === null) return undefined
+  try {
+    const source = decodeKhalaRuntimeEvent(JSON.parse(payloadJson) as unknown).source
+    return {
+      lane: source.lane,
+      ...(source.adapterKind === undefined ? {} : { adapterKind: source.adapterKind }),
+      ...(source.surface === undefined ? {} : { surface: source.surface }),
+      ...(source.providerRef === undefined ? {} : { providerRef: source.providerRef }),
+      ...(source.modelRef === undefined ? {} : { modelRef: source.modelRef }),
+    }
+  } catch {
+    return undefined
+  }
+}
+
 const confirmedEvents = (
   runRef: string,
   rows: ReadonlyArray<ConfirmedEntity>,
@@ -299,6 +330,7 @@ const confirmedEvents = (
     try {
       const event = decodeAgentRunEventEntity(JSON.parse(row.postImageJson) as unknown)
       if (event.runId !== runRef) continue
+      const source = projectedTimelineSource(event.payloadJson)
       const projected: ConfirmedAgentTimelineEvent = {
         eventRef: event.id,
         runRef: event.runId,
@@ -308,6 +340,7 @@ const confirmedEvents = (
         status: event.status,
         artifactRefs: event.artifactRefs,
         item: projectedTimelineItem(event.payloadJson),
+        ...(source === undefined ? {} : { source }),
         createdAt: event.createdAt,
         version: Number(row.version),
       }
@@ -336,6 +369,7 @@ const confirmedEventsForThread = (
   for (const row of rows) {
     try {
       const event = decodeAgentRunEventEntity(JSON.parse(row.postImageJson) as unknown)
+      const source = projectedTimelineSource(event.payloadJson)
       const projected: ConfirmedAgentTimelineEvent = {
         eventRef: event.id,
         runRef: event.runId,
@@ -345,6 +379,7 @@ const confirmedEventsForThread = (
         status: event.status,
         artifactRefs: event.artifactRefs,
         item: projectedTimelineItem(event.payloadJson),
+        ...(source === undefined ? {} : { source }),
         createdAt: event.createdAt,
         version: Number(row.version),
       }

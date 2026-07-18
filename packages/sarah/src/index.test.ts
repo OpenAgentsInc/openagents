@@ -38,12 +38,20 @@ describe("Sarah owner-orchestrator contract", () => {
         },
       ],
     });
-    const prompt = buildSarahSystemPrompt(context);
+    const prompt = buildSarahSystemPrompt(context, {
+      laneRef: "hosted_khala",
+      modelRef: "gemma-4-31b-it",
+      providerLabel: "Google AI Studio",
+      runtimeLabel: "OpenAgents hosted runtime",
+    });
     expect(prompt).not.toContain("[source.release.fixture]");
     expect(prompt).toContain("one or two sentences");
     expect(prompt).toContain("Never print raw source refs");
     expect(prompt).toContain("typed capability brokers");
     expect(prompt).toContain("self-amplification");
+    expect(prompt).toContain("model gemma-4-31b-it");
+    expect(prompt).toContain("provider Google AI Studio");
+    expect(prompt).toContain("Never infer the current model");
   });
 
   it("removes raw provenance refs from provider prose", () => {

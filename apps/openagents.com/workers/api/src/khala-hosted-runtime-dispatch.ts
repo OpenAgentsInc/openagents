@@ -76,6 +76,7 @@ import { sanitizeSarahConversationResponse } from '@openagentsinc/sarah'
 import { DEFAULT_GEMMA4_MODEL_ID } from './inference/gemma4-model'
 import { parseJsonUnknown } from './json-boundary'
 import {
+  HOSTED_KHALA_PROVIDER,
   hostedKhalaUsageRef,
   type HostedTurnMeteringInput,
   type HostedTurnMeteringOutcome,
@@ -102,7 +103,7 @@ export const HOSTED_RUNTIME_LANE = 'hosted_khala'
 export const DEFAULT_HOSTED_RUNTIME_MODEL = DEFAULT_GEMMA4_MODEL_ID
 
 /** Provider ref stamped on the runtime events' `source`/metadata. */
-export const HOSTED_RUNTIME_PROVIDER_REF = 'openagents-khala'
+export const HOSTED_RUNTIME_PROVIDER_REF = HOSTED_KHALA_PROVIDER
 
 /** Base prefix for this consumer's mutation-ledger client group. */
 export const HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID =

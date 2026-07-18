@@ -121,6 +121,52 @@ const identityLabel = (run: ConfirmedAgentRun): string => {
   return run.backend === undefined ? runtime : `${runtime} · ${backendLabels[run.backend]}`
 }
 
+const modelLabels: Readonly<Record<string, string>> = {
+  "gemma-4-31b-it": "Gemma 4 31B",
+  "gemma-4-26b-a4b-it": "Gemma 4 26B",
+  "gemini-3.5-flash": "Gemini 3.5 Flash",
+}
+
+const providerLabels: Readonly<Record<string, string>> = {
+  "google-ai-studio": "Google AI Studio",
+  "openagents-khala": "OpenAgents hosted",
+}
+
+const readableRef = (value: string): string =>
+  value
+    .replace(/^model\./u, "")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/gu, letter => letter.toUpperCase())
+
+/** Human-readable projection of server-authored runtime identity. Model prose
+ * never participates in this label. */
+export const mobileTimelineSourceIdentityLabel = (
+  source: NonNullable<ConfirmedAgentTimelineEvent["source"]>,
+): string => {
+  const model = source.modelRef === undefined
+    ? null
+    : modelLabels[source.modelRef] ?? readableRef(source.modelRef)
+  const provider = source.providerRef === undefined
+    ? null
+    : providerLabels[source.providerRef] ?? readableRef(source.providerRef)
+  if (model !== null && provider !== null) return `${model} · ${provider}`
+  if (model !== null) return model
+  if (provider !== null) return provider
+  return source.lane === "hosted_khala" ? "OpenAgents hosted" : readableRef(source.lane)
+}
+
+const observedIdentityLabel = (
+  run: ConfirmedAgentRun,
+  events: ReadonlyArray<ConfirmedAgentTimelineEvent>,
+): string => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const observed = events[index]?.source
+    if (observed !== undefined) return mobileTimelineSourceIdentityLabel(observed)
+  }
+  return identityLabel(run)
+}
+
 const workStatusForItem = (item: ConfirmedAgentTimelineItem): MobileWorkStatus => {
   switch (item.kind) {
     case "tool": return item.status === "called" ? "running" : item.status === "completed" ? "success" : "failure"
@@ -287,7 +333,7 @@ export const projectMobileWorkGroup = (
     runRef: run.runRef,
     summary: groupSummary(run, elapsedLabel),
     status: groupStatus(run),
-    identityLabel: identityLabel(run),
+    identityLabel: observedIdentityLabel(run, events),
     elapsedLabel,
     createdAt: allItems[0]?.createdAt ?? run.createdAt,
     totalItemCount: allItems.length,

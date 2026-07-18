@@ -185,7 +185,10 @@ import {
   newlyConfirmedTranscriptEntryCount,
   nextMobileTranscriptVisibleCount,
 } from "./mobile-transcript-history"
-import { projectMobileWorkGroup } from "./mobile-work-log"
+import {
+  mobileTimelineSourceIdentityLabel,
+  projectMobileWorkGroup,
+} from "./mobile-work-log"
 import {
   mobileComposerSlashTrigger,
   mobileComposerPathTrigger,
@@ -451,7 +454,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-05"
+export const BUNDLE_TAG = "2026-07-18.sarah-runtime-truth-06"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -1078,7 +1081,7 @@ export const renderContentView = (state: HomeState): View =>
               : "live",
           fullAutoRunHeaderForState(state),
           state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
-            ? "hidden"
+            ? { mode: "compact", assistantLabel: state.sarah.displayName }
             : "visible",
         )]
       : [
@@ -2294,7 +2297,17 @@ const confirmedKhalaState = (
     if (item == null) return []
     switch (item.kind) {
       case "text":
-        return [{ key: event.eventRef, role: "assistant" as const, text: item.text, status: "done" as const, createdAt: event.createdAt, version: event.version }]
+        return [{
+          key: event.eventRef,
+          role: "assistant" as const,
+          text: item.text,
+          status: "done" as const,
+          createdAt: event.createdAt,
+          version: event.version,
+          ...(event.source === undefined
+            ? {}
+            : { provenanceLabel: mobileTimelineSourceIdentityLabel(event.source) }),
+        }]
       case "reasoning":
       case "connected":
       case "tool":

@@ -227,6 +227,7 @@ describe(`contract ${contractId}`, () => {
           text: "Visible Sarah reply [source.internal.private-ref]",
           status: "done",
           createdAt: now,
+          provenanceLabel: "Gemma 4 31B · Google AI Studio",
         }],
         transcriptVisibleCount: 2,
       },
@@ -235,8 +236,90 @@ describe(`contract ${contractId}`, () => {
     expect(view).toContain("Visible Sarah reply");
     expect(view).not.toContain("Internal runtime detail");
     expect(view).not.toContain("source.internal.private-ref");
+    expect(view).toContain("Gemma 4 31B · Google AI Studio");
     expect(view).not.toContain("Retry");
     expect(view).not.toContain("Close turn");
+  });
+
+  test("explains the stop affordance with compact live runtime truth", () => {
+    const activeThread: MobileConversationThread = {
+      ...thread,
+      messageCount: 1,
+      lastMessageAt: now,
+      messages: [{
+        messageRef: "message.sarah.runtime-question",
+        threadRef: thread.threadRef,
+        body: "What powers your responses?",
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      }],
+      timeline: {
+        status: { phase: "live", cursor: 2, pendingMutationCount: 0 },
+        run: {
+          runRef: "run.sarah.gemma",
+          routeRef: thread.threadRef,
+          runtime: "openagents_native",
+          backend: "hosted",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: null,
+          failedAt: null,
+          canceledAt: null,
+          version: 1,
+        },
+        events: [{
+          eventRef: "event.sarah.gemma.started",
+          runRef: "run.sarah.gemma",
+          sequence: 0,
+          eventType: "turn.started",
+          summary: "Turn started",
+          status: "running",
+          artifactRefs: [],
+          item: { kind: "connected", turnRef: "run.sarah.gemma", lane: "hosted_khala" },
+          source: {
+            lane: "hosted_khala",
+            adapterKind: "openagents_native",
+            surface: "server",
+            providerRef: "google-ai-studio",
+            modelRef: "gemma-4-31b-it",
+          },
+          createdAt: now,
+          version: 2,
+        }],
+      },
+    };
+    const host: MobileConversationHost = {
+      listThreads: async () => [activeThread],
+      newThread: async () => ({ ok: true, thread: activeThread }),
+      openThread: async () => activeThread,
+      sendMessage: async () => ({ ok: true, thread: activeThread }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [activeThread],
+        archivedThreads: [],
+        activeThread,
+      },
+    });
+    const view = JSON.stringify(renderContentView({
+      ...program.initialState,
+      khala: {
+        ...program.initialState.khala,
+        runtimeControlActionsAvailable: true,
+      },
+    }));
+
+    expect(view).toContain("Sarah is thinking…");
+    expect(view).toContain("Generating with Gemma 4 31B · Google AI Studio");
+    expect(view).not.toContain("OpenAgents · hosted runtime · 1 activity");
+    expect(view).not.toContain('"scrollToKey":"work:run.sarah.gemma"');
+    expect(view).toContain('"onStop"');
   });
 
   test("clears an old coding composer before Sarah can send", async () => {

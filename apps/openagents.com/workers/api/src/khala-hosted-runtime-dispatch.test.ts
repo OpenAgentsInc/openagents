@@ -106,6 +106,7 @@ type RecordedEvent = {
   text: string | undefined
   finishReason: string | undefined
   usage: Record<string, unknown> | undefined
+  source: Record<string, unknown>
   clientId: string
 }
 
@@ -126,6 +127,7 @@ const makeRecordingExecutePush = (
       text?: string
       finishReason?: string
       usage?: Record<string, unknown>
+      source: Record<string, unknown>
     }
     const rec: RecordedEvent = {
       clientId: input.request.clientId,
@@ -133,6 +135,7 @@ const makeRecordingExecutePush = (
       usage: event.usage,
       kind: event.kind,
       mutationId: envelope.mutationId,
+      source: event.source,
       text: event.text,
       userId: input.userId,
     }
@@ -317,6 +320,10 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(push.recorded.map(r => r.mutationId)).toEqual([1, 2, 3, 4])
     // every event recorded AS THE TURN OWNER.
     expect(push.recorded.every(r => r.userId === 'github:14167547')).toBe(true)
+    expect(push.recorded.every(r =>
+      r.source.modelRef === 'gemma-4-31b-it' &&
+      r.source.providerRef === 'google-ai-studio' &&
+      r.source.lane === 'hosted_khala')).toBe(true)
     // one stable clientId per dispatch attempt, in the server group.
     const clientIds = new Set(push.recorded.map(r => r.clientId))
     expect(clientIds.size).toBe(1)

@@ -143,6 +143,13 @@ export const SarahBusinessContextSchema = S.Struct({
 });
 export interface SarahBusinessContext extends S.Schema.Type<typeof SarahBusinessContextSchema> {}
 
+export interface SarahRuntimeIdentity {
+  readonly laneRef: string;
+  readonly modelRef: string;
+  readonly providerLabel: string;
+  readonly runtimeLabel: string;
+}
+
 /** Raw provenance refs belong to the private evidence layer, not the owner's
  * conversational transcript. This is a final presentation fence in addition
  * to the model instruction, so a provider cannot leak bracketed internal refs
@@ -212,7 +219,10 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
   ],
 };
 
-export const buildSarahSystemPrompt = (context: SarahBusinessContext): string => {
+export const buildSarahSystemPrompt = (
+  context: SarahBusinessContext,
+  runtimeIdentity: SarahRuntimeIdentity,
+): string => {
   const evidence = context.sources
     .map((source, index) =>
       `- Context ${index + 1} (${source.kind}, ${source.freshness}): ${source.summary}`)
@@ -223,6 +233,8 @@ export const buildSarahSystemPrompt = (context: SarahBusinessContext): string =>
     "For a greeting or brief conversational message, reply naturally in one or two sentences. Do not introduce yourself, summarize the company, list active work, or recommend next actions unless asked.",
     "Default to under 120 words. Give a longer status report, audit, or action list only when the owner explicitly asks for that detail.",
     "Use only the supplied, owner-scoped business context for current-state claims.",
+    `Authoritative runtime identity for this exact reply: model ${runtimeIdentity.modelRef}; provider ${runtimeIdentity.providerLabel}; runtime ${runtimeIdentity.runtimeLabel}; lane ${runtimeIdentity.laneRef}.`,
+    "If the owner asks what powers this response, repeat that runtime identity exactly and briefly. Never infer the current model, provider, runtime, or backend from business context, fleet status, prior messages, or your own generated prose, and never claim a different one.",
     "Provenance is retained in the private context layer. Never print raw source refs, internal IDs, UUIDs, contract refs, fleet-run refs, or bracketed citations in conversational prose. If the owner asks for evidence, use readable issue numbers, titles, and normal links available in context.",
     "Never invent a source or imply an action ran when it did not.",
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",

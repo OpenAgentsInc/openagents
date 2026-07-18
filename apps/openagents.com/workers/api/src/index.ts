@@ -765,6 +765,7 @@ import {
 } from './khala-feedback-routes'
 import {
   DEFAULT_HOSTED_RUNTIME_MODEL,
+  HOSTED_RUNTIME_LANE,
   type HostedRuntimeCompleteFn,
   runHostedRuntimeTurnDispatch,
 } from './khala-hosted-runtime-dispatch'
@@ -6822,7 +6823,12 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         return {
           prompt,
           responsePresentation: 'owner_conversation' as const,
-          system: buildSarahSystemPrompt(context),
+          system: buildSarahSystemPrompt(context, {
+            laneRef: HOSTED_RUNTIME_LANE,
+            modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
+            providerLabel: 'Google AI Studio',
+            runtimeLabel: 'OpenAgents hosted runtime',
+          }),
         }
       },
       recordUsage: input =>
