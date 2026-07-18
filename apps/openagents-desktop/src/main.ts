@@ -4567,20 +4567,14 @@ ipcMain.handle(FullAutoRunStartChannel, async (_event, value: unknown) => {
   }
   const outcome = startFullAutoRunAction(fullAutoRunActionContext, {
     ...base,
+    ...(policyOutcome.policy === null ? {} : { routingPolicy: policyOutcome.policy }),
+    ...(guardrails === undefined ? {} : { guardrails }),
     // The primary lane defaults to the policy's first candidate so the
     // rotation cycle starts where the owner's ordered list starts.
     ...(base.lane === undefined && policyOutcome.policy !== null
       ? { lane: policyOutcome.policy[0]!.lane }
       : {}),
   })
-  if (outcome.ok && outcome.value.threadRef !== null) {
-    if (policyOutcome.policy !== null) {
-      fullAutoRegistry.bindRoutingPolicy(outcome.value.threadRef, policyOutcome.policy)
-    }
-    if (guardrails !== undefined) {
-      fullAutoRegistry.bindGuardrails(outcome.value.threadRef, guardrails)
-    }
-  }
   return outcome
 })
 ipcMain.handle(FullAutoRunGetChannel, async (_event, value: unknown) => {

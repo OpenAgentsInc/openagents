@@ -154,8 +154,8 @@ export const FullAutoControlRunStartRequestSchema = Schema.Struct({
   model: Schema.optional(ModelRef),
   turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
   /** FA-WIRE-01 (#8996): optional ordered routing policy + guardrails, bound
-   * onto the run's thread-level record after the run mints (validated
-   * fail-closed BEFORE anything is minted). */
+   * onto the run's thread-level record before reconciliation starts
+   * (validated fail-closed BEFORE anything is minted). */
   routingPolicy: Schema.optional(FullAutoControlRoutingPolicySchema),
   guardrails: Schema.optional(FullAutoGuardrailsSchema),
 })

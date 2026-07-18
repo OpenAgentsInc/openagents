@@ -150,7 +150,7 @@ export const verifyFullAutoControlToken = (
 export type FullAutoControlCapabilities = Readonly<{
   /** FA-WIRE-01 (#8996) widened the Pick: resume/recordDecision back the new
    * resume route (via the exported resumeFullAuto), and bindRoutingPolicy/
-   * bindGuardrails back post-mint binding on the run-level start path. */
+   * bindGuardrails into the atomic pre-reconciliation run start path. */
   registry: Pick<
     FullAutoRegistry,
     "list" | "record" | "set" | "resume" | "recordDecision" | "bindRoutingPolicy" | "bindGuardrails"
@@ -582,6 +582,9 @@ export const startFullAutoControlServer = (
       }
       const outcome = startFullAutoRunAction(actionContext, {
         ...body,
+        // Pass the normalized, prevalidated policy into the shared action so
+        // it is durable before that action triggers reconciliation.
+        ...(runPolicy.policy === null ? {} : { routingPolicy: runPolicy.policy }),
         // The primary lane defaults to the policy's first candidate so the
         // rotation cycle starts where the owner's ordered list starts.
         ...(body.lane === undefined && runPolicy.policy !== null
@@ -592,17 +595,6 @@ export const startFullAutoControlServer = (
         auditLog("runs/start", "-", `refused ${outcome.error.error}`)
         sendError(response, outcome.status, outcome.error)
         return
-      }
-      // Post-mint binding of the pre-validated policy/guardrails onto the
-      // run's thread-level record -- the same additive pattern main's own
-      // launcher IPC handler uses (never a second validation vocabulary).
-      if (outcome.value.threadRef !== null) {
-        if (runPolicy.policy !== null) {
-          capabilities.registry.bindRoutingPolicy(outcome.value.threadRef, runPolicy.policy)
-        }
-        if (body.guardrails !== undefined) {
-          capabilities.registry.bindGuardrails(outcome.value.threadRef, body.guardrails)
-        }
       }
       auditLog("runs/start", outcome.value.threadRef ?? "-", `ok runRef=${outcome.value.runRef}`)
       sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: outcome.value })

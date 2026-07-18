@@ -24,7 +24,11 @@ import {
   startFullAutoControlServer,
   type FullAutoControlServer,
 } from "./full-auto-control-server.ts"
-import { openFullAutoRegistry } from "./full-auto-registry.ts"
+import {
+  openFullAutoRegistry,
+  type FullAutoGuardrails,
+  type FullAutoRoutingCandidate,
+} from "./full-auto-registry.ts"
 import { reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
@@ -74,6 +78,11 @@ type Harness = Readonly<{
   turns: Array<LocalTurnRecord>
   liveMap: Map<string, Readonly<{ state: "idle" | "turn_running" | "turn_completed" | "turn_failed" | "cap_reached" | "blocked"; turnRef: string | null; detail?: string }>>
   reconcileCalls: () => number
+  reconciliationBindings: () => ReadonlyArray<Readonly<{
+    threadRef: string
+    routingPolicy: ReadonlyArray<FullAutoRoutingCandidate> | undefined
+    guardrails: FullAutoGuardrails | undefined
+  }>>
   interruptCalls: Array<string>
   createdThreads: Array<Readonly<{ threadRef: string; title: string | null }>>
   server: FullAutoControlServer
@@ -96,10 +105,22 @@ const startHarness = async (): Promise<Harness> => {
   const liveMap: Harness["liveMap"] = new Map()
   const interruptCalls: Array<string> = []
   let reconcileCallCount = 0
+  const reconciliationBindings: Array<Readonly<{
+    threadRef: string
+    routingPolicy: ReadonlyArray<FullAutoRoutingCandidate> | undefined
+    guardrails: FullAutoGuardrails | undefined
+  }>> = []
   // The continue-now spy IS the injected trigger -- the server must invoke
   // this exact function (main passes runFullAutoReconciliation the same way).
   const triggerReconciliation = async (): Promise<void> => {
     reconcileCallCount += 1
+    for (const record of registry.list().filter(record => record.enabled)) {
+      reconciliationBindings.push({
+        threadRef: record.threadRef,
+        routingPolicy: record.routingPolicy,
+        guardrails: record.guardrails,
+      })
+    }
   }
   const server = await startFullAutoControlServer({
     capabilities: {
@@ -164,6 +185,7 @@ const startHarness = async (): Promise<Harness> => {
     turns,
     liveMap,
     reconcileCalls: () => reconcileCallCount,
+    reconciliationBindings: () => reconciliationBindings,
     interruptCalls,
     createdThreads,
     server,
@@ -751,6 +773,11 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       const bound = harness.registry.record(threadRef)
       expect(bound?.routingPolicy).toEqual([{ lane: "codex-local" }, { lane: "fable-local" }])
       expect(bound?.guardrails).toEqual({ maxTurns: 10 })
+      expect(harness.reconciliationBindings().at(-1)).toEqual({
+        threadRef,
+        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        guardrails: { maxTurns: 10 },
+      })
 
       // 2. Reconciliation (the real reconciler, the real registry) hits an
       //    injected account_exhausted on the primary lane and rotates to the

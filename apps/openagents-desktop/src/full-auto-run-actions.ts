@@ -243,6 +243,16 @@ export const startFullAutoRunAction = (
   const startedThreadRef = capabilities.createThread(body.title, lane)
   const profile = { lane, ...(body.model === undefined ? {} : { model: body.model }) }
   capabilities.registry.set(startedThreadRef, true, { workspaceRef: resolvedWorkspaceRef, profile })
+  // Bind every prevalidated execution option BEFORE the start callback can
+  // trigger reconciliation. Binding these after start creates a real race:
+  // a fast provider refusal can settle the first pass before its fallback
+  // policy exists, incorrectly entering backoff instead of rotating.
+  if (body.routingPolicy !== undefined) {
+    capabilities.registry.bindRoutingPolicy(startedThreadRef, body.routingPolicy)
+  }
+  if (body.guardrails !== undefined) {
+    capabilities.registry.bindGuardrails(startedThreadRef, body.guardrails)
+  }
   const result = capabilities.runRegistry.startNew({
     title: body.title,
     objective: body.objective,
