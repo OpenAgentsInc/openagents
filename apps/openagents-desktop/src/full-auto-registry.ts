@@ -29,6 +29,10 @@ import { Schema } from "effect"
 export const FULL_AUTO_REGISTRY_SCHEMA = "openagents.desktop.full_auto_registry.v1" as const
 export const FULL_AUTO_RECORD_LIMIT = 128
 export const FULL_AUTO_BLOCKED_REASON_LIMIT = 300
+/** FA-RT-01 (#8987): bound on the ordered routing-policy candidate list. */
+export const FULL_AUTO_ROUTING_POLICY_LIMIT = 8
+/** FA-RT-01 (#8987): bound on the durable rotation history (oldest evicted). */
+export const FULL_AUTO_ROTATION_HISTORY_LIMIT = 20
 
 /** #8928: durable provenance for every transition to disabled. Older rows
  * legitimately omit this additive field; every current disable path supplies
@@ -58,6 +62,54 @@ const Cursor = Schema.Number.check(
  * live contract enums at dispatch time) so a future enum change can never
  * corrupt-fail the whole registry file.
  */
+/**
+ * FA-RT-01 (#8987): one admitted routing candidate — an existing ProviderLane
+ * ref plus an optional account ref on that lane. Candidates are validated
+ * (unknown/unadmitted/Full-Auto-ineligible lanes fail closed) at policy BIND
+ * time by full-auto-routing.ts, never trusted at decode time: a durable row
+ * whose lane later lost admission simply fails its dispatch attempt typed.
+ */
+export const FullAutoRoutingCandidateSchema = Schema.Struct({
+  lane: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  accountRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+})
+export type FullAutoRoutingCandidate = typeof FullAutoRoutingCandidateSchema.Type
+
+/**
+ * FA-RT-01 (#8987): the typed dispatch-failure classes that permit rotating
+ * to the next admitted candidate in the SAME reconciliation pass instead of
+ * consuming FA-H5 failure budget. Every other failure keeps the existing
+ * budget/backoff/disable semantics unchanged.
+ */
+export const FullAutoRotationReasonSchema = Schema.Literals([
+  "account_exhausted",
+  "rate_limited",
+  "provider_error",
+])
+export type FullAutoRotationReason = typeof FullAutoRotationReasonSchema.Type
+
+/**
+ * FA-RT-01 (#8987): one durable rotation fact. Public-safe by construction —
+ * lane refs, a typed reason, and an ISO timestamp only; never prompts,
+ * models, paths, tokens, or raw provider detail.
+ */
+export const FullAutoRotationRecordSchema = Schema.Struct({
+  fromLane: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  toLane: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  reason: FullAutoRotationReasonSchema,
+  at: Schema.String,
+})
+export type FullAutoRotationRecord = typeof FullAutoRotationRecordSchema.Type
+
+/** FA-RT-01 (#8987): the bind-side bounded policy shape. The RECORD field
+ * below deliberately carries no length checks (same FA-H10 rationale as the
+ * record bound itself: decode must never quarantine a legitimately written
+ * file); bounds are enforced write-side by `bindRoutingPolicy`. */
+export const FullAutoRoutingPolicySchema = Schema.Array(FullAutoRoutingCandidateSchema).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(FULL_AUTO_ROUTING_POLICY_LIMIT),
+)
+
 export const FullAutoProfileSchema = Schema.Struct({
   /** L6 #8901: durable ProviderLane.laneRef. Optional keeps every rev-7 row decodable. */
   lane: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
@@ -106,8 +158,39 @@ export const FullAutoRecordSchema = Schema.Struct({
   ))),
   disabledBy: Schema.optional(FullAutoDisabledBySchema),
   disabledAt: Schema.optional(Schema.String),
+  /**
+   * FA-RT-01 (#8987): ordered multi-lane routing policy. OPTIONAL and
+   * additive: a v1/v2-era registry file without it decodes and behaves
+   * exactly as single-lane (the bound `profile` alone). When present and
+   * non-empty, reconciliation may rotate through these candidates on a typed
+   * account_exhausted/rate_limited/provider_error dispatch failure.
+   */
+  routingPolicy: Schema.optional(Schema.Array(FullAutoRoutingCandidateSchema)),
+  /**
+   * FA-RT-01 (#8987): bounded rotation history, most recent last. Capped at
+   * FULL_AUTO_ROTATION_HISTORY_LIMIT write-side (oldest evicted); decode
+   * carries no cap for the same never-quarantine reason as the record bound.
+   */
+  rotationHistory: Schema.optional(Schema.Array(FullAutoRotationRecordSchema)),
 })
 export type FullAutoRecord = typeof FullAutoRecordSchema.Type
+
+/**
+ * FA-RT-01 (#8987): the public-safe projection of a record's rotation
+ * history for the control-API status/turns surfaces. Explicit field-by-field
+ * mapping so nothing beyond lane refs, the typed reason, and the timestamp
+ * can ever ride along, and the projection is bounded even against a
+ * hand-edited over-long durable file.
+ */
+export const projectFullAutoRotationHistory = (
+  record: FullAutoRecord,
+): ReadonlyArray<FullAutoRotationRecord> =>
+  (record.rotationHistory ?? []).slice(-FULL_AUTO_ROTATION_HISTORY_LIMIT).map(entry => ({
+    fromLane: entry.fromLane,
+    toLane: entry.toLane,
+    reason: entry.reason,
+    at: entry.at,
+  }))
 
 /**
  * The record bound (FULL_AUTO_RECORD_LIMIT) is enforced write-side and applies
@@ -126,6 +209,10 @@ export type FullAutoSetOptions = Readonly<{
   workspaceRef?: string
   /** FA-H6: bind the execution profile at enable time. */
   profile?: FullAutoProfile
+  /** FA-RT-01 (#8987): bind the validated routing policy at enable time.
+   * Callers MUST validate through full-auto-routing.ts first; this option is
+   * durable plumbing, not the admission gate. */
+  routingPolicy?: ReadonlyArray<FullAutoRoutingCandidate>
   /** FA-H2/FA-H5: typed reason recorded when DISABLING a record. */
   blockedReason?: string
   /** #8928: required by every current call that transitions to disabled. */
@@ -156,6 +243,25 @@ export type FullAutoRegistry = Readonly<{
   recordSuccess: (threadRef: string) => void
   bindWorkspace: (threadRef: string, workspaceRef: string) => FullAutoRecord | null
   bindProfile: (threadRef: string, profile: FullAutoProfile) => FullAutoRecord | null
+  /**
+   * FA-RT-01 (#8987): bind (or, with null, clear) the ordered routing
+   * policy. Bounds are enforced fail-closed here (1..FULL_AUTO_ROUTING_
+   * POLICY_LIMIT candidates); admission validation is the caller's duty via
+   * full-auto-routing.ts BEFORE binding. Missing record is a null no-op.
+   */
+  bindRoutingPolicy: (
+    threadRef: string,
+    policy: ReadonlyArray<FullAutoRoutingCandidate> | null,
+  ) => FullAutoRecord | null
+  /**
+   * FA-RT-01 (#8987): append one typed rotation fact (stamped with now()),
+   * evicting the oldest entry beyond FULL_AUTO_ROTATION_HISTORY_LIMIT.
+   * Missing record is a null no-op.
+   */
+  recordRotation: (
+    threadRef: string,
+    rotation: Readonly<{ fromLane: string; toLane: string; reason: FullAutoRotationReason }>,
+  ) => FullAutoRecord | null
 }>
 
 export class FullAutoRegistryError extends Error {
@@ -297,6 +403,12 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
         updatedAt: timestamp,
         workspaceRef: options?.workspaceRef ?? existing?.workspaceRef,
         profile: options?.profile ?? existing?.profile,
+        // FA-RT-01 (#8987): the routing policy and rotation history survive
+        // enable/disable transitions -- the policy is a durable grant like
+        // workspaceRef, and the history is diagnosis evidence like
+        // blockedReason. An enable-time routingPolicy option rebinds it.
+        routingPolicy: (enabled ? options?.routingPolicy : undefined) ?? existing?.routingPolicy,
+        rotationHistory: existing?.rotationHistory,
         pendingTurnRef: enabled ? existing?.pendingTurnRef ?? undefined : undefined,
         pendingStartedAt: enabled ? existing?.pendingStartedAt ?? undefined : undefined,
         lastFailureAt: enabled ? undefined : existing?.lastFailureAt,
@@ -360,6 +472,27 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
     bindProfile: (threadRef, profile) => {
       const index = findIndex(threadRef)
       return index === -1 ? null : update(index, { profile })
+    },
+    bindRoutingPolicy: (threadRef, policy) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      if (policy === null) return update(index, { routingPolicy: undefined })
+      // Fail closed on bounds: an empty or over-long policy throws here
+      // rather than persisting an unreconcilable durable shape.
+      return update(index, { routingPolicy: Schema.decodeUnknownSync(FullAutoRoutingPolicySchema)(policy) })
+    },
+    recordRotation: (threadRef, rotation) => {
+      const index = findIndex(threadRef)
+      if (index === -1) return null
+      const entry = Schema.decodeUnknownSync(FullAutoRotationRecordSchema)({
+        fromLane: rotation.fromLane,
+        toLane: rotation.toLane,
+        reason: rotation.reason,
+        at: now().toISOString(),
+      })
+      const history = [...(records[index]!.rotationHistory ?? []), entry]
+        .slice(-FULL_AUTO_ROTATION_HISTORY_LIMIT)
+      return update(index, { rotationHistory: history })
     },
   }
 }

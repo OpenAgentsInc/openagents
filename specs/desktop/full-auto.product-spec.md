@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Full Auto Autonomous Run Contract"
 artifact_type: "prd"
-spec_revision: 10
+spec_revision: 11
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
-updated_at: "2026-07-17T19:25:20.000Z"
+updated_at: "2026-07-17T20:30:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-criterion-disposition-map"
@@ -29,6 +29,8 @@ tool_metadata:
   openagents_revision_8_note: "Rev 8 generalizes the durable loop over the L1 ProviderLane SPI. The additive optional profile.lane defaults legacy rows to codex-local; reconciliation capability-gates the selected lane; built-in Codex and Claude use one lane-keyed instruction/background-question policy; and control start/enable, OpenAPI, MCP, and CLI accept an optional lane selector. Claude background questions deny immediately with proceed-with-judgment guidance instead of parking without a renderer."
   openagents_revision_9_issue: "8902 (L7 lane-independent ProductSpec/AssuranceSpec workflow)"
   openagents_revision_9_note: "Rev 9 projects a bounded, read-only ProductSpec/AssuranceSpec context through the shared ProviderLane dispatcher for every lane; adds specs/** unmet obligations to Full Auto candidate discovery; and re-runs the authority packages after each dispatched turn to append an evidence-only system note. Provider lanes receive no parsing, admission, verification, release, or public-claim authority."
+  openagents_revision_11_issue: "8987 (FA-RT-01, epic #8967)"
+  openagents_revision_11_note: "Rev 11 adds the multi-lane never-halt routing policy (FA-RT-01 #8987): the durable per-thread registry record gains OPTIONAL `routingPolicy` (an ordered, bounded list of admitted lane/account candidates, validated fail-closed at bind time by full-auto-routing.ts -- unknown/unadmitted/Full-Auto-ineligible lanes refuse the whole policy) and OPTIONAL `rotationHistory` (bounded typed {fromLane,toLane,reason,at} facts, oldest-evicted). On a typed account_exhausted/rate_limited/provider_error dispatch failure, reconciliation rotates to the next admitted candidate in the SAME pass under a fresh exactly-once lease instead of entering failure backoff; a full unsuccessful cycle through the candidates consumes exactly one FA-H5 failure-budget step, and existing cap/disable/backoff semantics are proven unchanged by regression tests. A v1/v2-era registry file without the new fields decodes and behaves exactly as single-lane. Rotation within an owner-admitted ordered policy is NOT autonomous provider selection: the candidate set and its order are chosen by a human at policy bind time; the loop only fails over inside that grant. Adds FA-AC-67."
   openagents_revision_10_issue: "8968 (FA-RUN-00, epic #8967 child 1 of 12)"
   openagents_revision_10_note: "Rev 10 supersedes the rev-9 composer-toggle product model after the 2026-07-17 owner overnight dogfood run (docs/fable/2026-07-17-full-auto-implementation-audit.md) proved it wrong-shaped: a six-hour silent stall behind a generic composer failure banner, no run-level diagnosis, no durable objective record, and an ambiguous chat-vs-autonomous-program interaction model. This revision (a) maps every FA-AC-01..37 criterion to an explicit disposition in the new Criterion Disposition Map section rather than silently reinterpreting them; (b) adds FA-AC-38..66 defining the target FullAutoRun contract -- stable runRef independent of threadRef, one-active-run-per-profile v1 concurrency, a full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle with actor/time/reason attribution on every transition, run-level liveness distinct from turn duration, a bounded private FullAutoRunReport, a dedicated left-rail launcher plus read-only run view replacing the composer toggle, and a host-owned objective-priority provider-handoff envelope; (c) is the first of 12 issues under epic #8967 -- FA-AC-38 onward name the exact child issue that owns their implementation and their Proof lines are explicitly 'planned' evidence, not yet executed; (d) adds three pending behavior-contract entries (separate launcher, read-only running state, Play/Pause/Stop semantics) to packages/behavior-contracts per the CLAUDE.md behavior-contracts mandate; and (e) extends root INVARIANTS.md Authority Boundaries with the run-authority/state-transition/evidence-privacy invariant this model commits to. This revision changes NO application code: apps/openagents-desktop's full-auto-registry.ts, full-auto-reconcile.ts, full-auto-lane.ts, and full-auto-control-contract.ts are unchanged pending #8969's implementation of the FullAutoRun model this spec now requires. Per the epic's own acceptance criteria, owner/reviewer acceptance identity for this document is NOT yet recorded -- see Owner Gates; this document establishes the pre-implementation contract that blocks conflicting work (specs/CONVENTIONS.md: 'Implementation must not proceed under a ProductSpec that forbids the intended result'), but that is a claim-blocking function, not a substitute for the owner's own sign-off."
 ---
@@ -133,11 +135,12 @@ in:
   - the six named real-sidebar dogfood tests from the audit (Codex->Claude context, Claude->Codex context, objective retention under context pressure, a three-turn unattended Codex run, a Claude run surviving restart, and the thread-pressure replay of the actual incident) as named, retained release-gate evidence, run in the owner's real Desktop profile rather than a headless fixture (FA-QA-01, #8976)
   - a superseding AssuranceSpec design/admission/execution/review pass covering the FA-AC-38..66 obligations this revision adds, reconciling rather than discarding the existing 37/37 `needs_design` FA-AC-01..37 obligation set per each criterion's disposition below (FA-AS-01, #8978)
   - packaged release and product-promise admission gated on the above, including a signed build from an exact tag containing the run model passing the owner restart-resume observation (FA-REL-01, #8979)
+  - a multi-lane never-halt routing policy on the durable per-thread registry record: an OPTIONAL ordered, bounded list of admitted lane/account candidates (`routingPolicy`) validated fail-closed at bind time (unknown, unadmitted, or Full-Auto-ineligible lanes refuse the whole policy at validation, never at dispatch), plus an OPTIONAL bounded typed rotation history (`rotationHistory`: fromLane/toLane/reason/at, oldest-evicted) surfaced through the control-API status projections; on a typed account_exhausted/rate_limited/provider_error dispatch failure the reconciler rotates to the next admitted candidate in the same pass under a fresh exactly-once lease, a full unsuccessful cycle consumes exactly one FA-H5 failure-budget step, and legacy single-lane records behave exactly as before (FA-RT-01, #8987)
 out:
   - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface remains same-machine loopback only
   - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action
   - concurrent multi-run execution, multi-repo Full Auto, and fleet-wide scheduling; v1 enforces exactly one active run per Desktop profile (see in:)
-  - autonomous provider selection; a run's provider/lane is chosen at launch (or at an explicit Pause -> switch -> Resume) by a human, never decided by the loop itself
+  - autonomous provider selection; a run's provider/lane is chosen at launch (or at an explicit Pause -> switch -> Resume) by a human, never decided by the loop itself -- rev 11 clarification: typed failover WITHIN an owner-admitted ordered routing policy (FA-RT-01, #8987) is not autonomous selection, because the candidate set and its order are human-chosen at policy bind time and the loop can never rotate outside that grant
   - free-form steering into a running autonomous run; the only v1 steering path is the explicit Pause -> add instruction (via provider switch or a future dedicated steering feature) -> Resume sequence -- an always-visible chat box during an active run is explicitly rejected by this revision
   - automatic verification that a run's stated done condition was actually satisfied; Completed remains a self-reported, owner-reviewable disposition in v1 (see in: and the Criterion Disposition Map)
   - live, token-by-token streaming of a run's in-progress turn into the read-only run view; the view shows coarse typed state plus the completed per-turn transcript, not a live token feed
@@ -738,6 +741,33 @@ that issue lands.
   has a designed proof rung -- no obligation may round green by omission or
   silent carry-forward of the rev-9 needs_design set.
   Proof: planned, owned by FA-AS-01 (#8978).
+- **FA-AC-67:** With an ordered routing policy of admitted lane/account
+  candidates bound on the durable record, a continuation dispatch that fails
+  with a typed account_exhausted, rate_limited, or provider_error class
+  rotates to the next admitted candidate IN THE SAME reconciliation pass,
+  under a fresh exactly-once lease per attempt, persisting a typed rotation
+  record (fromLane, toLane, reason, at) -- the run never enters failure
+  backoff while an untried admitted candidate remains. A full unsuccessful
+  cycle through every candidate consumes exactly one FA-H5 failure-budget
+  step; untyped failures, records without a policy, and every existing
+  cap/disable/backoff semantic behave exactly as before (proven by retained
+  regression tests). Policies are validated fail-closed at bind time:
+  unknown, unadmitted, or Full-Auto-ineligible lanes refuse the whole policy
+  at validation, never at dispatch, and the loop can never rotate outside
+  the owner-admitted candidate set. Rotation history surfaces through the
+  control-API status projections as public-safe typed fields only (lane
+  refs, typed reason, timestamp -- never prompts, models, paths, or
+  secrets), and a v1/v2-era registry file without the new optional fields
+  decodes and behaves exactly as single-lane.
+  Proof: FA-RT-01 (#8987); `full-auto-restart.e2e.test.ts` "Full Auto
+  multi-lane never-halt rotation (FA-RT-01 #8987)" cases (same-pass rotation
+  per typed class, one-budget-step full cycle, untyped/legacy regression,
+  bound-lane start order, restart survival), `full-auto-registry.test.ts`
+  "Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)" cases
+  (legacy fixture decode, bind/clear/bounds, capped oldest-evicted history,
+  public-safe projection), and `full-auto-routing.test.ts` (fail-closed
+  policy validation and the control-record rotationHistory projection
+  bound).
 
 ## Criterion Disposition Map (Rev 9 -> Rev 10)
 
@@ -922,6 +952,28 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 
 ## Receipts
 
+- **Rev 11 (FA-RT-01 #8987):** multi-lane never-halt routing policy,
+  main-process only. `full-auto-registry.ts` gains the OPTIONAL
+  `routingPolicy` / `rotationHistory` record fields (backward-compatible:
+  every pre-#8987 file decodes unchanged), `bindRoutingPolicy` /
+  `recordRotation` write paths (bounded, oldest-evicted), and the public-safe
+  `projectFullAutoRotationHistory` helper; new `full-auto-routing.ts` owns
+  fail-closed policy validation over the existing full-auto-lane policy table
+  plus the live L2 capability projection; `full-auto-reconcile.ts` adds the
+  typed `failureClass` dispatch-result field, the
+  `classifyFullAutoDispatchFailure` mapping (typed lane reasons plus the
+  exact codex-app-server-turn quota/rate-limit detail markers), and the
+  same-pass rotation cycle (fresh lease per attempt, one budget step per full
+  unsuccessful cycle, profile rebound to the succeeding candidate);
+  `full-auto-control-contract.ts` adds the OPTIONAL bounded
+  `rotationHistory` field to the public-safe control record schema (server
+  population owned by the control-surface issue); `main.ts` wires the
+  failure classification and an owner-visible rotation system note.
+  Verification: scoped suites `tests/full-auto-restart.e2e.test.ts`,
+  `tests/full-auto-registry.test.ts`, `src/full-auto-routing.test.ts`,
+  `src/full-auto-lane.test.ts`, plus the full existing full-auto test set
+  and a clean `tsc -p tsconfig.json --noEmit`; exact pass counts recorded in
+  the issue #8987 closeout.
 - **Rev 10 (#8968):** ProductSpec-only revision -- no `apps/openagents-desktop`
   application code changed. Retitled from "Full Auto Provider-Lane Composer
   Loop" to "Full Auto Autonomous Run Contract"; added the Criterion

@@ -309,7 +309,7 @@ import {
   reconcileLocalTurns,
 } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { applyFullAutoComposerToggle, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, makeSerialTaskQueue, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
@@ -3875,14 +3875,22 @@ ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) 
 const dispatchCodexLocalTurn = async (
   request: import("./fable-local-contract.ts").FableLocalStartRequest,
   sender: WebContents | null,
-): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> =>
-  laneDispatcher.dispatchTurn(codexLocalLane, request, sender)
+): Promise<Readonly<{
+  ok: boolean
+  thread?: DesktopThread | null
+  error?: string
+  reason?: import("./fable-local-contract.ts").FableLocalFailureReason
+}>> => laneDispatcher.dispatchTurn(codexLocalLane, request, sender)
 
 const dispatchFableLocalTurn = async (
   request: import("./fable-local-contract.ts").FableLocalStartRequest,
   sender: WebContents | null,
-): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>> =>
-  laneDispatcher.dispatchTurn(fableLocalLane, request, sender)
+): Promise<Readonly<{
+  ok: boolean
+  thread?: DesktopThread | null
+  error?: string
+  reason?: import("./fable-local-contract.ts").FableLocalFailureReason
+}>> => laneDispatcher.dispatchTurn(fableLocalLane, request, sender)
 
 /** Owner-visible Full Auto outcome notes reuse the same system-note +
  * recovery-broadcast shape the cap note already shipped with. */
@@ -3995,7 +4003,25 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // ok:false, including the in-flight refusal above) transitions in
       // onDispatchFailed below, so the two never double-report.
       if (result.ok) setFullAutoLiveState(threadRef, "turn_completed", turnRef)
-      return result.ok ? { ok: true } : { ok: false, reason: result.error ?? "dispatch_failed" }
+      if (result.ok) return { ok: true }
+      // FA-RT-01 (#8987): carry the lane's typed terminal reason forward as
+      // a rotation class so a routing-policy record can fail over to its
+      // next admitted candidate in the same pass. Untyped failures classify
+      // to null and keep the existing FA-H5 budget semantics.
+      const failureClass = classifyFullAutoDispatchFailure(result.reason, result.error)
+      return {
+        ok: false,
+        reason: result.error ?? "dispatch_failed",
+        ...(failureClass === null ? {} : { failureClass }),
+      }
+    },
+    // FA-RT-01 (#8987): a rotation is an owner-visible fact on the thread,
+    // like every other Full Auto outcome.
+    onRotated: (rotatedThreadRef, rotation) => {
+      appendFullAutoSystemNote(
+        rotatedThreadRef,
+        `Full Auto switched from ${rotation.fromLane} to ${rotation.toLane} (${rotation.reason.replace(/_/g, " ")}) and is continuing.`,
+      )
     },
     onCapReached: capThreadRef => {
       // FA-H4 (#8877): the cap stop is a typed live state, not just a note.

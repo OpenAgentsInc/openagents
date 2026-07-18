@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto"
 
-import type { FullAutoProfile, FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
+import type {
+  FullAutoProfile,
+  FullAutoRecord,
+  FullAutoRegistry,
+  FullAutoRotationReason,
+  FullAutoRotationRecord,
+  FullAutoRoutingCandidate,
+} from "./full-auto-registry.ts"
 
 /**
  * Full Auto (#8853): the single decision function called from two trigger
@@ -81,7 +88,18 @@ export const makeSerialTaskQueue = (): (<A>(task: () => Promise<A>) => Promise<A
   }
 }
 
-export type FullAutoDispatchResult = Readonly<{ ok: boolean; reason?: string }>
+export type FullAutoDispatchResult = Readonly<{
+  ok: boolean
+  reason?: string
+  /**
+   * FA-RT-01 (#8987): OPTIONAL typed failure class. When present (and the
+   * record carries a routing policy with an untried admitted candidate),
+   * reconciliation rotates to the next candidate in the SAME pass instead of
+   * consuming FA-H5 failure budget. Absent = every failure keeps the
+   * existing budget/backoff semantics exactly.
+   */
+  failureClass?: FullAutoRotationReason
+}>
 export type FullAutoDispatch = (input: Readonly<{
   threadRef: string
   /** The exact leased continuation turn ref -- the dispatched turn MUST use
@@ -93,6 +111,42 @@ export type FullAutoDispatch = (input: Readonly<{
 }>) => Promise<FullAutoDispatchResult>
 
 export type FullAutoWorkspaceBlockReason = "workspace_mismatch" | "workspace_unbound"
+
+/**
+ * FA-RT-01 (#8987): map a lane's typed terminal failure reason (plus its
+ * bounded public-safe detail) onto a rotation class, or null when the
+ * failure must NOT rotate (owner interrupts, model substitution, workflow
+ * incompatibility, and anything untyped). The detail markers mirror the
+ * exact classification codex-app-server-turn.ts already applies
+ * (`quotaExhausted` before `rateLimited`); this is deterministic
+ * error-classification on an already-selected path, not intent routing.
+ */
+export const classifyFullAutoDispatchFailure = (
+  reason: string | undefined,
+  detail?: string,
+): FullAutoRotationReason | null => {
+  switch (reason) {
+    case "budget_exceeded":
+    case "no_claude_account":
+    case "no_codex_account":
+    case "account_reconnect_required":
+      return "account_exhausted"
+    case "timeout":
+    case "sdk_unavailable":
+    case "session_failed": {
+      const lower = (detail ?? "").toLowerCase()
+      if (lower.includes("usage limit") || lower.includes("quota") || lower.includes("purchase more credits")) {
+        return "account_exhausted"
+      }
+      if (lower.includes("rate limit") || lower.includes("429") || lower.includes("too many requests")) {
+        return "rate_limited"
+      }
+      return "provider_error"
+    }
+    default:
+      return null
+  }
+}
 
 export const reconcileFullAutoThreads = async (input: Readonly<{
   registry: FullAutoRegistry
@@ -116,12 +170,19 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     grantedWorkspaceRef: string | null
     resolvedWorkspaceRef: string
   }>) => void
-  /** FA-H5: a dispatch failed (thrown or `ok: false`) -- always invoked. */
+  /** FA-H5: a dispatch failed (thrown or `ok: false`) -- always invoked.
+   * FA-RT-01 (#8987): with a routing policy, invoked only for the ONE
+   * budget-consuming failure that ends a full unsuccessful cycle (or a
+   * non-rotatable failure); rotation-eligible intermediate failures invoke
+   * `onRotated` instead. */
   onDispatchFailed?: (threadRef: string, failure: Readonly<{
     reason: string
     consecutiveFailures: number
     disabled: boolean
   }>) => void
+  /** FA-RT-01 (#8987): a typed failure rotated the thread to its next
+   * admitted candidate within the same pass (never consuming budget). */
+  onRotated?: (threadRef: string, rotation: FullAutoRotationRecord) => void
 }>): Promise<ReadonlyArray<string>> => {
   const now = input.now ?? (() => new Date())
   const dispatched: string[] = []
@@ -186,10 +247,6 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     ) {
       input.registry.clearPending(threadRef)
     }
-    // FA-H3: the lease and the dispatched turn share ONE identity. Claim it
-    // durably before dispatch; a concurrent pass that lost the claim skips.
-    const turnRef = `turn.full-auto.${randomUUID()}`
-    if (!input.registry.claimPending(threadRef, turnRef)) continue
     const failThread = (reason: string): void => {
       const consecutiveFailures = input.registry.recordFailure(threadRef, reason)
       const disabled = consecutiveFailures >= FULL_AUTO_MAX_CONSECUTIVE_FAILURES
@@ -201,22 +258,87 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       }
       input.onDispatchFailed?.(threadRef, { reason, consecutiveFailures, disabled })
     }
-    try {
-      const result = await input.dispatch({
-        threadRef,
-        turnRef,
-        message: FULL_AUTO_CONTINUE_MESSAGE,
-        ...(record.profile === undefined ? {} : { profile: record.profile }),
-      })
-      if (result.ok) {
-        input.registry.incrementContinuation(threadRef)
-        input.registry.recordSuccess(threadRef)
-        dispatched.push(threadRef)
-      } else {
-        failThread(result.reason ?? "dispatch_failed")
+    // FA-RT-01 (#8987): resolve the ordered candidate cycle. Absent/empty
+    // routingPolicy = the legacy single-candidate pass over the bound
+    // profile, byte-for-byte the pre-#8987 behavior. With a policy, the
+    // cycle starts at the currently bound lane (or the first candidate) and
+    // tries each candidate AT MOST once in this pass.
+    const policy: ReadonlyArray<FullAutoRoutingCandidate> = record.routingPolicy ?? []
+    const useRouting = policy.length > 0
+    const boundLaneIndex = policy.findIndex(candidate => candidate.lane === record.profile?.lane)
+    const startIndex = boundLaneIndex === -1 ? 0 : boundLaneIndex
+    const attempts = useRouting ? policy.length : 1
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const candidate = useRouting ? policy[(startIndex + attempt) % policy.length]! : null
+      // The candidate's lane/account override the bound profile; model and
+      // effort carry over only when the lane is unchanged (a foreign lane
+      // must fall back to its own defaults, never replay another lane's
+      // model string).
+      const profile: FullAutoProfile | undefined = candidate === null
+        ? record.profile
+        : {
+            ...(record.profile?.lane === candidate.lane ? record.profile : {}),
+            lane: candidate.lane,
+            ...(candidate.accountRef === undefined ? {} : { accountRef: candidate.accountRef }),
+          }
+      // FA-H3: the lease and the dispatched turn share ONE identity. Claim
+      // it durably before dispatch; a concurrent pass that lost the claim
+      // skips. Each rotation attempt is its own leased turn identity.
+      const turnRef = `turn.full-auto.${randomUUID()}`
+      if (!input.registry.claimPending(threadRef, turnRef)) break
+      let failure: Readonly<{ reason: string; failureClass: FullAutoRotationReason | null }>
+      try {
+        const result = await input.dispatch({
+          threadRef,
+          turnRef,
+          message: FULL_AUTO_CONTINUE_MESSAGE,
+          ...(profile === undefined ? {} : { profile }),
+        })
+        if (result.ok) {
+          input.registry.incrementContinuation(threadRef)
+          input.registry.recordSuccess(threadRef)
+          // FA-RT-01: a rotation that succeeded on a different candidate
+          // rebinds the durable profile so the NEXT continuation starts on
+          // the lane that is actually working.
+          if (
+            candidate !== null && profile !== undefined &&
+            (record.profile?.lane !== profile.lane || record.profile?.accountRef !== profile.accountRef)
+          ) {
+            input.registry.bindProfile(threadRef, profile)
+          }
+          dispatched.push(threadRef)
+          break
+        }
+        failure = {
+          reason: result.reason ?? "dispatch_failed",
+          failureClass: result.failureClass ?? null,
+        }
+      } catch (error) {
+        failure = {
+          reason: error instanceof Error ? `${error.name}: ${error.message}` : "dispatch_threw",
+          failureClass: null,
+        }
       }
-    } catch (error) {
-      failThread(error instanceof Error ? `${error.name}: ${error.message}` : "dispatch_threw")
+      const untriedRemain = attempt < attempts - 1
+      if (useRouting && failure.failureClass !== null && untriedRemain) {
+        // FA-RT-01: rotate WITHOUT consuming FA-H5 budget -- release the
+        // lease, persist the typed rotation fact, and try the next admitted
+        // candidate in this same pass.
+        input.registry.clearPending(threadRef)
+        const nextCandidate = policy[(startIndex + attempt + 1) % policy.length]!
+        const rotated = input.registry.recordRotation(threadRef, {
+          fromLane: candidate!.lane,
+          toLane: nextCandidate.lane,
+          reason: failure.failureClass,
+        })
+        const rotationRecord = rotated?.rotationHistory?.at(-1)
+        if (rotationRecord !== undefined) input.onRotated?.(threadRef, rotationRecord)
+        continue
+      }
+      // A full unsuccessful cycle (or a non-rotatable failure) consumes
+      // exactly ONE failure-budget step -- existing FA-H5 semantics.
+      failThread(failure.reason)
+      break
     }
   }
   return dispatched

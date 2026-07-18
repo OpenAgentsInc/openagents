@@ -611,6 +611,277 @@ describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
   })
 })
 
+describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
+  const enableWithPolicy = (
+    registry: FullAutoRegistry,
+    threadRef: string,
+    policy: ReadonlyArray<{ lane: string; accountRef?: string }>,
+    profile: { lane?: string; accountRef?: string; model?: string } = { lane: policy[0]!.lane },
+  ) => {
+    registry.set(threadRef, true, { workspaceRef: GRANTED_WORKSPACE, profile, routingPolicy: policy })
+  }
+
+  test.each(["account_exhausted", "rate_limited", "provider_error"] as const)(
+    "a typed %s failure on candidate 1 continues on candidate 2 in the SAME pass: rotation record persisted, NO failure budget consumed, profile rebound",
+    async failureClass => {
+      const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-"))
+      try {
+        const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+        enableWithPolicy(registry, "thread-rotate", [
+          { lane: "codex-local", accountRef: "codex-1" },
+          { lane: "fable-local", accountRef: "claude-1" },
+        ])
+
+        const attempts: Array<{ turnRef: string; lane: string | undefined; accountRef: string | undefined }> = []
+        const rotations: Array<{ fromLane: string; toLane: string; reason: string }> = []
+        const failures: Array<string> = []
+        const dispatched = await reconcile(registry, {
+          dispatch: async input => {
+            attempts.push({
+              turnRef: input.turnRef,
+              lane: input.profile?.lane,
+              accountRef: input.profile?.accountRef,
+            })
+            return input.profile?.lane === "codex-local"
+              ? { ok: false, reason: "lane refused", failureClass }
+              : { ok: true }
+          },
+          onRotated: (_threadRef, rotation) => {
+            rotations.push({ fromLane: rotation.fromLane, toLane: rotation.toLane, reason: rotation.reason })
+          },
+          onDispatchFailed: (_threadRef, failure) => { failures.push(failure.reason) },
+        })
+
+        // The run never halted: candidate 2 dispatched in the same pass.
+        expect(dispatched).toEqual(["thread-rotate"])
+        expect(attempts).toHaveLength(2)
+        expect(attempts[0]).toMatchObject({ lane: "codex-local", accountRef: "codex-1" })
+        expect(attempts[1]).toMatchObject({ lane: "fable-local", accountRef: "claude-1" })
+        // Each attempt is its own leased turn identity.
+        expect(attempts[0]!.turnRef).not.toBe(attempts[1]!.turnRef)
+        // The rotation is a typed, persisted, owner-visible fact.
+        expect(rotations).toEqual([{ fromLane: "codex-local", toLane: "fable-local", reason: failureClass }])
+        const record = registry.record("thread-rotate")
+        expect(record?.rotationHistory).toEqual([{
+          fromLane: "codex-local",
+          toLane: "fable-local",
+          reason: failureClass,
+          at: expect.any(String),
+        }])
+        // No failure budget consumed and no backoff entered (FA-H5 untouched
+        // while an untried admitted candidate remained).
+        expect(failures).toEqual([])
+        expect(record?.consecutiveFailures ?? 0).toBe(0)
+        expect(record?.lastFailureAt).toBeUndefined()
+        expect(record?.blockedReason ?? null).toBe(null)
+        expect(record?.enabled).toBe(true)
+        expect(record?.continuationCount).toBe(1)
+        expect(record?.pendingTurnRef ?? null).toBe(null)
+        // The durable profile now points at the lane that actually worked,
+        // so the NEXT continuation starts there.
+        expect(record?.profile?.lane).toBe("fable-local")
+        expect(record?.profile?.accountRef).toBe("claude-1")
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test("a FULL unsuccessful cycle consumes exactly ONE FA-H5 failure-budget step and records each intermediate rotation", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-cycle-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      enableWithPolicy(registry, "thread-cycle", [
+        { lane: "codex-local" },
+        { lane: "fable-local" },
+        { lane: "acp:grok-cli" },
+      ])
+
+      let attempts = 0
+      const failures: Array<{ reason: string; consecutiveFailures: number; disabled: boolean }> = []
+      const dispatched = await reconcile(registry, {
+        dispatch: async () => {
+          attempts += 1
+          return { ok: false, reason: "account_exhausted", failureClass: "account_exhausted" }
+        },
+        onDispatchFailed: (_threadRef, failure) => { failures.push({ ...failure }) },
+      })
+
+      expect(dispatched).toEqual([])
+      // Every candidate was tried exactly once in the one pass.
+      expect(attempts).toBe(3)
+      // ...but the whole cycle cost exactly ONE budget step.
+      expect(failures).toEqual([{ reason: "account_exhausted", consecutiveFailures: 1, disabled: false }])
+      const record = registry.record("thread-cycle")
+      expect(record?.consecutiveFailures).toBe(1)
+      expect(record?.enabled).toBe(true)
+      expect(record?.lastFailureAt).toBeDefined()
+      expect(record?.pendingTurnRef ?? null).toBe(null)
+      // Two rotations happened (1->2, 2->3); the final failure is budget, not
+      // a rotation.
+      expect(record?.rotationHistory?.map(entry => `${entry.fromLane}>${entry.toLane}`)).toEqual([
+        "codex-local>fable-local",
+        "fable-local>acp:grok-cli",
+      ])
+      // A failed cycle never consumes a cap slot (FA-H5 pinned decision).
+      expect(record?.continuationCount).toBe(0)
+
+      // The NEXT pass respects the existing bounded backoff window exactly
+      // as before: inside the window, no candidate is attempted at all.
+      const failedAt = Date.parse(record!.lastFailureAt!)
+      let insideWindowAttempts = 0
+      await reconcile(registry, {
+        now: () => new Date(failedAt + fullAutoFailureBackoffMs(1) - 1),
+        dispatch: async () => { insideWindowAttempts += 1; return { ok: true } },
+      })
+      expect(insideWindowAttempts).toBe(0)
+
+      // Past the window the cycle retries; repeated full cycles walk the
+      // SAME disable-after-5 path as single-lane failures (regression:
+      // existing cap/disable semantics unchanged).
+      await reconcile(registry, {
+        now: () => new Date(failedAt + fullAutoFailureBackoffMs(1) + 1),
+        dispatch: async () => ({ ok: false, reason: "account_exhausted", failureClass: "account_exhausted" }),
+      })
+      expect(registry.record("thread-cycle")?.consecutiveFailures).toBe(2)
+      expect(registry.record("thread-cycle")?.enabled).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("an UNTYPED failure (no failureClass) never rotates even with a policy bound -- it consumes budget immediately, exactly the pre-#8987 semantics", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-untyped-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      enableWithPolicy(registry, "thread-untyped", [{ lane: "codex-local" }, { lane: "fable-local" }])
+
+      let attempts = 0
+      const failures: Array<string> = []
+      await reconcile(registry, {
+        dispatch: async () => { attempts += 1; return { ok: false, reason: "turn_already_in_flight" } },
+        onDispatchFailed: (_threadRef, failure) => { failures.push(failure.reason) },
+      })
+      expect(attempts).toBe(1)
+      expect(failures).toEqual(["turn_already_in_flight"])
+      expect(registry.record("thread-untyped")?.consecutiveFailures).toBe(1)
+      expect(registry.record("thread-untyped")?.rotationHistory).toBeUndefined()
+
+      // A THROWN dispatch is equally untyped: no rotation.
+      const thrownRegistry = openFullAutoRegistry(path.join(root, "full-auto", "registry2.json"))
+      enableWithPolicy(thrownRegistry, "thread-thrown", [{ lane: "codex-local" }, { lane: "fable-local" }])
+      let thrownAttempts = 0
+      await reconcile(thrownRegistry, {
+        dispatch: async () => { thrownAttempts += 1; throw new Error("socket closed") },
+      })
+      expect(thrownAttempts).toBe(1)
+      expect(thrownRegistry.record("thread-thrown")?.consecutiveFailures).toBe(1)
+      expect(thrownRegistry.record("thread-thrown")?.rotationHistory).toBeUndefined()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("a record WITHOUT a routing policy keeps byte-for-byte legacy behavior even when the dispatch failure carries a typed class", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-legacy-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-legacy", true, {
+        workspaceRef: GRANTED_WORKSPACE,
+        profile: { lane: "codex-local" },
+      })
+
+      let attempts = 0
+      const failures: Array<string> = []
+      await reconcile(registry, {
+        dispatch: async () => {
+          attempts += 1
+          return { ok: false, reason: "account_exhausted", failureClass: "account_exhausted" }
+        },
+        onDispatchFailed: (_threadRef, failure) => { failures.push(failure.reason) },
+      })
+      // Exactly one attempt, budget consumed, no rotation invented.
+      expect(attempts).toBe(1)
+      expect(failures).toEqual(["account_exhausted"])
+      expect(registry.record("thread-legacy")?.consecutiveFailures).toBe(1)
+      expect(registry.record("thread-legacy")?.rotationHistory).toBeUndefined()
+      expect(registry.record("thread-legacy")?.profile).toEqual({ lane: "codex-local" })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("the cycle starts at the currently bound lane, wraps through the ordered list, and a foreign-lane candidate never inherits the bound model string", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-start-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      // Bound profile currently points at the SECOND candidate with a
+      // Codex-family model; rotation must start there and wrap.
+      enableWithPolicy(
+        registry,
+        "thread-start",
+        [{ lane: "fable-local" }, { lane: "codex-local", accountRef: "codex-2" }, { lane: "acp:grok-cli" }],
+        { lane: "codex-local", accountRef: "codex-2", model: "gpt-5.5" },
+      )
+
+      const attempts: Array<{ lane: string | undefined; model: string | undefined }> = []
+      const dispatched = await reconcile(registry, {
+        dispatch: async input => {
+          attempts.push({ lane: input.profile?.lane, model: input.profile?.model })
+          return attempts.length < 3
+            ? { ok: false, reason: "rate limited", failureClass: "rate_limited" }
+            : { ok: true }
+        },
+      })
+      expect(dispatched).toEqual(["thread-start"])
+      expect(attempts.map(attempt => attempt.lane)).toEqual(["codex-local", "acp:grok-cli", "fable-local"])
+      // Same lane as the bound profile: model carries over. Foreign lanes:
+      // model falls back to lane defaults (undefined), never another lane's
+      // model string.
+      expect(attempts[0]!.model).toBe("gpt-5.5")
+      expect(attempts[1]!.model).toBeUndefined()
+      expect(attempts[2]!.model).toBeUndefined()
+      expect(registry.record("thread-start")?.rotationHistory?.map(entry => entry.toLane))
+        .toEqual(["acp:grok-cli", "fable-local"])
+      expect(registry.record("thread-start")?.profile?.lane).toBe("fable-local")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rotation state survives a restart: Runtime B resumes on the rebound lane with the rotation history intact", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-restart-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      const registryA = openFullAutoRegistry(registryFile)
+      registryA.set("thread-rt-restart", true, {
+        workspaceRef: GRANTED_WORKSPACE,
+        profile: { lane: "codex-local" },
+        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+      })
+      await reconcile(registryA, {
+        dispatch: async input =>
+          input.profile?.lane === "codex-local"
+            ? { ok: false, reason: "usage limit", failureClass: "account_exhausted" }
+            : { ok: true },
+      })
+
+      const registryB = openFullAutoRegistry(registryFile)
+      const record = registryB.record("thread-rt-restart")
+      expect(record?.profile?.lane).toBe("fable-local")
+      expect(record?.rotationHistory).toHaveLength(1)
+      const lanes: Array<string | undefined> = []
+      await reconcile(registryB, {
+        dispatch: async input => { lanes.push(input.profile?.lane); return { ok: true } },
+      })
+      expect(lanes).toEqual(["fable-local"])
+      expect(registryB.record("thread-rt-restart")?.continuationCount).toBe(2)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
 /**
  * FA-RUN-02 (#8970): replays the 2026-07-17 overnight thread-eviction
  * incident against the REAL mutable thread-store cache (thread-store.ts),

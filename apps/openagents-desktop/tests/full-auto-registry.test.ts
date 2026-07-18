@@ -7,7 +7,10 @@ import {
   FULL_AUTO_BLOCKED_REASON_LIMIT,
   FULL_AUTO_RECORD_LIMIT,
   FULL_AUTO_REGISTRY_SCHEMA,
+  FULL_AUTO_ROTATION_HISTORY_LIMIT,
+  FULL_AUTO_ROUTING_POLICY_LIMIT,
   openFullAutoRegistry,
+  projectFullAutoRotationHistory,
 } from "../src/full-auto-registry.ts"
 
 const record = (registry: ReturnType<typeof openFullAutoRegistry>, threadRef: string) =>
@@ -194,6 +197,170 @@ describe("Full Auto durable record extensions (FA-H2 #8875, FA-H3 #8876, FA-H5 #
       expect(() => registry.set("thread-s", false)).toThrow(
         "refusing to disable Full Auto without durable disable attribution",
       )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
+  test("a rev-9/rev-10-era registry file WITHOUT routingPolicy/rotationHistory still decodes and behaves exactly as single-lane (legacy fixture)", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rt-legacy-"))
+    try {
+      const registryDir = path.join(root, "full-auto")
+      const registryFile = path.join(registryDir, "registry.json")
+      mkdirSync(registryDir, { recursive: true })
+      // The exact pre-#8987 on-disk shape: wave-2 fields present, no routing
+      // fields at all.
+      writeFileSync(registryFile, JSON.stringify({
+        schema: FULL_AUTO_REGISTRY_SCHEMA,
+        records: [{
+          threadRef: "thread-legacy-single-lane",
+          enabled: true,
+          continuationCount: 3,
+          updatedAt: "2026-07-16T00:00:00.000Z",
+          workspaceRef: "/repo/granted",
+          profile: { lane: "codex-local", accountRef: "codex-1", model: "gpt-5.5" },
+        }],
+      }), "utf8")
+
+      const registry = openFullAutoRegistry(registryFile)
+      expect(readdirSync(registryDir).filter(name => name.includes("quarantined"))).toEqual([])
+      const decoded = registry.record("thread-legacy-single-lane")
+      expect(decoded?.enabled).toBe(true)
+      expect(decoded?.routingPolicy).toBeUndefined()
+      expect(decoded?.rotationHistory).toBeUndefined()
+      expect(projectFullAutoRotationHistory(decoded!)).toEqual([])
+      // Mutating through every existing path keeps the fields absent -- the
+      // upgrade never invents a policy for a legacy record.
+      registry.incrementContinuation("thread-legacy-single-lane")
+      registry.recordFailure("thread-legacy-single-lane", "transient")
+      registry.recordSuccess("thread-legacy-single-lane")
+      const touched = openFullAutoRegistry(registryFile).record("thread-legacy-single-lane")
+      expect(touched?.routingPolicy).toBeUndefined()
+      expect(touched?.rotationHistory).toBeUndefined()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("bindRoutingPolicy persists the ordered candidate list durably, survives enable/disable transitions, and null clears it", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rt-bind-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      const registry = openFullAutoRegistry(registryFile)
+      registry.set("thread-rt", true, { workspaceRef: "/repo/a" })
+      const policy = [
+        { lane: "codex-local", accountRef: "codex-1" },
+        { lane: "fable-local" },
+      ]
+      expect(registry.bindRoutingPolicy("thread-rt", policy)?.routingPolicy).toEqual(policy)
+
+      // Durable across a fresh open.
+      expect(openFullAutoRegistry(registryFile).record("thread-rt")?.routingPolicy).toEqual(policy)
+
+      // The policy survives a disable (diagnosis-preserving, like
+      // workspaceRef) and a re-enable.
+      registry.set("thread-rt", false, { disabledBy: "ui_toggle" })
+      expect(registry.record("thread-rt")?.routingPolicy).toEqual(policy)
+      registry.set("thread-rt", true, { workspaceRef: "/repo/a" })
+      expect(registry.record("thread-rt")?.routingPolicy).toEqual(policy)
+
+      // An enable-time option rebinds it atomically.
+      const rebound = [{ lane: "fable-local" }]
+      registry.set("thread-rt", true, { workspaceRef: "/repo/a", routingPolicy: rebound })
+      expect(registry.record("thread-rt")?.routingPolicy).toEqual(rebound)
+
+      // null clears back to legacy single-lane behavior.
+      expect(registry.bindRoutingPolicy("thread-rt", null)?.routingPolicy).toBeUndefined()
+      expect(openFullAutoRegistry(registryFile).record("thread-rt")?.routingPolicy).toBeUndefined()
+
+      // Missing record is a null no-op; bounds fail closed.
+      expect(registry.bindRoutingPolicy("thread-missing", policy)).toBe(null)
+      expect(() => registry.bindRoutingPolicy("thread-rt", [])).toThrow()
+      expect(() => registry.bindRoutingPolicy(
+        "thread-rt",
+        Array.from({ length: FULL_AUTO_ROUTING_POLICY_LIMIT + 1 }, (_, index) => ({ lane: `lane-${index}` })),
+      )).toThrow()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test(`recordRotation appends typed rotation facts, caps the history at ${FULL_AUTO_ROTATION_HISTORY_LIMIT} with the OLDEST evicted, and survives a fresh open`, () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rt-history-"))
+    try {
+      const registryFile = path.join(root, "full-auto", "registry.json")
+      let tick = 0
+      const registry = openFullAutoRegistry(
+        registryFile,
+        () => new Date(Date.UTC(2026, 6, 17, 0, 0, 0, tick++)),
+      )
+      registry.set("thread-rot", true)
+      expect(registry.recordRotation("thread-rot", {
+        fromLane: "codex-local",
+        toLane: "fable-local",
+        reason: "account_exhausted",
+      })?.rotationHistory).toEqual([{
+        fromLane: "codex-local",
+        toLane: "fable-local",
+        reason: "account_exhausted",
+        at: expect.stringContaining("2026-07-17T"),
+      }])
+
+      for (let index = 0; index < FULL_AUTO_ROTATION_HISTORY_LIMIT + 4; index += 1) {
+        registry.recordRotation("thread-rot", {
+          fromLane: `lane-${index}`,
+          toLane: `lane-${index + 1}`,
+          reason: "provider_error",
+        })
+      }
+      const history = registry.record("thread-rot")?.rotationHistory ?? []
+      expect(history).toHaveLength(FULL_AUTO_ROTATION_HISTORY_LIMIT)
+      // The first (account_exhausted) entry and the oldest provider_error
+      // entries were evicted; the most recent entry is last.
+      expect(history.every(entry => entry.reason === "provider_error")).toBe(true)
+      expect(history.at(-1)?.fromLane).toBe(`lane-${FULL_AUTO_ROTATION_HISTORY_LIMIT + 3}`)
+
+      // Durable, and the public-safe projection returns exactly the typed
+      // fields (never anything extra).
+      const reopened = openFullAutoRegistry(registryFile).record("thread-rot")!
+      expect(reopened.rotationHistory).toEqual(history)
+      const projected = projectFullAutoRotationHistory(reopened)
+      expect(projected).toHaveLength(FULL_AUTO_ROTATION_HISTORY_LIMIT)
+      for (const entry of projected) {
+        expect(Object.keys(entry).sort()).toEqual(["at", "fromLane", "reason", "toLane"])
+      }
+
+      // Missing record is a null no-op.
+      expect(registry.recordRotation("thread-missing", {
+        fromLane: "a",
+        toLane: "b",
+        reason: "rate_limited",
+      })).toBe(null)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rotation history is preserved across disable/enable (evidence, like blockedReason) and recordFailure/recordSuccess leave it untouched", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rt-preserve-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-keep", true)
+      registry.recordRotation("thread-keep", { fromLane: "codex-local", toLane: "fable-local", reason: "rate_limited" })
+
+      registry.recordFailure("thread-keep", "transient")
+      registry.recordSuccess("thread-keep")
+      registry.set("thread-keep", false, { disabledBy: "ui_toggle" })
+      registry.set("thread-keep", true)
+
+      expect(registry.record("thread-keep")?.rotationHistory).toEqual([{
+        fromLane: "codex-local",
+        toLane: "fable-local",
+        reason: "rate_limited",
+        at: expect.any(String),
+      }])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

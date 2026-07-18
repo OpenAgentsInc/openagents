@@ -6,7 +6,9 @@ import {
 } from "./codex-local-contract.ts"
 import {
   FULL_AUTO_BLOCKED_REASON_LIMIT,
+  FULL_AUTO_ROTATION_HISTORY_LIMIT,
   FullAutoDisabledBySchema,
+  FullAutoRotationRecordSchema,
 } from "./full-auto-registry.ts"
 import {
   FullAutoRecoveryActionSchema,
@@ -283,6 +285,17 @@ export const FullAutoControlRecordSchema = Schema.Struct({
   disabledBy: Schema.NullOr(FullAutoDisabledBySchema),
   disabledAt: Schema.NullOr(Schema.String),
   live: FullAutoControlLiveSchema,
+  /**
+   * FA-RT-01 (#8987): bounded lane-rotation history, most recent last.
+   * OPTIONAL and additive so existing server projections keep decoding
+   * unchanged; the control-server projection (owned separately) populates it
+   * from `projectFullAutoRotationHistory` in full-auto-registry.ts. Entries
+   * are public-safe by construction: lane refs, a typed reason, and an ISO
+   * timestamp only -- never prompts, models, paths, or secrets.
+   */
+  rotationHistory: Schema.optional(Schema.Array(FullAutoRotationRecordSchema).check(
+    Schema.isMaxLength(FULL_AUTO_ROTATION_HISTORY_LIMIT),
+  )),
 })
 export type FullAutoControlRecord = typeof FullAutoControlRecordSchema.Type
 
