@@ -291,6 +291,14 @@ export type QuestionCardInteraction = Readonly<{
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
+/**
+ * Main owns the durable bounds: five ordinary chats, twenty-four reviewed
+ * acceptance verdicts, and at most one protected active Full Auto thread.
+ * The renderer must project that complete bounded catalog; its former
+ * five-row second cap silently hid valid audit rows already retained by main.
+ */
+export const desktopLocalThreadProjectionLimit = 32
+
 export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings", "full-auto"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
@@ -1066,7 +1074,8 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   pending: state.pendingByThread[thread.id] ?? false,
   runtimeFailure: state.runtimeFailureByThread[thread.id] ?? null,
   notes: thread.notes,
-  threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
+  threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)]
+    .slice(0, desktopLocalThreadProjectionLimit),
   activeThreadId: thread.id,
   composerAdmission: state.composerAdmissionByThread[thread.id] ?? idleComposerAdmission(),
   composerIntentIdentity: null,
@@ -1852,10 +1861,10 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
   const orderedThreads = [...threads].sort(compareDesktopThreadsByCreatedAt)
   const active = state.activeThreadId === null ? orderedThreads[0] : orderedThreads.find((thread) => thread.id === state.activeThreadId)
   return active === undefined
-    ? { ...state, threads: orderedThreads.slice(0, 5) }
+    ? { ...state, threads: orderedThreads.slice(0, desktopLocalThreadProjectionLimit) }
     : {
         ...state,
-        threads: orderedThreads.slice(0, 5),
+        threads: orderedThreads.slice(0, desktopLocalThreadProjectionLimit),
         activeThreadId: active.id,
         notes: active.notes,
         // Main persists this projection before a restarted renderer asks for
@@ -1876,7 +1885,7 @@ export const withThreadCatalog = (
   state: DesktopShellState,
   threads: ReadonlyArray<DesktopThread>,
 ): DesktopShellState => state.activeThreadId === null
-  ? { ...state, threads: [...threads].sort(compareDesktopThreadsByCreatedAt).slice(0, 5) }
+  ? { ...state, threads: [...threads].sort(compareDesktopThreadsByCreatedAt).slice(0, desktopLocalThreadProjectionLimit) }
   : withThreads(state, threads)
 
 export const withLiveAgentGraph = (
@@ -1909,7 +1918,8 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
       runtimeFailure: null,
       pendingByThread: { ...state.pendingByThread, [completedThread.id]: false },
       runtimeFailureByThread: { ...state.runtimeFailureByThread, [completedThread.id]: null },
-      threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)].slice(0, 5),
+      threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)]
+        .slice(0, desktopLocalThreadProjectionLimit),
       // A successful Fable turn just established/renewed this exact thread's
       // runtime continuity entry. Record it as an H1 picker candidate without
       // adding an asynchronous refresh to history navigation.
@@ -2662,7 +2672,8 @@ export const makeDesktopShellHandlers = (
           pendingByThread: { ...next.pendingByThread, [submissionThreadId]: false },
           runtimeFailureByThread: { ...next.runtimeFailureByThread, [submissionThreadId]: failure },
           ...(result.thread === undefined || result.thread === null ? {} : {
-            threads: [result.thread, ...next.threads.filter(thread => thread.id !== submissionThreadId)].slice(0, 5),
+            threads: [result.thread, ...next.threads.filter(thread => thread.id !== submissionThreadId)]
+              .slice(0, desktopLocalThreadProjectionLimit),
           }),
         }
       }
@@ -2703,7 +2714,8 @@ export const makeDesktopShellHandlers = (
       // catalog while its main-owned Full Auto loop kept running. Re-admit
       // the exact opened thread before selecting it so the header/sidebar and
       // composer all share one local-session identity again.
-      threads: [thread, ...current.threads.filter(value => value.id !== thread.id)].slice(0, 5),
+      threads: [thread, ...current.threads.filter(value => value.id !== thread.id)]
+        .slice(0, desktopLocalThreadProjectionLimit),
       history: {
         ...current.history,
         catalog: threadRef === canonicalThreadRef

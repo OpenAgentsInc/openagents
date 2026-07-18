@@ -1815,6 +1815,28 @@ describe("composer image input (capability I1)", () => {
 })
 
 describe("pure transitions", () => {
+  test("thread hydration projects six reviewed verdict rows in addition to ordinary chat pressure", () => {
+    const verdicts = Array.from({ length: 6 }, (_, index) => ({
+      id: `verdict-${index + 1}`,
+      title: `PASS · TEST 0${index + 1} · reviewed`,
+      createdAt: `2026-07-18T00:0${index + 1}:00.000Z`,
+      updatedAt: `2026-07-18T00:0${index + 1}:00.000Z`,
+      notes: [],
+    }))
+    const ordinary = Array.from({ length: 6 }, (_, index) => ({
+      id: `ordinary-${index + 1}`,
+      title: `Ordinary ${index + 1}`,
+      createdAt: `2026-07-18T00:1${index}:00.000Z`,
+      updatedAt: `2026-07-18T00:1${index}:00.000Z`,
+      notes: [],
+    }))
+
+    const next = withThreads({ ...baseState, activeThreadId: null }, [...verdicts, ...ordinary])
+
+    expect(next.threads).toHaveLength(12)
+    expect(next.threads.filter(thread => thread.title.startsWith("PASS · TEST"))).toHaveLength(6)
+  })
+
   test("thread hydration defensively keeps the newest-created conversation first", () => {
     const newest = { id: "newest", title: "Newest", createdAt: "2026-07-12T18:00:00.000Z", updatedAt: "2026-07-12T18:10:00.000Z", notes: [] } as const
     const oldest = { id: "oldest", title: "Oldest", createdAt: "2026-07-12T16:00:00.000Z", updatedAt: "2026-07-12T19:00:00.000Z", notes: [] } as const
