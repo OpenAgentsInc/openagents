@@ -3,9 +3,12 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { ArrowUp, Square } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 
+type HarnessProvider = "codex" | "claude";
+
 export function App() {
   const [endpoint, setEndpoint] = useState<string>();
   const [startupError, setStartupError] = useState<string>();
+  const [provider, setProvider] = useState<HarnessProvider>("codex");
 
   useEffect(() => {
     void window.harnessDesktop
@@ -22,15 +25,23 @@ export function App() {
     return <StartupState message="Starting the local harness…" />;
   }
 
-  return <HarnessChat endpoint={endpoint} />;
+  return <HarnessChat endpoint={endpoint} onProviderChange={setProvider} provider={provider} key={provider} />;
 }
 
-function HarnessChat({ endpoint }: { endpoint: string }) {
+function HarnessChat({
+  endpoint,
+  onProviderChange,
+  provider,
+}: {
+  endpoint: string;
+  onProviderChange: (provider: HarnessProvider) => void;
+  provider: HarnessProvider;
+}) {
   const [input, setInput] = useState("");
   const chatId = useMemo(() => crypto.randomUUID(), []);
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: `${endpoint}/api/chat` }),
-    [endpoint],
+    () => new DefaultChatTransport({ api: `${endpoint}/api/chat/${provider}` }),
+    [endpoint, provider],
   );
   const { messages, sendMessage, status, stop, error } = useChat({
     id: chatId,
@@ -65,9 +76,19 @@ function HarnessChat({ endpoint }: { endpoint: string }) {
             <p className="text-[11px] text-[var(--muted-foreground)]">Electron test</p>
           </div>
         </div>
-        <div className="app-no-drag ml-auto flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+        <div className="app-no-drag ml-auto flex items-center gap-3">
+          <div className="flex rounded-md border border-white/10 bg-white/[0.035] p-0.5" role="group" aria-label="Harness provider">
+            <ProviderButton active={provider === "codex"} onClick={() => onProviderChange("codex")}>
+              Codex
+            </ProviderButton>
+            <ProviderButton active={provider === "claude"} onClick={() => onProviderChange("claude")}>
+              Claude Code
+            </ProviderButton>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
           <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-          Local Codex
+            {provider === "codex" ? "Local Codex" : "Claude Code"}
+          </div>
         </div>
       </header>
 
@@ -90,7 +111,7 @@ function HarnessChat({ endpoint }: { endpoint: string }) {
               disabled={isBusy}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Codex to inspect or change the local harness workspace…"
+              placeholder={`Ask ${provider === "codex" ? "Codex" : "Claude Code"} to inspect or change the local harness workspace…`}
               value={input}
             />
             <div className="flex items-center justify-between px-1 pt-1">
@@ -117,7 +138,7 @@ function HarnessChat({ endpoint }: { endpoint: string }) {
             </div>
           </div>
           <p className="mt-2 text-center text-[11px] text-[var(--muted-foreground)]">
-            Experimental owner-local harness. This is not a production containment boundary.
+            Experimental owner-local harness. Switching providers uses a separate native session.
           </p>
         </form>
       </section>
@@ -131,11 +152,34 @@ function EmptyState() {
       <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-sky-300/20 bg-sky-400/10 text-base text-sky-300">
         A
       </span>
-      <h2 className="text-base font-medium">Start a local Codex session</h2>
+      <h2 className="text-base font-medium">Start a harness session</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--muted-foreground)]">
         Messages stream through AI SDK UI into a native Codex harness session.
       </p>
     </div>
+  );
+}
+
+function ProviderButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`rounded px-2 py-1 text-[11px] font-medium transition ${
+        active ? "bg-sky-400/15 text-sky-200" : "text-[var(--muted-foreground)] hover:text-slate-200"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 

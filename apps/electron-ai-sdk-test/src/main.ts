@@ -5,19 +5,26 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import type { HarnessAgent, HarnessAgentResumeSessionState } from "@ai-sdk/harness/agent";
+import type { createClaudeCode as CreateClaudeCode } from "@ai-sdk/harness-claude-code";
 import type { createCodex as CreateCodex } from "@ai-sdk/harness-codex";
 import type { UIMessage } from "ai";
 import type { LocalAiSdkSandboxProvider } from "@openagentsinc/ai-sdk-sandbox-local";
 
 type HarnessSession = Awaited<ReturnType<typeof harnessAgent.createSession>>;
+type HarnessProvider = "claude" | "codex";
+type HarnessRuntime = {
+  activeSessions: Set<HarnessSession>;
+  agent: HarnessAgent;
+  resumeStates: Map<string, HarnessAgentResumeSessionState>;
+  sandbox: LocalAiSdkSandboxProvider;
+};
 
 let harnessAgent: HarnessAgent;
-let sandbox: LocalAiSdkSandboxProvider;
 let createCodex: typeof CreateCodex;
+let createClaudeCode: typeof CreateClaudeCode;
 let aiSdk: typeof import("ai");
 
-const resumeStates = new Map<string, HarnessAgentResumeSessionState>();
-const activeSessions = new Set<HarnessSession>();
+const harnessRuntimes = new Map<HarnessProvider, HarnessRuntime>();
 const CHATGPT_CODEX_BIN = "/Applications/ChatGPT.app/Contents/Resources/codex";
 let harnessServer: Server | undefined;
 let harnessEndpoint: string | undefined;
@@ -48,36 +55,67 @@ async function initializeHarness(): Promise<void> {
   const load = new Function("specifier", "return import(specifier);") as (
     specifier: string,
   ) => Promise<unknown>;
-  const [harnessModule, codexModule, aiModule, sandboxModule] = await Promise.all([
+  const [harnessModule, claudeModule, codexModule, aiModule, sandboxModule] = await Promise.all([
     load("@ai-sdk/harness/agent"),
+    load("@ai-sdk/harness-claude-code"),
     load("@ai-sdk/harness-codex"),
     load("ai"),
     load("@openagentsinc/ai-sdk-sandbox-local"),
   ]);
   const { HarnessAgent: HarnessAgentConstructor } = harnessModule as typeof import("@ai-sdk/harness/agent");
+  ({ createClaudeCode } = claudeModule as typeof import("@ai-sdk/harness-claude-code"));
   ({ createCodex } = codexModule as typeof import("@ai-sdk/harness-codex"));
   aiSdk = aiModule as typeof import("ai");
   const { LocalAiSdkSandboxProvider: LocalSandboxProvider } = sandboxModule as typeof import("@openagentsinc/ai-sdk-sandbox-local");
 
-  sandbox = new LocalSandboxProvider({
+  const codexSandbox = createLocalSandbox(LocalSandboxProvider, "codex", 4312);
+  const claudeSandbox = createLocalSandbox(LocalSandboxProvider, "claude", 4313);
+  harnessRuntimes.set("codex", {
+    activeSessions: new Set(),
+    agent: new HarnessAgentConstructor({
+      harness: createLocalCodexHarness(),
+      id: "openagents-electron-ai-sdk-test-codex",
+      instructions:
+        "You are a concise coding assistant. Work only in the owner-local harness workspace and explain results briefly.",
+      sandbox: codexSandbox,
+    }),
+    resumeStates: new Map(),
+    sandbox: codexSandbox,
+  });
+  harnessRuntimes.set("claude", {
+    activeSessions: new Set(),
+    agent: new HarnessAgentConstructor({
+      harness: createClaudeCode({
+        maxTurns: 10,
+        model: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6",
+        thinking: { display: "summarized", type: "adaptive" },
+      }),
+      id: "openagents-electron-ai-sdk-test-claude",
+      instructions:
+        "You are a concise coding assistant. Work only in the owner-local harness workspace and explain results briefly.",
+      sandbox: claudeSandbox,
+    }),
+    resumeStates: new Map(),
+    sandbox: claudeSandbox,
+  });
+}
+
+function createLocalSandbox(
+  LocalSandboxProvider: typeof LocalAiSdkSandboxProvider,
+  provider: HarnessProvider,
+  port: number,
+): LocalAiSdkSandboxProvider {
+  return new LocalSandboxProvider({
     accountHomes: {
       codexHome: join(homedir(), ".codex"),
     },
-    defaultPorts: [4312],
+    defaultPorts: [port],
     env: {
       // This deliberately uses the user's installed, signed-in Codex CLI. The
       // adapter's old bundled executable is not used by this proof of concept.
-      OPENAGENTS_CODEX_BIN: resolveCodexBin(),
+      ...(provider === "codex" ? { OPENAGENTS_CODEX_BIN: resolveCodexBin() } : {}),
     },
-    rootDirectory: join(app.getPath("userData"), "harness-workspaces"),
-  });
-
-  harnessAgent = new HarnessAgentConstructor({
-    harness: createLocalCodexHarness(),
-    id: "openagents-electron-ai-sdk-test",
-    instructions:
-      "You are a concise coding assistant. Work only in the owner-local harness workspace and explain results briefly.",
-    sandbox,
+    rootDirectory: join(app.getPath("userData"), "harness-workspaces", provider),
   });
 }
 
@@ -168,26 +206,29 @@ async function handleHarnessRequest(
       return;
     }
 
-    if (request.method !== "POST" || request.url !== "/api/chat") {
+    const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method !== "POST" || !path.startsWith("/api/chat/")) {
       sendJson(response, 404, { error: "not_found" });
       return;
     }
 
+    const provider = requireProvider(path.slice("/api/chat/".length));
+    const runtime = getRuntime(provider);
     const body = await readChatRequest(request);
     const chatId = requireChatId(body.id);
     const messages = await aiSdk.convertToModelMessages(body.messages);
-    const harnessSession = await resumeOrCreateSession(chatId);
-    activeSessions.add(harnessSession);
+    const harnessSession = await resumeOrCreateSession(runtime, chatId);
+    runtime.activeSessions.add(harnessSession);
 
-    const result = await harnessAgent.stream({ session: harnessSession, messages });
+    const result = await runtime.agent.stream({ session: harnessSession, messages });
     const uiResponse = aiSdk.createUIMessageStreamResponse({
       stream: aiSdk.toUIMessageStream({
         stream: result.stream,
         onEnd: async () => {
           try {
-            resumeStates.set(chatId, await harnessSession.detach());
+            runtime.resumeStates.set(chatId, await harnessSession.detach());
           } finally {
-            activeSessions.delete(harnessSession);
+            runtime.activeSessions.delete(harnessSession);
           }
         },
       }),
@@ -214,11 +255,25 @@ async function handleHarnessRequest(
   }
 }
 
-async function resumeOrCreateSession(chatId: string): Promise<HarnessSession> {
-  const resumeFrom = resumeStates.get(chatId);
-  return harnessAgent.createSession(
+function getRuntime(provider: HarnessProvider): HarnessRuntime {
+  const runtime = harnessRuntimes.get(provider);
+  if (runtime === undefined) throw new Error(`Harness runtime ${provider} has not initialized.`);
+  return runtime;
+}
+
+async function resumeOrCreateSession(
+  runtime: HarnessRuntime,
+  chatId: string,
+): Promise<HarnessSession> {
+  const resumeFrom = runtime.resumeStates.get(chatId);
+  return runtime.agent.createSession(
     resumeFrom === undefined ? { sessionId: chatId } : { sessionId: chatId, resumeFrom },
   );
+}
+
+function requireProvider(value: string): HarnessProvider {
+  if (value === "codex" || value === "claude") return value;
+  throw new RequestError("Unknown harness provider.");
 }
 
 function createLocalCodexHarness() {
@@ -300,9 +355,12 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 }
 
 async function dispose(): Promise<void> {
-  await Promise.allSettled([...activeSessions].map((harnessSession) => harnessSession.destroy()));
-  activeSessions.clear();
-  await sandbox.destroyAllSessions();
+  await Promise.allSettled(
+    [...harnessRuntimes.values()].flatMap((runtime) => [
+      ...runtime.activeSessions,
+    ]).map((harnessSession) => harnessSession.destroy()),
+  );
+  await Promise.all([...harnessRuntimes.values()].map((runtime) => runtime.sandbox.destroyAllSessions()));
   if (harnessServer !== undefined) {
     await new Promise<void>((resolve) => harnessServer?.close(() => resolve()));
   }

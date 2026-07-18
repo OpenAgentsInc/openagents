@@ -227,6 +227,9 @@ importers:
       '@ai-sdk/harness':
         specifier: 1.0.36
         version: 1.0.36(ws@8.21.0)(zod@4.4.3)
+      '@ai-sdk/harness-claude-code':
+        specifier: 1.0.37
+        version: 1.0.37(zod@4.4.3)
       '@ai-sdk/harness-codex':
         specifier: 1.0.38
         version: 1.0.38(zod@4.4.3)
@@ -2281,6 +2284,12 @@ packages:
 
   '@ai-sdk/gateway@4.0.23':
     resolution: {integrity: sha512-f85diFdPMXYJpxCjOYZchMQkRH8h3r6lhK4Q2xmzJ7UA2OQ80L3W7tFu61742xGQK7zHWm5AhxYhNuc50H9SGQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/harness-claude-code@1.0.37':
+    resolution: {integrity: sha512-mcJkqwL3woj2pH31d9HDsqhwOt/cwLdmtgrf8NdJuYBDwVKMVPQ2kvzL2SF6vkuXXFvmCLWxYXMey3RaD/66bQ==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -10759,6 +10768,16 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.11(zod@4.4.3)
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
+
+  '@ai-sdk/harness-claude-code@1.0.37(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/harness': 1.0.36(ws@8.21.0)(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.11(zod@4.4.3)
+      ws: 8.21.0
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@ai-sdk/harness-codex@1.0.38(zod@4.4.3)':
     dependencies:

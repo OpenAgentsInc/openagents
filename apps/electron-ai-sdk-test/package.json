@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "4.0.23",
     "@ai-sdk/harness": "1.0.36",
+    "@ai-sdk/harness-claude-code": "1.0.37",
     "@ai-sdk/harness-codex": "1.0.38",
     "@ai-sdk/provider": "4.0.3",
     "@ai-sdk/provider-utils": "5.0.11",

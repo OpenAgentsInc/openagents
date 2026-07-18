@@ -94,3 +94,4 @@ minimumReleaseAgeExclude:
   - ai@7.0.31
   - "@ai-sdk/mcp@2.0.15"
   - "@ai-sdk/react@4.0.34"
+  - "@ai-sdk/harness-claude-code@1.0.37"
