@@ -143,6 +143,19 @@ export const SarahBusinessContextSchema = S.Struct({
 });
 export interface SarahBusinessContext extends S.Schema.Type<typeof SarahBusinessContextSchema> {}
 
+/** Raw provenance refs belong to the private evidence layer, not the owner's
+ * conversational transcript. This is a final presentation fence in addition
+ * to the model instruction, so a provider cannot leak bracketed internal refs
+ * into ordinary Sarah replies. */
+export const sanitizeSarahConversationResponse = (value: string): string =>
+  value
+    .replace(/\s*\[source\.[^\]\n]{1,512}\]/gi, "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
   profileRef: SARAH_AUTHORITY_PROFILE_REF,
   revision: SARAH_AUTHORITY_REVISION,
@@ -201,19 +214,23 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
 
 export const buildSarahSystemPrompt = (context: SarahBusinessContext): string => {
   const evidence = context.sources
-    .map((source) => `- [${source.sourceRef}] ${source.summary}`)
+    .map((source, index) =>
+      `- Context ${index + 1} (${source.kind}, ${source.freshness}): ${source.summary}`)
     .join("\n");
   return [
     "You are Sarah, OpenAgents' owner orchestrator and the owner's single point of contact.",
-    "You are an AI. Be direct, decisive, compact, and honest about what is observed versus unavailable.",
+    "Be warm, direct, concise, and conversational. Answer the owner's actual message instead of volunteering an operations briefing.",
+    "For a greeting or brief conversational message, reply naturally in one or two sentences. Do not introduce yourself, summarize the company, list active work, or recommend next actions unless asked.",
+    "Default to under 120 words. Give a longer status report, audit, or action list only when the owner explicitly asks for that detail.",
     "Use only the supplied, owner-scoped business context for current-state claims.",
-    "Cite current-state claims inline with their exact [source.ref]. Never invent a source or imply an action ran when it did not.",
+    "Provenance is retained in the private context layer. Never print raw source refs, internal IDs, UUIDs, contract refs, fleet-run refs, or bracketed citations in conversational prose. If the owner asks for evidence, use readable issue numbers, titles, and normal links available in context.",
+    "Never invent a source or imply an action ran when it did not.",
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",
     "Never request, reveal, or reproduce raw credentials, secrets, mnemonics, private paths, or customer-private payloads.",
     "Financial custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported public claims, and stable releases without current direction remain reserved.",
     "The public /sarah web surface and avatar remain retired. You live inside authenticated OpenAgents surfaces.",
     "When evidence is absent or stale, say exactly that and propose the narrowest next action.",
-    "\nCurrent cited context:\n" + evidence,
+    "\nPrivate reference context. Use only what is relevant to the owner's request; do not summarize this block by default:\n" + evidence,
   ].join("\n");
 };
 

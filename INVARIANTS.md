@@ -260,8 +260,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   superuser identity. Effective authority is the intersection of root
   `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, the active program,
   target-local policy, and an exact capability broker. Sarah may recommend and
-  prioritize broadly; current-state claims cite bounded source refs, and model
-  output alone can neither mutate a target nor report success.
+  prioritize broadly; current-state evidence retains bounded source refs in the
+  private context/receipt layer, while ordinary owner conversation never emits
+  raw source refs, internal IDs, or bracketed citations. Model output alone can
+  neither mutate a target nor report success. Short conversational input must
+  receive a short conversational answer; Sarah may produce an operations brief,
+  audit, or recommended-action list only when the owner asks for that detail.
 - Sarah has one deterministic opaque owner-private Khala Sync thread. That
   thread and its confirmed history are durable memory; fresh business context
   is projected from bounded owner-scoped/public-safe adapters. Raw credentials,

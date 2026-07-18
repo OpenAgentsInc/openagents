@@ -3926,57 +3926,61 @@ const renderRecoveryOverlay = (
 let markdownKeyCounter = 0
 const renderMarkdownInline = (
   inline: MarkdownInline,
-  dependencies: ReactNativeDependencies
+  dependencies: ReactNativeDependencies,
+  theme: Theme
 ): ReactElementLike => {
   const key = `md-${markdownKeyCounter++}`
+  const textColor = colorValue(theme, "textPrimary")
   switch (inline.kind) {
     case "text":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key }, inline.text)
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { color: textColor } }, inline.text)
     case "code":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { fontFamily: "monospace" } }, inline.text)
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { color: textColor, fontFamily: "monospace" } }, inline.text)
     case "strong":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { fontWeight: "700" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { color: textColor, fontWeight: "700" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "emphasis":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { fontStyle: "italic" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, style: { color: textColor, fontStyle: "italic" } }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "link":
       return createElement(dependencies, dependencies.ReactNative.Text, {
         key,
         accessibilityRole: "link",
         selectable: true,
-        style: { textDecorationLine: "underline" },
+        style: { color: colorValue(theme, "accent"), textDecorationLine: "underline" },
         ...(dependencies.ReactNative.Linking === undefined || !/^https?:\/\//.test(inline.href)
           ? {}
           : { onPress: () => { void dependencies.ReactNative.Linking?.openURL(inline.href) } }),
-      }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies)))
+      }, ...inline.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
   }
 }
 
 const renderMarkdownBlock = (
   block: MarkdownBlock,
-  dependencies: ReactNativeDependencies
+  dependencies: ReactNativeDependencies,
+  theme: Theme
 ): ReactElementLike => {
   const key = `mdb-${markdownKeyCounter++}`
+  const textColor = colorValue(theme, "textPrimary")
   switch (block.kind) {
     case "heading":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { fontWeight: "700" } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { color: textColor, fontSize: block.level <= 2 ? 20 : 18, fontWeight: "700", lineHeight: 26, marginBottom: 4 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "paragraph":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true }, ...block.children.map((child) => renderMarkdownInline(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true, style: { color: textColor, fontSize: 17, lineHeight: 24, marginBottom: 8 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "list":
       return createElement(
         dependencies,
         dependencies.ReactNative.View,
-        { key },
+        { key, style: { gap: 6, marginBottom: 8 } },
         ...block.items.map((item, index) =>
           createElement(
             dependencies,
             dependencies.ReactNative.View,
-            { key: `li-${index}`, style: { flexDirection: "row" } },
-            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet", selectable: false }, block.ordered ? `${index + 1}. ` : "• "),
-            createElement(dependencies, dependencies.ReactNative.View, { key: "content" }, ...item.map((child) => renderMarkdownBlock(child, dependencies)))
+            { key: `li-${index}`, style: { alignItems: "flex-start", flexDirection: "row", gap: 6 } },
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet", selectable: false, style: { color: colorValue(theme, "textMuted"), fontSize: 17, lineHeight: 24 } }, block.ordered ? `${index + 1}.` : "•"),
+            createElement(dependencies, dependencies.ReactNative.View, { key: "content", style: { flex: 1, minWidth: 0 } }, ...item.map((child) => renderMarkdownBlock(child, dependencies, theme)))
           ))
       )
     case "blockquote":
-      return createElement(dependencies, dependencies.ReactNative.View, { key, style: { borderLeftWidth: 2, paddingLeft: 8 } }, ...block.children.map((child) => renderMarkdownBlock(child, dependencies)))
+      return createElement(dependencies, dependencies.ReactNative.View, { key, style: { backgroundColor: colorValue(theme, "surfaceRaised"), borderRadius: 12, marginBottom: 8, paddingHorizontal: 12, paddingTop: 10 } }, ...block.children.map((child) => renderMarkdownBlock(child, dependencies, theme)))
   }
 }
 
@@ -3984,13 +3988,15 @@ const renderMarkdown = (
   view: MarkdownView,
   dependencies: ReactNativeDependencies,
   options: ReactNativeRenderOptions
-): ReactElementLike =>
-  createElement(
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), testID: "en-markdown" },
-    ...view.blocks.map((block) => renderMarkdownBlock(block, dependencies))
+    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column", gap: 4 }, viewStyle(view, options))), testID: "en-markdown" },
+    ...view.blocks.map((block) => renderMarkdownBlock(block, dependencies, theme))
   )
+}
 
 const renderTranscript = (
   view: TranscriptView,
@@ -5438,6 +5444,7 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
   const [nativeEdit] = useState<ExpoUiNativeComposerEdit>(() => ({ current: null }))
   const [textFieldRef] = useState<{ current: ExpoUiTextFieldRef | null }>(() => ({ current: null }))
   const [isFocused, setIsFocused] = useState(false)
+  const expanded = isFocused && view.onAttachmentRequest !== undefined
   const clearNativeText = (): void => {
     textState.set("")
     const clear = textFieldRef.current?.clear()
@@ -5521,8 +5528,8 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         nativeEdit.current = value
         runReportedIntent(report, view.onChange, value)
       },
-      modifiers: [expoUi.modifiers.frame(isFocused
-        ? { minHeight: 80, maxHeight: 160, maxWidth: 100000 }
+      modifiers: [expoUi.modifiers.frame(expanded
+        ? { minHeight: 64, maxHeight: 120, maxWidth: 100000 }
         : { height: 44, maxWidth: 100000 })]
     })
   const send = createElement(
@@ -5557,7 +5564,7 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         color: submitDisabled ? colorValue(theme, "textMuted") : "#ffffff"
       })
     )
-  if (!isFocused) {
+  if (!expanded) {
     return createElement(
       dependencies,
       expoUi.HStack,
@@ -5654,7 +5661,7 @@ const renderExpoUiComposer = (
     createElement(
       dependencies,
       expoUi.Host,
-      { key: "host", style: { flex: 1 } },
+      { key: "host", style: { width: "100%", minHeight: 54 } },
       createElement(dependencies, ExpoUiNativeComposer, {
         key: "composer",
         view,

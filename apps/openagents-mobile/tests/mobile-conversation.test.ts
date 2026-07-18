@@ -451,7 +451,11 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
 
     const result = await host.sendMessage({ threadRef: "thread.synced.1", body: "Pending" })
-    expect(result).toEqual({ ok: false, error: "Message is still pending reconciliation." })
+    expect(result).toEqual({
+      ok: false,
+      error: "Message is still pending reconciliation.",
+      queuedForReconciliation: true,
+    })
     expect(sleeps).toBe(1)
   })
 
@@ -521,6 +525,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })).toEqual({
       ok: false,
       error: "Message and runtime command are queued pending reconciliation.",
+      queuedForReconciliation: true,
     })
     expect(intents).toHaveLength(1)
     expect(intents[0]).toMatchObject({

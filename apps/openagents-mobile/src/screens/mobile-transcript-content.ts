@@ -7,6 +7,12 @@ import {
   type MarkdownInline,
   type View,
 } from "@effect-native/core"
+import { sanitizeSarahConversationResponse } from "@openagentsinc/sarah"
+
+/** Conversation presentation boundary for owner-scoped assistants. The shared
+ * transcript shell stays persona-agnostic while private provenance remains out
+ * of visible message text. */
+export const sanitizeOwnerConversationResponse = sanitizeSarahConversationResponse
 
 const MAX_SOURCE_LENGTH = 20_000
 const MAX_BLOCKS = 128

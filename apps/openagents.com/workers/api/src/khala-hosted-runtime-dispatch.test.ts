@@ -352,6 +352,29 @@ describe('dispatchHostedRuntimeTurn', () => {
     })
   })
 
+  test('keeps raw provenance refs out of owner conversation output', async () => {
+    const push = makeRecordingExecutePush()
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(
+          oneQueuedTurn,
+          push,
+          okComplete('Hello [source.sarah.message.fixture]. Ready [source.github.issue.9003].'),
+        ),
+        prepareTurn: async input => ({
+          prompt: input.prompt,
+          responsePresentation: 'owner_conversation',
+          system: input.system,
+        }),
+      },
+      turn,
+    )
+
+    expect(outcome).toBe('answered')
+    expect(push.recorded.find(record => record.kind === 'text.delta')?.text)
+      .toBe('Hello. Ready.')
+  })
+
   test('passes authoritative image bytes to hosted inference', async () => {
     const push = makeRecordingExecutePush()
     const image = {

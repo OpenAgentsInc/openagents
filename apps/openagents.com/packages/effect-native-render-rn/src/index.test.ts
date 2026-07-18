@@ -151,8 +151,14 @@ describe("React Native renderer host boundaries", () => {
     if (link === undefined) throw new Error("expected Markdown link")
 
     expect(paragraph.props.selectable).toBe(true)
+    expect(paragraph.props.style).toMatchObject({
+      color: expect.any(String),
+      fontSize: 17,
+      lineHeight: 24,
+    })
     expect(link.props.accessibilityRole).toBe("link")
     expect(link.props.selectable).toBe(true)
+    expect(link.props.style).toMatchObject({ color: expect.any(String) })
     ;(link.props.onPress as () => void)()
     await Promise.resolve()
     expect(opened).toEqual(["https://openagents.com/docs"])
@@ -465,6 +471,7 @@ describe("React Native renderer host boundaries", () => {
     )
     const firstHost = render("a").props.children as ReactElementLike
     const secondHost = render("ab").props.children as ReactElementLike
+    expect(firstHost.props.style).toEqual({ width: "100%", minHeight: 54 })
     const firstComposer = firstHost.props.children as ReactElementLike
     const secondComposer = secondHost.props.children as ReactElementLike
 

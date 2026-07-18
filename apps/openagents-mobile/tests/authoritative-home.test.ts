@@ -1154,6 +1154,34 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(denied.khala.entries).toEqual([])
   })
 
+  test("keeps an admitted message pending while Sync reconciles it", async () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => ({
+        ok: false,
+        error: "Message and runtime command are queued pending reconciliation.",
+        queuedForReconciliation: true,
+      }),
+    }
+    const program = buildHomeProgram({ conversation: selection(host) })
+
+    program.khala.submitTurn("Queued honestly")
+    await Effect.runPromise(settle)
+    await Effect.runPromise(settle)
+    const pending = await Effect.runPromise(lastState(program))
+
+    expect(pending.khala.pending).toBe(true)
+    expect(pending.khala.draft).toBe("")
+    expect(pending.khala.entries.at(-1)).toMatchObject({
+      role: "user",
+      status: "pending",
+      text: "Queued honestly",
+    })
+    expect(pending.khala.entries.some(entry => entry.role === "system")).toBe(false)
+  })
+
   test("renders confirmed lifecycle controls and requires a second delete intent", async () => {
     const calls: string[] = []
     let summary = { ...initialThread }

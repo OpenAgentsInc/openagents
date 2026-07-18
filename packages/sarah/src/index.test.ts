@@ -7,6 +7,7 @@ import {
   SARAH_RUNTIME_AUTHORITY_PROFILE,
   SarahBusinessContextSchema,
   buildSarahSystemPrompt,
+  sanitizeSarahConversationResponse,
 } from "./index";
 
 describe("Sarah owner-orchestrator contract", () => {
@@ -21,7 +22,7 @@ describe("Sarah owner-orchestrator contract", () => {
     ).toMatchObject({ access: "none", mode: "reserved" });
   });
 
-  it("builds a citation-bound system prompt from decoded context", () => {
+  it("builds a provenance-bound but conversational system prompt", () => {
     const context = S.decodeUnknownSync(SarahBusinessContextSchema)({
       schema: "openagents.sarah.business_context.v1",
       threadRef: "thread.sarah.fixture",
@@ -38,8 +39,16 @@ describe("Sarah owner-orchestrator contract", () => {
       ],
     });
     const prompt = buildSarahSystemPrompt(context);
-    expect(prompt).toContain("[source.release.fixture]");
+    expect(prompt).not.toContain("[source.release.fixture]");
+    expect(prompt).toContain("one or two sentences");
+    expect(prompt).toContain("Never print raw source refs");
     expect(prompt).toContain("typed capability brokers");
     expect(prompt).toContain("self-amplification");
+  });
+
+  it("removes raw provenance refs from provider prose", () => {
+    expect(sanitizeSarahConversationResponse(
+      "Hello [source.sarah.message.fixture]. I can help [source.github.issue.9003].",
+    )).toBe("Hello. I can help.");
   });
 });

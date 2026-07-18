@@ -17,6 +17,7 @@ import {
   buildHomeProgram,
   chromeProps,
   mobileHeaderProps,
+  renderContentView,
   renderDrawerView,
 } from "../src/screens/home-core";
 
@@ -86,8 +87,10 @@ describe(`contract ${contractId}`, () => {
     const program = buildHomeProgram({ conversation, sarah: principal });
     expect(mobileHeaderProps(program.initialState)).toEqual({
       title: "Sarah",
-      subtitle: "Owner orchestrator · Authority v3",
+      subtitle: null,
     });
+    const home = JSON.stringify(renderContentView(program.initialState));
+    expect(home).not.toContain("Owner orchestrator");
     expect(chromeProps(program.initialState).composerPlaceholder).toBe("Message Sarah");
     const drawer = JSON.stringify(renderDrawerView(program.initialState));
     expect(drawer).toContain('"label":"Sarah"');
@@ -127,6 +130,67 @@ describe(`contract ${contractId}`, () => {
     await Effect.runPromise(Effect.yieldNow);
     expect(runtimeTarget).toEqual({ lane: "hosted_khala" });
     expect((await Effect.runPromise(lastState(program))).activeThreadRef).toBe(thread.threadRef);
+  });
+
+  test("keeps Sarah conversational by withholding completed runtime plumbing", () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [thread],
+      newThread: async () => ({ ok: true, thread }),
+      openThread: async () => thread,
+      sendMessage: async () => ({ ok: true, thread }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [thread],
+        archivedThreads: [],
+        activeThread: thread,
+      },
+    });
+    const view = JSON.stringify(renderContentView({
+      ...program.initialState,
+      khala: {
+        ...program.initialState.khala,
+        runtimeTurn: {
+          runRef: "run.internal-runtime-detail",
+          status: "failed",
+        },
+        runtimeControlActionsAvailable: true,
+        entries: [{
+          key: "runtime-detail",
+          role: "tool",
+          text: "Internal runtime detail",
+          status: "done",
+          work: {
+            groupRef: "work.runtime-detail",
+            runRef: "run.runtime-detail",
+            summary: "Internal runtime detail",
+            status: "success",
+            identityLabel: "OpenAgents · hosted runtime",
+            elapsedLabel: "3s",
+            createdAt: now,
+            totalItemCount: 1,
+            omittedItemCount: 0,
+            items: [],
+          },
+        }, {
+          key: "assistant-reply",
+          role: "assistant",
+          text: "Visible Sarah reply [source.internal.private-ref]",
+          status: "done",
+          createdAt: now,
+        }],
+        transcriptVisibleCount: 2,
+      },
+    }));
+
+    expect(view).toContain("Visible Sarah reply");
+    expect(view).not.toContain("Internal runtime detail");
+    expect(view).not.toContain("source.internal.private-ref");
+    expect(view).not.toContain("Retry");
+    expect(view).not.toContain("Close turn");
   });
 
   test("clears an old coding composer before Sarah can send", async () => {

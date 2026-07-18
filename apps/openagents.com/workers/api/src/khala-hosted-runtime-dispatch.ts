@@ -71,6 +71,7 @@ import {
   type MutatorRegistry,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
+import { sanitizeSarahConversationResponse } from '@openagentsinc/sarah'
 
 import { parseJsonUnknown } from './json-boundary'
 import {
@@ -170,7 +171,11 @@ export type HostedRuntimePrepareTurnFn = (
     system: string
     prompt: string
   }>,
-) => Promise<Readonly<{ system: string; prompt: string }>>
+) => Promise<Readonly<{
+  system: string
+  prompt: string
+  responsePresentation?: 'owner_conversation'
+}>>
 
 /** Injectable push-engine seam so tests never need the real engine. */
 export type HostedRuntimeExecutePushFn = typeof executePushEngine
@@ -539,6 +544,7 @@ export const dispatchHostedRuntimeTurn = async (
 
   // 2. Resolve the prompt and drive inference.
   let completion: HostedRuntimeCompletion
+  let responsePresentation: 'owner_conversation' | undefined
   try {
     const message = await resolveHostedTurnMessage(resolved.sql, turn)
     if (message === null) {
@@ -552,6 +558,7 @@ export const dispatchHostedRuntimeTurn = async (
               system: resolved.systemPrompt,
               turn,
             });
+      responsePresentation = prepared.responsePresentation
       completion = await resolved.complete({
         prompt: prepared.prompt,
         system: prepared.system,
@@ -580,6 +587,13 @@ export const dispatchHostedRuntimeTurn = async (
     )
     if (failedResult.status !== 'applied') return 'skipped'
     return 'failed'
+  }
+
+  if (responsePresentation === 'owner_conversation') {
+    completion = {
+      ...completion,
+      text: sanitizeSarahConversationResponse(completion.text),
+    }
   }
 
   // 4. Success: stream the answer as one text.delta + text.completed, then

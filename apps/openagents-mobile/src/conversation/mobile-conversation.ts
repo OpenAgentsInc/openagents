@@ -50,7 +50,11 @@ export type MobileConversationMutationResult =
       thread: MobileConversationThread
       queueReceipt?: MobileRuntimeQueueReceipt
     }>
-  | Readonly<{ ok: false; error: string }>
+  | Readonly<{
+      ok: false
+      error: string
+      queuedForReconciliation?: true
+    }>
 
 export type MobileThreadLifecycleAction = "archive" | "delete" | "rename" | "restore"
 
@@ -835,7 +839,11 @@ export const makeMobileConversationHost = (
       }
       const thread = await confirmedThread(input.threadRef, messageRef)
       if (thread === null && options.runtime === undefined) {
-        return { ok: false, error: "Message is still pending reconciliation." }
+        return {
+          ok: false,
+          error: "Message is still pending reconciliation.",
+          queuedForReconciliation: true,
+        }
       }
       if (options.runtime === undefined) return { ok: true, thread: thread! }
       const turnRef = `turn.mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
@@ -899,7 +907,11 @@ export const makeMobileConversationHost = (
         return { ok: false, error: "Message was admitted, but runtime dispatch is unavailable." }
       }
       if (thread === null) {
-        return { ok: false, error: "Message and runtime command are queued pending reconciliation." }
+        return {
+          ok: false,
+          error: "Message and runtime command are queued pending reconciliation.",
+          queuedForReconciliation: true,
+        }
       }
       if (queueControl !== null) {
         const parentRunRef = runtimeIntent.turnId

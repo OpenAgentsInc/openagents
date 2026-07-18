@@ -451,7 +451,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-03"
+export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-04"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -930,7 +930,7 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
   if (state.sarah !== null && state.activeThreadRef === state.sarah.threadRef) {
     return {
       title: state.sarah.displayName,
-      subtitle: `${state.sarah.role} · Authority v${state.sarah.rootAuthorityRevision}`,
+      subtitle: null,
     }
   }
 
@@ -1077,6 +1077,9 @@ export const renderContentView = (state: HomeState): View =>
               ? "unavailable"
               : "live",
           fullAutoRunHeaderForState(state),
+          state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
+            ? "hidden"
+            : "visible",
         )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
@@ -1526,7 +1529,9 @@ export const renderHomeView = (state: HomeState): View =>
               direction: "row",
               gap: "0.5",
               align: "center",
-              style: { surface: "glass", borderRadius: "full" },
+              style: sarahIsActive(state)
+                ? {}
+                : { surface: "glass", borderRadius: "full" },
             },
             [
               ...(state.codingComposer === null || sarahIsActive(state)
@@ -1590,6 +1595,7 @@ export const renderHomeView = (state: HomeState): View =>
                 icon: "Ellipsis",
                 accessibilityLabel: "Open settings",
                 onPress: IntentRef("SettingsPressed", StaticPayload({})),
+                ...(sarahIsActive(state) ? { surface: "glass" as const } : {}),
                 style: mobileInteractiveStyle(state.accessibility),
               }),
             ],
@@ -3115,7 +3121,8 @@ const makeSyncedConversationHandlers = (
         }))
       },
     }))
-    const settledComposer = !result.ok || composer === null || coding === undefined
+    const queuedForReconciliation = !result.ok && result.queuedForReconciliation === true
+    const settledComposer = (!result.ok && !queuedForReconciliation) || composer === null || coding === undefined
       ? composer
       : coding.clearComposer === undefined
         ? yield* Effect.promise(() => coding.updateComposerText(composer, ""))
@@ -3135,6 +3142,16 @@ const makeSyncedConversationHandlers = (
             },
           }
         })()
+      : queuedForReconciliation
+        ? {
+            ...current,
+            codingComposer: settledComposer,
+            khala: {
+              ...current.khala,
+              draft: "",
+              pending: true,
+            },
+          }
       : {
           ...failedConversationState(current, result.error),
           codingComposer: settledComposer,

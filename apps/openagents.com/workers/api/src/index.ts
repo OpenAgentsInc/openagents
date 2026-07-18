@@ -6819,7 +6819,11 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           sql: client.sql,
           threadRef: turn.threadId,
         })
-        return { prompt, system: buildSarahSystemPrompt(context) }
+        return {
+          prompt,
+          responsePresentation: 'owner_conversation' as const,
+          system: buildSarahSystemPrompt(context),
+        }
       },
       recordUsage: input =>
         recordHostedTurnUsage(

@@ -1,6 +1,7 @@
 import {
   SarahBusinessContextSchema,
   SarahContextSourceSchema,
+  sanitizeSarahConversationResponse,
   type SarahBusinessContext,
   type SarahContextSource,
 } from "@openagentsinc/sarah";
@@ -59,7 +60,7 @@ const readConversation = async (
       observedAt: new Date(row.observed_at).toISOString(),
       freshness: "recent",
       sensitivity: "owner_private",
-      summary: safeSummary(row.summary),
+      summary: safeSummary(sanitizeSarahConversationResponse(row.summary)),
     }),
   );
 };

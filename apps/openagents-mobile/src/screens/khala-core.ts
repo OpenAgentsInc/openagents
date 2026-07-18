@@ -24,7 +24,10 @@ import {
   type LiveAgentGraphPresentationRow,
   type LiveAgentGraphTone,
 } from "@openagentsinc/khala-sync-client"
-import { mobileAssistantContentViews } from "./mobile-transcript-content"
+import {
+  mobileAssistantContentViews,
+  sanitizeOwnerConversationResponse,
+} from "./mobile-transcript-content"
 import {
   renderMobileComposerToolbar,
   type MobileComposerToolbarState,
@@ -775,6 +778,12 @@ const boundedText = (value: string): string =>
 const boundedEntries = (entries: ReadonlyArray<KhalaEntry>): ReadonlyArray<KhalaEntry> =>
   entries.length > 200 ? entries.slice(-200) : entries
 
+const localTranscriptTime = (createdAt: string): string => {
+  const date = new Date(createdAt)
+  if (!Number.isFinite(date.getTime())) return createdAt.slice(11, 16)
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
 const updateKhala = <State extends { readonly khala: KhalaState }>(
   state: SubscriptionRef.SubscriptionRef<State>,
   update: (khala: KhalaState) => KhalaState,
@@ -848,9 +857,17 @@ export const renderKhalaSurface = (
   composerPathDiscovery: MobileComposerPathDiscoveryState = { state: "idle" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
   fullAutoRun: FullAutoRunHeaderView | null = null,
+  runtimeDetails: "visible" | "hidden" = "visible",
 ): View => {
+  const presentedEntries = runtimeDetails === "hidden"
+    ? state.entries
+        .filter(entry => entry.work === undefined)
+        .map(entry => entry.role === "assistant"
+          ? { ...entry, text: sanitizeOwnerConversationResponse(entry.text) }
+          : entry)
+    : state.entries
   const visibleEntries = visibleMobileTranscriptEntries(
-    state.entries,
+    presentedEntries,
     state.transcriptVisibleCount,
   )
   const unreadBoundaryIndex = mobileTranscriptUnreadBoundaryIndex(
@@ -878,12 +895,12 @@ export const renderKhalaSurface = (
       status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
       ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
       ...(entry.role !== "assistant" && entry.createdAt !== undefined
-        ? { timestamp: entry.createdAt.slice(11, 16) }
+        ? { timestamp: localTranscriptTime(entry.createdAt) }
         : {}),
       body: interactionBody(state, entry, accessibility),
     },
   ])
-  const hiddenRetainedCount = Math.max(0, state.entries.length - visibleEntries.length)
+  const hiddenRetainedCount = Math.max(0, presentedEntries.length - visibleEntries.length)
   const unavailableEarlierCount = state.threadHistory === null
     ? 0
     : Math.max(0, state.threadHistory.totalMessageCount - state.threadHistory.retainedMessageCount)
@@ -946,9 +963,12 @@ export const renderKhalaSurface = (
       ...(authority === "sync" && state.threadHistory !== null && state.entries.length === 0
         ? [Text({
             key: "khala-empty-history",
-            content: "No confirmed messages yet. Start this chat below.",
+            content: runtimeDetails === "hidden"
+              ? "Start the conversation below."
+              : "No confirmed messages yet. Start this chat below.",
             variant: "body",
             color: "textMuted",
+            style: { width: "full", textAlign: "center" },
           })]
         : []),
       ...(hiddenRetainedCount > 0
@@ -993,8 +1013,10 @@ export const renderKhalaSurface = (
             style: { width: "full", minHeight: accessibility.minTouchTarget },
           })]
         : []),
-      ...runtimeControlViews(state, accessibility),
-      ...renderMobileComposerRunControl(state.runtimeTurn, runAdmission, accessibility),
+      ...(runtimeDetails === "hidden" ? [] : runtimeControlViews(state, accessibility)),
+      ...(runtimeDetails === "hidden"
+        ? []
+        : renderMobileComposerRunControl(state.runtimeTurn, runAdmission, accessibility)),
       ...codingComposerContextViews(
         codingComposer,
         codingAttachmentStatus,
