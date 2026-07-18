@@ -15,6 +15,17 @@
 - Current sprint recommendation:
   [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
 
+## Outcome update
+
+The source-conversion gate was not reached. The existing native Desktop lanes
+completed the full owner-real matrix and automatic same-pass Claude-to-Codex
+rotation at candidate `3123d926a3`; see the
+[`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
+An Effect Harness adapter remains a conditional future maintenance option, not
+a prerequisite or active sprint. Effect AI continues to be the preferred
+generic model/tool layer where it fits; coding-agent session authority remains
+inside the proven owned provider seams.
+
 ## Question
 
 Vercel publishes AI SDK, its experimental Harness system, the Codex and Claude

@@ -3,12 +3,14 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-18
-- Revision: 120
+- Revision: 121
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: Full Auto epic #8967 is the active P0 product program; the
-  #9000/#9001 -> #9002/#8976 -> #8978/#8979 closure chain composes with
-  distribution epic #8913 and the admitted Amp, T3 Desktop, and T3 mobile
-  packet ledgers; live defects remain independently claimable
+- Current queue: Full Auto epic #8967 is the active P0 product program;
+  #9000–#9002 and #8976 are complete at the owner-real development rung, so
+  #8978 independent assurance and #8979 signed packaged release are the
+  remaining closure chain. It composes with distribution epic #8913 and the
+  admitted Amp, T3 Desktop, and T3 mobile packet ledgers; live defects remain
+  independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -70,17 +72,18 @@ and accepted ledgers below own executable work.
 The flagship is the named, durable `FullAutoRun`: a user supplies an objective,
 done condition, workspace, provider profile, and cap, walks away, and later
 gets an inspectable report with typed termination and evidence. Full Auto is a
-run, not a per-message option. The dedicated rail launcher/read-only run view
-is landed. Mission propagation, active-thread residency, the six-test real
-provider batch, assurance, and packaged release gate remain the active closure
-chain; the private dogfood analyzer is already part of the landed run-evidence
-core.
+run, not a per-message option. The dedicated rail launcher/read-only run view,
+durable mission propagation, active-thread residency, typed provider failures,
+restart recovery, and the owner-real six-test Codex/Claude batch are landed.
+Independent assurance and the signed packaged release gate remain the active
+closure chain; the private dogfood analyzer is already part of the landed
+run-evidence core.
 
 ### Reconciled implementation truth at this revision
 
 | Surface | Narrowest current truth | Remaining authority |
 | --- | --- | --- |
-| Full Auto run core | #8968–#8975 and #8977 are closed: the durable run/lifecycle, liveness, report/analyzer, handoff, picker, and dedicated UX are on `main`. #8987 and #8991 add owner-bounded routing plus guardrails. | #9000 dispatches the actual durable mission; #9001 protects the active thread and corrects failure taxonomy; #9002 executes the real Codex/Claude proof and closes #8976 before #8978 AssuranceSpec and #8979 packaged release/promise admission. Parent #8967 stays open. |
+| Full Auto run core | #8968–#8977, #8987, #8991, #9000–#9002, and #8976 are closed: the durable run/lifecycle, mission, liveness, report/analyzer, handoff, picker, routing, guardrails, dedicated UX, thread-pressure survival, restart continuity, and real Codex/Claude owner-development matrix are on `main`. | #8978 must independently admit the AssuranceSpec; #8979 must bind the result to a signed packaged release and owner observation. Parent #8967 stays open until those distinct gates close. |
 | Mobile Full Auto | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey. | Remote Pause/Resume/Stop and report review remain later admitted work; simulator proof is not physical-device or general host-movement proof. |
 | Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed; #8922–#8924 are closed. | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim. |
 | Desktop/T3 workbench | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey. | Signed/cross-platform distribution remains REL authority; the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract. |
@@ -89,13 +92,16 @@ core.
 
 ### Canonical waves
 
-1. **Wave 0 — make local Full Auto credible.** Execute #9000 and #9001 against
-   the landed run/report/liveness/handoff/analyzer contracts; then #9002 runs
-   #8976's six named visible real-provider tests. The closed #8980 receipt
-   supplies the bounded simulator observation. #8978 admits proof only after
-   the implemented targets exist, and #8979 consumes that
-   evidence plus #8913/#8925 release identity. A real 24–48 hour owner-AFK run
-   with a reviewable report is the short-term exit, not a green unit suite.
+1. **Wave 0 — make local Full Auto credible.** Complete at the owner-real
+   development rung: #9000 and #9001 repaired mission/thread authority, and
+   #9002/#8976 passed all six visible real-provider rows plus automatic
+   same-pass rotation at `3123d926a3`. The
+   [`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md)
+   is the public-safe evidence. #8978 now owns independent proof admission and
+   #8979 consumes that evidence plus #8913/#8925 signed release identity. A
+   real 24–48 hour owner-AFK run with a reviewable report remains a release
+   confidence target, not a reason to reopen the completed implementation
+   sprint.
 2. **Wave 1 — release and operator depth.** Finish the owned platform matrix,
    signed artifacts, promotion, and one-command release; continue the admitted
    T3 mobile ledger and the exact Amp packet stream without colliding with Full
@@ -573,11 +579,11 @@ authority outside that label-scoped projection:
 1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
    Observatory proof baseline; neither needs to be re-proved to start a bounded
    successor packet.
-2. Finish Full Auto Wave 0 in dependency order: #9000 mission propagation and
-   #9001 active-thread residency/taxonomy may proceed in parallel; #9002 then
-   executes the real provider matrix and closes #8976. #8978 consumes those
-   implemented proof targets; #8979 consumes the dogfood/assurance evidence
-   plus exact release identity.
+2. Continue Full Auto from the completed owner-real development receipt:
+   #8978 consumes the implemented proof targets and performs independent
+   admission; #8979 consumes the dogfood/assurance evidence plus exact signed
+   release identity. Do not reroute these remaining gates into another runtime
+   rewrite.
 3. Retain closed #8980's simulator receipt as bounded first-screen evidence.
    Remote run control, report review, and physical-device acceptance require
    their next exact packet; do not infer them from that projection.

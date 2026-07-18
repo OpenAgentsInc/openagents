@@ -13,6 +13,16 @@
 - Current sprint recommendation:
   [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
 
+## Outcome update
+
+The reset is no longer an ASAP contingency. The retained Effect-owned Desktop
+completed the six owner-real Codex/Claude tests and an automatic same-pass
+Claude-to-Codex rotation at candidate `3123d926a3`; see the
+[`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
+No Vercel runtime or renderer replacement was required. Reopening this reset
+would now require a new product-retirement decision, not a claim that Full Auto
+cannot work in the current application.
+
 ## Question
 
 Instead of building Full Auto in the separate

@@ -53,10 +53,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — owner admission and bounded packet ledger for the complete T3 mobile
   workbench adaptation through physical-device/distribution closure.
 - [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
-  — owner-directed architecture decision for the current #9000–#9002 sprint:
-  repair the existing Effect-owned Desktop mission and thread durability,
-  prove the native Codex/Claude lanes, and use Vercel Harness only as a
-  time-boxed provider fallback. Live issues own dispatch.
+  — implemented architecture decision for #9000–#9002: the existing
+  Effect-owned Desktop mission/thread/provider seams were repaired and the
+  native Codex/Claude lanes passed the owner-real matrix without invoking the
+  Vercel Harness fallback.
 - [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
   — owner-directed, owner-local experimental alternative for a bounded
   Codex-first Full Auto loop in one shared Vercel AI SDK Harness workspace;
@@ -101,6 +101,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
+
+- [`receipts/2026-07-18-full-auto-real-owner-acceptance.md`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md)
+  — owner-real development receipt for six of six visible Codex/Claude tests,
+  durable restart/thread-pressure proof, report/analyzer digests, and one
+  automatic same-pass Claude-to-Codex rotation; signed package and independent
+  assurance remain #8978/#8979.
 
 - [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
   — re-baselined audit of selectively ingesting Apache-2.0 Vercel source after

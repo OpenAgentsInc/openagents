@@ -1,14 +1,33 @@
 # Full Auto ASAP Effect/Harness sprint recommendation
 
 - Class: authority
-- Status: owner-directed current sprint recommendation
+- Status: implemented; owner-real development acceptance complete
 - Snapshot: 2026-07-18
-- Dispatch: no; live issues #9000, #9001, #9002, and their consumer #8976
-  own implementation and proof through the claim protocol
+- Dispatch: no; #9000, #9001, #9002, and #8976 are completed by the linked
+  implementation receipt; #8978 and #8979 retain assurance/release authority
 - Owner: OpenAgents Desktop Full Auto / epic #8967
 - Product authority:
   [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
 - Transcript basis: [`../transcripts/257.md`](../transcripts/257.md)
+
+## Implemented outcome
+
+The selected path succeeded without invoking the Vercel Harness fallback. At
+development candidate `3123d926a3`, the real owner-profile Electron batch
+completed all six named Codex/Claude rows plus a fresh-process automatic
+same-pass `fable-local` to `codex-local` rotation. The public-safe evidence and
+UI-first operator procedure are in the
+[`Full Auto real owner acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
+
+The conclusion is now empirical rather than prospective: retaining the
+Effect-owned `FullAutoRun` and repairing its mission, host-thread, provider
+settlement, restart, and projection seams was the fastest route to a working
+system. No AI SDK chat runtime, AI Elements renderer, duplicate scheduler, or
+source-derived Effect Harness package was required for this sprint.
+
+Independent AssuranceSpec admission and a signed packaged release remain
+separate work under #8978 and #8979. This development receipt does not claim
+either gate.
 
 ## Decision
 

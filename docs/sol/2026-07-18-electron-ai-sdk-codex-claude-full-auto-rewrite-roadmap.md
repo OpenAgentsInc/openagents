@@ -14,6 +14,15 @@
 - Current sprint recommendation:
   [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
 
+## Outcome update
+
+The native Desktop path met #9002's proof gate before this fallback was needed.
+Candidate `3123d926a3` completed the six owner-real Codex/Claude rows and an
+automatic same-pass Claude-to-Codex rotation; see the
+[`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
+This roadmap therefore remains a provider oracle and possible future adapter
+experiment. It is not the active Full Auto implementation queue.
+
 ## Current disposition
 
 Do not build this separate Full Auto controller before repairing the current

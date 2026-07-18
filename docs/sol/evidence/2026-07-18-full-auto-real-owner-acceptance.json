@@ -1,0 +1,179 @@
+{
+  "schema": "openagents.desktop.full_auto_real_acceptance_receipt.v1",
+  "identity": {
+    "schema": "openagents.desktop.full_auto_acceptance_identity.v1",
+    "revision": "3123d926a3",
+    "build": "main-3123d926a3",
+    "packagingMode": "dev",
+    "os": "darwin",
+    "arch": "arm64",
+    "profileClass": "owner_real",
+    "providerVersions": [
+      {
+        "laneRef": "codex-local",
+        "runtime": "codex-app-server",
+        "version": "codex-cli 0.145.0-alpha.18",
+        "authReadiness": "ready"
+      },
+      {
+        "laneRef": "fable-local",
+        "runtime": "@anthropic-ai/claude-agent-sdk",
+        "version": "0.3.172",
+        "authReadiness": "ready"
+      }
+    ],
+    "schemaRevisions": {
+      "handoffEnvelope": "openagents.desktop.provider_handoff_envelope.v1",
+      "handoffTransition": "openagents.desktop.provider_handoff_transition.v1",
+      "fullAutoRegistry": "openagents.desktop.full_auto_registry.v1",
+      "runRegistry": "openagents.desktop.full_auto_run_registry.v1",
+      "runReport": "openagents.desktop.full_auto_run_report.v1",
+      "runReceipt": "openagents.desktop.full_auto_run_receipt.v1",
+      "runAnalysis": "openagents.desktop.full_auto_run_analysis.v1",
+      "localTurnJournal": "openagents.desktop.local_turn_journal.v1"
+    },
+    "testDefinitionRevision": "77ab05baed3c3ab4974787b4c37d66720eae3eadfd90bcf5f5fea3e4935f8c78",
+    "telemetry": "disabled",
+    "startedAt": "2026-07-18T09:55:40.552Z",
+    "endedAt": "2026-07-18T10:02:26.478Z"
+  },
+  "results": [
+    {
+      "testId": "test-01",
+      "title": "PASS · TEST 01 · Codex → Claude · context",
+      "disposition": "PASS",
+      "threadRefDigest": "e96c9eae40384b44044324e466584602345c1ae2f1b3dfa6aa13af201a60f27a",
+      "runRefDigest": null,
+      "artifactDigests": {
+        "TEST01_STEP1.txt": "83e1891f21deb0b5303e7e50609b128938335f47591db8e9d29f4b79596e2f61",
+        "TEST01_STEP2.txt": "cb5d76c0ebbf8c61564ea05f308b75ae6786952424e1feeb7fa436cfe23e4f3b"
+      },
+      "reportDigest": "2fcbe127028d33928d72ea6567060512e16f40640bb5b77e7329b53f5e005cfb",
+      "analysisDigest": "6fa95f3f925d90750b2626327e115f7eba6b201871befdc29518c998dd46eff0",
+      "transitions": [
+        {
+          "handoffRefDigest": "f28f151213044b277653691d33f828d53f931132589bd7e49374adf87e7cba6d",
+          "from": "codex-local",
+          "to": "fable-local",
+          "actor": "owner_ui",
+          "disposition": "complete_within_bounds",
+          "truncated": false
+        }
+      ],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    },
+    {
+      "testId": "test-02",
+      "title": "PASS · TEST 02 · Claude → Codex · context",
+      "disposition": "PASS",
+      "threadRefDigest": "c389403f444e3d2b2fbac04998e2f6b3b4a67371e91567fa61e9aa5c55cab52b",
+      "runRefDigest": null,
+      "artifactDigests": {
+        "TEST02_STEP1.txt": "ba730b706ffa1802614910e3dc6cd138e6f02ffa7bff023346821c2fec0b7b4c",
+        "TEST02_STEP2.txt": "23fe1458b4c3861ec7fc4fc65547493b9c94173a2a0cd7a79914d84761ebb08d"
+      },
+      "reportDigest": "46331a31d16bf87c475e99da9d3eb9a90ee3aaf0dd472b54ae8fcc2dbce01d3f",
+      "analysisDigest": "7271c174cde62183293af4ea0485a571428dd03a1b43654cdfe5dbf7767554e4",
+      "transitions": [
+        {
+          "handoffRefDigest": "392dc64271065fda0e5c52d7269a86e8dc069719f10ac1f343b9ea50cf2c1597",
+          "from": "fable-local",
+          "to": "codex-local",
+          "actor": "owner_ui",
+          "disposition": "complete_within_bounds",
+          "truncated": false
+        }
+      ],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    },
+    {
+      "testId": "test-03",
+      "title": "PASS · TEST 03 · Codex → Claude · objective retention",
+      "disposition": "PASS",
+      "threadRefDigest": "ada635c1f48c8abaa994617988e1b5c2b4e76b62dd7a5568e7de2fbd849be264",
+      "runRefDigest": "6da05f49fd2cba7d9ce92e55bb58266cbc48ccd486f5dd179b9968fff6ece1a2",
+      "artifactDigests": {
+        "TEST03_SOURCE.txt": "52f124ab955e7915c56be780ea5f050179ada8b75fd997aaa59b8625e4cbde3c",
+        "TEST03_TARGET.txt": "4e2ea62f1a4cb333b71c19edf940bca39ab4d5c358134dcdedde9f5e0fc79748"
+      },
+      "reportDigest": "25ded14333fb109add4105742e414c6b6f1b1470f025125dd9f424c703ab0569",
+      "analysisDigest": "823c51a65a29f1aaae52b1f5792b2f7853b21405784774050838bed5857a74df",
+      "transitions": [
+        {
+          "handoffRefDigest": "50279b5f0cdeaf995aee2332b0fcfe5d5eadf09d0d6515abf8821d5b091fdaa1",
+          "from": "codex-local",
+          "to": "fable-local",
+          "actor": "owner_ui",
+          "disposition": "complete_within_bounds",
+          "truncated": false
+        }
+      ],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    },
+    {
+      "testId": "test-04",
+      "title": "PASS · TEST 04 · Full Auto · Codex · 3 turns",
+      "disposition": "PASS",
+      "threadRefDigest": "44c98f938d5e9d944af80f3d6748c9334786541b86347bc13d72ee7291695686",
+      "runRefDigest": "c5b4640d529d1868a0ca28abd32b89b5ce15fc9b530a37e8f0cac6ab9a12f01b",
+      "artifactDigests": {
+        "TEST04_PACKET_1.txt": "2139877dde91cbfea437d3dcb64504630c0f7959b726646dc938bc487b6bd732",
+        "TEST04_PACKET_2.txt": "5006b57b60b6f2a345645fdc221d1d6e18ffd8b7e87a4820d963433c45ac33bc",
+        "TEST04_PACKET_3.txt": "88e8a5c9cc9d08f442bd3864b1b1aaa09df3e647a3c06e33e2c0df34d31e621f"
+      },
+      "reportDigest": "64f7fac4d172eed3d004098ca6f7d85257211a3200ef8e9ac38e6dfc5cd55772",
+      "analysisDigest": "39ea52d57a8c85fdd687410900a5448fc578a7c6efcdaf600215a1a4c2fd51b0",
+      "transitions": [],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    },
+    {
+      "testId": "test-05",
+      "title": "PASS · TEST 05 · Full Auto · Claude · restart",
+      "disposition": "PASS",
+      "threadRefDigest": "35fb73e5db1b79a0e327714e32424347f65dfc9db5b25e458edb3723a350b03c",
+      "runRefDigest": "699620e32b6a8878a5961fff9b7490ca3cdb5242ee47271277bde19f693e234f",
+      "artifactDigests": {
+        "TEST05_PACKET_1.txt": "01d677311a9e2af2f18b6c112138d6ef225caba80ae65faf9bca1a2c4ac0e21b",
+        "TEST05_PACKET_2.txt": "2e49acbccd3c42297cfbdaf9e38cf2f5839b1ee53183222ccd8e91385fb28dc6",
+        "TEST05_PACKET_3.txt": "ff51f8cc89a43c90067e68ebafefde860d9516dc5408dbce5e7995ed7e95673f"
+      },
+      "reportDigest": "fa87d30786a5be15db7b8eca64edb01b8757bf0381d96db00d3994dea980dc53",
+      "analysisDigest": "b71dfa67ce15c44a2d9859e2ab829fcba2426ebf3f7fe400eca074a5f45eda96",
+      "transitions": [],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    },
+    {
+      "testId": "test-06",
+      "title": "PASS · TEST 06 · Full Auto · thread pressure",
+      "disposition": "PASS",
+      "threadRefDigest": "b11ec62058d521c3dcafbb7bb1bcf763b32252074ef1b2f70a09b93c3027d514",
+      "runRefDigest": "1964089ad9cecd211dae9ba240e4bb2ade4657622602444bd2b4f1b2a941d63e",
+      "artifactDigests": {
+        "TEST06_PACKET_1.txt": "b2fbfcb7b92684c038c2e53c926925ae7469f893e5d7bb3e43e9f0944b018113",
+        "TEST06_PACKET_2.txt": "3de06c051edabe81446e862ac4ca76652e0a5ddb77a0c1e207df4e443a8db524",
+        "TEST06_PACKET_3.txt": "c4da18043cfab800a6dfb29e36b6e51580fae7eb45a1746becb503739e4543db"
+      },
+      "reportDigest": "a46f29342afbc20ee638596c7b607e0ee8a2ccadab1aaa45f2ff2cd4e8dd3e2a",
+      "analysisDigest": "c804034684738a59a2e4fb120b49e86ef8d75ba9d990b260d8023fae5615d77d",
+      "transitions": [],
+      "failureClassification": null,
+      "privateEvidencePointerClass": "owner_local_desktop_profile"
+    }
+  ],
+  "automaticSamePassRotation": {
+    "runRefDigest": "17c7a12335ba0344bb5050260e625061a819642f07aa5286bf0f05749acd7dd8",
+    "threadRefDigest": "6eb09593b3da6dfff19dd009637f6b46b0cd7c56e4af35b25484f80a3ad6f50e",
+    "transitionDigest": "4b4a17b81ec287dcf3d799aefdfcb22c2735076533139feda7fc3c6c11e50b4f",
+    "from": "fable-local",
+    "to": "codex-local",
+    "disposition": "complete_within_bounds",
+    "artifactDigest": "51756cf96ab05f8d56cd02738f1966bbdad80dbb623c562c080d34ffad5df355"
+  },
+  "allSixPassed": true,
+  "privateEvidencePointerClass": "owner_local_desktop_profile"
+}
