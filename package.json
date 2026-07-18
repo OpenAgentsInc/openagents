@@ -150,7 +150,7 @@
     "typecheck:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run typecheck",
     "typecheck:oa-infra": "pnpm --dir packages/oa-infra run typecheck",
     "typecheck:oa-queue-worker": "pnpm --dir apps/oa-queue-worker run typecheck",
-    "prepare": "effect-language-service patch && vp config --no-agent",
+    "prepare": "effect-language-service patch && vp config --no-agent --no-hooks && bash scripts/enable-git-hooks.sh",
     "fmt:check": "vp fmt --check package.json pnpm-workspace.yaml vite.config.ts '**/package.json' packages/oxlint-plugin-openagents/src",
     "build": "vp run --concurrency-limit 1 -r build",
     "pack": "node --max-old-space-size=8192 scripts/build-public-cli-artifacts.mjs"

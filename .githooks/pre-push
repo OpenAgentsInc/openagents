@@ -23,7 +23,20 @@ done
 
 [ "$gate" = 1 ] || exit 0
 
-root="$(git rev-parse --show-toplevel)"
+# Resolve the repo root explicitly with `-c core.bare=false`: this checkout may
+# share a shared worktree-hub `.git` whose common config has core.bare=true (a
+# pattern used for concurrent `git worktree` checkouts). That shared flag has
+# no bearing on this invocation -- a pre-push hook only ever runs inside a real
+# working tree -- but leaving it unoverridden risks `git rev-parse` mis-resolving
+# root-relative state for this worktree. Fail loudly instead of silently
+# operating from an empty/wrong root if resolution ever comes back empty.
+root="$(git -c core.bare=false rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
+if [ -z "$root" ] || [ ! -d "$root" ]; then
+  echo "[pre-push guard] BLOCKED: could not resolve the repository root via 'git rev-parse --show-toplevel' (got '$root')." >&2
+  echo "[pre-push guard] This can happen when a shared worktree-hub .git/config has core.bare=true or a stale worktree registration. Run 'git worktree list' and 'git rev-parse --show-toplevel' from this directory to diagnose." >&2
+  exit 1
+fi
+
 zero_sha="0000000000000000000000000000000000000000"
 guard_head_before="$(git rev-parse HEAD)"
 guard_readme_before="$(git hash-object "$root/README.md")"

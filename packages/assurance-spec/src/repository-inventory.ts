@@ -22,8 +22,8 @@ const gitEnvironment = (): NodeJS.ProcessEnv => ({
   LC_ALL: "C",
 })
 
-const git = (root: string, args: ReadonlyArray<string>): GitResult => {
-  const result = spawnSync("git", ["-C", root, ...args], {
+const git = (root: string, args: ReadonlyArray<string>, configOverrides: ReadonlyArray<string> = []): GitResult => {
+  const result = spawnSync("git", ["-C", root, ...configOverrides, ...args], {
     env: gitEnvironment(),
     maxBuffer: MAX_GIT_OUTPUT_BYTES,
     stdio: ["ignore", "pipe", "ignore"],
@@ -88,8 +88,18 @@ export const inventoryRepository = (requestedRoot: string): RepositoryInventory 
     return unavailableInventory("unavailable", basename(requestedRoot), "repository_unavailable")
   }
 
-  const rootResult = git(requestedRealRoot, ["rev-parse", "--show-toplevel"])
-  if (!rootResult.ok) return unavailableInventory("not_git", basename(requestedRealRoot), "repository_not_git")
+  // `-c core.bare=false` neutralizes a shared worktree-hub `.git/config`
+  // whose common core.bare=true would otherwise leak into this worktree's
+  // root resolution (see issue #8984). Inventory only ever runs against a
+  // real working tree, so the override is always correct here.
+  const rootResult = git(
+    requestedRealRoot,
+    ["rev-parse", "--path-format=absolute", "--show-toplevel"],
+    ["-c", "core.bare=false"],
+  )
+  if (!rootResult.ok || text(rootResult).length === 0) {
+    return unavailableInventory("not_git", basename(requestedRealRoot), "repository_not_git")
+  }
 
   let root: string
   try {

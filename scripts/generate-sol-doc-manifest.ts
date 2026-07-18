@@ -278,9 +278,17 @@ export function serializeSolDocumentManifest(manifest: SolDocumentManifest): str
 }
 
 function repositoryRoot(): string {
-  const result = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" })
-  if (result.status !== 0) throw new Error("run generate-sol-doc-manifest inside the repository")
-  return result.stdout.trim()
+  // `-c core.bare=false` neutralizes a shared worktree-hub `.git/config`
+  // whose common core.bare=true would otherwise leak into this worktree's
+  // root resolution (see issue #8984). This script only ever runs inside a
+  // real working tree, so the override is always correct here.
+  const args = ["-c", "core.bare=false", "rev-parse", "--path-format=absolute", "--show-toplevel"]
+  const result = spawnSync("git", args, { encoding: "utf8" })
+  const root = result.stdout.trim()
+  if (result.status !== 0 || root.length === 0) {
+    throw new Error("run generate-sol-doc-manifest inside the repository")
+  }
+  return root
 }
 
 if (import.meta.main) {
