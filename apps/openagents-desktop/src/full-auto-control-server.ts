@@ -171,6 +171,8 @@ export type FullAutoControlCapabilities = Readonly<{
   createThread: (title: string | null, laneRef: string) => string
   /** L6: capability-gated ProviderLane selection. */
   isLaneEligible?: (laneRef: string) => boolean
+  /** Optional exact model admission for run start/manual handoff. */
+  isModelEligible?: (laneRef: string, model: string) => boolean
   /**
    * FA-WIRE-01 (#8996): the live lane-admission gate
    * validateFullAutoRoutingPolicy composes with (main passes

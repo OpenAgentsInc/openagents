@@ -166,6 +166,12 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
   throw new Error(`could not select ${label}`)
 }
 
+const selectStableClaudeModel = async (page: Page): Promise<void> => {
+  const select = page.locator('[data-en-key="shell-model-select"]')
+  await select.waitFor({ state: "visible", timeout: 30_000 })
+  await select.selectOption("claude-sonnet-5")
+}
+
 const sendAndWait = async (page: Page, prompt: string): Promise<string> => {
   const threadRef = await selectedThreadRef(page)
   const journalFile = profileFile("local-turns", "journal.json")
@@ -289,11 +295,13 @@ const runInteractiveHandoff = async (input: Readonly<{
 }>): Promise<void> => {
   const threadRef = await newSession(input.page)
   await setProvider(input.page, input.source)
+  if (input.source === "Claude") await selectStableClaudeModel(input.page)
   const first = await sendAndWait(
     input.page,
     `Establish marker ${input.marker}. Create ${input.step1} containing exactly STEP-ONE-RESULT(${input.marker}). In your final response state Marker ${input.marker} acknowledged and STEP-ONE-RESULT(${input.marker}).`,
   )
   await setProvider(input.page, input.target)
+  if (input.target === "Claude") await selectStableClaudeModel(input.page)
   const second = await sendAndWait(
     input.page,
     `State the marker from the prior provider and read ${input.step1}. Create ${input.step2} containing exactly STEP-TWO-COMPLETE(${input.marker}) FROM STEP-ONE-RESULT(${input.marker}). In your final response include both exact tokens.`,
@@ -338,6 +346,7 @@ const startRun = async (input: Readonly<{
   doneCondition: string
   lane: "codex-local" | "fable-local"
   turnCap: number
+  model?: string
   fallback?: "codex-local" | "fable-local"
   pauseImmediately?: boolean
 }>): Promise<Readonly<{ runRef: string; threadRef: string }>> => {
@@ -346,6 +355,9 @@ const startRun = async (input: Readonly<{
   await input.page.fill('[data-en-key="full-auto-launcher-objective-field"]', input.objective)
   await input.page.fill('[data-en-key="full-auto-launcher-done-condition-field"]', input.doneCondition)
   await input.page.selectOption('[data-en-key="full-auto-launcher-lane-field"]', input.lane)
+  if (input.model !== undefined) {
+    await input.page.fill('[data-en-key="full-auto-launcher-model-field"]', input.model)
+  }
   await input.page.fill('[data-en-key="full-auto-launcher-turn-cap-field"]', String(input.turnCap))
   if (input.fallback !== undefined) {
     await input.page.selectOption('[data-en-key="full-auto-launcher-fallback-add"]', input.fallback)
@@ -505,7 +517,30 @@ const executeSixRows = async (): Promise<void> => {
   })
   await waitForPausedAfterTurn(page)
   const before03 = openFullAutoRunRegistry(profileFile("full-auto", "runs.json")).get(run03.runRef)!
-  await page.locator('[data-en-key="full-auto-run-handoff"]').click()
+  // Bind the exact provider + admitted target model atomically through the
+  // same owner-UI IPC action the visible handoff control uses. This keeps the
+  // run/profile authority in main and avoids the currently throttled Fable
+  // default while preserving Claude as the target lane.
+  const handoffOutcome = await page.evaluate(async ({ runRef }) => {
+    const bridge = (globalThis as typeof globalThis & {
+      openagentsDesktop?: { fullAutoRun?: { handoff?: (value: unknown) => Promise<unknown> } }
+    }).openagentsDesktop
+    return await bridge?.fullAutoRun?.handoff?.({
+      runRef,
+      targetLaneRef: "fable-local",
+      model: "claude-sonnet-5",
+      reason: "Bind the admitted Claude model for the real owner acceptance run.",
+    })
+  }, { runRef: run03.runRef })
+  if (
+    handoffOutcome === null
+    || typeof handoffOutcome !== "object"
+    || !("ok" in handoffOutcome)
+    || handoffOutcome.ok !== true
+  ) {
+    throw new Error(`owner-UI handoff refused: ${JSON.stringify(handoffOutcome)}`)
+  }
+  await refreshRun(page)
   await page.waitForFunction(() =>
     document.querySelector(".oa-react-full-auto-run-meta")?.textContent?.includes("Provider: fable-local") === true,
   undefined, { timeout: 30_000 })
@@ -571,6 +606,7 @@ const executeSixRows = async (): Promise<void> => {
     objective: "Complete one missing restart packet per turn: create TEST05_PACKET_1.txt, then _2, then _3; each contains exactly RESTART-PACKET-N-COMPLETE.",
     doneCondition: "All three TEST05 packet files exist exactly, across a complete Desktop quit/relaunch after packet one.",
     lane: "fable-local",
+    model: "claude-sonnet-5",
     turnCap: 3,
     pauseImmediately: true,
   })

@@ -35,6 +35,12 @@ const FABLE_LOCAL_LANE = {
   laneRef: "fable-local",
   provider: "fable",
   profileRef: "fable-local",
+  capabilities: {
+    ...CODEX_LOCAL_LANE.capabilities,
+    laneRef: "fable-local",
+    provider: "fable",
+    models: ["claude-sonnet-5"],
+  },
 }
 
 const UNAUTHENTICATED_LANE = {
@@ -110,6 +116,9 @@ const startHarness = async (): Promise<Harness> => {
         return threadRef
       },
       isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
+      isModelEligible: (laneRef, model) =>
+        (laneRef === "codex-local" && model === "gpt-5.4")
+        || (laneRef === "fable-local" && model === "claude-sonnet-5"),
       listLanes: async () => [CODEX_LOCAL_LANE, FABLE_LOCAL_LANE, UNADMITTED_PEER_LANE, UNAUTHENTICATED_LANE],
       providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
       getThread: threadRef => threads.get(threadRef) ?? null,
@@ -324,6 +333,67 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       expect(resumed.status).toBe(200)
       expect(resumed.body.run.lane).toBe("fable-local")
       expect(harness.registry.record(threadRef)?.profile?.lane).toBe("fable-local")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("an exact target model survives handoff and resume in both durable run and thread profiles", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, model: "gpt-5.4" },
+      })
+      const runRef = started.body.run.runRef
+      const threadRef = started.body.run.threadRef
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+
+      const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "fable-local", model: "claude-sonnet-5" },
+      })
+      expect(handoff.status).toBe(200)
+      expect(harness.runRegistry.get(runRef)?.profile).toEqual({
+        lane: "fable-local",
+        model: "claude-sonnet-5",
+      })
+
+      const resumed = await harness.request("POST", `/v1/full-auto/runs/${runRef}/resume`)
+      expect(resumed.status).toBe(200)
+      expect(harness.registry.record(threadRef)?.profile).toEqual({
+        lane: "fable-local",
+        model: "claude-sonnet-5",
+      })
+
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+      const defaultModelHandoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "codex-local" },
+      })
+      expect(defaultModelHandoff.status).toBe(200)
+      expect(harness.runRegistry.get(runRef)?.profile).toEqual({ lane: "codex-local" })
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("an ineligible target model refuses before provider switching and leaves the paused profile untouched", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, model: "gpt-5.4" },
+      })
+      const runRef = started.body.run.runRef
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+
+      const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
+        body: { targetLaneRef: "fable-local", model: "gpt-5.4" },
+      })
+      expect(handoff.status).toBe(409)
+      expect(handoff.body.error).toBe("model_not_eligible")
+      expect(harness.runRegistry.get(runRef)?.profile).toEqual({
+        lane: "codex-local",
+        model: "gpt-5.4",
+      })
+      expect(harness.providerHandoffRegistry.list({ runRef })).toEqual([])
     } finally {
       await harness.dispose()
     }

@@ -67,6 +67,8 @@ export type FullAutoLauncherDraft = Readonly<{
   doneCondition: string
   workspaceRef: string
   lane: string
+  /** Exact provider model, or blank for the lane default. */
+  model: string
   /** FA-WIRE-01 (#8996): ordered fallback lanes AFTER the primary `lane`.
    * Non-empty means Start submits an ordered routingPolicy; empty keeps the
    * exact single-lane default behavior. */
@@ -87,6 +89,7 @@ export const emptyFullAutoLauncherDraft = (
   doneCondition: "",
   workspaceRef: defaults?.workspaceRef ?? "",
   lane: FULL_AUTO_LAUNCHER_DEFAULT_LANE,
+  model: "",
   fallbackLanes: [],
   turnCapText: String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP),
   maxWallClockMinutesText: "",
@@ -142,6 +145,7 @@ export const DesktopFullAutoLauncherObjectiveChanged = defineIntent("DesktopFull
 export const DesktopFullAutoLauncherDoneConditionChanged = defineIntent("DesktopFullAutoLauncherDoneConditionChanged", Schema.String)
 export const DesktopFullAutoLauncherWorkspaceRefChanged = defineIntent("DesktopFullAutoLauncherWorkspaceRefChanged", Schema.String)
 export const DesktopFullAutoLauncherLaneChanged = defineIntent("DesktopFullAutoLauncherLaneChanged", Schema.String)
+export const DesktopFullAutoLauncherModelChanged = defineIntent("DesktopFullAutoLauncherModelChanged", Schema.String)
 // FA-WIRE-01 (#8996): ordered fallback-lane picker + wall-clock guardrail.
 export const DesktopFullAutoLauncherFallbackLaneAdded = defineIntent("DesktopFullAutoLauncherFallbackLaneAdded", Schema.String)
 export const DesktopFullAutoLauncherFallbackLaneRemoved = defineIntent("DesktopFullAutoLauncherFallbackLaneRemoved", Schema.String)
@@ -165,6 +169,7 @@ export const fullAutoWorkspaceIntents = [
   DesktopFullAutoLauncherDoneConditionChanged,
   DesktopFullAutoLauncherWorkspaceRefChanged,
   DesktopFullAutoLauncherLaneChanged,
+  DesktopFullAutoLauncherModelChanged,
   DesktopFullAutoLauncherFallbackLaneAdded,
   DesktopFullAutoLauncherFallbackLaneRemoved,
   DesktopFullAutoLauncherMaxWallClockChanged,
@@ -371,11 +376,16 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         launcher: {
           ...current.fullAuto.launcher,
           lane: value,
+          model: "",
           // The primary lane can never also be a fallback -- keep the ordered
           // list coherent when the primary changes.
           fallbackLanes: current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value),
           error: null,
         },
+      })),
+    DesktopFullAutoLauncherModelChanged: (value: string) =>
+      SubscriptionRef.update(state, current => withFullAuto(current, {
+        launcher: { ...current.fullAuto.launcher, model: value, error: null },
       })),
     // FA-WIRE-01 (#8996): append one fallback lane (order = priority).
     // Duplicates and the primary lane are no-ops here; validation renders the
@@ -420,6 +430,7 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         objective: draft.objective.trim(),
         doneCondition: draft.doneCondition.trim(),
         lane: draft.lane,
+        ...(draft.model.trim() === "" ? {} : { model: draft.model.trim() }),
         ...(validation.turnCap === undefined ? {} : { turnCap: validation.turnCap }),
         // FA-WIRE-01 (#8996): the ordered policy + owner guardrails, validated
         // above and re-validated fail-closed main-side.
@@ -633,6 +644,15 @@ export const fullAutoLauncherView = (fullAuto: FullAutoWorkspaceState): View => 
           disabled: draft.submitting,
           a11y: { label: "Full Auto provider lane" },
           onChange: IntentRef("DesktopFullAutoLauncherLaneChanged", ComponentValueBinding()),
+        }),
+        TextField({
+          key: "full-auto-launcher-model-field",
+          value: draft.model,
+          placeholder: "lane default",
+          disabled: draft.submitting,
+          a11y: { label: "Full Auto provider model (optional exact model id)" },
+          onChange: IntentRef("DesktopFullAutoLauncherModelChanged", ComponentValueBinding()),
+          style: { width: "sm" },
         }),
         TextField({
           key: "full-auto-launcher-turn-cap-field",

@@ -211,6 +211,16 @@ export const startFullAutoRunAction = (
       },
     }
   }
+  if (body.model !== undefined && capabilities.isModelEligible?.(lane, body.model) !== true) {
+    return {
+      ok: false,
+      status: 409,
+      error: {
+        error: "model_not_eligible",
+        message: `Model ${body.model} is not admitted for provider lane ${lane}.`,
+      },
+    }
+  }
   // FA-AC-39: check BEFORE minting anything -- a refusal must leave no side
   // effect behind, never a half-started thread.
   const existingActive = capabilities.runRegistry.activeRun()
@@ -226,14 +236,15 @@ export const startFullAutoRunAction = (
     }
   }
   const startedThreadRef = capabilities.createThread(body.title, lane)
-  capabilities.registry.set(startedThreadRef, true, { workspaceRef: resolvedWorkspaceRef, profile: { lane } })
+  const profile = { lane, ...(body.model === undefined ? {} : { model: body.model }) }
+  capabilities.registry.set(startedThreadRef, true, { workspaceRef: resolvedWorkspaceRef, profile })
   const result = capabilities.runRegistry.startNew({
     title: body.title,
     objective: body.objective,
     doneCondition: body.doneCondition,
     objectiveSource: actor === "owner_ui" ? "user" : "control_caller",
     workspaceRef: resolvedWorkspaceRef,
-    profile: { lane },
+    profile,
     ...(body.turnCap === undefined ? {} : { turnCap: body.turnCap }),
     threadRef: startedThreadRef,
     actor,
@@ -345,6 +356,17 @@ export const resumeFullAutoRunAction = (
       error: {
         error: "lane_not_eligible",
         message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
+      },
+    }
+  }
+  const model = run.profile?.model
+  if (model !== undefined && capabilities.isModelEligible?.(lane, model) !== true) {
+    return {
+      ok: false,
+      status: 409,
+      error: {
+        error: "model_not_eligible",
+        message: `Model ${model} is not admitted for provider lane ${lane}; Resume refused and the run remains Paused.`,
       },
     }
   }
@@ -486,6 +508,16 @@ export const handoffFullAutoRunAction = async (
   }
   const sourceLaneRef = run.profile?.lane ?? FULL_AUTO_DEFAULT_LANE
   const targetLaneRef = body.targetLaneRef
+  if (body.model !== undefined && capabilities.isModelEligible?.(targetLaneRef, body.model) !== true) {
+    return {
+      ok: false,
+      status: 409,
+      error: {
+        error: "model_not_eligible",
+        message: `Model ${body.model} is not admitted for provider lane ${targetLaneRef}.`,
+      },
+    }
+  }
   const reason = body.reason ?? `Provider handoff requested via ${callerLabel}.`
   const thread = run.threadRef === undefined ? null : (capabilities.getThread?.(run.threadRef) ?? null)
   // FA-AC-59: re-check target admission/auth/capability eligibility through
@@ -549,7 +581,12 @@ export const handoffFullAutoRunAction = async (
     truncated: envelope.contextTruncated,
     envelopeSchema: envelope.schema,
   })
-  const rebound = capabilities.runRegistry.rebindProfile(runRef, { ...run.profile, lane: targetLaneRef })
+  const { model: _sourceModel, ...sourceProfileWithoutModel } = run.profile ?? {}
+  const rebound = capabilities.runRegistry.rebindProfile(runRef, {
+    ...sourceProfileWithoutModel,
+    lane: targetLaneRef,
+    ...(body.model === undefined ? {} : { model: body.model }),
+  })
   if (rebound === null) return notFound()
   capabilities.appendSystemNote(
     run.threadRef ?? runRef,

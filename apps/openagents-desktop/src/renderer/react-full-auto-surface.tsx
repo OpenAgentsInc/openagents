@@ -127,6 +127,17 @@ const FullAutoLauncher = ({ state, report }: {
           onChange={event => dispatch(report, "DesktopFullAutoLauncherTurnCapChanged", event.currentTarget.value)}
         />
       </div>
+      <div className="oa-react-full-auto-field">
+        <label htmlFor="full-auto-launcher-model">Model (optional)</label>
+        <Input
+          id="full-auto-launcher-model"
+          data-en-key="full-auto-launcher-model-field"
+          placeholder="lane default"
+          value={draft.model}
+          disabled={draft.submitting}
+          onChange={event => dispatch(report, "DesktopFullAutoLauncherModelChanged", event.currentTarget.value)}
+        />
+      </div>
     </div>
     {/* FA-WIRE-01 (#8996): ordered fallback lanes (rotation priority) + the
         optional wall-clock guardrail. */}

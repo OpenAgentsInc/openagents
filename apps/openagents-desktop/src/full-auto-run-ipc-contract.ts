@@ -41,6 +41,7 @@ const FULL_AUTO_RUN_DONE_CONDITION_LIMIT = 2000
 const FULL_AUTO_RUN_REASON_LIMIT = 400
 
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
+const ModelRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 const WorkspaceRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024))
 const LaneRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))
 const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
@@ -87,6 +88,7 @@ export const FullAutoRunStartRequestSchema = Schema.Struct({
   objective: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_OBJECTIVE_LIMIT)),
   doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
   lane: Schema.optional(LaneRef),
+  model: Schema.optional(ModelRef),
   turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
   /** FA-WIRE-01 (#8996): optional ordered routing policy (order = rotation
    * priority) and owner guardrails, validated fail-closed main-side. */
@@ -102,6 +104,7 @@ export const decodeFullAutoRunStartRequest = (value: unknown): FullAutoRunStartR
 export const FullAutoRunHandoffIpcRequestSchema = Schema.Struct({
   runRef: Ref,
   targetLaneRef: LaneRef,
+  model: Schema.optional(ModelRef),
   reason: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_REASON_LIMIT))),
 })
 export type FullAutoRunHandoffIpcRequest = typeof FullAutoRunHandoffIpcRequestSchema.Type

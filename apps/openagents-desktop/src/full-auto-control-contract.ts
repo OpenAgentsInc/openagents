@@ -129,6 +129,7 @@ export const decodeFullAutoControlStartRequest = (
 }
 
 const RunRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
+const ModelRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 export const decodeFullAutoControlRunRef = (value: unknown): string | null => {
   const decoded = Schema.decodeUnknownExit(RunRef)(value)
   return Exit.isSuccess(decoded) ? decoded.value : null
@@ -147,6 +148,9 @@ export const FullAutoControlRunStartRequestSchema = Schema.Struct({
   objective: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_OBJECTIVE_LIMIT)),
   doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
   lane: Schema.optional(LaneRef),
+  /** Optional exact provider model, admitted against the selected lane before
+   * the run is minted and retained in the durable execution profile. */
+  model: Schema.optional(ModelRef),
   turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
   /** FA-WIRE-01 (#8996): optional ordered routing policy + guardrails, bound
    * onto the run's thread-level record after the run mints (validated
@@ -237,6 +241,9 @@ export type FullAutoControlRunMutationResponse = typeof FullAutoControlRunMutati
  */
 export const FullAutoControlRunHandoffRequestSchema = Schema.Struct({
   targetLaneRef: LaneRef,
+  /** Optional exact target-lane model. Absent preserves the existing
+   * target-lane default behavior. */
+  model: Schema.optional(ModelRef),
   reason: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_REASON_LIMIT))),
 })
 export type FullAutoControlRunHandoffRequest = typeof FullAutoControlRunHandoffRequestSchema.Type
@@ -431,6 +438,7 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
   "invalid_request",
   "workspace_mismatch",
   "lane_not_eligible",
+  "model_not_eligible",
   /** FA-AC-39: a second active run was refused. `activeRunRef` on the error
    * body identifies the existing run without leaking its objective. */
   "active_run_conflict",

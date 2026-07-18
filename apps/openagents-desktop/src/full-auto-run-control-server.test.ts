@@ -18,6 +18,7 @@ type Harness = Readonly<{
   interruptCalls: Array<string>
   reconcileCalls: () => number
   setResolvedWorkspace: (workspaceRef: string) => void
+  setModelAdmissionEnabled: (enabled: boolean) => void
   server: FullAutoControlServer
   request: (
     method: "GET" | "POST",
@@ -37,6 +38,7 @@ const startHarness = async (): Promise<Harness> => {
   let reconcileCallCount = 0
   let mintedThreadCount = 0
   let resolvedWorkspace = GRANTED_WORKSPACE
+  let modelAdmissionEnabled = true
   const server = await startFullAutoControlServer({
     capabilities: {
       registry,
@@ -54,6 +56,8 @@ const startHarness = async (): Promise<Harness> => {
         return `thread.run-control.${mintedThreadCount}`
       },
       isLaneEligible: laneRef => laneRef === "codex-local",
+      isModelEligible: (laneRef, model) =>
+        modelAdmissionEnabled && laneRef === "codex-local" && model === "gpt-5.6-sol",
       interruptLiveTurn: threadRef => {
         interruptCalls.push(threadRef)
         return true
@@ -82,6 +86,9 @@ const startHarness = async (): Promise<Harness> => {
     reconcileCalls: () => reconcileCallCount,
     setResolvedWorkspace: workspaceRef => {
       resolvedWorkspace = workspaceRef
+    },
+    setModelAdmissionEnabled: enabled => {
+      modelAdmissionEnabled = enabled
     },
     server,
     request,
@@ -129,6 +136,42 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       })
       expect(started.status).toBe(409)
       expect(started.body.error).toBe("workspace_mismatch")
+      expect(harness.runRegistry.list()).toEqual([])
+      expect(harness.registry.list()).toEqual([])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("runs/start admits and durably binds an exact lane model before dispatch", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, lane: "codex-local", model: "gpt-5.6-sol" },
+      })
+      expect(started.status).toBe(200)
+      const threadRef = started.body.run.threadRef as string
+      expect(harness.registry.record(threadRef)?.profile).toEqual({
+        lane: "codex-local",
+        model: "gpt-5.6-sol",
+      })
+      expect(harness.runRegistry.get(started.body.run.runRef)?.profile).toEqual({
+        lane: "codex-local",
+        model: "gpt-5.6-sol",
+      })
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("runs/start refuses an unadmitted lane/model pair before minting anything", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, lane: "codex-local", model: "claude-sonnet-5" },
+      })
+      expect(started.status).toBe(409)
+      expect(started.body.error).toBe("model_not_eligible")
       expect(harness.runRegistry.list()).toEqual([])
       expect(harness.registry.list()).toEqual([])
     } finally {
@@ -279,6 +322,27 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       const resumedAgain = await harness.request("POST", `/v1/full-auto/runs/${runRef}/resume`)
       expect(resumedAgain.status).toBe(200)
       expect(resumedAgain.body.run.state).toBe("running")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("Resume revalidates the durable exact model and remains Paused if that lane/model admission was withdrawn", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, lane: "codex-local", model: "gpt-5.6-sol" },
+      })
+      const runRef = started.body.run.runRef
+      const threadRef = started.body.run.threadRef
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
+      harness.setModelAdmissionEnabled(false)
+
+      const resumed = await harness.request("POST", `/v1/full-auto/runs/${runRef}/resume`)
+      expect(resumed.status).toBe(409)
+      expect(resumed.body.error).toBe("model_not_eligible")
+      expect(harness.registry.get(threadRef)).toBe(false)
+      expect(harness.runRegistry.get(runRef)?.state).toBe("paused")
     } finally {
       await harness.dispose()
     }

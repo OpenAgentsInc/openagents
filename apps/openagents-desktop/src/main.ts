@@ -4476,6 +4476,12 @@ const fullAutoRunActionCapabilities: FullAutoControlCapabilities = {
     const projection = projectProviderLaneCapabilities(report)
     return projection.admission === "admitted" && projection.fullAuto === true
   },
+  isModelEligible: (laneRef, model) => {
+    const report = providerLaneCapabilityByRef(laneRef)
+    if (report === null) return false
+    const projection = projectProviderLaneCapabilities(report)
+    return projection.admission === "admitted" && projection.models.includes(model)
+  },
   // FA-WIRE-01 (#8996): the routing-policy admission gate is built over the
   // SAME capability source per-dispatch eligibility uses, so validation-time
   // truth and dispatch-time truth cannot drift (FA-RT-01 rationale).
