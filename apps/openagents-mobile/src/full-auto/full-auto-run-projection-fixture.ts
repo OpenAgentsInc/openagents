@@ -17,6 +17,13 @@ export const fullAutoRunFixtureRunning: FullAutoRunMobileProjection = {
   startedAt: "2026-07-17T00:00:00.000Z",
   updatedAt: "2026-07-17T00:00:00.000Z",
   lastTransition: { actor: "owner_ui", at: "2026-07-17T00:00:00.000Z" },
+  laneRef: "codex-local",
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 6,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 export const fullAutoRunFixturePaused: FullAutoRunMobileProjection = {
@@ -31,6 +38,42 @@ export const fullAutoRunFixtureStalled: FullAutoRunMobileProjection = {
   lifecycleState: "stalled",
   updatedAt: "2026-07-17T00:10:00.000Z",
   lastTransition: { actor: "liveness_monitor", at: "2026-07-17T00:10:00.000Z" },
+}
+
+/** MOB-FA-02 (#8994): a terminal fixture carrying a bounded run-report
+ * summary, for rendering the "Report" surface once a run ends. */
+export const fullAutoRunFixtureCompleted: FullAutoRunMobileProjection = {
+  ...fullAutoRunFixtureRunning,
+  lifecycleState: "completed",
+  updatedAt: "2026-07-17T00:20:00.000Z",
+  lastTransition: { actor: "owner_ui", at: "2026-07-17T00:20:00.000Z" },
+  successfulAttempts: 9,
+  rotationCount: 1,
+  receiptSummary: {
+    schema: "full_auto_run.mobile_receipt.v1",
+    runRef: "run.full-auto.fixture-0001",
+    threadRef: "thread.full-auto.fixture.0001",
+    objectiveDigest: "a".repeat(64),
+    doneConditionDigest: "b".repeat(64),
+    workspaceRefDigest: "c".repeat(64),
+    state: "completed",
+    startedAt: "2026-07-17T00:00:00.000Z",
+    endedAt: "2026-07-17T00:20:00.000Z",
+    turnCap: 20,
+    successfulAttempts: 9,
+    failedAttempts: 1,
+    providerIdentities: ["codex-local"],
+    providerTransitionCount: 1,
+    providerTransitionDispositions: ["complete_within_bounds"],
+    livenessGapCount: 0,
+    recoveryActionsUsed: [],
+    verifiedRefCount: 3,
+    claimedRefCount: 1,
+    progressDisposition: "unknown",
+    usageKnown: false,
+    reportRevision: 4,
+    createdAt: "2026-07-17T00:20:00.000Z",
+  },
 }
 
 /**

@@ -32,6 +32,20 @@ export {
   type FullAutoRunProjectionPublishResult,
 } from "./full-auto-run-client-projection.js"
 
+// MOB-FA-02 (#8994): typed durable Pause/Resume/Stop control-intent
+// dispatch/list/outcome-report ergonomics -- the sibling mutation vocabulary
+// for the projection route above.
+export {
+  dispatchFullAutoRunControlIntent,
+  fetchFullAutoRunControlIntents,
+  reportFullAutoRunControlIntentOutcome,
+  FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
+  type FullAutoRunControlIntentDispatchResult,
+  type FullAutoRunControlIntentFetch,
+  type FullAutoRunControlIntentListResult,
+  type FullAutoRunControlIntentOutcomeResult,
+} from "./full-auto-run-control-intent.js"
+
 export {
   admitFleetAttentionCommand,
   admitFleetRunCommand,

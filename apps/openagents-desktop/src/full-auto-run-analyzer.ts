@@ -87,7 +87,10 @@ export const median = (values: ReadonlyArray<number>): number | null => {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!
 }
 
-const OWNER_DIRECTED_ACTORS = new Set(["owner_ui", "control_api", "cli", "mcp"] as const)
+// MOB-FA-02 (#8994): a phone-dispatched Pause/Resume/Stop is just as much an
+// owner-directed action as a click in the Desktop UI or a CLI/MCP call --
+// the owner's own phone, not a system/guardrail policy.
+const OWNER_DIRECTED_ACTORS = new Set(["owner_ui", "control_api", "cli", "mcp", "mobile"] as const)
 
 // -----------------------------------------------------------------------
 // Findings: bounded, typed, code-authored -- never free transcript text.

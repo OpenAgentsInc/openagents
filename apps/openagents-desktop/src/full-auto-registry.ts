@@ -51,6 +51,9 @@ export const FullAutoDisabledBySchema = Schema.Literals([
    * max turns) terminated the loop. The generalized failure budget keeps the
    * existing dispatch_failure_limit attribution -- same failure class. */
   "guardrail",
+  /** MOB-FA-02 (#8994): a typed Pause/Resume/Stop intent dispatched from
+   * OpenAgents mobile and applied by Desktop's control-intent consumer. */
+  "mobile",
 ])
 export type FullAutoDisabledBy = typeof FullAutoDisabledBySchema.Type
 

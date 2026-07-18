@@ -176,6 +176,9 @@ export const FullAutoRunActorSchema = Schema.Literals([
   "legacy_migration",
   /** Reserved for FA-RUN-03 (#8971)'s liveness/SLO classifier. */
   "liveness_monitor",
+  /** MOB-FA-02 (#8994): a typed Pause/Resume/Stop intent dispatched from
+   * OpenAgents mobile and applied by Desktop's control-intent consumer. */
+  "mobile",
 ])
 export type FullAutoRunActor = typeof FullAutoRunActorSchema.Type
 

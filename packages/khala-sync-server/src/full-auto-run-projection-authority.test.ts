@@ -18,6 +18,13 @@ const run = {
   startedAt: timestamp,
   updatedAt: timestamp,
   lastTransition: { actor: "control_api" as const, at: timestamp },
+  laneRef: "codex-local",
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 3,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 /** A minimal in-memory fake of the tagged-template `SyncSql` handle, keyed
@@ -37,12 +44,17 @@ const makeFakeSql = (): SyncSql => {
       const [
         ownerUserId, runRef, threadRef, objective, doneCondition,
         lifecycleState, workspaceLabel, startedAt, updatedAt,
-        lastTransitionActor, lastTransitionAt,
+        lastTransitionActor, lastTransitionAt, _publishedAt,
+        laneRef, accountRef, turnCap, successfulAttempts, failedAttempts,
+        rotationCount, receiptSummaryJson,
       ] = values
       rows.set(String(ownerUserId), {
         run_ref: runRef, thread_ref: threadRef, objective, done_condition: doneCondition,
         lifecycle_state: lifecycleState, workspace_label: workspaceLabel, started_at: startedAt,
         updated_at: updatedAt, last_transition_actor: lastTransitionActor, last_transition_at: lastTransitionAt,
+        lane_ref: laneRef, account_ref: accountRef, turn_cap: turnCap,
+        successful_attempts: successfulAttempts, failed_attempts: failedAttempts,
+        rotation_count: rotationCount, receipt_summary: receiptSummaryJson,
       })
       return []
     }
@@ -64,6 +76,49 @@ describe("makeFullAutoRunProjectionRepository", () => {
     await Effect.runPromise(repository.publish({ ownerUserId: "owner-a", run }))
     const result = await Effect.runPromise(repository.observe({ ownerUserId: "owner-a" }))
     expect(result.projection.run).toMatchObject({ runRef: run.runRef, lifecycleState: "running" })
+  })
+
+  test("MOB-FA-02 (#8994): round-trips lane/account/rotation/cap fields and a terminal receiptSummary", async () => {
+    const repository = makeFullAutoRunProjectionRepository({ sql: makeFakeSql(), now: () => new Date(timestamp) })
+    const digest = "a".repeat(64)
+    const terminalRun = {
+      ...run,
+      lifecycleState: "completed" as const,
+      laneRef: "codex-local",
+      accountRef: "codex-2",
+      rotationCount: 2,
+      receiptSummary: {
+        schema: "full_auto_run.mobile_receipt.v1" as const,
+        runRef: run.runRef,
+        threadRef: run.threadRef,
+        objectiveDigest: digest,
+        doneConditionDigest: digest,
+        workspaceRefDigest: digest,
+        state: "completed" as const,
+        turnCap: 20,
+        successfulAttempts: 5,
+        failedAttempts: 1,
+        providerIdentities: ["codex-local"],
+        providerTransitionCount: 0,
+        providerTransitionDispositions: [],
+        livenessGapCount: 0,
+        recoveryActionsUsed: [],
+        verifiedRefCount: 0,
+        claimedRefCount: 0,
+        progressDisposition: "unknown" as const,
+        usageKnown: false,
+        reportRevision: 1,
+        createdAt: timestamp,
+      },
+    }
+    await Effect.runPromise(repository.publish({ ownerUserId: "owner-a", run: terminalRun }))
+    const result = await Effect.runPromise(repository.observe({ ownerUserId: "owner-a" }))
+    expect(result.projection.run).toMatchObject({
+      laneRef: "codex-local",
+      accountRef: "codex-2",
+      rotationCount: 2,
+      receiptSummary: { state: "completed", successfulAttempts: 5 },
+    })
   })
 
   test("observe returns a null run for an owner who never published", async () => {

@@ -329,7 +329,7 @@ import {
   openFullAutoRunRegistry,
 } from "./full-auto-run-registry.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
-import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
+import { deriveFullAutoRunReceipt, openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
 import {
   FULL_AUTO_OWNER_UI_CALLER_LABEL,
@@ -362,8 +362,10 @@ import {
 } from "./full-auto-run-ipc-contract.ts"
 import {
   makeFullAutoRunProjectionPublisher,
+  toFullAutoRunClientReceiptSummary,
   wrapFullAutoRunRegistryWithProjectionPublish,
 } from "./full-auto-run-projection-publisher.ts"
+import { makeFullAutoRunControlIntentConsumer } from "./full-auto-run-control-intent-consumer.ts"
 import {
   DesktopCodingCatalogArchiveChannel,
   DesktopCodingCatalogChooseChannel,
@@ -1211,6 +1213,26 @@ const fullAutoRunProjectionPublisher = makeFullAutoRunProjectionPublisher({
   sessionReady: () => desktopSessionState === "session_ready",
   credential: () => desktopSessionVault?.load() ?? null,
   baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+  // MOB-FA-02 (#8994): rotation count comes from the thread-level record
+  // (FA-RT-01 #8987's rotationHistory); the receipt summary is derived only
+  // once the run is terminal, from the private report store below. Both
+  // `fullAutoRegistry` and `fullAutoRunReportStore` are declared later in
+  // this file but only ever READ inside this closure after a publish call,
+  // never during synchronous module evaluation, so the forward reference is
+  // safe (same pattern the heartbeat timer below already relies on for
+  // `fullAutoRunRegistry`).
+  deriveExtra: run => {
+    const threadRecord = run.threadRef === undefined ? null : fullAutoRegistry.record(run.threadRef)
+    const rotationCount = threadRecord?.rotationHistory?.length ?? 0
+    if (!FULL_AUTO_RUN_TERMINAL_STATES.has(run.state)) {
+      return { rotationCount, receiptSummary: null }
+    }
+    const report = fullAutoRunReportStore.get(run.runRef)
+    const receiptSummary = report === null
+      ? null
+      : toFullAutoRunClientReceiptSummary(deriveFullAutoRunReceipt(report, () => new Date()))
+    return { rotationCount, receiptSummary }
+  },
 })
 const fullAutoRunRegistry = wrapFullAutoRunRegistryWithProjectionPublish(
   fullAutoRunRegistryRaw,
@@ -4405,6 +4427,39 @@ const fullAutoRunActionContext: FullAutoRunActionContext = {
   actor: "owner_ui",
   callerLabel: FULL_AUTO_OWNER_UI_CALLER_LABEL,
 }
+
+/**
+ * MOB-FA-02 (#8994): consumes typed Pause/Resume/Stop control intents
+ * dispatched from OpenAgents mobile through
+ * `/api/full-auto-runs/control-intents`. Server-mediated, eventually
+ * consistent by design (the issue's explicit architectural steer): Desktop
+ * is not always reachable when the phone wants to act, so this polls on the
+ * SAME cadence as the projection publisher's existing heartbeat above,
+ * rather than requiring a live connection. Applies through the identical
+ * `fullAutoRunActionCapabilities` every other caller (loopback control API,
+ * owner UI IPC) uses, with `actor: "mobile"` -- additive, never a bypass of
+ * workspace binding, exactly-once dispatch, or the failure/backoff cap.
+ */
+const fullAutoRunControlIntentConsumer = makeFullAutoRunControlIntentConsumer({
+  sessionReady: () => desktopSessionState === "session_ready",
+  credential: () => desktopSessionVault?.load() ?? null,
+  baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+  actionContext: () => ({
+    capabilities: fullAutoRunActionCapabilities,
+    now: () => new Date(),
+    actor: "mobile",
+    callerLabel: "a mobile Pause/Resume/Stop request",
+  }),
+})
+const fullAutoRunControlIntentPollMs = 60_000
+const fullAutoRunControlIntentPollTimer = setInterval(() => {
+  Effect.runFork(fullAutoRunControlIntentConsumer.tick())
+}, fullAutoRunControlIntentPollMs)
+fullAutoRunControlIntentPollTimer.unref?.()
+// Also poll once shortly after startup rather than waiting a full interval
+// for the first pending intent to be picked up.
+setTimeout(() => Effect.runFork(fullAutoRunControlIntentConsumer.tick()), 5_000).unref?.()
+
 ipcMain.handle(FullAutoRunListChannel, () => ({
   runs: listFullAutoRunsAction(fullAutoRunActionContext),
   // Same function `startFullAutoRunAction` checks `workspaceRef` against --

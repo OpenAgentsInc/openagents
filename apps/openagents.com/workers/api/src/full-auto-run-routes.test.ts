@@ -28,6 +28,13 @@ const validRunBody = {
   startedAt: TIMESTAMP,
   updatedAt: TIMESTAMP,
   lastTransition: { actor: 'control_api', at: TIMESTAMP },
+  laneRef: 'codex-local',
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 3,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 /** In-memory fake, mirroring `sarah-fleet-run-routes.test.ts`'s

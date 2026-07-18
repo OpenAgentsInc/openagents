@@ -59,6 +59,17 @@ export type FullAutoRunActionOutcome<T = FullAutoControlRun> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ ok: false; status: number; error: FullAutoControlError }>
 
+/** MOB-FA-02 (#8994): the thread-level `disabledBy` attribution for a given
+ * run-level actor -- kept as one function so `pauseFullAutoRunAction` and
+ * `stopFullAutoRunAction` never independently drift on how a mobile-
+ * originated intent is attributed (previously any non-`owner_ui` actor,
+ * including `mobile`, silently fell through to `control_api`). */
+const disabledByForActor = (actor: FullAutoRunActor): "ui_toggle" | "control_api" | "mobile" => {
+  if (actor === "owner_ui") return "ui_toggle"
+  if (actor === "mobile") return "mobile"
+  return "control_api"
+}
+
 const projectRun = (run: FullAutoRun, projection: FullAutoLivenessProjection): FullAutoControlRun => ({
   runRef: run.runRef,
   threadRef: run.threadRef ?? null,
@@ -284,7 +295,7 @@ export const pauseFullAutoRunAction = (
   // currently in flight -- disable the thread-level gate right now rather
   // than waiting for the turn to resolve.
   if (run.threadRef !== undefined) {
-    capabilities.registry.set(run.threadRef, false, { disabledBy: actor === "owner_ui" ? "ui_toggle" : "control_api" })
+    capabilities.registry.set(run.threadRef, false, { disabledBy: disabledByForActor(actor) })
     if (turnRunning) capabilities.interruptLiveTurn?.(run.threadRef)
     capabilities.appendSystemNote(run.threadRef, `Full Auto run paused via ${callerLabel}.`)
   }
@@ -436,7 +447,7 @@ export const stopFullAutoRunAction = (
     }
   }
   if (run.threadRef !== undefined) {
-    capabilities.registry.set(run.threadRef, false, { disabledBy: actor === "owner_ui" ? "ui_toggle" : "control_api" })
+    capabilities.registry.set(run.threadRef, false, { disabledBy: disabledByForActor(actor) })
     if (turnRunning) capabilities.interruptLiveTurn?.(run.threadRef)
     capabilities.appendSystemNote(run.threadRef, `Full Auto run stopped via ${callerLabel}.`)
   }

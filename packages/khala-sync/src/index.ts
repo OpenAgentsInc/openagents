@@ -25,6 +25,11 @@ export * from "./fleet-run-client-projection.js"
 // khala-sync-client, mirroring the FleetRunClientProjection pattern above.
 export * from "./full-auto-run-client-projection.js"
 
+// MOB-FA-02 (#8994): typed durable Pause/Resume/Stop intents from mobile
+// toward a Desktop-owned FullAutoRun -- the sibling mutation vocabulary for
+// the projection route above.
+export * from "./full-auto-run-control-intent.js"
+
 // Capacity-aware dispatch account selection (#8389/#8388): pure selector
 // over FleetAccountEntity, shared by khala-sync-server and the published
 // Pylon runtime dispatch consumer (see its own doc header for why it lives

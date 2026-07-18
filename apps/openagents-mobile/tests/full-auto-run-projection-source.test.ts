@@ -26,6 +26,13 @@ describe("fetchFullAutoRunMobileProjection (translation over the real #8981 clie
               startedAt: "2026-07-17T00:00:00.000Z",
               updatedAt: "2026-07-17T00:00:00.000Z",
               lastTransition: { actor: "owner_ui", at: "2026-07-17T00:00:00.000Z" },
+              laneRef: "codex-local",
+              accountRef: null,
+              turnCap: 20,
+              successfulAttempts: 3,
+              failedAttempts: 0,
+              rotationCount: 0,
+              receiptSummary: null,
             },
           },
         })

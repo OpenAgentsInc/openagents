@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test"
 import {
   FULL_AUTO_RUN_STALE_AFTER_MS,
   isFullAutoRunLifecycleActive,
+  isFullAutoRunLifecycleTerminal,
   isFullAutoRunProjectionActive,
   isFullAutoRunProjectionFresh,
   truncateFullAutoRunObjective,
@@ -19,6 +20,13 @@ const baseProjection: FullAutoRunMobileProjection = {
   startedAt: "2026-07-17T00:00:00.000Z",
   updatedAt: "2026-07-17T00:00:00.000Z",
   lastTransition: { actor: "owner_ui", at: "2026-07-17T00:00:00.000Z" },
+  laneRef: "codex-local",
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 3,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 describe("full-auto-run-projection mobile helpers (openagents #8982, over the real #8981 schema)", () => {
@@ -66,6 +74,22 @@ describe("full-auto-run-projection mobile helpers (openagents #8982, over the re
   test("isFullAutoRunProjectionActive: draft case (not yet started, even if fresh)", () => {
     const nowMs = Date.parse(baseProjection.updatedAt) + 1_000
     expect(isFullAutoRunProjectionActive({ ...baseProjection, lifecycleState: "draft" }, nowMs)).toBe(false)
+  })
+
+  test("isFullAutoRunLifecycleTerminal (#8994): completed/failed/stopped/cap_reached are terminal", () => {
+    expect(isFullAutoRunLifecycleTerminal("completed")).toBe(true)
+    expect(isFullAutoRunLifecycleTerminal("failed")).toBe(true)
+    expect(isFullAutoRunLifecycleTerminal("stopped")).toBe(true)
+    expect(isFullAutoRunLifecycleTerminal("cap_reached")).toBe(true)
+  })
+
+  test("isFullAutoRunLifecycleTerminal (#8994): draft and every active state are not terminal", () => {
+    expect(isFullAutoRunLifecycleTerminal("draft")).toBe(false)
+    expect(isFullAutoRunLifecycleTerminal("running")).toBe(false)
+    expect(isFullAutoRunLifecycleTerminal("pausing")).toBe(false)
+    expect(isFullAutoRunLifecycleTerminal("paused")).toBe(false)
+    expect(isFullAutoRunLifecycleTerminal("retrying")).toBe(false)
+    expect(isFullAutoRunLifecycleTerminal("stalled")).toBe(false)
   })
 
   test("truncateFullAutoRunObjective leaves short objectives untouched", () => {

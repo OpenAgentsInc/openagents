@@ -75,6 +75,8 @@ import {
   isFullAutoRunProjectionActive,
   type FullAutoRunProjectionResult,
 } from "./full-auto/full-auto-run-projection"
+import type { FullAutoRunControlDispatchOutcome } from "./full-auto/full-auto-run-control-intent"
+import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
@@ -408,6 +410,17 @@ export const App = () => {
     void attentionDeliveryRef.current?.flush()
   }, [])
   const consumeIncomingShare = useCallback((): void => setIncomingShare(null), [])
+  // MOB-FA-02 (#8994): a stable capability closure over the current sync
+  // host (ref-indirected the same way the auth/attention callbacks above
+  // read `*Ref.current` rather than closing over a snapshot), so
+  // `HomeScreen`'s `buildHomeProgram` memoization never tears down just
+  // because the underlying host object was recreated.
+  const fullAutoControl = useCallback(
+    (input: Readonly<{ runRef: string; action: FullAutoRunControlAction }>) =>
+      syncHostRef.current?.fullAutoControl(input) ??
+        Promise.resolve<FullAutoRunControlDispatchOutcome>({ state: "unavailable" }),
+    [],
+  )
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
@@ -746,6 +759,7 @@ export const App = () => {
           pendingAttentionTarget={pendingAttentionTarget}
           onAttentionTargetConsumed={consumeAttentionTarget}
           fullAutoRun={fullAutoRun}
+          fullAutoControl={fullAutoControl}
           notificationSettings={notificationSettings}
           incomingShare={incomingShare}
           onShareConsumed={consumeIncomingShare}

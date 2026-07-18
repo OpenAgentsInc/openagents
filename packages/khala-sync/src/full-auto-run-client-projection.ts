@@ -39,6 +39,15 @@ const FullAutoRunWorkspaceLabel = S.String.check(
 const FullAutoRunTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u),
 );
+/** A short public-safe lane/account ref (e.g. "codex-local") -- never a raw
+ * credential, model name, or account email. */
+const FullAutoRunShortRef = S.String.check(S.isMinLength(1), S.isMaxLength(80));
+const FullAutoRunCount = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+);
+const FullAutoRunDigest = S.String.check(S.isLengthBetween(64, 64));
 
 /**
  * The exact lifecycle enumeration from `full-auto-run-registry.ts`'s
@@ -59,7 +68,12 @@ export const FullAutoRunClientLifecycleState = S.Literals([
 ]);
 export type FullAutoRunClientLifecycleState = typeof FullAutoRunClientLifecycleState.Type;
 
-/** The exact attribution vocabulary from `FullAutoRunActorSchema`. */
+/**
+ * The exact attribution vocabulary from `FullAutoRunActorSchema`. `mobile`
+ * (MOB-FA-02 #8994) is the phone-originated Pause/Resume/Stop actor -- a
+ * mobile-dispatched control intent that Desktop applies is attributed here,
+ * never silently folded into `control_api`.
+ */
 export const FullAutoRunClientActor = S.Literals([
   "owner_ui",
   "control_api",
@@ -73,6 +87,7 @@ export const FullAutoRunClientActor = S.Literals([
   "legacy_migration",
   "liveness_monitor",
   "guardrail",
+  "mobile",
 ]);
 export type FullAutoRunClientActor = typeof FullAutoRunClientActor.Type;
 
@@ -81,6 +96,57 @@ export const FullAutoRunClientTransitionAttribution = S.Struct({
   at: FullAutoRunTimestamp,
 });
 export type FullAutoRunClientTransitionAttribution = typeof FullAutoRunClientTransitionAttribution.Type;
+
+/**
+ * MOB-FA-02 (#8994): the bounded, public-safe run-report summary surfaced
+ * once a run reaches a terminal lifecycle state. Field-for-field mirror of
+ * `FullAutoRunReceiptSchema` (`apps/openagents-desktop/src/full-auto-run-report.ts`,
+ * FA-RUN-04 #8972 -- itself already the redaction-tested public-safe
+ * derivation of the private `FullAutoRunReport`). Mirrored rather than
+ * imported so this shared schema package never takes a dependency on the
+ * Desktop app package; kept in lockstep by a co-located coupling test.
+ */
+export const FullAutoRunClientReceiptSchema = "full_auto_run.mobile_receipt.v1" as const;
+
+export const FullAutoRunClientProviderHandoffDisposition = S.Literals([
+  "complete_within_bounds",
+  "truncated_with_confirmation",
+  "refused",
+]);
+export type FullAutoRunClientProviderHandoffDisposition =
+  typeof FullAutoRunClientProviderHandoffDisposition.Type;
+
+export const FullAutoRunClientRecoveryAction = S.Literals(["retry_now", "stop_only", "none"]);
+export type FullAutoRunClientRecoveryAction = typeof FullAutoRunClientRecoveryAction.Type;
+
+export const FullAutoRunClientReceiptSummary = S.Struct({
+  schema: S.Literal(FullAutoRunClientReceiptSchema),
+  runRef: FullAutoRunRef,
+  threadRef: S.optional(FullAutoThreadRef),
+  objectiveDigest: FullAutoRunDigest,
+  doneConditionDigest: FullAutoRunDigest,
+  workspaceRefDigest: S.NullOr(FullAutoRunDigest),
+  state: FullAutoRunClientLifecycleState,
+  startedAt: S.optional(FullAutoRunTimestamp),
+  endedAt: S.optional(FullAutoRunTimestamp),
+  turnCap: FullAutoRunCount,
+  successfulAttempts: FullAutoRunCount,
+  failedAttempts: FullAutoRunCount,
+  providerIdentities: S.Array(FullAutoRunShortRef).check(S.isMaxLength(32)),
+  providerTransitionCount: FullAutoRunCount,
+  providerTransitionDispositions: S.Array(FullAutoRunClientProviderHandoffDisposition).check(
+    S.isMaxLength(64),
+  ),
+  livenessGapCount: FullAutoRunCount,
+  recoveryActionsUsed: S.Array(FullAutoRunClientRecoveryAction).check(S.isMaxLength(3)),
+  verifiedRefCount: FullAutoRunCount,
+  claimedRefCount: FullAutoRunCount,
+  progressDisposition: S.Literal("unknown"),
+  usageKnown: S.Boolean,
+  reportRevision: FullAutoRunCount,
+  createdAt: FullAutoRunTimestamp,
+});
+export type FullAutoRunClientReceiptSummary = typeof FullAutoRunClientReceiptSummary.Type;
 
 export const FullAutoRunClientRunProjection = S.Struct({
   runRef: FullAutoRunRef,
@@ -92,6 +158,24 @@ export const FullAutoRunClientRunProjection = S.Struct({
   startedAt: S.NullOr(FullAutoRunTimestamp),
   updatedAt: FullAutoRunTimestamp,
   lastTransition: FullAutoRunClientTransitionAttribution,
+  /** MOB-FA-02 (#8994): the run's currently bound provider lane/account, or
+   * `null` when not yet bound. Short public-safe refs only (e.g.
+   * "codex-local"), never a raw credential or account email. */
+  laneRef: S.NullOr(FullAutoRunShortRef),
+  accountRef: S.NullOr(FullAutoRunShortRef),
+  /** MOB-FA-02 (#8994): continuations-vs-cap so mobile can render "7 / 20"
+   * without a second fetch. Mirrors `FullAutoRun.turnCap`/`successfulAttempts`/
+   * `failedAttempts` (`full-auto-run-registry.ts`). */
+  turnCap: FullAutoRunCount,
+  successfulAttempts: FullAutoRunCount,
+  failedAttempts: FullAutoRunCount,
+  /** MOB-FA-02 (#8994): count of typed same-pass provider-lane rotations
+   * (FA-RT-01 #8987's `rotationHistory` on the bound thread record) --
+   * always the bounded count, never the raw history. */
+  rotationCount: FullAutoRunCount,
+  /** MOB-FA-02 (#8994): present only once the run reaches a terminal
+   * lifecycle state; `null` for every non-terminal state. */
+  receiptSummary: S.NullOr(FullAutoRunClientReceiptSummary),
 });
 export type FullAutoRunClientRunProjection = typeof FullAutoRunClientRunProjection.Type;
 

@@ -13,8 +13,10 @@ import { openFullAutoRunRegistry, type FullAutoRun } from "../src/full-auto-run-
 import {
   makeFullAutoRunProjectionPublisher,
   toFullAutoRunClientProjection,
+  toFullAutoRunClientReceiptSummary,
   wrapFullAutoRunRegistryWithProjectionPublish,
 } from "../src/full-auto-run-projection-publisher.ts"
+import type { FullAutoRunReceipt } from "../src/full-auto-run-report.ts"
 
 const withTempDir = <A>(prefix: string, fn: (root: string) => Promise<A>): Promise<A> => {
   const root = mkdtempSync(path.join(tmpdir(), prefix))
@@ -72,9 +74,70 @@ describe("toFullAutoRunClientProjection", () => {
     }
     const projection = toFullAutoRunClientProjection(run)
     expect(projection === null ? [] : Object.keys(projection).sort()).toEqual([
-      "doneCondition", "lastTransition", "lifecycleState", "objective",
-      "runRef", "startedAt", "threadRef", "updatedAt", "workspaceLabel",
+      "accountRef", "doneCondition", "failedAttempts", "laneRef", "lastTransition",
+      "lifecycleState", "objective", "receiptSummary", "rotationCount", "runRef",
+      "startedAt", "successfulAttempts", "threadRef", "turnCap", "updatedAt", "workspaceLabel",
     ])
+  })
+
+  test("MOB-FA-02 (#8994): carries lane/account/cap/attempts from run.profile, defaulting rotationCount to 0 and receiptSummary to null", () => {
+    const run: FullAutoRun = {
+      runRef: "run.full-auto.abc.def",
+      objective: "Ship the mobile projection.",
+      objectiveSource: "user",
+      doneCondition: "The endpoint round-trips.",
+      objectiveHistory: [],
+      profile: { lane: "codex-local", accountRef: "codex-2" },
+      turnCap: 20,
+      successfulAttempts: 7,
+      failedAttempts: 1,
+      state: "running",
+      stateRevision: 1,
+      createdAt: "2026-07-17T21:00:00.000Z",
+      title: "Full Auto",
+      transitions: [{
+        from: "draft", to: "running", actor: "control_api", at: "2026-07-17T21:00:00.000Z", reason: "start",
+      }],
+    }
+    const projection = toFullAutoRunClientProjection(run)
+    expect(projection).toMatchObject({
+      laneRef: "codex-local", accountRef: "codex-2",
+      turnCap: 20, successfulAttempts: 7, failedAttempts: 1,
+      rotationCount: 0, receiptSummary: null,
+    })
+  })
+
+  test("MOB-FA-02 (#8994): a non-terminal run never surfaces a receiptSummary even if `extra` supplies one", () => {
+    const run: FullAutoRun = {
+      runRef: "run.full-auto.abc.def",
+      objective: "x",
+      objectiveSource: "user",
+      doneCondition: "y",
+      objectiveHistory: [],
+      turnCap: 20,
+      successfulAttempts: 0,
+      failedAttempts: 0,
+      state: "running",
+      stateRevision: 1,
+      createdAt: "2026-07-17T21:00:00.000Z",
+      title: "Full Auto",
+      transitions: [{
+        from: "draft", to: "running", actor: "control_api", at: "2026-07-17T21:00:00.000Z", reason: "start",
+      }],
+    }
+    const projection = toFullAutoRunClientProjection(run, {
+      rotationCount: 3,
+      receiptSummary: {
+        schema: "full_auto_run.mobile_receipt.v1", runRef: run.runRef, objectiveDigest: "a".repeat(64),
+        doneConditionDigest: "a".repeat(64), workspaceRefDigest: null, state: "completed", turnCap: 20,
+        successfulAttempts: 0, failedAttempts: 0, providerIdentities: [], providerTransitionCount: 0,
+        providerTransitionDispositions: [], livenessGapCount: 0, recoveryActionsUsed: [], verifiedRefCount: 0,
+        claimedRefCount: 0, progressDisposition: "unknown", usageKnown: false, reportRevision: 1,
+        createdAt: "2026-07-17T21:00:00.000Z",
+      },
+    })
+    expect(projection?.rotationCount).toBe(3)
+    expect(projection?.receiptSummary).toBeNull()
   })
 
   test("returns null for a run with no recorded transition (defensive)", () => {
@@ -94,6 +157,47 @@ describe("toFullAutoRunClientProjection", () => {
       transitions: [],
     }
     expect(toFullAutoRunClientProjection(run)).toBeNull()
+  })
+})
+
+describe("toFullAutoRunClientReceiptSummary", () => {
+  test("maps every FullAutoRunReceipt field to the client schema's mobile_receipt.v1 literal", () => {
+    const receipt: FullAutoRunReceipt = {
+      schema: "openagents.desktop.full_auto_run_receipt.v1",
+      runRef: "run.full-auto.abc.def",
+      threadRef: "thread.abc",
+      objectiveDigest: "a".repeat(64),
+      doneConditionDigest: "b".repeat(64),
+      workspaceRefDigest: "c".repeat(64),
+      state: "completed",
+      startedAt: "2026-07-17T21:00:00.000Z",
+      endedAt: "2026-07-17T22:00:00.000Z",
+      turnCap: 20,
+      successfulAttempts: 7,
+      failedAttempts: 1,
+      providerIdentities: ["codex-local"],
+      providerTransitionCount: 1,
+      providerTransitionDispositions: ["complete_within_bounds"],
+      livenessGapCount: 0,
+      recoveryActionsUsed: ["retry_now"],
+      verifiedRefCount: 2,
+      claimedRefCount: 1,
+      progressDisposition: "unknown",
+      usageKnown: false,
+      reportRevision: 3,
+      createdAt: "2026-07-17T22:00:00.000Z",
+    }
+    const summary = toFullAutoRunClientReceiptSummary(receipt)
+    expect(summary.schema).toBe("full_auto_run.mobile_receipt.v1")
+    expect(summary).toMatchObject({
+      runRef: receipt.runRef,
+      state: "completed",
+      successfulAttempts: 7,
+      failedAttempts: 1,
+      providerIdentities: ["codex-local"],
+      recoveryActionsUsed: ["retry_now"],
+      reportRevision: 3,
+    })
   })
 })
 

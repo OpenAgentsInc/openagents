@@ -31,6 +31,9 @@ export * from "./fleet-mutators.js"
 export * from "./fleet-projection.js"
 export * from "./fleet-run-authority.js"
 export * from "./full-auto-run-projection-authority.js"
+// MOB-FA-02 (#8994): durable Pause/Resume/Stop control-intent authority --
+// the sibling to the projection authority above.
+export * from "./full-auto-run-control-authority.js"
 export * from "./fleet-steering.js"
 export * from "./fleet-steering-intents.js"
 export * from "./fleet-steering-exchange.js"

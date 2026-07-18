@@ -67,6 +67,13 @@ type StoredRow = Readonly<{
   updated_at: string
   last_transition_actor: string
   last_transition_at: string
+  lane_ref: string | null
+  account_ref: string | null
+  turn_cap: number
+  successful_attempts: number
+  failed_attempts: number
+  rotation_count: number
+  receipt_summary: unknown
 }>
 
 const rowToRunProjection = (row: StoredRow): FullAutoRunClientRunProjection =>
@@ -80,6 +87,18 @@ const rowToRunProjection = (row: StoredRow): FullAutoRunClientRunProjection =>
     startedAt: row.started_at,
     updatedAt: row.updated_at,
     lastTransition: { actor: row.last_transition_actor, at: row.last_transition_at },
+    laneRef: row.lane_ref,
+    accountRef: row.account_ref,
+    turnCap: row.turn_cap,
+    successfulAttempts: row.successful_attempts,
+    failedAttempts: row.failed_attempts,
+    rotationCount: row.rotation_count,
+    // jsonb comes back as a string over some drivers (Bun's native SQL), an
+    // already-parsed object over others (postgres.js) -- same rule as every
+    // other jsonb read in this package.
+    receiptSummary: typeof row.receipt_summary === "string"
+      ? (JSON.parse(row.receipt_summary) as unknown)
+      : (row.receipt_summary ?? null),
   })
 
 const envelope = (
@@ -131,16 +150,21 @@ export const makeFullAutoRunProjectionRepository = (
         catch: () => invalidRequest("invalid run projection"),
       })
 
+      const receiptSummaryJson = run.receiptSummary === null ? null : JSON.stringify(run.receiptSummary)
       yield* Effect.tryPromise({
         try: () => input.sql`
           INSERT INTO desktop_full_auto_run_projections (
             owner_user_id, run_ref, thread_ref, objective, done_condition,
             lifecycle_state, workspace_label, started_at, updated_at,
-            last_transition_actor, last_transition_at, published_at
+            last_transition_actor, last_transition_at, published_at,
+            lane_ref, account_ref, turn_cap, successful_attempts, failed_attempts,
+            rotation_count, receipt_summary
           ) VALUES (
             ${ownerUserId}, ${run.runRef}, ${run.threadRef}, ${run.objective}, ${run.doneCondition},
             ${run.lifecycleState}, ${run.workspaceLabel}, ${run.startedAt}, ${run.updatedAt},
-            ${run.lastTransition.actor}, ${run.lastTransition.at}, ${publishedAt}
+            ${run.lastTransition.actor}, ${run.lastTransition.at}, ${publishedAt},
+            ${run.laneRef}, ${run.accountRef}, ${run.turnCap}, ${run.successfulAttempts}, ${run.failedAttempts},
+            ${run.rotationCount}, ${receiptSummaryJson}::jsonb
           )
           ON CONFLICT (owner_user_id) DO UPDATE SET
             run_ref = EXCLUDED.run_ref,
@@ -153,7 +177,14 @@ export const makeFullAutoRunProjectionRepository = (
             updated_at = EXCLUDED.updated_at,
             last_transition_actor = EXCLUDED.last_transition_actor,
             last_transition_at = EXCLUDED.last_transition_at,
-            published_at = EXCLUDED.published_at
+            published_at = EXCLUDED.published_at,
+            lane_ref = EXCLUDED.lane_ref,
+            account_ref = EXCLUDED.account_ref,
+            turn_cap = EXCLUDED.turn_cap,
+            successful_attempts = EXCLUDED.successful_attempts,
+            failed_attempts = EXCLUDED.failed_attempts,
+            rotation_count = EXCLUDED.rotation_count,
+            receipt_summary = EXCLUDED.receipt_summary
         `,
         catch: storageUnavailable,
       })
@@ -169,7 +200,9 @@ export const makeFullAutoRunProjectionRepository = (
       const rows = yield* Effect.tryPromise({
         try: () => input.sql`
           SELECT run_ref, thread_ref, objective, done_condition, lifecycle_state,
-                 workspace_label, started_at, updated_at, last_transition_actor, last_transition_at
+                 workspace_label, started_at, updated_at, last_transition_actor, last_transition_at,
+                 lane_ref, account_ref, turn_cap, successful_attempts, failed_attempts,
+                 rotation_count, receipt_summary
           FROM desktop_full_auto_run_projections
           WHERE owner_user_id = ${ownerUserId}
           LIMIT 1

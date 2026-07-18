@@ -8,6 +8,7 @@ import type {
 } from "../src/conversation/mobile-conversation"
 import { buildHomeProgram, fullAutoRunHeaderForState, renderContentView } from "../src/screens/home-core"
 import type { FullAutoRunMobileProjection } from "../src/full-auto/full-auto-run-projection"
+import type { FullAutoRunControlDispatchOutcome } from "../src/full-auto/full-auto-run-control-intent"
 
 // `fullAutoRunHeaderForState` freshness-checks against real `Date.now()`
 // (openagents #8982), so fixtures here must be freshly "now", not a
@@ -51,6 +52,13 @@ const runningProjection: FullAutoRunMobileProjection = {
   startedAt: now,
   updatedAt: now,
   lastTransition: { actor: "owner_ui", at: now },
+  laneRef: "codex-local",
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 3,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 const settle = Effect.gen(function* () {
@@ -79,10 +87,15 @@ describe("contract openagents_mobile.full_auto_run_header.v1 (openagents #8982)"
       fullAutoRun: { state: "active", projection: runningProjection },
     })
     const header = fullAutoRunHeaderForState(program.initialState)
-    expect(header).toEqual({
+    expect(header).toMatchObject({
+      runRef: runningProjection.runRef,
       lifecycleLabel: "Running",
       objective: runningProjection.objective,
       workspaceLabel: runningProjection.workspaceLabel,
+      // MOB-FA-02 (#8994): Pause is legal from "running"; Stop is legal
+      // from any non-terminal, non-draft state (including "running").
+      control: { availableActions: ["pause", "stop"], pendingAction: null, lastOutcomeLabel: null },
+      receipt: null,
     })
     const view = JSON.stringify(renderContentView({ ...program.initialState, surfaceMode: "khala" }))
     expect(view).toContain("khala-full-auto-run-header")
@@ -149,5 +162,141 @@ describe("contract openagents_mobile.full_auto_run_header.v1 (openagents #8982)"
     await Effect.runPromise(settle)
     const cleared = await Effect.runPromise(lastState(program))
     expect(fullAutoRunHeaderForState(cleared)).toBeNull()
+  })
+})
+
+describe("MOB-FA-02 (#8994): remote Pause/Resume/Stop control", () => {
+  test("availableActions reflects exact Desktop legality per lifecycle state", () => {
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: { ...runningProjection, lifecycleState: "paused" } },
+    })
+    expect(fullAutoRunHeaderForState(program.initialState)?.control.availableActions).toEqual(["resume", "stop"])
+  })
+
+  test("dispatching Pause shows a pending state, then applies the durable outcome and folds the resulting lifecycle into the header", async () => {
+    let dispatchCalls: Array<Readonly<{ runRef: string; action: string }>> = []
+    let resolveDispatch: ((outcome: FullAutoRunControlDispatchOutcome) => void) | null = null
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: runningProjection },
+      fullAutoControl: async input => {
+        dispatchCalls = [...dispatchCalls, input]
+        return new Promise(resolve => { resolveDispatch = resolve })
+      },
+    })
+    program.fullAuto.dispatchControl(runningProjection.runRef, "pause")
+    await Effect.runPromise(settle)
+    const pending = await Effect.runPromise(lastState(program))
+    expect(fullAutoRunHeaderForState(pending)?.control.pendingAction).toBe("pause")
+    expect(dispatchCalls).toEqual([{ runRef: runningProjection.runRef, action: "pause" }])
+
+    resolveDispatch!({ state: "applied", resultLifecycleState: "paused" })
+    await Effect.runPromise(settle)
+    const applied = await Effect.runPromise(lastState(program))
+    const header = fullAutoRunHeaderForState(applied)
+    expect(header?.control.pendingAction).toBeNull()
+    expect(header?.control.lastOutcomeLabel).toBe("Done.")
+    // A receipted `applied` outcome is durable confirmed truth -- the
+    // header's lifecycle updates immediately, not just on the next poll.
+    expect(header?.lifecycleLabel).toBe("Paused")
+  })
+
+  test("a rejected outcome renders an honest status line and never mutates the displayed lifecycle", async () => {
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: runningProjection },
+      fullAutoControl: async () => ({ state: "rejected", reason: "illegal_transition" }),
+    })
+    program.fullAuto.dispatchControl(runningProjection.runRef, "pause")
+    await Effect.runPromise(settle)
+    const rejected = await Effect.runPromise(lastState(program))
+    const header = fullAutoRunHeaderForState(rejected)
+    expect(header?.control.pendingAction).toBeNull()
+    expect(header?.control.lastOutcomeLabel).toBe("Couldn't complete: illegal transition.")
+    expect(header?.lifecycleLabel).toBe("Running")
+  })
+
+  test("a second dispatch while one is already pending is a no-op (never a double-dispatch)", async () => {
+    let dispatchCount = 0
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: runningProjection },
+      fullAutoControl: async () => {
+        dispatchCount += 1
+        return new Promise(() => undefined)
+      },
+    })
+    program.fullAuto.dispatchControl(runningProjection.runRef, "pause")
+    await Effect.runPromise(settle)
+    program.fullAuto.dispatchControl(runningProjection.runRef, "pause")
+    await Effect.runPromise(settle)
+    expect(dispatchCount).toBe(1)
+  })
+
+  test("without fullAutoControl configured, dispatchControl is a safe no-op (no button would render, but a stray call never throws)", async () => {
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: runningProjection },
+    })
+    expect(() => program.fullAuto.dispatchControl(runningProjection.runRef, "pause")).not.toThrow()
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    expect(fullAutoRunHeaderForState(state)?.control.pendingAction).toBeNull()
+  })
+
+  test("a terminal, fresh run keeps the header visible and renders the bounded run-report summary", () => {
+    const terminalProjection: FullAutoRunMobileProjection = {
+      ...runningProjection,
+      lifecycleState: "completed",
+      updatedAt: now,
+      receiptSummary: {
+        schema: "full_auto_run.mobile_receipt.v1",
+        runRef: runningProjection.runRef,
+        objectiveDigest: "a".repeat(64),
+        doneConditionDigest: "b".repeat(64),
+        workspaceRefDigest: null,
+        state: "completed",
+        turnCap: 20,
+        successfulAttempts: 9,
+        failedAttempts: 1,
+        providerIdentities: ["codex-local"],
+        providerTransitionCount: 0,
+        providerTransitionDispositions: [],
+        livenessGapCount: 0,
+        recoveryActionsUsed: [],
+        verifiedRefCount: 0,
+        claimedRefCount: 0,
+        progressDisposition: "unknown",
+        usageKnown: false,
+        reportRevision: 2,
+        createdAt: now,
+      },
+    }
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: terminalProjection },
+    })
+    const header = fullAutoRunHeaderForState(program.initialState)
+    expect(header).toMatchObject({
+      lifecycleLabel: "Completed",
+      control: { availableActions: [] },
+      receipt: { successfulAttempts: 9, failedAttempts: 1, providerIdentities: ["codex-local"] },
+    })
+    const view = JSON.stringify(renderContentView({ ...program.initialState, surfaceMode: "khala" }))
+    expect(view).toContain("khala-full-auto-run-receipt")
+  })
+
+  test("a terminal, STALE run renders no header at all (the freshness window still applies)", () => {
+    const staleTerminalProjection: FullAutoRunMobileProjection = {
+      ...runningProjection,
+      lifecycleState: "completed",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    }
+    const program = buildHomeProgram({
+      conversation: selection,
+      fullAutoRun: { state: "active", projection: staleTerminalProjection },
+    })
+    expect(fullAutoRunHeaderForState(program.initialState)).toBeNull()
   })
 })

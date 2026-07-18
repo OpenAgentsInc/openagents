@@ -1132,6 +1132,10 @@ import {
   makeFullAutoRunRoutes,
 } from './full-auto-run-routes'
 import {
+  FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
+  makeFullAutoRunControlRoutes,
+} from './full-auto-run-control-routes'
+import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
@@ -10253,6 +10257,29 @@ const fullAutoRunRoutes = makeFullAutoRunRoutes<Env>({
   },
 })
 
+// MOB-FA-02 (#8994): the sibling Pause/Resume/Stop control-intent route --
+// same "is this a signed-in owner" authentication as the projection route
+// above; every query stays scoped to the authenticated owner's own userId.
+const fullAutoRunControlRoutes = makeFullAutoRunControlRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') {
+      return undefined
+    }
+    const tokens = actor.tokens
+    return {
+      userId: actor.user.userId,
+      ...(tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, tokens)
+            },
+          }),
+    }
+  },
+})
+
 const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -11380,6 +11407,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: FULL_AUTO_RUNS_PATH,
     handler: (request, env, ctx) =>
       fullAutoRunRoutes
+        .handle(request, env, ctx)
+        .pipe(Effect.map(materializeHttpResult)),
+  },
+  // MOB-FA-02 (#8994): mobile dispatches (POST) and polls (GET) typed
+  // Pause/Resume/Stop control intents here; Desktop pulls pending intents
+  // (GET) and reports outcomes (POST) on the same route.
+  {
+    path: FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
+    handler: (request, env, ctx) =>
+      fullAutoRunControlRoutes
         .handle(request, env, ctx)
         .pipe(Effect.map(materializeHttpResult)),
   },

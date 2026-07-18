@@ -38,6 +38,13 @@ export const isFullAutoRunLifecycleActive = (state: FullAutoRunLifecycleState): 
   state === "running" || state === "pausing" || state === "paused" ||
   state === "retrying" || state === "stalled"
 
+/** MOB-FA-02 (#8994): the run has ended -- never transitions again. Used to
+ * gate the terminal run-report surface: a fresh terminal projection still
+ * renders the header (to show the report) even though it is no longer
+ * "active" work. */
+export const isFullAutoRunLifecycleTerminal = (state: FullAutoRunLifecycleState): boolean =>
+  state === "completed" || state === "failed" || state === "stopped" || state === "cap_reached"
+
 /** Mobile treats an active-looking run as stale once its projection has not
  * been refreshed for this long, matching the freshness posture used by other
  * live projections (e.g. Pylon heartbeat freshness — Desktop republishes on

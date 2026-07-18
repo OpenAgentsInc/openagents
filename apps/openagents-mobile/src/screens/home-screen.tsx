@@ -40,6 +40,8 @@ import type {
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
+import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
+import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   enableMobileLayoutAnimation,
@@ -69,6 +71,7 @@ export const HomeScreen = ({
   pendingAttentionTarget,
   onAttentionTargetConsumed,
   fullAutoRun,
+  fullAutoControl,
   notificationSettings,
   incomingShare,
   onShareConsumed,
@@ -82,6 +85,13 @@ export const HomeScreen = ({
   /** Live `FullAutoRun` mobile projection (openagents #8982); pushed into the
    * program on every change so the state header updates without a restart. */
   readonly fullAutoRun?: FullAutoRunProjectionResult | null
+  /** MOB-FA-02 (#8994): dispatches a Pause/Resume/Stop control intent and
+   * resolves once a durable applied/rejected/pending outcome is known.
+   * Absent means Full Auto remote control is unavailable on this build. */
+  readonly fullAutoControl?: (input: Readonly<{
+    runRef: string
+    action: FullAutoRunControlAction
+  }>) => Promise<FullAutoRunControlDispatchOutcome>
   readonly notificationSettings?: MobileNotificationSettingsPort
   readonly incomingShare?: MobileShareIntake | null
   readonly onShareConsumed?: () => void
@@ -152,12 +162,16 @@ export const HomeScreen = ({
         ...(onShareConsumed === undefined ? {} : { onShareConsumed }),
       },
       ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
+      ...(fullAutoControl === undefined ? {} : { fullAutoControl }),
     }),
     // fullAutoRun deliberately excluded: its initial value seeds the program
     // once at mount; later changes flow through `program.fullAuto.setProjection`
     // below (mirroring the syncPhase push pattern) so a live projection poll
     // never tears down and rebuilds the whole Effect Native program.
-    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth],
+    // fullAutoControl is stable across the component's lifetime (a plain
+    // capability closure over the sync host, not per-render state) the same
+    // way `sessionActions` and `coding` are already treated below.
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl],
   )
   const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
     prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)

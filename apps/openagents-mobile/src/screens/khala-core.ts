@@ -13,7 +13,7 @@ import {
   type TranscriptMessage,
   type View,
 } from "@effect-native/core"
-import type { ChatMessageImageAttachment } from "@openagentsinc/khala-sync"
+import type { ChatMessageImageAttachment, FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
 import type { MobileRuntimeQueueReceipt } from "../conversation/mobile-runtime-queue"
 import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
@@ -136,14 +136,53 @@ export type KhalaRuntimeTurn = Readonly<{
   status: "queued" | "running" | "waiting_for_input" | "completed" | "failed" | "canceled"
 }>
 
-/** Minimal live Full Auto run state header data (openagents #8982):
- * objective + lifecycle state, computed by `fullAutoRunHeaderForState` in
- * `home-core.ts` and rendered here, directly above the existing `Transcript`.
- * `null` renders nothing — the existing default surface is unchanged. */
+/**
+ * Live Full Auto run state header data (openagents #8982, extended
+ * MOB-FA-02 #8994): objective + lifecycle state + rotation/lane/account/cap
+ * + Pause/Resume/Stop control affordances + a bounded terminal run-report
+ * summary, computed by `fullAutoRunHeaderForState` in `home-core.ts` and
+ * rendered here, directly above the existing `Transcript`. `null` renders
+ * nothing — the existing default surface is unchanged.
+ */
 export interface FullAutoRunHeaderView {
+  readonly runRef: string
   readonly lifecycleLabel: string
   readonly objective: string
   readonly workspaceLabel: string
+  /** MOB-FA-02 (#8994): current provider lane/account, or `null` when not
+   * yet bound. Short public-safe refs only. */
+  readonly laneRef: string | null
+  readonly accountRef: string | null
+  /** MOB-FA-02 (#8994): continuations-vs-cap, e.g. "6 / 20". */
+  readonly turnCap: number
+  readonly successfulAttempts: number
+  readonly failedAttempts: number
+  /** MOB-FA-02 (#8994): count of typed same-pass provider-lane rotations. */
+  readonly rotationCount: number
+  /** MOB-FA-02 (#8994): Pause/Resume/Stop remote-control affordance state. */
+  readonly control: Readonly<{
+    /** Actions legal from the run's current lifecycle state, in display
+     * order. Empty when the run is terminal or control is unavailable on
+     * this build. */
+    availableActions: ReadonlyArray<FullAutoRunControlAction>
+    /** Set while THIS device has an intent dispatched and awaiting a
+     * durable outcome -- the UI must show "Pausing…" etc., never complete
+     * from optimistic state. */
+    pendingAction: FullAutoRunControlAction | null
+    /** A short, honest status line for the most recent dispatched intent's
+     * outcome (e.g. "Paused.", "Couldn't pause: illegal transition.",
+     * "Still pending — Desktop hasn't responded yet."), or `null` when
+     * nothing has been dispatched from this device this session. */
+    lastOutcomeLabel: string | null
+  }>
+  /** MOB-FA-02 (#8994): the bounded run-report summary, present only once
+   * the run reaches a terminal lifecycle state. */
+  readonly receipt: Readonly<{
+    successfulAttempts: number
+    failedAttempts: number
+    providerIdentities: ReadonlyArray<string>
+    livenessGapCount: number
+  }> | null
 }
 
 export interface KhalaState {
@@ -535,16 +574,44 @@ const fullAutoRunLifecycleBadgeTone = (label: string): "neutral" | "info" | "suc
   }
 }
 
+/** MOB-FA-02 (#8994): a short, human label per control action for the
+ * button row and the "Pausing…" in-flight label. */
+const fullAutoRunControlActionLabel: Readonly<Record<FullAutoRunControlAction, string>> = {
+  pause: "Pause",
+  resume: "Resume",
+  stop: "Stop",
+}
+const fullAutoRunControlActionPendingLabel: Readonly<Record<FullAutoRunControlAction, string>> = {
+  pause: "Pausing…",
+  resume: "Resuming…",
+  stop: "Stopping…",
+}
+
 /**
- * The live Full Auto run state header (openagents #8982): a plain/minimal
- * `Badge` + `Text` row above the transcript, reusing existing Effect Native
- * primitives per the owner's explicit "even if not all components are
- * ported over yet" instruction — no new primitive was invented for this.
+ * The live Full Auto run state header (openagents #8982, extended
+ * MOB-FA-02 #8994): a `Badge` + `Text` block above the transcript, plus a
+ * lane/rotation/cap footer, Pause/Resume/Stop buttons, an honest
+ * pending/outcome status line, and a bounded run-report summary once the
+ * run is terminal. Reuses existing Effect Native primitives per the owner's
+ * explicit "even if not all components are ported over yet" instruction —
+ * no new primitive was invented for this.
  */
 const fullAutoRunHeaderViews = (
   header: FullAutoRunHeaderView | null,
 ): ReadonlyArray<View> => {
   if (header === null) return []
+  const capLabel = `${header.successfulAttempts} / ${header.turnCap} continuations`
+  const laneLabel = header.laneRef === null
+    ? null
+    : header.accountRef === null
+      ? header.laneRef
+      : `${header.laneRef} (${header.accountRef})`
+  const footerParts = [
+    ...(laneLabel === null ? [] : [laneLabel]),
+    capLabel,
+    ...(header.failedAttempts > 0 ? [`${header.failedAttempts} failed`] : []),
+    ...(header.rotationCount > 0 ? [`${header.rotationCount} rotation${header.rotationCount === 1 ? "" : "s"}`] : []),
+  ]
   return [Stack(
     {
       key: "khala-full-auto-run-header",
@@ -592,6 +659,89 @@ const fullAutoRunHeaderViews = (
         content: header.objective,
         variant: "body",
         color: "textPrimary",
+      }),
+      ...(footerParts.length === 0 ? [] : [Text({
+        key: "khala-full-auto-run-footer",
+        content: footerParts.join(" · "),
+        variant: "caption",
+        color: "textMuted",
+      })]),
+      ...fullAutoRunControlViews(header),
+      ...fullAutoRunReceiptViews(header),
+    ],
+  )]
+}
+
+/** MOB-FA-02 (#8994): the Pause/Resume/Stop button row plus an honest
+ * pending/outcome status line. Renders nothing when control is unavailable
+ * on this build (`availableActions` empty and nothing pending/reported). */
+const fullAutoRunControlViews = (header: FullAutoRunHeaderView): ReadonlyArray<View> => {
+  const { control } = header
+  if (control.availableActions.length === 0 && control.pendingAction === null && control.lastOutcomeLabel === null) {
+    return []
+  }
+  return [
+    ...(control.availableActions.length === 0 ? [] : [Stack(
+      {
+        key: "khala-full-auto-run-control-row",
+        direction: "row",
+        gap: "2",
+        align: "center",
+        style: { width: "full" },
+      },
+      control.availableActions.map(action => Button({
+        key: `khala-full-auto-run-control-${action}`,
+        label: control.pendingAction === action
+          ? fullAutoRunControlActionPendingLabel[action]
+          : fullAutoRunControlActionLabel[action],
+        variant: action === "resume" ? "primary" : action === "stop" ? "ghost" : "secondary",
+        disabled: control.pendingAction !== null,
+        onPress: IntentRef("FullAutoRunControlRequested", StaticPayload({
+          runRef: header.runRef,
+          action,
+        })),
+      })),
+    )]),
+    ...(control.lastOutcomeLabel === null ? [] : [Text({
+      key: "khala-full-auto-run-control-outcome",
+      content: control.lastOutcomeLabel,
+      variant: "caption",
+      color: "textMuted",
+    })]),
+  ]
+}
+
+/** MOB-FA-02 (#8994): the bounded run-report summary, shown once the run
+ * reaches a terminal lifecycle state. Only the already-redacted public-safe
+ * receipt fields -- never raw report internals. */
+const fullAutoRunReceiptViews = (header: FullAutoRunHeaderView): ReadonlyArray<View> => {
+  if (header.receipt === null) return []
+  const parts = [
+    `${header.receipt.successfulAttempts} succeeded`,
+    ...(header.receipt.failedAttempts > 0 ? [`${header.receipt.failedAttempts} failed`] : []),
+    ...(header.receipt.providerIdentities.length > 0 ? [header.receipt.providerIdentities.join(", ")] : []),
+    ...(header.receipt.livenessGapCount > 0 ? [`${header.receipt.livenessGapCount} liveness gaps`] : []),
+  ]
+  return [Stack(
+    {
+      key: "khala-full-auto-run-receipt",
+      direction: "column",
+      gap: "0",
+      style: { width: "full" },
+      a11y: { role: "region", label: `Run report: ${parts.join(", ")}` },
+    },
+    [
+      Text({
+        key: "khala-full-auto-run-receipt-title",
+        content: "Report",
+        variant: "caption",
+        color: "textMuted",
+      }),
+      Text({
+        key: "khala-full-auto-run-receipt-summary",
+        content: parts.join(" · "),
+        variant: "caption",
+        color: "textMuted",
       }),
     ],
   )]

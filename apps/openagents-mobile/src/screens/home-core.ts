@@ -30,13 +30,17 @@ import {
   type ConfirmedPortableSessionSnapshot,
   type ConfirmedRuntimeAttentionSnapshot,
 } from "@openagentsinc/khala-sync-client"
-import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
+import type { FleetRunClientProjection, FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 import {
   FullAutoRunLifecycleStateLabel,
+  isFullAutoRunLifecycleTerminal,
   isFullAutoRunProjectionActive,
+  isFullAutoRunProjectionFresh,
   truncateFullAutoRunObjective,
+  type FullAutoRunLifecycleState,
   type FullAutoRunProjectionResult,
 } from "../full-auto/full-auto-run-projection"
+import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
 
 import type {
   MobileCodingDirectory,
@@ -269,6 +273,15 @@ export interface HomeState {
    * `activeThreadRef` and the run is still active/fresh — see
    * `fullAutoRunHeaderForState`. */
   readonly fullAutoRun: FullAutoRunProjectionResult | null
+  /** MOB-FA-02 (#8994): the action currently in flight from THIS device
+   * (dispatched, awaiting a durable applied/rejected outcome), or `null`.
+   * Never optimistic completion -- the header renders "Pausing…" etc. while
+   * this is set and only clears once `fullAutoControlOutcome` resolves. */
+  readonly fullAutoControlPending: FullAutoRunControlAction | null
+  /** MOB-FA-02 (#8994): the most recent typed outcome for this device's
+   * last dispatched control intent (applied/rejected/pending/unauthorized/
+   * unavailable), surfaced honestly rather than assumed from silence. */
+  readonly fullAutoControlOutcome: FullAutoRunControlDispatchOutcome | null
   readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
   readonly codingAttachmentMutatingRef: string | null
@@ -425,6 +438,8 @@ export const initialHomeState: HomeState = {
   codingPathDiscovery: { state: "idle" },
   codingExecutionTargets: [],
   fullAutoRun: null,
+  fullAutoControlPending: null,
+  fullAutoControlOutcome: null,
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
   codingAttachmentMutatingRef: null,
@@ -700,6 +715,21 @@ export const RuntimeTurnStopConfirmed = defineIntent(
   "RuntimeTurnStopConfirmed",
   Schema.Struct({ runRef: Schema.String }),
 )
+/** MOB-FA-02 (#8994): a phone-dispatched Pause/Resume/Stop against a
+ * Desktop-owned FullAutoRun -- a SEPARATE domain from
+ * `RuntimeTurnControlRequested` above (that's Khala chat-turn control;
+ * this is the Full Auto run lifecycle). Server-mediated and eventually
+ * consistent: the handler dispatches through `options.fullAutoControl`
+ * (`makeFullAutoRunControlDispatcher`), which durably records the intent
+ * and polls for a receipted `applied`/`rejected` outcome -- the UI never
+ * completes from an optimistic guess. */
+export const FullAutoRunControlRequested = defineIntent(
+  "FullAutoRunControlRequested",
+  Schema.Struct({
+    action: Schema.Literals(["pause", "resume", "stop"]),
+    runRef: Schema.String,
+  }),
+)
 export const AgentStackToggledIntent = defineIntent(AgentStackToggled, EmptyPayload)
 export const AgentRowSelectedIntent = defineIntent(
   AgentRowSelected,
@@ -832,6 +862,7 @@ export const homeIntentDefinitions = [
   RuntimeTurnStopConfirmationRequested,
   RuntimeTurnStopConfirmationDismissed,
   RuntimeTurnStopConfirmed,
+  FullAutoRunControlRequested,
   AgentStackToggledIntent,
   AgentRowSelectedIntent,
   WorkGroupToggledIntent,
@@ -905,12 +936,45 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
   }
 }
 
-/** Minimal live state header data (openagents #8982): objective + lifecycle
- * state, shown above the transcript only while the active thread IS the
- * live Full Auto run's thread and that run is still active/fresh. Falls
- * through to `null` (no header, unchanged default rendering) whenever there
- * is no active run, the projection hasn't resolved yet, or the user has
- * navigated to a different thread than the live run's. */
+/** MOB-FA-02 (#8994): the control actions legal from a given lifecycle
+ * state, in display order. Mirrors Desktop's exact legality (Pause is legal
+ * only from `running`, Resume only from `paused`, Stop from any
+ * non-terminal, non-draft state) -- never presents a button whose tap would
+ * just come back rejected as `illegal_transition`. */
+const fullAutoRunControlActionsFor = (
+  lifecycleState: FullAutoRunLifecycleState,
+): ReadonlyArray<FullAutoRunControlAction> => {
+  const actions: Array<FullAutoRunControlAction> = []
+  if (lifecycleState === "running") actions.push("pause")
+  if (lifecycleState === "paused") actions.push("resume")
+  if (lifecycleState !== "draft" && !isFullAutoRunLifecycleTerminal(lifecycleState)) actions.push("stop")
+  return actions
+}
+
+/** MOB-FA-02 (#8994): an honest, short status line for the most recent
+ * dispatched intent's outcome. Never phrased as success unless the outcome
+ * is a receipted `applied`. */
+const fullAutoRunControlOutcomeLabel = (
+  outcome: FullAutoRunControlDispatchOutcome | null,
+): string | null => {
+  if (outcome === null) return null
+  if (outcome.state === "applied") return "Done."
+  if (outcome.state === "rejected") return `Couldn't complete: ${outcome.reason.replace(/_/g, " ")}.`
+  if (outcome.state === "rejected_at_dispatch") return `Couldn't send the request (${outcome.code.replace(/_/g, " ")}).`
+  if (outcome.state === "pending") return "Still pending — Desktop hasn't responded yet."
+  if (outcome.state === "unauthorized") return "Sign in to control this run."
+  return "Couldn't reach the server. Try again."
+}
+
+/** Live state header data (openagents #8982, extended MOB-FA-02 #8994):
+ * objective + lifecycle state + rotation/lane/account/cap + Pause/Resume/
+ * Stop control affordances + a terminal run-report summary, shown above the
+ * transcript only while the active thread IS the live Full Auto run's
+ * thread and that run is still active-and-fresh OR (newly) terminal-and-
+ * fresh (so the report stays visible for a while right after the run ends).
+ * Falls through to `null` (no header, unchanged default rendering) whenever
+ * there is no run, the projection hasn't resolved yet, the projection is
+ * stale, or the user has navigated to a different thread than the run's. */
 export const fullAutoRunHeaderForState = (state: HomeState): FullAutoRunHeaderView | null => {
   if (state.fullAutoRun?.state !== "active") return null
   const projection = state.fullAutoRun.projection
@@ -918,11 +982,31 @@ export const fullAutoRunHeaderForState = (state: HomeState): FullAutoRunHeaderVi
   // thread) — `null === null` must never read as "this is the active
   // thread"; only a real matching threadRef counts.
   if (projection.threadRef === null || state.activeThreadRef !== projection.threadRef) return null
-  if (!isFullAutoRunProjectionActive(projection)) return null
+  const stillRelevant = isFullAutoRunProjectionActive(projection) ||
+    (isFullAutoRunLifecycleTerminal(projection.lifecycleState) && isFullAutoRunProjectionFresh(projection, Date.now()))
+  if (!stillRelevant) return null
   return {
+    runRef: projection.runRef,
     lifecycleLabel: FullAutoRunLifecycleStateLabel[projection.lifecycleState],
     objective: truncateFullAutoRunObjective(projection.objective),
     workspaceLabel: projection.workspaceLabel ?? "",
+    laneRef: projection.laneRef,
+    accountRef: projection.accountRef,
+    turnCap: projection.turnCap,
+    successfulAttempts: projection.successfulAttempts,
+    failedAttempts: projection.failedAttempts,
+    rotationCount: projection.rotationCount,
+    control: {
+      availableActions: fullAutoRunControlActionsFor(projection.lifecycleState),
+      pendingAction: state.fullAutoControlPending,
+      lastOutcomeLabel: fullAutoRunControlOutcomeLabel(state.fullAutoControlOutcome),
+    },
+    receipt: projection.receiptSummary === null ? null : {
+      successfulAttempts: projection.receiptSummary.successfulAttempts,
+      failedAttempts: projection.receiptSummary.failedAttempts,
+      providerIdentities: projection.receiptSummary.providerIdentities,
+      livenessGapCount: projection.receiptSummary.livenessGapCount,
+    },
   }
 }
 
@@ -1957,6 +2041,14 @@ export interface HomeProgramOptions {
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
   readonly fullAutoRun?: FullAutoRunProjectionResult
+  /** MOB-FA-02 (#8994): dispatches a Pause/Resume/Stop control intent and
+   * resolves once a durable applied/rejected/pending outcome is known
+   * (`makeFullAutoRunControlDispatcher`). Absent means Full Auto remote
+   * control is unavailable on this build; the header renders no buttons. */
+  readonly fullAutoControl?: (input: Readonly<{
+    runRef: string
+    action: FullAutoRunControlAction
+  }>) => Promise<FullAutoRunControlDispatchOutcome>
   readonly settings?: Readonly<{
     environments?: MobileEnvironmentConnectionsPort
     notifications?: MobileNotificationSettingsPort
@@ -4394,6 +4486,51 @@ export const makeHomeHandlers = (
     RuntimeInteractionOptionToggled: synced?.RuntimeInteractionOptionToggled ?? (() => Effect.void),
     RuntimeInteractionDecisionSubmitted: synced?.RuntimeInteractionDecisionSubmitted ?? (() => Effect.void),
     RuntimeTurnControlRequested: synced?.RuntimeTurnControlRequested ?? (() => Effect.void),
+    // MOB-FA-02 (#8994): dispatches through `options.fullAutoControl`
+    // (`makeFullAutoRunControlDispatcher`), which durably records the
+    // intent and polls for a receipted outcome. Independent of the
+    // conversation `synced` host -- Full Auto remote control works even
+    // when the phone is not currently viewing a synced conversation thread.
+    FullAutoRunControlRequested: (payload: Readonly<{ action: FullAutoRunControlAction; runRef: string }>) =>
+      Effect.gen(function* () {
+        if (options.fullAutoControl === undefined) return
+        const before = yield* SubscriptionRef.get(state)
+        // One in-flight control intent at a time -- a second tap while one
+        // is already pending is a no-op, never a second dispatch racing the
+        // first (the durable idempotency key would dedupe server-side
+        // anyway, but this also avoids a confusing double "Pausing…" UI).
+        if (before.fullAutoControlPending !== null) return
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          fullAutoControlPending: payload.action,
+          fullAutoControlOutcome: null,
+        }))
+        const outcome = yield* Effect.promise(() => options.fullAutoControl!({
+          runRef: payload.runRef,
+          action: payload.action,
+        }))
+        yield* SubscriptionRef.update(state, current => {
+          // A receipted `applied` outcome IS the durable confirmed truth
+          // (not an optimistic guess) -- fold the resulting lifecycle state
+          // into the displayed projection immediately rather than waiting
+          // for the next poll cycle, same as any other confirmed-state
+          // update in this program.
+          const projection = current.fullAutoRun
+          const nextFullAutoRun = outcome.state === "applied" && outcome.resultLifecycleState !== null &&
+              projection?.state === "active" && projection.projection.runRef === payload.runRef
+            ? {
+                ...projection,
+                projection: { ...projection.projection, lifecycleState: outcome.resultLifecycleState },
+              }
+            : current.fullAutoRun
+          return {
+            ...current,
+            fullAutoControlPending: null,
+            fullAutoControlOutcome: outcome,
+            fullAutoRun: nextFullAutoRun,
+          }
+        })
+      }),
     CodingSessionSelected: options.coding === undefined
       ? () => Effect.void
       : payload => Effect.gen(function* () {
@@ -4515,6 +4652,11 @@ export interface HomeProgramHandle {
      * #8982), mirroring `sync.setPhase`'s "push external state in" shape so
      * the state header updates live without an app restart. */
     readonly setProjection: (result: FullAutoRunProjectionResult | null) => void
+    /** MOB-FA-02 (#8994): dispatches a Pause/Resume/Stop control intent
+     * against the named run. Fire-and-forget from the caller's perspective;
+     * the resulting pending/applied/rejected state is observable through
+     * `fullAutoRunHeaderForState`'s `control` field on the next render. */
+    readonly dispatchControl: (runRef: string, action: FullAutoRunControlAction) => void
   }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
@@ -4778,6 +4920,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
               fullAutoRun: result,
             })))
           },
+          dispatchControl: (runRef, action) => fireRef(IntentRef(
+            "FullAutoRunControlRequested",
+            StaticPayload({ runRef, action }),
+          )),
         },
         controller: {
           selectDestination: destination => fireText(

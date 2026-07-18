@@ -14,6 +14,11 @@ import {
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import { fetchFullAutoRunMobileProjection } from "../full-auto/full-auto-run-projection-source"
 import {
+  makeFullAutoRunControlDispatcher,
+  type FullAutoRunControlDispatchOutcome,
+} from "../full-auto/full-auto-run-control-intent"
+import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
+import {
   createAuthenticatedMobileRepositoryEnvironment,
   type MobileRepositoryEnvironmentPort,
 } from "../coding/mobile-repository-environment-client"
@@ -29,6 +34,13 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
    * until the real Desktop-published endpoint exists — see
    * `full-auto-run-projection-source.ts`. */
   fullAutoRun: () => Promise<FullAutoRunProjectionResult>
+  /** MOB-FA-02 (#8994): dispatches a Pause/Resume/Stop control intent
+   * against a Desktop-owned FullAutoRun and resolves once a durable
+   * applied/rejected/pending outcome is known. */
+  fullAutoControl: (input: Readonly<{
+    runRef: string
+    action: FullAutoRunControlAction
+  }>) => Promise<FullAutoRunControlDispatchOutcome>
   repositoryEnvironment: () => Promise<MobileRepositoryEnvironmentPort | null>
 }>
 
@@ -77,6 +89,21 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
         baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
         accessToken: credential.accessToken,
       })
+    },
+    fullAutoControl: async input => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "unauthorized" }
+      }
+      // Built fresh per call: the credential is loaded just above and
+      // stays valid for the duration of one dispatch-then-poll round trip
+      // (at most a handful of seconds), so a plain closure over it is safe
+      // without a separate refresh path.
+      const dispatch = makeFullAutoRunControlDispatcher({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: () => credential.accessToken,
+      })
+      return dispatch(input)
     },
     executionTargets: async () => {
       try {

@@ -16,6 +16,13 @@ const run = {
   startedAt: timestamp,
   updatedAt: timestamp,
   lastTransition: { actor: "control_api" as const, at: timestamp },
+  laneRef: "codex-local",
+  accountRef: null,
+  turnCap: 20,
+  successfulAttempts: 3,
+  failedAttempts: 0,
+  rotationCount: 0,
+  receiptSummary: null,
 }
 
 describe("fetchFullAutoRunClientProjection", () => {

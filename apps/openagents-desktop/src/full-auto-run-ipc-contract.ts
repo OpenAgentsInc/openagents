@@ -120,6 +120,9 @@ const FullAutoRunActorSchema = Schema.Literals([
   "dispatch_failure_limit", "turn_resolution", "thread_state_sync", "legacy_migration", "liveness_monitor",
   // FA-GD-01 (#8991): guardrail stops (wall clock / turn / failure budgets).
   "guardrail",
+  // MOB-FA-02 (#8994): a typed Pause/Resume/Stop intent dispatched from
+  // OpenAgents mobile and applied by Desktop's control-intent consumer.
+  "mobile",
 ])
 const FullAutoRunObjectiveSourceSchema = Schema.Literals(["user", "control_caller", "legacy_migration"])
 const FullAutoRunTransitionRecordSchema = Schema.Struct({
