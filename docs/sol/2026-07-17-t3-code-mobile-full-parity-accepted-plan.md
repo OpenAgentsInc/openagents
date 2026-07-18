@@ -1500,3 +1500,15 @@ acceptance.
 - residual: signed physical iOS/Android compact and regular journeys, real
   VoiceOver/TalkBack traversal, and owner acceptance; the full-parity contract
   remains pending and this is not a full-parity release claim
+
+### CLAIM-RELEASE
+
+- landed: `be13f49c3d` on `main`
+- verification: post-rebase 317 combined mobile, RN renderer, and behavior
+  contract tests; mobile and renderer typechecks; 19 Sol tests and the
+  142-document manifest/check suite; pre-rebase `pnpm run check`; installed
+  release-mode iOS 26.5 and Android API 35 simulator journeys
+- close boundary: all ordered source and installed-simulator packets A1-F2 are
+  landed. The owner-level full-parity contract remains pending on signed
+  physical iOS/Android journeys, real VoiceOver/TalkBack traversal, and owner
+  acceptance; no store-release claim is made
