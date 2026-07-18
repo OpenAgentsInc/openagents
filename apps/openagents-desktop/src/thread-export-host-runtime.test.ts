@@ -15,6 +15,7 @@ import {
 } from "./thread-export-host-runtime.ts";
 import type { DesktopThreadExportMainHandler } from "./thread-export-main-handler.ts";
 import { DesktopThreadExportMainCompositionUnavailable } from "./thread-export-main-composition.ts";
+import { openDesktopThreadEventAuthorityRelationLedger } from "./thread-event-authority-relation-ledger.ts";
 import { openDesktopThreadEventSearchReceiptCatalog } from "./thread-event-search-receipt-catalog.ts";
 
 const THREAD = "thread.host.runtime.1";
@@ -84,6 +85,7 @@ const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> 
   roots.push(root);
   const storeDirectory = path.join(root, "private-store");
   const receiptCatalogDirectory = path.join(root, "search-receipts");
+  const authorityLedgerDirectory = path.join(root, "authority-relations");
   const destination = path.join(root, "selected-export.json");
   const channels: string[] = [];
   const closes: string[] = [];
@@ -93,6 +95,7 @@ const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> 
   const dependencies: DesktopThreadExportHostRuntimeDependencies = {
     storeDirectory,
     receiptCatalogDirectory,
+    authorityLedgerDirectory,
     snapshotForThread: (threadRef) => {
       reads.push(threadRef);
       return confirmedSnapshot;
@@ -128,6 +131,7 @@ const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> 
     reads,
     storeDirectory,
     receiptCatalogDirectory,
+    authorityLedgerDirectory,
     destination,
     dependencies,
     get writeHandler() {
@@ -250,6 +254,32 @@ describe("Desktop canonical-export host runtime", () => {
       reason: "persistence_failed",
     });
     expect(existsSync(value.storeDirectory)).toBe(false);
+    registration.close();
+  });
+
+  test("withholds corrupt terminal authority before artifact or receipt persistence", async () => {
+    const value = harness();
+    mkdirSync(value.authorityLedgerDirectory, { recursive: true });
+    writeFileSync(
+      path.join(value.authorityLedgerDirectory, "terminal-authority-relations.json"),
+      "private native detail",
+    );
+    const registration = await Effect.runPromise(
+      openDesktopThreadExportHostRuntime(value.dependencies),
+    );
+    if (value.createHandler === undefined) throw new Error("expected create handler");
+
+    await expect(value.createHandler("trusted", { intent })).resolves.toEqual({
+      status: "rejected",
+      reason: "evidence_unavailable",
+    });
+    expect(existsSync(value.storeDirectory)).toBe(false);
+    expect(existsSync(value.receiptCatalogDirectory)).toBe(false);
+    expect(
+      openDesktopThreadEventAuthorityRelationLedger(value.authorityLedgerDirectory).listForThread(
+        THREAD,
+      ).status,
+    ).toBe("rejected");
     registration.close();
   });
 });

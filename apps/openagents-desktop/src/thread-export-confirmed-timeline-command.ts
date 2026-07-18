@@ -5,12 +5,12 @@ import {
   type DesktopThreadExportCommandDependencies,
 } from "./thread-export-command.ts";
 import {
-  readDesktopThreadExportEvidenceFromConfirmedTimeline,
-  type DesktopThreadExportConfirmedTimelineEvidenceDependencies,
-} from "./thread-export-confirmed-timeline-evidence.ts";
+  readDesktopThreadExportEvidenceWithTerminalAuthority,
+  type DesktopThreadExportTerminalAuthorityOverlayDependencies,
+} from "./thread-export-terminal-authority-overlay.ts";
 
 export type DesktopThreadExportConfirmedTimelineCommandDependencies =
-  DesktopThreadExportConfirmedTimelineEvidenceDependencies &
+  DesktopThreadExportTerminalAuthorityOverlayDependencies &
     Omit<DesktopThreadExportCommandDependencies, "readEvidence">;
 
 /**
@@ -23,7 +23,7 @@ export const openDesktopThreadExportCommandFromConfirmedTimeline = (
 ) => {
   const readEvidence = Effect.fn("DesktopThreadExportConfirmedTimelineCommand.readEvidence")(
     function* (threadRef: string) {
-      return yield* readDesktopThreadExportEvidenceFromConfirmedTimeline(dependencies, threadRef);
+      return yield* readDesktopThreadExportEvidenceWithTerminalAuthority(dependencies, threadRef);
     },
   );
 

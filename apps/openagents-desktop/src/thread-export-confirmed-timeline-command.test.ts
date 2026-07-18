@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { openDesktopThreadExportArtifactStore } from "./thread-export-artifact-store.ts";
+import { openDesktopThreadEventAuthorityRelationLedger } from "./thread-event-authority-relation-ledger.ts";
 import {
   openDesktopThreadExportCommandFromConfirmedTimeline,
   type DesktopThreadExportConfirmedTimelineCommandDependencies,
@@ -71,8 +72,7 @@ afterEach(() => {
   }
 });
 
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const harness = (
   overrides: Partial<DesktopThreadExportConfirmedTimelineCommandDependencies> = {},
@@ -80,10 +80,12 @@ const harness = (
   const root = mkdtempSync(path.join(os.tmpdir(), "oa-confirmed-export-command-"));
   roots.push(root);
   const directory = path.join(root, "thread-exports");
+  const authorityLedgerDirectory = path.join(root, "authority-relations");
   const store = openDesktopThreadExportArtifactStore(directory);
   const reads: string[] = [];
   let persisted = 0;
   const dependencies: DesktopThreadExportConfirmedTimelineCommandDependencies = {
+    authorityLedgerDirectory,
     snapshotForThread: (threadRef) => {
       reads.push(threadRef);
       return snapshot();
@@ -97,7 +99,13 @@ const harness = (
     sha256,
     ...overrides,
   };
-  return { directory, reads, persisted: () => persisted, dependencies };
+  return {
+    authorityLedgerDirectory,
+    directory,
+    reads,
+    persisted: () => persisted,
+    dependencies,
+  };
 };
 
 describe("Desktop confirmed-timeline export-command composition", () => {
@@ -167,5 +175,60 @@ describe("Desktop confirmed-timeline export-command composition", () => {
     ).resolves.toEqual({ status: "rejected", reason: "host_metadata_invalid" });
     expect(value.reads).toEqual([THREAD]);
     expect(value.persisted()).toBe(0);
+  });
+
+  test("exports exact terminal authority already observed by the private ledger", async () => {
+    const replacement = {
+      ...snapshot(),
+      events: [
+        ...snapshot().events,
+        {
+          ...snapshot().events[0],
+          eventRef: "event.confirmed.command.2",
+          sequence: 2,
+          createdAt: "2026-07-17T22:07:03Z",
+          version: 4,
+        },
+      ],
+    };
+    const value = harness({ snapshotForThread: () => replacement });
+    expect(
+      openDesktopThreadEventAuthorityRelationLedger(value.authorityLedgerDirectory).record({
+        schema: "openagents.thread_event_authority.v1",
+        relationRef: "relation.confirmed.command.superseded.1",
+        threadRef: THREAD,
+        eventRef: "event.confirmed.command.1",
+        observedAt: "2026-07-17T22:07:04Z",
+        kind: "superseded",
+        supersededByEventRef: "event.confirmed.command.2",
+      }),
+    ).toMatchObject({ status: "stored" });
+
+    const result = await openDesktopThreadExportCommandFromConfirmedTimeline(
+      value.dependencies,
+    ).execute(intent);
+    if (result.status !== "stored" || result.receipt.result.status !== "export_created") {
+      throw new Error("expected stored export");
+    }
+    const encoded = readFileSync(
+      path.join(value.directory, `${result.receipt.result.artifactSha256}.json`),
+      "utf8",
+    );
+    expect(encoded).toContain('"state":"superseded"');
+    expect(encoded).toContain('"supersededByEventRef":"event.confirmed.command.2"');
+  });
+
+  test("withholds corrupt terminal authority before artifact persistence", async () => {
+    const value = harness();
+    mkdirSync(value.authorityLedgerDirectory, { recursive: true });
+    writeFileSync(
+      path.join(value.authorityLedgerDirectory, "terminal-authority-relations.json"),
+      "private native detail",
+    );
+    await expect(
+      openDesktopThreadExportCommandFromConfirmedTimeline(value.dependencies).execute(intent),
+    ).resolves.toEqual({ status: "rejected", reason: "evidence_unavailable" });
+    expect(value.persisted()).toBe(0);
+    expect(existsSync(value.directory)).toBe(false);
   });
 });

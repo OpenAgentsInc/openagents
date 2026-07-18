@@ -43,7 +43,13 @@ const field = (value: unknown, key: string): unknown =>
 
 const privateDirectories = (
   userDataDirectory: string,
-): Readonly<{ storeDirectory: string; receiptCatalogDirectory: string }> | undefined => {
+):
+  | Readonly<{
+      storeDirectory: string;
+      receiptCatalogDirectory: string;
+      authorityLedgerDirectory: string;
+    }>
+  | undefined => {
   if (!path.isAbsolute(userDataDirectory) || userDataDirectory.includes("\0")) return undefined;
   const resolved = path.resolve(userDataDirectory);
   if (resolved === path.parse(resolved).root) return undefined;
@@ -51,6 +57,7 @@ const privateDirectories = (
   return {
     storeDirectory: path.join(root, "artifacts"),
     receiptCatalogDirectory: path.join(root, "search-receipts"),
+    authorityLedgerDirectory: path.join(root, "authority-relations"),
   };
 };
 
@@ -114,6 +121,7 @@ export const openDesktopThreadExportElectronHost = Effect.fn(
   return yield* openDesktopThreadExportHostRuntime({
     storeDirectory: directories.storeDirectory,
     receiptCatalogDirectory: directories.receiptCatalogDirectory,
+    authorityLedgerDirectory: directories.authorityLedgerDirectory,
     snapshotForThread: dependencies.snapshotForThread,
     selectDestination: selectDestination(dependencies),
     registerWrite: registerHandler,

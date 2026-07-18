@@ -21,6 +21,7 @@ import {
 export type DesktopThreadExportHostRuntimeDependencies = Readonly<{
   storeDirectory: string;
   receiptCatalogDirectory: string;
+  authorityLedgerDirectory: string;
   snapshotForThread: DesktopThreadExportConfirmedTimelineCommandDependencies["snapshotForThread"];
   selectDestination: DesktopThreadExportFileTransportDependencies["selectDestination"];
   registerWrite: DesktopThreadExportMainCompositionDependencies["registerWrite"];
@@ -76,6 +77,7 @@ export const openDesktopThreadExportHostRuntime = Effect.fn("DesktopThreadExport
     );
     const command = openDesktopThreadExportCommandFromConfirmedTimeline({
       snapshotForThread: dependencies.snapshotForThread,
+      authorityLedgerDirectory: dependencies.authorityLedgerDirectory,
       persist: (request): DesktopThreadExportPersistResult => {
         const listed = receiptCatalog.list();
         if (listed.status === "rejected") {

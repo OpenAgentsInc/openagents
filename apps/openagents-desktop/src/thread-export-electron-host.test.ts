@@ -15,6 +15,7 @@ import {
   type DesktopThreadExportSaveDialogOptions,
 } from "./thread-export-electron-host.ts";
 import { DesktopThreadExportMainCompositionUnavailable } from "./thread-export-main-composition.ts";
+import { openDesktopThreadEventAuthorityRelationLedger } from "./thread-event-authority-relation-ledger.ts";
 import { openDesktopThreadEventSearchReceiptCatalog } from "./thread-event-search-receipt-catalog.ts";
 
 const THREAD = "thread.electron.host.1";
@@ -65,6 +66,22 @@ const confirmedSnapshot = {
       },
       createdAt: "2026-07-17T22:37:02Z",
       version: 4,
+    },
+    {
+      eventRef: "event.electron.host.2",
+      runRef: RUN,
+      sequence: 2,
+      eventType: "text.delta",
+      summary: "Electron host replacement evidence",
+      status: null,
+      artifactRefs: [],
+      item: {
+        kind: "text",
+        messageRef: "message.electron.host.2",
+        text: "Electron host replacement evidence",
+      },
+      createdAt: "2026-07-17T22:37:03Z",
+      version: 5,
     },
   ],
 };
@@ -124,6 +141,22 @@ describe("Desktop canonical-export Electron host", () => {
   test("runs confirmed create-then-write through fixed IPC and native replacement authority", async () => {
     const value = harness();
     writeFileSync(value.destination, "previous owner export", { mode: 0o600 });
+    const privateAuthorityLedger = path.join(
+      value.userDataDirectory,
+      "thread-exports",
+      "authority-relations",
+    );
+    expect(
+      openDesktopThreadEventAuthorityRelationLedger(privateAuthorityLedger).record({
+        schema: "openagents.thread_event_authority.v1",
+        relationRef: "relation.electron.host.superseded.1",
+        threadRef: THREAD,
+        eventRef: "event.electron.host.1",
+        observedAt: "2026-07-17T22:37:04Z",
+        kind: "superseded",
+        supersededByEventRef: "event.electron.host.2",
+      }),
+    ).toMatchObject({ status: "stored" });
     const lifetime = await Effect.runPromise(
       openDesktopThreadExportElectronHost(value.dependencies),
     );
@@ -145,6 +178,7 @@ describe("Desktop canonical-export Electron host", () => {
     const written = await write("trusted", { receipt: created.receipt });
     expect(written).toMatchObject({ status: "written", replaceAuthorized: true });
     expect(readFileSync(value.destination, "utf8")).toContain("Electron host confirmed evidence");
+    expect(readFileSync(value.destination, "utf8")).toContain('"state":"superseded"');
     expect(value.dialogs).toEqual([
       {
         title: "Export canonical thread events",
@@ -167,6 +201,7 @@ describe("Desktop canonical-export Electron host", () => {
     });
     expect(JSON.stringify({ created, written })).not.toContain(privateStore);
     expect(JSON.stringify({ created, written })).not.toContain(privateReceiptCatalog);
+    expect(JSON.stringify({ created, written })).not.toContain(privateAuthorityLedger);
     expect(JSON.stringify({ created, written })).not.toContain(value.destination);
 
     lifetime.close();

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "431c9e9543817f830b32e7ae47c2dbf24cc61991bd41cb0a83f4b8a29bcfdd91",
+  "sourceTreeSha256": "25026ebd6e2b25602bb759d814aa1d1a223e3e10aca3d88967de408632ce15db",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1776,7 +1776,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "0068de25d5c51a1288da98c5e488ec19b2da548110dc99fa83715e28bc5c3a68",
+      "sha256": "a5ec1a9a2f02f7243c4b5f9afc1a0fd874ab9132b2bf4f0377fad23061f0754b",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1829,10 +1829,11 @@
         "docs/fastfollow/receipts/2026-07-18-ff-d1-42-desktop-canonical-event-search-electron-host-receipt.md",
         "docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md",
         "docs/fastfollow/receipts/2026-07-18-ff-d1-44-desktop-confirmed-timeline-terminal-authority-overlay-receipt.md",
+        "docs/fastfollow/receipts/2026-07-18-ff-d1-45-desktop-terminal-authority-export-composition-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 49,
+      "inboundSourceCount": 50,
       "issueLinks": []
     },
     {

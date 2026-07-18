@@ -3635,6 +3635,18 @@ rendered evidence, and Day 1 completion remain later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-18T04:03:56Z`
 
+### CLAIM-STATUS
+
+- implementation: composed FF-D1-44 into the actual canonical-export command and carried its private authority-ledger directory through host and Electron resource acquisition
+- end-to-end proof: a ledger-retained supersession reaches the owner-selected canonical artifact through fixed IPC while an empty ledger preserves accepted-only output
+- fail-closed proof: corrupt terminal state returns evidence unavailable before artifact, receipt-catalog, or destination effects and projects no path or native error
+- authority boundary: the resource graph consumes already-observed facts but does not observe, infer, authorize, create, or publish them; real producer composition remains absent
+- focused proof: command/overlay/host/Electron/ledger/artifact/search tests 42/42 passed; Desktop and agent-runtime-schema typechecks passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec compiler reproduced only the recorded environment-profile digest snapshot mismatch, 5/6; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-45-desktop-terminal-authority-export-composition-receipt.md`
+- residual: real supersession/reversion observation and producer composition, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
