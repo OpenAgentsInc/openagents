@@ -27,6 +27,7 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
+import { resolveDesktopUpdateFeedConfig } from "./update-feed-config.ts"
 import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
 import { drainChildRuntimes } from "./update-runtime-drain.ts"
 import { evaluateNoMigrationInvariant } from "./update-migration-evidence.ts"
@@ -1295,6 +1296,15 @@ const codexHandoffBindings = openCodexHandoffBindings(
 )
 const desktopUpdateRoot = path.join(app.getPath("userData"), "updates")
 const desktopUpdateChannel = app.getVersion().includes("-rc.") ? "rc" : "stable"
+// REL-FEED-01 (#8993): resolve the signed update feed host + pin. Default is
+// the production feed with the production pin (byte-identical to the old
+// hardcoded behavior). Explicit staging overrides are typed and fail-closed;
+// a rejected configuration DISABLES update checks (typed `feed_unavailable`)
+// rather than half-applying an override or silently reverting to production.
+const desktopUpdateFeed = resolveDesktopUpdateFeedConfig(process.env, desktopUpdateChannel)
+if (!desktopUpdateFeed.ok) {
+  console.error(`[desktop-update] update feed configuration rejected (${desktopUpdateFeed.reason}); update checks fail closed`)
+}
 const desktopHostVersion = (): string => {
   if (process.platform === "darwin") {
     try { return execFileSync("/usr/bin/sw_vers", ["-productVersion"], { encoding: "utf8" }).trim() }
@@ -1348,6 +1358,9 @@ const desktopUpdateHost = openDesktopUpdateStagingHost({
   root: desktopUpdateRoot,
   installedVersion: app.getVersion(),
   channel: desktopUpdateChannel,
+  ...(desktopUpdateFeed.ok
+    ? { baseUrl: desktopUpdateFeed.baseUrl, pin: desktopUpdateFeed.pin }
+    : { fetch: (async () => new Response(null, { status: 503 })) as typeof globalThis.fetch }),
   platform: process.platform === "darwin" || process.platform === "win32" || process.platform === "linux"
     ? process.platform
     : undefined,

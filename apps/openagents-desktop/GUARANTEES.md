@@ -1142,6 +1142,40 @@ This implemented contract does not itself admit any cross-platform target as
 supported. The native install/update/interruption/rollback receipts required
 by the normative ProductSpec remain the support authority.
 
+### Update feed discovery is typed and fail-closed; staging override is explicit (#8993)
+
+The update host's feed base URL and pinned key come only from the typed
+resolver in `src/update-feed-config.ts`. With no environment overrides the
+resolution is byte-identical to the historical hardcoded behavior: the
+production `https://updates.openagents.com` origin with the committed
+production Ed25519 pin. For staging-channel proof, an explicitly launched
+build may set `OPENAGENTS_DESKTOP_UPDATE_FEED_BASE_URL` (https only; plain
+http only toward loopback; no credentials/query/fragment) and optionally
+`OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN` (PUBLIC pin JSON; refused
+without the base override, refused against the production feed host, refused
+for the reserved production kid, and refused when it carries any extra field
+such as a pasted private `d`). A rejected configuration DISABLES update
+checks with a typed `feed_unavailable` outcome — there is no partial
+application and no silent fallback.
+
+The full staging cycle is proven end to end against a live local instance of
+the oa-updates ReleaseSet v2 feed (real admission, CAS promotion, and HTTP
+routing; throwaway test keys only): discover → pinned-verify → target-select
+→ digest-gated stage → apply → first-launch receipt confirmation →
+retained-slot rollback → feed pointer rollback, plus the refusals — a
+production-pinned client rejects the staging feed (`kid_not_pinned`) and no
+client accepts a feed-served downgrade (`not_monotonic`).
+
+Contract: [`src/update-feed-config.ts`](./src/update-feed-config.ts).
+Oracles: [`src/update-feed-config.test.ts`](./src/update-feed-config.test.ts),
+[`src/update-staging-integration.test.ts`](./src/update-staging-integration.test.ts),
+and the cross-app staging e2e
+[`../oa-updates/src/desktop-staging-feed-e2e.test.ts`](../oa-updates/src/desktop-staging-feed-e2e.test.ts).
+This guarantees the staging-channel machinery, not production automatic
+update delivery — promotion of a tag through the owner ceremony remains
+owner-gated (see
+[`docs/2026-07-17-next-tag-full-auto-release-plan.md`](./docs/2026-07-17-next-tag-full-auto-release-plan.md)).
+
 ### Isolated worktree preview and conservative HMR (#8931)
 
 `scripts/oa-dev-preview --worktree <absolute-openagents-worktree>` launches

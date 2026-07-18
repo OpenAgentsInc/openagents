@@ -90,6 +90,20 @@ then downloaded and independently re-verified through the public candidate
 URLs before promotion. This repository slice intentionally does not claim that
 external receipt.
 
+## Staging-channel proof (REL-FEED-01, #8993)
+
+The complete Desktop-side cycle against this feed is provable without owner
+secrets: `src/desktop-staging-feed-e2e.test.ts` runs a live in-process feed
+instance (real admission, CAS promotion, HTTP routing) with throwaway Ed25519
+keys and drives the real Desktop update host through discover → verify →
+stage → apply → launch-receipt → retained-slot rollback → pointer rollback.
+A packaged Desktop points at a staging deploy of this service via the
+fail-closed `OPENAGENTS_DESKTOP_UPDATE_FEED_BASE_URL` /
+`OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN` overrides
+(`apps/openagents-desktop/src/update-feed-config.ts`); production clients
+with no overrides are unaffected, and a staging pin can never apply to the
+production host.
+
 ## v1 compatibility
 
 The old `/desktop/openagents/<channel>/manifest.json`, `manifest.sig.json`, and

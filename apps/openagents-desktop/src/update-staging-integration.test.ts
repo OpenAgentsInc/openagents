@@ -11,6 +11,11 @@ describe("Desktop signed update staging integration", () => {
     expect(main).toContain("decodeDesktopUpdateStagingAction(raw)")
     expect(main).toContain("openDesktopUpdateStagingHost")
     expect(main).toContain("openMacOSUpdateApplier")
+    // REL-FEED-01 (#8993): the feed host/pin come only from the typed resolver,
+    // and a rejected configuration disables checks instead of falling back.
+    expect(main).toContain("resolveDesktopUpdateFeedConfig(process.env, desktopUpdateChannel)")
+    expect(main).toContain("{ baseUrl: desktopUpdateFeed.baseUrl, pin: desktopUpdateFeed.pin }")
+    expect(main).toContain('new Response(null, { status: 503 })')
     expect(main).toContain('case "apply": return desktopUpdateHost.apply()')
     expect(main).toContain('case "rollback": return desktopUpdateHost.rollback()')
     expect(main).toContain("desktopUpdateHost.reconcile()")
