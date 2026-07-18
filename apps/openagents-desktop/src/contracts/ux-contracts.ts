@@ -25,6 +25,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/provider-lane-capabilities.ts",
           "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/renderer/tool-cards.ts",
           "apps/openagents-desktop/src/codex-app-server-turn.ts",
           "github:OpenAgentsInc/openagents#8995",
         ],
@@ -52,6 +53,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/codex-app-server-turn.test.ts",
             description:
               "Forces compatibility receipts from deliberately incomplete app-server fixture responses and proves no Codex compatibility notice is emitted as a lane_notice while intentional Guardian review notices remain visible.",
+          },
+          {
+            id: "installed_codex_model_catalog.historical_compatibility_notes_are_not_rendered",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/tool-cards.test.ts",
+            description:
+              "Proves a compatibility notice persisted by a pre-fix build is omitted from transcript projection while Guardian, account-rotation, and assistant-authored text remain visible.",
           },
         ],
         verification:

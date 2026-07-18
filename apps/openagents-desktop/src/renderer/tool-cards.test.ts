@@ -69,6 +69,20 @@ describe("toolTraceFromNote", () => {
 })
 
 describe("projectTranscriptEntries (started + completion = ONE updating card)", () => {
+  test("hides only historical Codex compatibility diagnostics from the transcript", () => {
+    const entries = projectTranscriptEntries([
+      note({ key: "compat", text: "Codex compatibility notice: account/rateLimits/read (invalid_payload). The unrecognized provider event was retained privately." }),
+      note({ key: "guardian", text: "Guardian review denied: destructive command" }),
+      note({ key: "rotation", text: "Codex account codex-current failed before producing content" }),
+      note({ key: "assistant", text: "Codex compatibility notice: quoted by the assistant", role: "assistant" }),
+    ])
+    expect(entries.map(entry => entry.kind === "note" ? entry.note.key : entry.kind)).toEqual([
+      "guardian",
+      "rotation",
+      "assistant",
+    ])
+  })
+
   test("folds a started/ok pair into a single card with the result attached", () => {
     const entries = projectTranscriptEntries([
       note({ key: "u", text: "hi", role: "user" }),
