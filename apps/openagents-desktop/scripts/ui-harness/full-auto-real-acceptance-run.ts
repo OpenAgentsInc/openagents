@@ -151,19 +151,39 @@ const renameSelectedThread = async (page: Page, title: string): Promise<void> =>
 const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void> => {
   const button = page.locator('[data-en-key="shell-provider-select"]')
   await button.waitFor({ state: "visible", timeout: 30_000 })
-  // The visible control cycles every admitted provider lane, not only the two
-  // native lanes. Owner profiles can therefore have several ACP lanes between
-  // Claude and Codex. Bound the traversal generously while still requiring
-  // the exact visible native label before sending.
-  for (let attempts = 0; attempts < 64; attempts += 1) {
-    if ((await button.innerText()).trim().startsWith(label)) return
-    await button.click()
-    // Capability hydration can make a cycle click a benign no-op. Retrying is
-    // safe because no turn has been submitted and final admission still
-    // requires the exact visible native label.
-    await page.waitForTimeout(500)
+  if ((await button.innerText()).trim().startsWith(label)) return
+  const threadRef = await selectedThreadRef(page)
+  const laneRef = label === "Codex" ? "codex-local" : "fable-local"
+  // The visible chip is a cycle affordance over every admitted native/ACP
+  // lane. A real owner profile can contain enough hydrated peers that cycling
+  // is not a deterministic way to name a native target. Use the exact same
+  // trusted renderer -> main selection action underneath the chip, then
+  // reload the renderer projection and require the visible label before any
+  // turn is sent. Main still performs admission and writes the transition
+  // receipt; this merely removes catalog order from the acceptance driver.
+  const outcome = await page.evaluate(async ({ threadRef, laneRef }) => {
+    const bridge = (globalThis as typeof globalThis & {
+      openagentsDesktop?: {
+        providerLanes?: { select?: (value: unknown) => Promise<unknown> }
+      }
+    }).openagentsDesktop
+    return await bridge?.providerLanes?.select?.({ threadRef, laneRef })
+  }, { threadRef, laneRef })
+  if (
+    outcome === null
+    || typeof outcome !== "object"
+    || !("ok" in outcome)
+    || outcome.ok !== true
+  ) {
+    throw new Error(`could not select ${label}: ${JSON.stringify(outcome)}`)
   }
-  throw new Error(`could not select ${label}`)
+  await page.reload()
+  const hydratedButton = page.locator('[data-en-key="shell-provider-select"]')
+  await hydratedButton.waitFor({ state: "visible", timeout: 60_000 })
+  await page.waitForFunction(expected =>
+    document.querySelector('[data-en-key="shell-provider-select"]')
+      ?.textContent?.trim().startsWith(expected) === true,
+  label, { timeout: 60_000 })
 }
 
 const selectStableClaudeModel = async (page: Page): Promise<void> => {
