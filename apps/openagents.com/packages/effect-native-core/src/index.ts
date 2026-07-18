@@ -2615,6 +2615,8 @@ export interface ComposerView extends NodeBase {
   readonly doc: ReadonlyArray<ComposerInline>
   readonly mode: ComposerMode
   readonly placeholder?: string
+  /** Controls host keyboard autocorrection without changing other keyboard assistance. */
+  readonly autoCorrect?: boolean
   readonly attachments?: ReadonlyArray<ComposerAttachment>
   readonly autocomplete?: ComposerAutocomplete
   /** Disabled composers accept no input and dispatch no intents (v29, #72). */
@@ -4542,6 +4544,7 @@ export const ComposerSchema: Schema.Codec<ComposerView, ComposerView> = Schema.T
   doc: Schema.Array(ComposerInlineSchema),
   mode: Schema.Literals(["normal", "shell"]),
   placeholder: Schema.String.pipe(Schema.optionalKey),
+  autoCorrect: Schema.Boolean.pipe(Schema.optionalKey),
   attachments: Schema.Array(ComposerAttachmentSchema).pipe(Schema.optionalKey),
   autocomplete: ComposerAutocompleteSchema.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),

@@ -421,7 +421,8 @@ describe("React Native renderer host boundaries", () => {
       modifiers: {
         glassEffect: (value) => ({ kind: "glass", value }),
         foregroundStyle: (value) => ({ kind: "foreground", value }),
-        frame: (value) => ({ kind: "frame", value })
+        frame: (value) => ({ kind: "frame", value }),
+        autocorrectionDisabled: (value) => ({ kind: "autocorrectionDisabled", value })
       }
     }
     const events: Array<readonly [string, unknown]> = []
@@ -434,6 +435,7 @@ describe("React Native renderer host boundaries", () => {
         doc: [{ kind: "text", text: "draft" }],
         mode: "normal",
         placeholder: "Message",
+        autoCorrect: false,
         clearOnSubmit: true,
         onChange: IntentRef("Changed"),
         onSubmit: IntentRef("Submitted"),
@@ -455,6 +457,7 @@ describe("React Native renderer host boundaries", () => {
     const field = nativeChildren[0]!
     const submit = nativeChildren[1]!
     expect(field.type).toBe("SwiftTextField")
+    expect(field.props.modifiers).toContainEqual({ kind: "autocorrectionDisabled", value: true })
     expect(submit.type).toBe("SwiftButton")
     if (observedNativeState === undefined) throw new Error("expected native state")
     const nativeState = observedNativeState
@@ -816,6 +819,7 @@ describe("React Native renderer host boundaries", () => {
         doc: [{ kind: "text", text: "offline draft" }],
         mode: "normal",
         placeholder: "Continue conversation",
+        autoCorrect: false,
         onChange: IntentRef("Changed")
       }),
       {
@@ -827,6 +831,7 @@ describe("React Native renderer host boundaries", () => {
     )
     const structure = JSON.stringify(element)
     expect(structure).toContain('"editable":true')
+    expect(structure).toContain('"autoCorrect":false')
     expect(structure).toContain('"accessibilityLabel":"Send unavailable"')
     expect(structure).toContain('"disabled":true')
   })

@@ -3074,6 +3074,7 @@ const renderComposer = (
     placeholder: view.placeholder,
     placeholderTextColor: colorValue(theme, "textMuted"),
     value: composerPlainText(view.doc),
+    ...(view.autoCorrect === undefined ? {} : { autoCorrect: view.autoCorrect }),
     // v29 (#72): disabled composers accept no input; submitting keeps typing
     // live but suppresses onSubmit dispatch (follow-up drafting); clear-on-
     // submit rides the controlled value — RN always honors app resets.
@@ -4838,6 +4839,7 @@ export interface ExpoUiSwiftUiRuntime {
     readonly labelStyle?: (style: "automatic" | "iconOnly" | "titleAndIcon" | "titleOnly") => unknown
     readonly padding?: (params?: Record<string, number>) => unknown
     readonly disabled?: (disabled?: boolean) => unknown
+    readonly autocorrectionDisabled?: (disabled?: boolean) => unknown
     // Hit-testing shape (SwiftUI contentShape): without it only the visible
     // label responds to taps — a flexed button's free space would be dead.
     readonly contentShape?: (shape: unknown) => unknown
@@ -5529,9 +5531,14 @@ const ExpoUiNativeComposer = (props: ExpoUiNativeComposerProps): ReactElementLik
         nativeEdit.current = value
         runReportedIntent(report, view.onChange, value)
       },
-      modifiers: [expoUi.modifiers.frame(expanded
-        ? { minHeight: 64, maxHeight: 120, maxWidth: 100000 }
-        : { height: 44, maxWidth: 100000 })]
+      modifiers: [
+        expoUi.modifiers.frame(expanded
+          ? { minHeight: 64, maxHeight: 120, maxWidth: 100000 }
+          : { height: 44, maxWidth: 100000 }),
+        ...(view.autoCorrect === false && expoUi.modifiers.autocorrectionDisabled !== undefined
+          ? [expoUi.modifiers.autocorrectionDisabled(true)]
+          : []),
+      ]
     })
   const send = createElement(
       dependencies,

@@ -1111,6 +1111,7 @@ export const renderKhalaSurface = (
         doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
         mode: "normal",
         placeholder: authority === "sync" ? runAdmission.placeholder : "Message Khala",
+        ...(compactRuntime === null ? {} : { autoCorrect: false }),
         ...(composerAutocomplete === undefined ? {} : { autocomplete: composerAutocomplete }),
         ...(codingComposer === null ? {} : {
           attachments: codingComposer.draft.doc.attachments.map(attachment => ({
