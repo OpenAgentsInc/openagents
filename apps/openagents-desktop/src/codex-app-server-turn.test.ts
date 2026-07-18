@@ -886,12 +886,10 @@ describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", ()
     })
     expect(outcome.outcome).toBe("success")
 
-    // Filtered to the guardian-review text specifically: this minimal
-    // fixture spawn's bare-bones request responses (unlike the fully
-    // protocol-shaped fixture above) also trip the pre-existing app-server
-    // compatibility-receipt path for unrelated methods (`initialize`,
-    // `thread/start`, …) as `lane_notice` events; that noise is not part of
-    // what this test covers.
+    // Guardian review is intentional product content. The fixture's
+    // deliberately incomplete protocol responses also create private
+    // compatibility receipts, but connection diagnostics must never become
+    // transcript notices.
     const guardianNotices = (events.filter(event => event.kind === "lane_notice") as
       Array<Extract<FableLocalEvent, { kind: "lane_notice" }>>)
       .filter(event => event.text.startsWith("Guardian review"))
@@ -900,6 +898,8 @@ describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", ()
     expect(guardianNotices[1]!.text).toBe(
       "Guardian review denied: command: rm -rf /tmp/scratch — destructive path outside the workspace",
     )
+    expect(events.some(event =>
+      event.kind === "lane_notice" && event.text.startsWith("Codex compatibility notice:"))).toBe(false)
     // No event pretends this is a user-actionable approval decision.
     expect(events.some(event => event.kind === "question_pending")).toBe(false)
   })

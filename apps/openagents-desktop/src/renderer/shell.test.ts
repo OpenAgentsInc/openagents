@@ -280,7 +280,7 @@ test("provider target selection is exact and stable per conversation", () => {
     ],
   }
   expect(providerTargetForThread({ ...baseState, fleet })).toEqual({
-    provider: "codex", accountRef: "codex", model: "gpt-5.5",
+    provider: "codex", accountRef: "codex", model: "gpt-5.6-sol",
   })
   expect(providerTargetForThread({
     ...baseState,
@@ -3681,6 +3681,22 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
     models: [], reasoningEfforts: [], permissionModes: [], approvals: "none", questions: false, skills: false,
     images: false, fullAuto: false, interrupt: false, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant",
   }
+
+  test("installed Codex catalog selects its default and reconciles unsupported reasoning", () => {
+    const catalogCapability: ProviderLaneComposerProjection = {
+      ...codexCapability,
+      models: ["gpt-5.6-sol", "gpt-5.5"],
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      modelOptions: [
+        { id: "gpt-5.6-sol", displayName: "GPT-5.6-Sol", isDefault: true, defaultReasoningEffort: "high", supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
+        { id: "gpt-5.5", displayName: "GPT-5.5", isDefault: false, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["low", "medium", "high", "xhigh"] },
+      ],
+    }
+    const defaulted = withProviderLaneCapabilities({ ...baseState, codexModel: "gpt-5.4", codexReasoningEffort: "medium" }, [catalogCapability])
+    expect(defaulted.codexModel).toBe("gpt-5.6-sol")
+    const reconciled = withProviderLaneCapabilities({ ...baseState, codexModel: "gpt-5.5", codexReasoningEffort: "ultra" }, [catalogCapability])
+    expect(reconciled).toMatchObject({ codexModel: "gpt-5.5", codexReasoningEffort: "medium" })
+  })
 
   test("selectableProviderLanes lists native lanes plus only ADMITTED ACP peers, in stable order", () => {
     const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok, quarantinedCursor])

@@ -45,7 +45,15 @@ const report = (
 
 describe("provider lane composer capability projection", () => {
   test("projects distinct native lane affordances without Codex residue", () => {
-    const codex = projectProviderLaneCapabilities(report())
+    const codex = projectProviderLaneCapabilities(report({
+      composer: {
+        ...report().composer,
+        modelOptions: [
+          { id: "gpt-5.6-sol", displayName: "GPT-5.6-Sol", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["low", "medium", "high", "xhigh"] },
+          { id: "gpt-5.5", displayName: "GPT-5.5", isDefault: false, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["low", "medium", "high", "xhigh"] },
+        ],
+      },
+    }))
     const claude = projectProviderLaneCapabilities(report({
       laneRef: "fable-local",
       provider: "claude_agent",
@@ -80,6 +88,7 @@ describe("provider lane composer capability projection", () => {
       recovery: "interrupt_on_restart",
     }))
     expect(codex).toMatchObject({ admission: "admitted", displayName: "Codex", reasoningEfforts: ["low", "medium", "high", "xhigh"], permissionModes: ["owner_full"], fullAuto: true, steerTurn: true, skills: false })
+    expect(codex.modelOptions?.map(option => option.displayName)).toEqual(["GPT-5.6-Sol", "GPT-5.5"])
     expect(claude).toMatchObject({ admission: "admitted", displayName: "Claude", reasoningEfforts: [], permissionModes: ["owner_full", "plan_only"], fullAuto: false, steerTurn: false, skills: true })
     expect(claude.models.every(model => model.startsWith("claude-"))).toBe(true)
   })
@@ -110,5 +119,9 @@ describe("provider lane composer capability projection", () => {
     const valid = projectProviderLaneCapabilities(report())
     expect(decodeProviderLaneComposerProjections([valid])).toEqual([valid])
     expect(decodeProviderLaneComposerProjections([{ ...valid, fullAuto: "yes" }])).toBeNull()
+    expect(decodeProviderLaneComposerProjections([{
+      ...valid,
+      modelOptions: [{ id: "gpt-5.6-sol", displayName: "GPT-5.6-Sol", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: [42] }],
+    }])).toBeNull()
   })
 })

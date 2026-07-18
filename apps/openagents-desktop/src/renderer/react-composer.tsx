@@ -463,8 +463,8 @@ export const ReactComposer = ({
   const capabilityAdmitted = capabilities === null || capabilities.admission === "admitted";
   const selectedModel = state.selectedHarness === "codex" ? state.codexModel : state.claudeModel;
   const visibleModels = capabilities?.models ?? [selectedModel];
-  const selectedModelIndex = Math.max(0, visibleModels.indexOf(selectedModel));
-  const nextModel = visibleModels[(selectedModelIndex + 1) % visibleModels.length] ?? selectedModel;
+  const selectedModelOption = capabilities?.modelOptions?.find(option => option.id === selectedModel);
+  const visibleReasoningEfforts = selectedModelOption?.supportedReasoningEfforts ?? capabilities?.reasoningEfforts ?? [];
   // First-class provider picker (#8977): cycles through the native
   // codex/fable pair AND every admitted ACP peer lane (e.g. Grok, Cursor),
   // reusing selectableProviderLanes' exact evidence-derived admission truth.
@@ -744,16 +744,22 @@ export const ReactComposer = ({
         >
           {capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}
         </DesktopComposerButton>
-        <DesktopComposerButton
+        <select
           data-en-key="shell-model-select"
-          kind="action"
+          className="oa-react-composer-select"
           disabled={state.pending || visibleModels.length < 2 || !capabilityAdmitted}
-          onClick={() => dispatch(report, "DesktopModelSelected", nextModel)}
           aria-label={`Model: ${selectedModel}`}
           title={`Model: ${selectedModel}`}
+          value={selectedModel}
+          onChange={event => {
+            const model = visibleModels.find(candidate => candidate === event.currentTarget.value);
+            if (model !== undefined) dispatch(report, "DesktopModelSelected", model);
+          }}
         >
-          {selectedModel}
-        </DesktopComposerButton>
+          {visibleModels.map(model => <option key={model} value={model}>
+            {capabilities?.modelOptions?.find(option => option.id === model)?.displayName ?? model}
+          </option>)}
+        </select>
         <div className="oa-react-composer-secondary-controls" data-open={secondaryControlsOpen ? "true" : "false"}>
           <button type="button" className="oa-react-composer-secondary-trigger"
             aria-expanded={secondaryControlsOpen}
@@ -762,19 +768,20 @@ export const ReactComposer = ({
             <Ellipsis aria-hidden="true" />
           </button>
           <div className="oa-react-composer-secondary-controls-content">
-        {capabilities !== null && capabilities.reasoningEfforts.length > 0 ? <DesktopComposerButton
+        {capabilities !== null && visibleReasoningEfforts.length > 0 ? <select
           data-en-key="shell-reasoning-select"
-          kind="action"
+          className="oa-react-composer-select"
           disabled={state.pending}
-          onClick={() => {
-            const index = Math.max(0, capabilities.reasoningEfforts.indexOf(state.codexReasoningEffort));
-            dispatch(report, "DesktopCodexReasoningSelected", capabilities.reasoningEfforts[(index + 1) % capabilities.reasoningEfforts.length] ?? state.codexReasoningEffort);
+          value={state.codexReasoningEffort}
+          onChange={event => {
+            const effort = visibleReasoningEfforts.find(candidate => candidate === event.currentTarget.value);
+            if (effort !== undefined) dispatch(report, "DesktopCodexReasoningSelected", effort);
           }}
           aria-label={`Reasoning effort: ${state.codexReasoningEffort}`}
           title={`Reasoning: ${state.codexReasoningEffort}`}
         >
-          {state.codexReasoningEffort}
-        </DesktopComposerButton> : null}
+          {visibleReasoningEfforts.map(effort => <option key={effort} value={effort}>{effort}</option>)}
+        </select> : null}
         {capabilities !== null && capabilities.permissionModes.includes("plan_only") && state.activeThreadId !== null ? <DesktopComposerButton
           data-en-key="shell-permission-mode"
           kind="action"

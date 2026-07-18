@@ -9,6 +9,55 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
     version: "2026-07-17.2",
     contracts: [
       {
+        contractId: "openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Codex composer model selection and transcript diagnostics",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "kinda works but i get this fucked up warnings. and i cant choose anything other than gpt 5.5 WHAET TH EFUCK. FIX THAT. and no new rc build until i test it locally. tell me when its ready to test\\",
+        authorityBoundary:
+          "Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the renderer offers a direct native model select, chooses the installed default when a stale selection is absent, and reconciles unsupported reasoning to that model's advertised default. Exact turn admission remains main-owned and fails closed against the same catalog. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-control-plane.ts",
+          "apps/openagents-desktop/src/codex-local-runtime.ts",
+          "apps/openagents-desktop/src/provider-lane-capabilities.ts",
+          "apps/openagents-desktop/src/renderer/react-composer.tsx",
+          "apps/openagents-desktop/src/codex-app-server-turn.ts",
+          "github:OpenAgentsInc/openagents#8995",
+        ],
+        oracles: [
+          {
+            id: "installed_codex_model_catalog.direct_visible_model_and_reasoning_selects",
+            kind: "bun-test",
+            mode: "dom",
+            ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+            description:
+              "Renders all seven visible installed-catalog model ids in a native select, proves direct GPT-5.4 Mini selection dispatches the exact id, and limits the reasoning selector to the active model's advertised efforts.",
+          },
+          {
+            id: "installed_codex_model_catalog.default_and_effort_reconciliation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves a stale model falls back to the installed default and an unsupported reasoning level falls back to that selected model's advertised default.",
+          },
+          {
+            id: "installed_codex_model_catalog.compatibility_receipts_are_not_transcript",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-app-server-turn.test.ts",
+            description:
+              "Forces compatibility receipts from deliberately incomplete app-server fixture responses and proves no Codex compatibility notice is emitted as a lane_notice while intentional Guardian review notices remain visible.",
+          },
+        ],
+        verification:
+          "Desktop control-plane, local-runtime, provider-capability, shell, React composer, app-server-turn, behavior-contract, typecheck, build, and local oa-dev visual verification. No release command is part of the oracle.",
+      },
+      {
         contractId: "openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1",
         state: "enforced",
         surface: "openagents-desktop",
@@ -1275,7 +1324,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Between codex/claude and reasoning dropdowns we need model selector. Codex select between GPT-5.6 and GPT-5.5, Claude select between Fable, Opus 4.8, Sonnet 5. Also that plus button make it not a huge circle, must be icon only.",
         authorityBoundary:
-          "The single OpenCode-shaped composer card keeps its multiline input above one compact action bar. That bar orders compact icon-only Attach, Provider, provider-scoped Model, Codex-only Reasoning, account/permission controls, a flexible spacer, and circular Send/Stop. Exact model IDs are closed typed values and reach the corresponding provider launch field; no model is inferred from its display label and Claude refuses provider substitution before content. Attach uses the shared Effect Native IconButton's `sm` size (32px) with a required accessible label rather than inheriting the generic 44px circular action treatment. No attach, queue, stop, availability, or submission behavior is removed.",
+          "The single OpenCode-shaped composer card keeps its multiline input above one compact action bar. That bar orders compact icon-only Attach, Provider, provider-scoped Model, Codex-only Reasoning, account/permission controls, a flexible spacer, and circular Send/Stop. Claude model IDs remain closed typed values; Codex model IDs come only from the bounded visible catalog reported by the validated installed app-server, and exact selected IDs reach the corresponding provider launch field. No model is inferred from its display label and Claude refuses provider substitution before content. Attach uses the shared Effect Native IconButton's `sm` size (32px) with a required accessible label rather than inheriting the generic 44px circular action treatment. No attach, queue, stop, availability, or submission behavior is removed.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/docs/design-ports.md",

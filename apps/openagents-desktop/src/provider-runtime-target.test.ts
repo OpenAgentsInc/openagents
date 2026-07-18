@@ -31,7 +31,7 @@ describe("local provider target contract", () => {
     })
   })
 
-  test("rejects unknown, empty, and unbounded target fields", () => {
+  test("rejects unknown providers plus empty and unbounded target fields", () => {
     expect(decodeFableLocalStartRequest(request({
       provider: "other",
       accountRef: "codex",
@@ -51,6 +51,11 @@ describe("local provider target contract", () => {
       provider: "codex",
       accountRef: "codex",
       model: "gpt-unknown",
+    }))?.target?.model).toBe("gpt-unknown")
+    expect(decodeFableLocalStartRequest(request({
+      provider: "codex",
+      accountRef: "codex",
+      model: "unknown-provider-model",
     }))).toBeNull()
   })
 

@@ -197,7 +197,8 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
     expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
     expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(3);
+    expect(container.querySelectorAll(".oa-react-composer-select")).toHaveLength(1);
     expect(container.querySelector('[aria-label="Add context or command"]')).not.toBeNull();
     const more = container.querySelector('[aria-label="More composer controls"]') as HTMLButtonElement;
     expect(more.getAttribute("aria-expanded")).toBe("false");
@@ -564,7 +565,7 @@ describe("React Codex composer", () => {
     // FA-UX-01 (#8974): the toggle is retired regardless of lane capability.fullAuto.
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-permission-mode"]')).toBeNull();
-    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("gpt-5.5");
+    expect((container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement).value).toBe("gpt-5.6-sol");
 
     await render(root, <ReactComposer state={fixtureState({
       selectedHarness: "fable", providerLaneCapabilities: [codex, claude], harnessLanes: lanes,
@@ -572,8 +573,44 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-permission-mode"]')).not.toBeNull();
-    expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("claude-fable-5");
+    expect((container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement).value).toBe("claude-fable-5");
     expect(container.textContent).not.toContain("gpt-5.6-sol");
+  });
+
+  test("offers every installed visible Codex model as a direct selector with model-specific reasoning", async () => {
+    const { window, container } = installDom();
+    const { ReactComposer } = await import("./react-composer.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const ids = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"];
+    const modelOptions = ids.map((id, index) => ({
+      id,
+      displayName: id.replace("gpt", "GPT"),
+      isDefault: index === 0,
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: id.startsWith("gpt-5.6")
+        ? ["low", "medium", "high", "xhigh", "max", "ultra"]
+        : ["low", "medium", "high", "xhigh"],
+    }));
+    const codex = {
+      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
+      reason: null, models: ids, modelOptions,
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
+      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
+    };
+    await render(root, <ReactComposer state={fixtureState({ providerLaneCapabilities: [codex] })} report={report} />);
+
+    const model = container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement;
+    expect(model.tagName).toBe("SELECT");
+    expect([...model.options].map(option => option.value)).toEqual(ids);
+    expect(model.value).toBe("gpt-5.6-sol");
+    const reasoning = container.querySelector('[data-en-key="shell-reasoning-select"]') as HTMLSelectElement;
+    expect([...reasoning.options].map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+
+    model.value = "gpt-5.4-mini";
+    await interact(() => model.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event));
+    expect(received).toContainEqual({ name: "DesktopModelSelected", payload: "gpt-5.4-mini" });
   });
 
   test("L2 refuses an over-claiming lane and exposes its quarantine reason", async () => {

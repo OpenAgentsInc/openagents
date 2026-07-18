@@ -27,8 +27,9 @@
  */
 import { Exit, Schema } from "@effect-native/core/effect"
 
-import { CODEX_CHILD_MODEL, CODEX_CHILD_REASONING_EFFORT } from "./codex-child-contract.ts"
+import { CODEX_CHILD_REASONING_EFFORT } from "./codex-child-contract.ts"
 import {
+  CodexModelSchema,
   CodexReasoningEffortSchema,
   FableLocalInterruptRequestSchema,
   FableLocalStartRequestSchema,
@@ -73,18 +74,33 @@ export const CodexLocalFullAutoInterruptChannel = "openagents:codex-local:full-a
  * unless a separately verified official-app continuity proof cites this ref. */
 export const CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF = "codex.compat.0.144.1" as const
 
-/** The lane's requested model/effort — spawn-config truth, shared with the
- * delegate children so "Codex" means ONE bundled-runtime-supported model everywhere. */
-export const CODEX_LOCAL_MODEL = CODEX_CHILD_MODEL
+/**
+ * Startup fallback only. Once the installed app-server answers `model/list`,
+ * its visible default and catalog become the exact model authority. Delegate
+ * children retain their separately pinned model.
+ */
+export const CODEX_LOCAL_MODEL = "gpt-5.6-sol" as const
 export const CODEX_LOCAL_REASONING_EFFORT = CODEX_CHILD_REASONING_EFFORT
 
 /** The renderer-facing model caption value ("(requested)" = spawn-config
  * truth, never a provider echo — the exec stream has none). */
 export const codexLocalRequestedModelLabel = (model: string = CODEX_LOCAL_MODEL): string => `${model} (requested)`
 
-/** Effective-model caption trace line for codex turns ("Codex · gpt-5.5
+/** Effective-model caption trace line for codex turns ("Codex · gpt-5.6-sol
  * (requested)") — the lane-branded sibling of fableLocalModelNoteText. */
 export const codexLocalModelNoteText = (model: string): string => `Codex · ${model}`
+
+export const CodexLocalModelOptionSchema = Schema.Struct({
+  id: CodexModelSchema,
+  displayName: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  isDefault: Schema.Boolean,
+  defaultReasoningEffort: CodexReasoningEffortSchema,
+  supportedReasoningEfforts: Schema.Array(CodexReasoningEffortSchema).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(6),
+  ),
+})
+export type CodexLocalModelOption = typeof CodexLocalModelOptionSchema.Type
 
 export const CodexLocalAvailabilitySchema = Schema.Union([
   Schema.Struct({
@@ -93,6 +109,11 @@ export const CodexLocalAvailabilitySchema = Schema.Union([
     accountRef: Schema.String,
     /** How many registered accounts passed the session probe. */
     verifiedCount: Schema.Number,
+    /** Main-owned visible `model/list` projection from the installed Codex. */
+    models: Schema.optional(Schema.Array(CodexLocalModelOptionSchema).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(16),
+    )),
   }),
   Schema.Struct({
     state: Schema.Literal("unavailable"),
@@ -123,7 +144,14 @@ export const decodeCodexQueueMutation = (value: unknown): typeof CodexQueueMutat
 
 export const decodeCodexLocalAvailability = (value: unknown): CodexLocalAvailability | null => {
   const decoded = Schema.decodeUnknownExit(CodexLocalAvailabilitySchema)(value)
-  return Exit.isSuccess(decoded) ? decoded.value : null
+  if (!Exit.isSuccess(decoded)) return null
+  if (decoded.value.state !== "available" || decoded.value.models === undefined) return decoded.value
+  const ids = decoded.value.models.map(model => model.id)
+  if (new Set(ids).size !== ids.length) return null
+  if (decoded.value.models.some(model =>
+    new Set(model.supportedReasoningEfforts).size !== model.supportedReasoningEfforts.length ||
+    !model.supportedReasoningEfforts.includes(model.defaultReasoningEffort))) return null
+  return decoded.value
 }
 
 /** Start/interrupt/steer/queue requests reuse the frozen fable-local shapes. */
@@ -151,6 +179,7 @@ export const decodeCodexLocalFullAutoSetRequest = (value: unknown): CodexLocalFu
  */
 export const decodeCodexLocalContinuationProfile = (
   profile: Readonly<{ accountRef?: string; model?: string; reasoningEffort?: string }> | undefined,
+  allowedModels?: ReadonlyArray<string>,
 ): Readonly<{ accountRef: string | null; model: CodexModel | null; reasoningEffort: CodexReasoningEffort | null }> => {
   const decodedModel = Schema.decodeUnknownExit(LocalModelSchema)(profile?.model)
   const decodedEffort = Schema.decodeUnknownExit(CodexReasoningEffortSchema)(profile?.reasoningEffort)
@@ -158,7 +187,10 @@ export const decodeCodexLocalContinuationProfile = (
     accountRef: profile?.accountRef !== undefined && profile.accountRef.length >= 1 && profile.accountRef.length <= 80
       ? profile.accountRef
       : null,
-    model: Exit.isSuccess(decodedModel) && isCodexModel(decodedModel.value) ? decodedModel.value : null,
+    model: Exit.isSuccess(decodedModel) && isCodexModel(decodedModel.value) &&
+        (allowedModels === undefined || allowedModels.includes(decodedModel.value))
+      ? decodedModel.value
+      : null,
     reasoningEffort: Exit.isSuccess(decodedEffort) ? decodedEffort.value : null,
   }
 }

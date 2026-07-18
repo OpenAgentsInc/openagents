@@ -6,7 +6,7 @@
  * Spawn recipe (receipted, codex-cli 0.144.1, 2026-07-11 — the child recipe
  * WITHOUT --ephemeral):
  *
- *   codex exec --json -m gpt-5.5 -c model_reasoning_effort=medium \
+ *   codex exec --json -m <installed-catalog-model> -c model_reasoning_effort=medium \
  *     -s danger-full-access --skip-git-repo-check -C <thread workspace> "<prompt>"
  *
  * DECISION (receipted): the chat lane does NOT pass `--ephemeral`, so codex
@@ -75,16 +75,23 @@ import {
   CODEX_LOCAL_MODEL,
   CODEX_LOCAL_REASONING_EFFORT,
   type CodexLocalAvailability,
+  type CodexLocalModelOption,
 } from "./codex-local-contract.ts"
 import {
   FABLE_LOCAL_DELTA_LIMIT,
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
   FABLE_LOCAL_SUMMARY_LIMIT,
+  isCodexModel,
+  isCodexReasoningEffort,
+  type CodexModel,
+  type CodexReasoningEffort,
   type FableChildUsage,
+  type FableLocalAnswerQuestionRequest,
   type FableLocalEvent,
   type FableLocalFailureReason,
   type FableLocalImageAttachment,
+  type FableLocalQuestion,
   type FableLocalQueueFollowupRequest,
 } from "./fable-local-contract.ts"
 import {
@@ -95,12 +102,6 @@ import {
 } from "./fable-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
 import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
-import type {
-  CodexModel,
-  CodexReasoningEffort,
-  FableLocalAnswerQuestionRequest,
-  FableLocalQuestion,
-} from "./fable-local-contract.ts"
 import {
   runCodexAppServerTurn,
   type CodexAppServerTurnControl,
@@ -420,7 +421,72 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         reason: policyDenied ? "policy_denied" : quotaExhausted ? "quota_exhausted" : rateLimited ? "rate_limited" : "no_verified_account",
       }
     }
-    return { state: "available", accountRef: first.ref, verifiedCount: verified.length }
+    let models: ReadonlyArray<CodexLocalModelOption> | undefined
+    if (options.appServer?.controlPlanes !== undefined && options.appServer.supervisor !== undefined) {
+      const binary = options.appServer.binary()
+      if (binary !== null) {
+        const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
+        mkdirSync(runtimeCwd, { recursive: true })
+        const appServerEnv = first.source === "current_session"
+          ? codexProviderEnvironment(env, { clearCodexHome: true })
+          : pylonAccountEnvironment(codexProviderEnvironment(env), {
+              provider: "codex",
+              selector: "registry_ref",
+              accountRef: first.ref,
+              accountRefHash: hashPylonAccountRef("codex", first.ref),
+              home: first.home,
+            })
+        try {
+          const controlPlane = await options.appServer.controlPlanes.forTarget({
+            binary,
+            env: appServerEnv,
+            cwd: runtimeCwd,
+            ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+            ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
+            accountRef: first.ref,
+            hostTarget: "local-desktop",
+          })
+          const seen = new Set<string>()
+          models = controlPlane.snapshot().models.flatMap(model => {
+            if (model.hidden) return []
+            const id = isCodexModel(model.id)
+              ? model.id
+              : isCodexModel(model.model) ? model.model : null
+            if (id === null || seen.has(id)) return []
+            const supportedReasoningEfforts = model.supportedReasoningEfforts
+              .filter(isCodexReasoningEffort)
+              .filter((effort, index, all) => all.indexOf(effort) === index)
+            if (supportedReasoningEfforts.length === 0) return []
+            seen.add(id)
+            const advertisedDefault = model.defaultReasoningEffort
+            const defaultReasoningEffort = advertisedDefault !== null &&
+                isCodexReasoningEffort(advertisedDefault) &&
+                supportedReasoningEfforts.includes(advertisedDefault)
+              ? advertisedDefault
+              : supportedReasoningEfforts.includes(CODEX_LOCAL_REASONING_EFFORT)
+                ? CODEX_LOCAL_REASONING_EFFORT
+                : supportedReasoningEfforts[0]!
+            return [{
+              id,
+              displayName: model.displayName,
+              isDefault: model.isDefault,
+              defaultReasoningEffort,
+              supportedReasoningEfforts,
+            }]
+          })
+        } catch {
+          // Availability remains account truth. A failed catalog query keeps
+          // the single startup fallback; exact turn admission still fails
+          // closed through the same control-plane gate.
+        }
+      }
+    }
+    return {
+      state: "available",
+      accountRef: first.ref,
+      verifiedCount: verified.length,
+      ...(models === undefined || models.length === 0 ? {} : { models }),
+    }
   }
 
   const runAttempt = async (input: Readonly<{

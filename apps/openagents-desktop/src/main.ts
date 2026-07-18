@@ -252,6 +252,7 @@ import {
   decodeCodexLocalFullAutoInterruptRequest,
   decodeCodexLocalFullAutoSetRequest,
   type CodexLocalFullAutoLiveState,
+  type CodexLocalModelOption,
 } from "./codex-local-contract.ts"
 import {
   FIXTURE_CODEX_LOCAL_ACCOUNT,
@@ -3358,6 +3359,9 @@ if (reactSmokeMode) (releaseSmokeCodexAvailability as (() => void) | null)?.()
 ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
   if (smokeCodexAvailabilityGate !== null) await smokeCodexAvailabilityGate
   const availability = await codexLocal.availability()
+  if (availability.state === "available" && availability.models !== undefined) {
+    codexLocalModelCatalog = availability.models
+  }
   providerLaneAuthentication.set("codex-local", nativeLaneAuthenticationFromAvailability(availability))
   return availability
 })
@@ -3517,6 +3521,14 @@ ipcMain.handle(CodexExperimentalRequestChannel, async (event, value: unknown) =>
  * duration — plus the codex thread id (session-receipt continuity) in
  * requestId.
  */
+let codexLocalModelCatalog: ReadonlyArray<CodexLocalModelOption> = [{
+  id: CODEX_LOCAL_MODEL,
+  displayName: "GPT-5.6-Sol",
+  isDefault: true,
+  defaultReasoningEffort: "medium",
+  supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+}]
+
 const codexLocalLane: ProviderLane<null> = {
   laneRef: "codex-local",
   graphLaneRef: "codex_local",
@@ -3525,8 +3537,8 @@ const codexLocalLane: ProviderLane<null> = {
   capabilities: () => ({
     laneRef: "codex-local",
     provider: "codex",
-    // Spawn-config truth: the CodexModelSchema contract literals.
-    models: [CODEX_LOCAL_MODEL],
+    // Exact visible model/list projection from the installed app-server.
+    models: codexLocalModelCatalog.map(model => model.id),
     features: {
       skills: false,
       planOnly: false,
@@ -3541,7 +3553,8 @@ const codexLocalLane: ProviderLane<null> = {
     },
     composer: {
       displayName: "Codex",
-      reasoningEfforts: ["low", "medium", "high", "xhigh"],
+      reasoningEfforts: [...new Set(codexLocalModelCatalog.flatMap(model => model.supportedReasoningEfforts))],
+      modelOptions: codexLocalModelCatalog,
       permissionModes: ["owner_full"],
       approvals: "host_mediated",
       extensions: [],
@@ -3550,7 +3563,7 @@ const codexLocalLane: ProviderLane<null> = {
       source: "native-static-declaration",
       profileRef: "native:codex-local:v1",
       evidence: "conformant",
-      allowedModels: [CODEX_LOCAL_MODEL],
+      allowedModels: codexLocalModelCatalog.map(model => model.id),
       allowedFeatures: ["reasoningEffort", "images", "fullAuto", "interrupt", "queueFollowup", "steerTurn", "answerQuestion"],
       allowedExtensions: [],
     },
@@ -3559,7 +3572,7 @@ const codexLocalLane: ProviderLane<null> = {
   admit: request => {
     const requestedModel = request.model ?? request.target?.model ?? CODEX_LOCAL_MODEL
     if ((request.target !== undefined && request.target.provider !== "codex") ||
-      !isCodexModel(requestedModel) || requestedModel !== CODEX_LOCAL_MODEL) {
+      !isCodexModel(requestedModel) || !codexLocalModelCatalog.some(model => model.id === requestedModel)) {
       return { ok: false, error: "That provider target is not available on the Codex lane." }
     }
     if (request.skill !== undefined) {
@@ -4036,7 +4049,10 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       const promotedFollowup = fullAutoFollowupHandoff.take(threadRef)
       const result = laneRef === "codex-local"
         ? await (async () => {
-            const bound = decodeCodexLocalContinuationProfile(profile)
+            const bound = decodeCodexLocalContinuationProfile(
+              profile,
+              codexLocalModelCatalog.map(model => model.id),
+            )
             return dispatchCodexLocalTurn({
               turnRef,
               threadRef,
@@ -6509,7 +6525,7 @@ const smokeAskUserQuestionAnswer = `(async () => {
 // `codex exec --json` event sequence through the actual parser, IPC bridge,
 // thread persistence, and renderer path — rendering IDENTICALLY to fable
 // turns: reasoning line, Bash tool card, markdown assistant body (a real
-// <strong>), the "Codex · gpt-5.5 (requested)" spawn-config-truth
+// <strong>), the "Codex · gpt-5.6-sol (requested)" spawn-config-truth
 // caption, no ASSISTANT label, and the composer re-enabled.
 const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -6555,7 +6571,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
   // Spawn-config-truth caption: the trace line names the lane AND the
   // "(requested)" labeling — never an unlabeled model echo.
-  const modelCaption = transcriptText.includes("Codex · gpt-5.5 (requested)")
+  const modelCaption = transcriptText.includes("Codex · gpt-5.6-sol (requested)")
   const reasoningLine = transcriptText.includes("Reasoning · planned the fixture reply")
   const toolRows = Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="tool"]'),
@@ -6673,7 +6689,7 @@ const smokeMessageInspector = `(async () => {
   let text = inspector === null ? "" : (inspector.textContent || "")
   while (Date.now() < deadline && (
     inspector === null ||
-    !text.includes("gpt-5.5") ||
+    !text.includes("gpt-5.6-sol") ||
     !text.includes("codex-local") ||
     !text.includes("Tokens (total)") ||
     !text.includes("952")
@@ -6683,7 +6699,7 @@ const smokeMessageInspector = `(async () => {
     text = inspector === null ? "" : (inspector.textContent || "")
   }
   if (inspector === null) return { ok: false, reason: "message inspector never opened" }
-  const hasModel = text.includes("gpt-5.5")
+  const hasModel = text.includes("gpt-5.6-sol")
   const hasLane = text.includes("codex-local")
   const hidesAccount = !text.includes("Account") && !text.includes("codex-3")
   const hasTokens = text.includes("Tokens (total)") && text.includes("952")

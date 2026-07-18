@@ -994,14 +994,24 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       // session-scoped probe evidence lands.
       void codexLocalBridge.availability()
         .catch(() => null)
-        .then(raw => {
+        .then(async raw => {
           // A failed decode is honest non-evidence: the chip settles on the
           // reconnect reason rather than parking on "verifying…" forever.
           codexAvailability = decodeCodexLocalAvailability(raw) ??
             { state: "unavailable", reason: "no_verified_account" }
-          return Effect.runPromise(
+          await Effect.runPromise(
             SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())),
           )
+          // Availability refreshes main's installed model catalog. Pull the
+          // newly policy-intersected projection so the mounted composer gains
+          // every visible model without a reload.
+          const refreshedCapabilities = decodeProviderLaneComposerProjections(
+            await (bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
+          )
+          if (refreshedCapabilities !== null) {
+            await Effect.runPromise(SubscriptionRef.update(state, current =>
+              withProviderLaneCapabilities(current, refreshedCapabilities)))
+          }
         })
         .catch(() => {})
     }

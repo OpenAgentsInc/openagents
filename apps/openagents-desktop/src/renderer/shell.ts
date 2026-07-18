@@ -49,7 +49,16 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByCreatedAt, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
-import { isCodexModel, type ClaudeModel, type CodexModel, type CodexReasoningEffort, type LocalModel } from "../fable-local-contract.ts"
+import {
+  CodexReasoningEffortSchema,
+  LocalModelSchema,
+  isCodexModel,
+  isCodexReasoningEffort,
+  type ClaudeModel,
+  type CodexModel,
+  type CodexReasoningEffort,
+  type LocalModel,
+} from "../fable-local-contract.ts"
 import {
   composerActionPresentation,
   idleComposerAdmission,
@@ -589,7 +598,7 @@ export const initialDesktopShellState = (
   codexReasoningEffort: "medium",
   fullAutoByThread: {},
   fullAutoLiveByThread: {},
-  codexModel: "gpt-5.5",
+  codexModel: "gpt-5.6-sol",
   claudeModel: "claude-fable-5",
   providerTargetsByThread: {},
   permissionModeByThread: {},
@@ -776,12 +785,12 @@ export const DesktopHarnessSelected = defineIntent(
 export const DesktopProviderLaneSelected = defineIntent("DesktopProviderLaneSelected", Schema.String)
 export const DesktopCodexReasoningSelected = defineIntent(
   "DesktopCodexReasoningSelected",
-  Schema.Literals(["low", "medium", "high", "xhigh"]),
+  CodexReasoningEffortSchema,
 )
 export const DesktopFullAutoToggled = defineIntent("DesktopFullAutoToggled", Schema.Null)
 export const DesktopModelSelected = defineIntent(
   "DesktopModelSelected",
-  Schema.Literals(["gpt-5.6-sol", "gpt-5.5", "claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"]),
+  LocalModelSchema,
 )
 export const DesktopVoiceModeToggled = defineIntent("DesktopVoiceModeToggled", Schema.Null)
 export const DesktopVoiceMuteToggled = defineIntent("DesktopVoiceMuteToggled", Schema.Null)
@@ -1505,7 +1514,24 @@ export const withHarnessLanes = (
 export const withProviderLaneCapabilities = (
   state: DesktopShellState,
   providerLaneCapabilities: ReadonlyArray<ProviderLaneComposerProjection>,
-): DesktopShellState => ({ ...state, providerLaneCapabilities })
+): DesktopShellState => {
+  const catalog = providerLaneCapabilities.find(lane => lane.laneRef === "codex-local")?.modelOptions
+  if (catalog === undefined || catalog.length === 0) return { ...state, providerLaneCapabilities }
+  const selected = catalog.find(model => model.id === state.codexModel) ??
+    catalog.find(model => model.isDefault) ?? catalog[0]
+  if (selected === undefined || !isCodexModel(selected.id)) return { ...state, providerLaneCapabilities }
+  const reasoningEffort = selected.supportedReasoningEfforts.includes(state.codexReasoningEffort)
+    ? state.codexReasoningEffort
+    : isCodexReasoningEffort(selected.defaultReasoningEffort)
+      ? selected.defaultReasoningEffort
+      : state.codexReasoningEffort
+  return {
+    ...state,
+    providerLaneCapabilities,
+    codexModel: selected.id,
+    codexReasoningEffort: reasoningEffort,
+  }
+}
 
 export const capabilityForHarness = (
   state: DesktopShellState,
@@ -3267,7 +3293,17 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => ({ ...current, codexReasoningEffort: reasoningEffort })),
   DesktopModelSelected: (model) =>
     SubscriptionRef.update(state, (current) => isCodexModel(model)
-      ? { ...current, codexModel: model }
+      ? (() => {
+          const selected = current.providerLaneCapabilities
+            .find(lane => lane.laneRef === "codex-local")?.modelOptions
+            ?.find(option => option.id === model)
+          const reasoningEffort = selected !== undefined &&
+              !selected.supportedReasoningEfforts.includes(current.codexReasoningEffort) &&
+              isCodexReasoningEffort(selected.defaultReasoningEffort)
+            ? selected.defaultReasoningEffort
+            : current.codexReasoningEffort
+          return { ...current, codexModel: model, codexReasoningEffort: reasoningEffort }
+        })()
       : { ...current, claudeModel: model }),
   DesktopPendingSubmitModeSelected: (pendingSubmitMode) =>
     SubscriptionRef.update(state, current => ({ ...current, pendingSubmitMode })),
@@ -4798,7 +4834,7 @@ const selectedModel = (state: DesktopShellState): LocalModel =>
 
 const targetForHarness = (harness: DesktopHarnessName, accountRef: string, model?: LocalModel): LocalProviderTarget =>
   harness === "codex"
-    ? { provider: "codex", accountRef, model: model === "gpt-5.5" ? model : "gpt-5.5" }
+    ? { provider: "codex", accountRef, model: model !== undefined && isCodexModel(model) ? model : "gpt-5.6-sol" }
     : { provider: "claude_agent", accountRef, model: model?.startsWith("claude-") ? model : "claude-fable-5" }
 
 export const providerTargetForThread = (state: DesktopShellState): LocalProviderTarget | null => {
@@ -5201,7 +5237,10 @@ const modelSelect = (state: DesktopShellState): View => Select({
   key: "shell-model-select",
   value: selectedModel(state),
   options: state.selectedHarness === "codex"
-    ? [{ value: "gpt-5.5", label: "GPT-5.5" }]
+    ? (capabilityForHarness(state, "codex")?.modelOptions?.map(option => ({
+        value: option.id,
+        label: option.displayName,
+      })) ?? [{ value: state.codexModel, label: state.codexModel }])
     : [
         { value: "claude-fable-5", label: "Fable" },
         { value: "claude-opus-4-8", label: "Opus 4.8" },
@@ -5217,12 +5256,10 @@ const reasoningSelect = (state: DesktopShellState): View | null =>
   state.selectedHarness !== "codex" ? null : Select({
     key: "shell-reasoning-select",
     value: state.codexReasoningEffort,
-    options: [
-      { value: "low", label: "Low" },
-      { value: "medium", label: "Medium" },
-      { value: "high", label: "High" },
-      { value: "xhigh", label: "Extra high" },
-    ],
+    options: (capabilityForHarness(state, "codex")?.modelOptions
+      ?.find(option => option.id === state.codexModel)?.supportedReasoningEfforts ??
+      capabilityForHarness(state, "codex")?.reasoningEfforts ?? ["medium"])
+      .map(effort => ({ value: effort, label: effort === "xhigh" ? "Extra high" : `${effort[0]?.toUpperCase() ?? ""}${effort.slice(1)}` })),
     disabled: state.pending,
     onChange: IntentRef("DesktopCodexReasoningSelected", ComponentValueBinding()),
     style: { borderWidth: 0, borderRadius: "md", typeScale: "caption", backgroundColor: "background" },

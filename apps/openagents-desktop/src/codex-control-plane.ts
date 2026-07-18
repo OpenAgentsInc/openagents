@@ -19,6 +19,7 @@ export type CodexControlModel = Readonly<{
   displayName: string
   hidden: boolean
   isDefault: boolean
+  defaultReasoningEffort: string | null
   supportedReasoningEfforts: ReadonlyArray<string>
 }>
 
@@ -247,6 +248,7 @@ export const makeCodexControlPlane = (options: Readonly<{
       displayName: string(model?.displayName) ?? providerModel,
       hidden: boolean(model?.hidden),
       isDefault: boolean(model?.isDefault),
+      defaultReasoningEffort: string(model?.defaultReasoningEffort),
       supportedReasoningEfforts: array(model?.supportedReasoningEfforts)
         .flatMap(option => string(asObject(option)?.reasoningEffort) ?? string(option) ?? []),
     }]

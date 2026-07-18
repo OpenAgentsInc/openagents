@@ -328,6 +328,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   overload, non-ready supervision, unsettled reverse RPC, queue corruption, or
   recovery corruption blocks release. A method-count dashboard, generic raw
   RPC, or one surface's success cannot waive another column or surface.
+- Desktop Codex model authority comes from the bounded visible `model/list`
+  catalog of the user's validated installed app-server, never an OpenAgents
+  hard-coded one-model list. The installed default is used when a saved choice
+  is absent, every offered reasoning level must be advertised for the selected
+  model, and main rechecks the exact model against that same catalog before a
+  turn. Compatibility receipts and additive telemetry decode drift remain
+  private diagnostics and release-gate evidence; they are never transcript
+  messages. The owner must test a local build before this repair can authorize
+  any new RC, tag, package, release asset, or publication.
 - Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
   and settlement are not part of the accepted MVP. VP-1 retires rather than
   ports them: mutation surfaces return typed `money_surface_retired`, runtime

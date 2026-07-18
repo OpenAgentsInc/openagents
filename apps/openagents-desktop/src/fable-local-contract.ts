@@ -602,14 +602,24 @@ export const FableLocalEventEnvelopeSchema = Schema.Struct({
 })
 export type FableLocalEventEnvelope = typeof FableLocalEventEnvelopeSchema.Type
 
-export const CodexModelSchema = Schema.Literals(["gpt-5.6-sol", "gpt-5.5"])
+/**
+ * Codex model ids are app-server catalog data, not an OpenAgents release
+ * constant. Keep the wire value bounded and structurally Codex-scoped; the
+ * main-owned control plane performs the exact visible-catalog admission.
+ */
+const CODEX_MODEL_ID_PATTERN = /^gpt-[a-z0-9][a-z0-9.-]{0,78}$/
+export const CodexModelSchema = Schema.String.check(
+  Schema.isMinLength(5),
+  Schema.isMaxLength(80),
+  Schema.isPattern(CODEX_MODEL_ID_PATTERN),
+)
 export type CodexModel = typeof CodexModelSchema.Type
 export const ClaudeModelSchema = Schema.Literals(["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"])
 export type ClaudeModel = typeof ClaudeModelSchema.Type
 export const LocalModelSchema = Schema.Union([CodexModelSchema, ClaudeModelSchema])
 export type LocalModel = typeof LocalModelSchema.Type
 export const isCodexModel = (model: string): model is CodexModel =>
-  model === "gpt-5.6-sol" || model === "gpt-5.5"
+  CODEX_MODEL_ID_PATTERN.test(model)
 export const isClaudeModel = (model: string): model is ClaudeModel =>
   model === "claude-fable-5" || model === "claude-opus-4-8" || model === "claude-sonnet-5"
 
@@ -620,8 +630,11 @@ export const LocalProviderTargetSchema = Schema.Struct({
 })
 export type LocalProviderTarget = typeof LocalProviderTargetSchema.Type
 
-export const CodexReasoningEffortSchema = Schema.Literals(["low", "medium", "high", "xhigh"])
+export const CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const
+export const CodexReasoningEffortSchema = Schema.Literals(CODEX_REASONING_EFFORTS)
 export type CodexReasoningEffort = typeof CodexReasoningEffortSchema.Type
+export const isCodexReasoningEffort = (value: string): value is CodexReasoningEffort =>
+  (CODEX_REASONING_EFFORTS as ReadonlyArray<string>).includes(value)
 
 export const FableLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),

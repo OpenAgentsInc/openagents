@@ -117,6 +117,60 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result).toMatchObject({ ok: false, reason: "incompatible_workflow" })
   })
 
+  test("availability projects every visible installed model with its exact reasoning catalog", async () => {
+    const supervisor = createCodexAppServerSupervisor()
+    const visible = [
+      ["gpt-5.6-sol", true, ["low", "medium", "high", "xhigh", "max", "ultra"]],
+      ["gpt-5.6-terra", false, ["low", "medium", "high", "xhigh", "max", "ultra"]],
+      ["gpt-5.6-luna", false, ["low", "medium", "high", "xhigh", "max"]],
+      ["gpt-5.5", false, ["low", "medium", "high", "xhigh"]],
+      ["gpt-5.4", false, ["low", "medium", "high", "xhigh"]],
+      ["gpt-5.4-mini", false, ["low", "medium", "high", "xhigh"]],
+      ["gpt-5.3-codex-spark", false, ["low", "medium", "high", "xhigh"]],
+    ] as const
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/Applications/Codex.app/Contents/Resources/codex",
+        supervisor,
+        controlPlanes: {
+          forTarget: async () => ({
+            snapshot: () => ({
+              models: [
+                ...visible.map(([id, isDefault, supportedReasoningEfforts]) => ({
+                  id,
+                  model: id,
+                  displayName: id.replace("gpt", "GPT"),
+                  hidden: false,
+                  isDefault,
+                  defaultReasoningEffort: "medium",
+                  supportedReasoningEfforts,
+                })),
+                { id: "codex-auto-review", model: "codex-auto-review", displayName: "Auto review", hidden: true, isDefault: false, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["medium"] },
+              ],
+            }),
+          }) as never,
+          close: () => {},
+        },
+        installProductSpecSkill: () => ({ skillRoot: "/skills", skillPath: "/skills/productspec-work/SKILL.md" }),
+      },
+    })
+    const availability = await runtime.availability()
+    expect(availability.state).toBe("available")
+    if (availability.state !== "available") throw new Error("expected available")
+    expect(availability.models?.map(model => model.id)).toEqual(visible.map(([id]) => id))
+    expect(availability.models?.[0]).toMatchObject({
+      id: "gpt-5.6-sol",
+      isDefault: true,
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+    })
+    supervisor.close()
+  })
+
   test("ordinary app-server chat does not advertise ProductSpec skills or dynamic tools", async () => {
     const fake = appServerFixture()
     const root = scratch()
@@ -709,7 +763,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     // Spawn-config truth caption — never an unlabeled provider echo.
     const model = sink.events.find(event => event.kind === "model_effective") as
       Extract<FableLocalEvent, { kind: "model_effective" }>
-    expect(model.model).toBe("gpt-5.5 (requested)")
+    expect(model.model).toBe("gpt-5.6-sol (requested)")
     const reasoning = sink.events.find(event => event.kind === "reasoning") as
       Extract<FableLocalEvent, { kind: "reasoning" }>
     expect(reasoning.text).toBe("planned the fixture reply")

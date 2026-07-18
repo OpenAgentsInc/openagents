@@ -596,12 +596,12 @@ describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
       model: "gpt-5.5",
       reasoningEffort: "high",
     })).toEqual({ accountRef: "codex-2", model: "gpt-5.5", reasoningEffort: "high" })
-    // A model literal removed from the contract enum (or a Claude model on
+    // A model absent from the current installed catalog (or a Claude model on
     // the Codex lane) must not crash the loop -- it falls back to defaults.
     expect(decodeCodexLocalContinuationProfile({
       model: "gpt-4-retired",
       reasoningEffort: "impossible",
-    })).toEqual({ accountRef: null, model: null, reasoningEffort: null })
+    }, ["gpt-5.6-sol", "gpt-5.5"])).toEqual({ accountRef: null, model: null, reasoningEffort: null })
     expect(decodeCodexLocalContinuationProfile({ model: "claude-fable-5" }).model).toBe(null)
     expect(decodeCodexLocalContinuationProfile(undefined)).toEqual({
       accountRef: null,

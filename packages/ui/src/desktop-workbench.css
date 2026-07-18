@@ -2862,6 +2862,35 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   white-space: nowrap;
 }
 
+.oa-react-composer-select {
+  width: auto;
+  min-width: var(--en-control-sm-height);
+  max-width: 12rem;
+  height: var(--en-control-sm-height);
+  padding: 0 var(--en-spacing-2);
+  border: 0;
+  border-radius: var(--en-radius-md);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.oa-react-composer-select:hover:not(:disabled) {
+  background: var(--en-color-stateHover);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-composer-select:focus-visible {
+  outline: 2px solid var(--en-color-focus);
+  outline-offset: 2px;
+}
+
+.oa-react-composer-select:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
 .oa-react-composer-button[data-composer-button-kind="toggle"] {
   width: auto;
   min-width: var(--en-control-sm-height);
@@ -2956,11 +2985,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
     gap: var(--en-spacing-1);
   }
 
-  .oa-react-composer-secondary-controls-content .oa-react-composer-button {
+  .oa-react-composer-secondary-controls-content :is(.oa-react-composer-button, .oa-react-composer-select) {
     width: 100% !important;
     max-width: none !important;
-    justify-content: flex-start;
   }
+
+  .oa-react-composer-secondary-controls-content .oa-react-composer-button { justify-content: flex-start; }
 }
 
 .oa-react-composer-status {

@@ -675,8 +675,13 @@ Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
   previous chat cannot become the first chunk of a new chat.
 - Connection-scoped rate-limit telemetry and known compatibility notices are
   explicit non-transcript exceptions and cannot supply assistant text.
+- The model and reasoning selectors are projections of the installed
+  app-server's visible `model/list` catalog. Stale model/effort selections
+  reconcile to advertised defaults, and main admits turns against that same
+  exact catalog.
 
-Contract: `openagents_desktop.chat.codex_first_class_local_lane.v1`.
+Contracts: `openagents_desktop.chat.codex_first_class_local_lane.v1`,
+`openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1`.
 
 ### Sidebar session search actually filters
 

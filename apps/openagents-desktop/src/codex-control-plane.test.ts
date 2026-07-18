@@ -25,7 +25,7 @@ const fakeLease = (optionalFailures: ReadonlySet<string> = new Set()) => {
       case "account/usage/read": return { summary: { totalTokens: 42 } }
       case "account/workspaceMessages/read": return { featureEnabled: true, messages: [{ messageId: "message-1", messageType: "warning", messageBody: "private workspace body" }] }
       case "model/list": return { data: [
-        { id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT 5.6", hidden: false, isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: "medium" }] },
+        { id: "gpt-5.6-sol", model: "gpt-5.6-sol", displayName: "GPT 5.6", hidden: false, isDefault: true, defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "medium" }, { reasoningEffort: "high" }] },
         { id: "hidden", model: "hidden", displayName: "Hidden", hidden: true, isDefault: false, supportedReasoningEfforts: [] },
       ] }
       case "modelProvider/capabilities/read": return { imageGeneration: false, namespaceTools: true, webSearch: false }
@@ -100,6 +100,12 @@ describe("Codex app-server control plane", () => {
     expect(JSON.stringify(snapshot)).not.toContain("owner@example.com")
     expect(JSON.stringify(snapshot)).not.toContain("private workspace body")
     expect(snapshot.models.map(model => model.id)).toEqual(["gpt-5.6-sol", "hidden"])
+    expect(snapshot.models[0]).toMatchObject({
+      displayName: "GPT 5.6",
+      isDefault: true,
+      defaultReasoningEffort: "high",
+      supportedReasoningEfforts: ["medium", "high"],
+    })
     expect(snapshot.modelCapabilities).toEqual({ imageGeneration: false, namespaceTools: true, webSearch: false })
     expect(fake.requests.map(request => request.method)).toEqual([
       "account/read", "account/rateLimits/read", "account/usage/read", "account/workspaceMessages/read",

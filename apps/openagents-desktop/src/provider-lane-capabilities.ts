@@ -37,6 +37,14 @@ export type ProviderLaneCapabilityPolicy = Readonly<{
 export type ProviderLaneComposerCapabilities = Readonly<{
   displayName: string
   reasoningEfforts: ReadonlyArray<string>
+  /** Optional app-server catalog detail for direct model selection. */
+  modelOptions?: ReadonlyArray<Readonly<{
+    id: string
+    displayName: string
+    isDefault: boolean
+    defaultReasoningEffort: string
+    supportedReasoningEfforts: ReadonlyArray<string>
+  }>>
   permissionModes: ReadonlyArray<"owner_full" | "plan_only">
   approvals: "provider_native" | "host_mediated" | "none"
   extensions: ReadonlyArray<string>
@@ -59,6 +67,7 @@ export type ProviderLaneComposerProjection = Readonly<{
   admission: "admitted" | "quarantined"
   reason: string | null
   models: ReadonlyArray<string>
+  modelOptions?: ProviderLaneComposerCapabilities["modelOptions"]
   reasoningEfforts: ReadonlyArray<string>
   permissionModes: ReadonlyArray<"owner_full" | "plan_only">
   approvals: "provider_native" | "host_mediated" | "none"
@@ -89,12 +98,24 @@ export const projectProviderLaneCapabilities = (
   const overclaimedExtensions = report.composer.extensions.filter(
     extension => !allowedExtensions.has(extension),
   )
+  const modelOptionsMalformed = report.composer.modelOptions !== undefined && (
+    report.composer.modelOptions.length !== report.models.length ||
+    report.composer.modelOptions.some(option =>
+      option.id.length === 0 || option.displayName.length === 0 ||
+      !report.models.includes(option.id) ||
+      option.supportedReasoningEfforts.length === 0 ||
+      !uniqueStrings(option.supportedReasoningEfforts) ||
+      !option.supportedReasoningEfforts.includes(option.defaultReasoningEffort) ||
+      option.supportedReasoningEfforts.some(effort => !report.composer.reasoningEfforts.includes(effort))) ||
+    new Set(report.composer.modelOptions.map(option => option.id)).size !== report.composer.modelOptions.length
+  )
   const malformed = report.laneRef.length === 0 || report.provider.length === 0 ||
     report.composer.displayName.length === 0 || report.models.length === 0 ||
     !uniqueStrings(report.models) || !uniqueStrings(report.composer.extensions) ||
     !uniqueStrings(report.composer.reasoningEfforts) ||
     (report.features.reasoningEffort && report.composer.reasoningEfforts.length === 0) ||
     (!report.features.reasoningEffort && report.composer.reasoningEfforts.length > 0) ||
+    modelOptionsMalformed ||
     (report.features.planOnly && !report.composer.permissionModes.includes("plan_only")) ||
     (!report.features.planOnly && report.composer.permissionModes.includes("plan_only"))
   const lies = [
@@ -114,6 +135,9 @@ export const projectProviderLaneCapabilities = (
         : `Lane capability over-claim quarantined (${lies.join(", ")}).`
       : null,
     models: quarantined ? [] : report.models,
+    ...(quarantined || report.composer.modelOptions === undefined
+      ? {}
+      : { modelOptions: report.composer.modelOptions }),
     reasoningEfforts: quarantined ? [] : report.composer.reasoningEfforts,
     permissionModes: quarantined ? [] : report.composer.permissionModes,
     approvals: quarantined ? "none" : report.composer.approvals,
@@ -141,6 +165,13 @@ export const decodeProviderLaneComposerProjections = (
       (candidate.admission !== "admitted" && candidate.admission !== "quarantined") ||
       !(candidate.reason === null || typeof candidate.reason === "string") ||
       !Array.isArray(candidate.models) || !candidate.models.every(item => typeof item === "string") ||
+      !(candidate.modelOptions === undefined || (
+        Array.isArray(candidate.modelOptions) && candidate.modelOptions.every(option =>
+          typeof option === "object" && option !== null &&
+          typeof option.id === "string" && typeof option.displayName === "string" &&
+          typeof option.isDefault === "boolean" && typeof option.defaultReasoningEffort === "string" &&
+          Array.isArray(option.supportedReasoningEfforts) &&
+          option.supportedReasoningEfforts.every((item: unknown) => typeof item === "string")))) ||
       !Array.isArray(candidate.reasoningEfforts) || !candidate.reasoningEfforts.every(item => typeof item === "string") ||
       !Array.isArray(candidate.permissionModes) ||
       !candidate.permissionModes.every(item => item === "owner_full" || item === "plan_only") ||
