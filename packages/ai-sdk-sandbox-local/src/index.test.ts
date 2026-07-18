@@ -117,6 +117,45 @@ describe("createLocalAiSdkSandboxProvider", () => {
       await sandbox.destroy?.()
     }
   })
+
+  test("can preserve the host Claude configuration lookup", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "openagents-local-provider-"))
+    roots.push(root)
+    const provider = createLocalAiSdkSandboxProvider({
+      env: { CLAUDE_CONFIG_DIR: "" },
+      inheritClaudeConfig: true,
+      rootDirectory: root,
+    })
+    const sandbox = await provider.createSession({ sessionId: "claude-auth" })
+
+    try {
+      const result = await sandbox.run({
+        command: "node -p 'JSON.stringify(process.env.CLAUDE_CONFIG_DIR)'",
+      })
+      expect(result.stdout.trim()).toBe('\"\"')
+      expect(sandbox.description).toContain("CLAUDE_CONFIG_DIR: inherited from host")
+    } finally {
+      await sandbox.destroy?.()
+    }
+  })
+
+  test("resolves an ephemeral bridge port when port zero is exposed", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "openagents-local-provider-"))
+    roots.push(root)
+    const provider = createLocalAiSdkSandboxProvider({
+      defaultPorts: [0],
+      rootDirectory: root,
+    })
+    const sandbox = await provider.createSession({ sessionId: "ephemeral-port" })
+
+    try {
+      expect(await sandbox.getPortUrl({ port: 54321, protocol: "ws" })).toBe(
+        "ws://127.0.0.1:54321/",
+      )
+    } finally {
+      await sandbox.destroy?.()
+    }
+  })
 })
 
 const fixtureHarness: HarnessV1 = {

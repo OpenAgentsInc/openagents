@@ -10,3 +10,6 @@ multi-tenant containment.
 
 Use it to prove Khala Code can run AI SDK harnesses without Vercel before the
 same adapter contract is backed by the OpenAgents sandbox/workroom runtime.
+
+Set `inheritClaudeConfig: true` for an owner-local Claude Code session that
+must reuse the host CLI's current login instead of an isolated config path.

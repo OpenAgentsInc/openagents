@@ -68,8 +68,8 @@ async function initializeHarness(): Promise<void> {
   aiSdk = aiModule as typeof import("ai");
   const { LocalAiSdkSandboxProvider: LocalSandboxProvider } = sandboxModule as typeof import("@openagentsinc/ai-sdk-sandbox-local");
 
-  const codexSandbox = createLocalSandbox(LocalSandboxProvider, "codex", 4312);
-  const claudeSandbox = createLocalSandbox(LocalSandboxProvider, "claude", 4313);
+  const codexSandbox = createLocalSandbox(LocalSandboxProvider, "codex");
+  const claudeSandbox = createLocalSandbox(LocalSandboxProvider, "claude");
   harnessRuntimes.set("codex", {
     activeSessions: new Set(),
     agent: new HarnessAgentConstructor({
@@ -85,10 +85,7 @@ async function initializeHarness(): Promise<void> {
   harnessRuntimes.set("claude", {
     activeSessions: new Set(),
     agent: new HarnessAgentConstructor({
-      harness: createClaudeCode({
-        maxTurns: 10,
-        thinking: { display: "summarized", type: "adaptive" },
-      }),
+      harness: createLocalClaudeHarness(),
       id: "openagents-electron-ai-sdk-test-claude",
       instructions:
         "You are a concise coding assistant. Work only in the owner-local harness workspace and explain results briefly.",
@@ -102,7 +99,6 @@ async function initializeHarness(): Promise<void> {
 function createLocalSandbox(
   LocalSandboxProvider: typeof LocalAiSdkSandboxProvider,
   provider: HarnessProvider,
-  port: number,
 ): LocalAiSdkSandboxProvider {
   return new LocalSandboxProvider({
     accountHomes: {
@@ -116,7 +112,10 @@ function createLocalSandbox(
         : {}),
       codexHome: join(homedir(), ".codex"),
     },
-    defaultPorts: [port],
+    // Port zero lets each bridge bind an available localhost port. This keeps
+    // Electron dev restarts from colliding with a bridge from the prior process.
+    defaultPorts: [0],
+    inheritClaudeConfig: provider === "claude",
     env: {
       // This deliberately uses the user's installed, signed-in Codex CLI. The
       // adapter's old bundled executable is not used by this proof of concept.
@@ -124,7 +123,12 @@ function createLocalSandbox(
       // The Claude bridge installs its pinned dependencies on first use. Its
       // bootstrap runs without a terminal, so Corepack must not wait for a
       // download confirmation.
-      ...(provider === "claude" ? { COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" } : {}),
+      ...(provider === "claude"
+        ? {
+            COREPACK_ENABLE_DOWNLOAD_PROMPT: "0",
+            OPENAGENTS_CLAUDE_BIN: resolveClaudeBin(),
+          }
+        : {}),
     },
     rootDirectory: join(app.getPath("userData"), "harness-workspaces", provider),
   });
@@ -136,6 +140,12 @@ function resolveCodexBin(): string {
     return CHATGPT_CODEX_BIN;
   }
   return "codex";
+}
+
+function resolveClaudeBin(): string {
+  if (process.env.CLAUDE_BIN !== undefined) return process.env.CLAUDE_BIN;
+  const localBin = join(homedir(), ".local", "bin", "claude");
+  return existsSync(localBin) ? localBin : "claude";
 }
 
 app.on("window-all-closed", () => {
@@ -209,6 +219,7 @@ async function handleHarnessRequest(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
+  let requestProvider: HarnessProvider | undefined;
   try {
     setCorsHeaders(response);
     if (request.method === "OPTIONS") {
@@ -224,11 +235,11 @@ async function handleHarnessRequest(
     }
 
     const body = await readChatRequest(request);
-    const provider =
+    requestProvider =
       path === "/api/chat"
         ? requireProvider(body.provider ?? "codex")
         : requireProvider(path.slice("/api/chat/".length));
-    const runtime = getRuntime(provider);
+    const runtime = getRuntime(requestProvider);
     const chatId = requireChatId(body.id);
     const messages = await aiSdk.convertToModelMessages(body.messages);
     const harnessSession = await resumeOrCreateSession(runtime, chatId);
@@ -261,7 +272,10 @@ async function handleHarnessRequest(
     console.error("AI SDK harness request failed:", error);
     if (!response.headersSent) {
       sendJson(response, error instanceof RequestError ? 400 : 502, {
-        error: error instanceof RequestError ? error.message : "The local Codex harness failed.",
+        error:
+          error instanceof RequestError
+            ? error.message
+            : `The ${requestProvider === "claude" ? "Claude Code" : "Codex"} harness failed.`,
       });
     } else {
       response.destroy(error instanceof Error ? error : undefined);
@@ -313,6 +327,49 @@ function createLocalCodexHarness() {
       };
     },
   };
+}
+
+function createLocalClaudeHarness() {
+  const harness = createClaudeCode({
+    maxTurns: 10,
+    thinking: { display: "summarized", type: "adaptive" },
+  });
+  const getBootstrap = harness.getBootstrap;
+  if (getBootstrap === undefined) {
+    throw new Error("The installed Claude Code harness does not expose a bootstrap recipe.");
+  }
+
+  return {
+    ...harness,
+    getBootstrap: async () => {
+      const bootstrap = await getBootstrap();
+      return {
+        ...bootstrap,
+        files: [
+          ...bootstrap.files.map((file) =>
+            file.path.endsWith("/bridge.mjs")
+              ? { ...file, content: patchBridgeForLocalClaude(file.content) }
+              : file,
+          ),
+          {
+            path: "/tmp/harness/claude-code/pnpm-workspace.yaml",
+            content: 'allowBuilds:\n  "@anthropic-ai/claude-code": true\n',
+          },
+        ],
+      };
+    },
+  };
+}
+
+function patchBridgeForLocalClaude(bridge: string): string {
+  const executableNeedle = "      includePartialMessages: true,";
+  if (!bridge.includes(executableNeedle)) {
+    throw new Error("The installed Claude Code harness bridge no longer supports this POC patch.");
+  }
+  return bridge.replace(
+    executableNeedle,
+    `${executableNeedle}\n      ...process.env.OPENAGENTS_CLAUDE_BIN\n        ? { pathToClaudeCodeExecutable: process.env.OPENAGENTS_CLAUDE_BIN }\n        : {},`,
+  );
 }
 
 function patchBridgeForLocalCodex(bridge: string): string {

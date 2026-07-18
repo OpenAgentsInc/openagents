@@ -34,6 +34,7 @@ export type LocalAiSdkSandboxProviderOptions = Readonly<{
   defaultNetworkPolicy?: HarnessV1NetworkPolicy
   env?: Readonly<Record<string, string>>
   accountHomes?: Partial<LocalAiSdkSandboxAccountHomes>
+  inheritClaudeConfig?: boolean
 }>
 
 export function createLocalAiSdkSandboxProvider(
@@ -99,6 +100,7 @@ export class LocalAiSdkSandboxProvider implements HarnessV1SandboxProvider {
         mode: "allow-all",
       },
       env: this.options.env ?? {},
+      inheritClaudeConfig: this.options.inheritClaudeConfig ?? false,
       id: sessionId,
       ownsWorkspaceRoot: true,
       ports: this.options.defaultPorts ?? [],
@@ -142,6 +144,7 @@ export class LocalAiSdkSandboxProvider implements HarnessV1SandboxProvider {
         mode: "allow-all",
       },
       env: this.options.env ?? {},
+      inheritClaudeConfig: this.options.inheritClaudeConfig ?? false,
       id: options.sessionId,
       ownsWorkspaceRoot: true,
       ports: this.options.defaultPorts ?? [],
@@ -173,6 +176,7 @@ export class LocalAiSdkNetworkSandboxSession
   readonly defaultWorkingDirectory: string
   private readonly accountHomes: LocalAiSdkSandboxAccountHomes
   private readonly env: Readonly<Record<string, string>>
+  private readonly inheritClaudeConfig: boolean
   private readonly ownsWorkspaceRoot: boolean
   private readonly processes = new Set<LocalSandboxProcess>()
   private readonly providerId: string
@@ -185,6 +189,7 @@ export class LocalAiSdkNetworkSandboxSession
     defaultNetworkPolicy: HarnessV1NetworkPolicy
     env: Readonly<Record<string, string>>
     id: string
+    inheritClaudeConfig: boolean
     ownsWorkspaceRoot: boolean
     ports: ReadonlyArray<number>
     providerId: string
@@ -195,6 +200,7 @@ export class LocalAiSdkNetworkSandboxSession
     this.env = input.env
     this.exposedPorts = [...input.ports]
     this.id = input.id
+    this.inheritClaudeConfig = input.inheritClaudeConfig
     this.networkPolicy = cloneNetworkPolicy(input.defaultNetworkPolicy)
     this.ownsWorkspaceRoot = input.ownsWorkspaceRoot
     this.providerId = input.providerId
@@ -206,7 +212,9 @@ export class LocalAiSdkNetworkSandboxSession
       `Workspace root: ${this.defaultWorkingDirectory}`,
       "Owner-local fixture only; this is not production containment.",
       `CODEX_HOME: ${this.accountHomes.codexHome}`,
-      `CLAUDE_CONFIG_DIR: ${this.accountHomes.claudeConfigDir}`,
+      this.inheritClaudeConfig
+        ? "CLAUDE_CONFIG_DIR: inherited from host"
+        : `CLAUDE_CONFIG_DIR: ${this.accountHomes.claudeConfigDir}`,
     ].join("\n")
   }
 
@@ -236,7 +244,7 @@ export class LocalAiSdkNetworkSandboxSession
     protocol?: "http" | "https" | "ws"
   }): Promise<string> => {
     this.assertRunning()
-    if (!this.exposedPorts.includes(options.port)) {
+    if (!this.exposedPorts.includes(options.port) && !this.exposedPorts.includes(0)) {
       throw new Error(
         `Port ${options.port} is not exposed on local sandbox ${this.id}.`,
       )
@@ -405,15 +413,18 @@ export class LocalAiSdkNetworkSandboxSession
   }
 
   private commandEnv(env?: Record<string, string>): NodeJS.ProcessEnv {
-    return {
+    const commandEnv: NodeJS.ProcessEnv = {
       ...stringProcessEnv(process.env),
       ...this.env,
       ...(env ?? {}),
-      CLAUDE_CONFIG_DIR: this.accountHomes.claudeConfigDir,
       CODEX_HOME: this.accountHomes.codexHome,
       HOME: this.accountHomes.home,
       OPENAGENTS_SANDBOX_NETWORK_POLICY: JSON.stringify(this.networkPolicy),
     }
+    if (!this.inheritClaudeConfig) {
+      commandEnv.CLAUDE_CONFIG_DIR = this.accountHomes.claudeConfigDir
+    }
+    return commandEnv
   }
 
   private resolvePath(path: string): string {

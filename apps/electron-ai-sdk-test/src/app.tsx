@@ -95,10 +95,14 @@ function HarnessChat({
       <section className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5">
         <div className="min-h-0 flex-1 overflow-y-auto py-8" aria-live="polite">
           {messages.length === 0 ? <EmptyState /> : <MessageList messages={messages} />}
-          {isBusy ? <p className="mt-5 text-xs text-[var(--muted-foreground)]">Codex is working…</p> : null}
+          {isBusy ? (
+            <p className="mt-5 text-xs text-[var(--muted-foreground)]">
+              {provider === "codex" ? "Codex" : "Claude Code"} is working…
+            </p>
+          ) : null}
           {error !== undefined ? (
             <p className="mt-5 rounded-md border border-red-400/20 bg-red-400/8 px-3 py-2 text-sm text-red-200">
-              {error.message || "The local harness could not complete that turn."}
+              {formatHarnessError(error, provider)}
             </p>
           ) : null}
         </div>
@@ -106,7 +110,7 @@ function HarnessChat({
         <form className="app-no-drag shrink-0 pb-5" onSubmit={submit}>
           <div className="rounded-xl border border-white/10 bg-white/[0.045] p-2 shadow-[0_12px_35px_rgba(0,0,0,0.18)] focus-within:border-sky-400/55 focus-within:ring-2 focus-within:ring-sky-400/15">
             <textarea
-              aria-label="Message the local Codex harness"
+              aria-label={`Message the ${provider === "codex" ? "Codex" : "Claude Code"} harness`}
               className="min-h-20 w-full resize-none bg-transparent px-2 py-1 text-sm leading-6 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
               disabled={isBusy}
               onChange={(event) => setInput(event.target.value)}
@@ -154,7 +158,7 @@ function EmptyState() {
       </span>
       <h2 className="text-base font-medium">Start a harness session</h2>
       <p className="mt-2 max-w-sm text-sm leading-6 text-[var(--muted-foreground)]">
-        Messages stream through AI SDK UI into a native Codex harness session.
+        Messages stream through AI SDK UI into a native agent harness session.
       </p>
     </div>
   );
@@ -293,6 +297,25 @@ function EventField({ label, value }: { label: string; value: unknown }) {
 
 function serializeEvent(value: unknown): string {
   return JSON.stringify(value, null, 2) ?? String(value);
+}
+
+function formatHarnessError(error: Error, provider: HarnessProvider): string {
+  const fallback = `The ${provider === "codex" ? "Codex" : "Claude Code"} harness could not complete that turn.`;
+  if (!error.message) return fallback;
+  try {
+    const body: unknown = JSON.parse(error.message);
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "string"
+    ) {
+      return body.error;
+    }
+  } catch {
+    // The transport may already provide a plain-text error.
+  }
+  return error.message;
 }
 
 function StartupState({ message }: { message: string }) {
