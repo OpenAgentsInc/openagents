@@ -682,8 +682,15 @@ export type FullAutoRunReportSyncInput = Readonly<{
   /** FA-RPT-01 (#8988): fresh read of the bound thread's registry record
    * (or null when the record is missing / the run is unbound). Sources the
    * typed failure history and the optional rotation passthrough. Omitting
-   * it never regresses previously captured sections. */
-  threadRecord?: (FullAutoRecord & Readonly<{ rotationHistory?: unknown }>) | null
+   * it never regresses previously captured sections.
+   *
+   * `rotationHistory` is intersected as `unknown` rather than inherited from
+   * `FullAutoRecord` (FA-RT-01, #8987, gave that field its own strict
+   * `FullAutoRotationRecord[]` type -- an intersection with an already-typed
+   * field narrows, it does not widen, so `Omit` is required here) because
+   * `decodeRotationHistory` below re-validates and skips malformed entries
+   * at runtime rather than trusting the caller's static type. */
+  threadRecord?: (Omit<FullAutoRecord, "rotationHistory"> & Readonly<{ rotationHistory?: unknown }>) | null
   /** FA-RPT-01 (#8988): the local-only metrics gate. Defaults to the env
    * gate (`isFullAutoMetricsEnabled(process.env)`) -- ON unless the owner
    * set the explicit disable override. */
@@ -792,7 +799,10 @@ const decodeRotationHistory = (
 
 const deriveThreadFailureHistory = (
   run: FullAutoRun,
-  threadRecord: FullAutoRecord | null | undefined,
+  // Only reads the failure/disabled fields, never `rotationHistory` -- typed
+  // via `Omit` (not the plain `FullAutoRecord`) so it accepts the same
+  // rotationHistory-widened `sync()` input shape without re-narrowing it.
+  threadRecord: Omit<FullAutoRecord, "rotationHistory"> | null | undefined,
 ): FullAutoRunReportThreadFailureHistory | undefined => {
   if (threadRecord !== null && threadRecord !== undefined) {
     return {

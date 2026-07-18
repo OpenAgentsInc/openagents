@@ -602,9 +602,15 @@ describe("full-auto-run receipt redaction (public-safe projection)", () => {
 // commit-SHA evidence, and the default-on local-only metrics gate.
 // ---------------------------------------------------------------------------
 
+// FullAutoRecord's own `rotationHistory` field is now strictly typed
+// (FA-RT-01, #8987); intersecting it with `{ rotationHistory?: unknown }`
+// no longer loosens the field (intersection narrows, never widens). Omit
+// it from the base type so this fixture can still exercise intentionally
+// malformed entries -- the point of these tests is that decodeRotationHistory
+// skips them at runtime, not that they type-check as valid records.
 const makeThreadRecord = (
-  overrides?: Partial<FullAutoRecord> & Readonly<{ rotationHistory?: unknown }>,
-): FullAutoRecord & Readonly<{ rotationHistory?: unknown }> => ({
+  overrides?: Partial<Omit<FullAutoRecord, "rotationHistory">> & Readonly<{ rotationHistory?: unknown }>,
+): Omit<FullAutoRecord, "rotationHistory"> & Readonly<{ rotationHistory?: unknown }> => ({
   threadRef: START.threadRef,
   enabled: true,
   continuationCount: 3,
