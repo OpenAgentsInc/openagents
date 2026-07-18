@@ -125,6 +125,13 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-18-sarah-openai-voice-api-audit.md`](./2026-07-18-sarah-openai-voice-api-audit.md)
+  — official-OpenAI-docs and current-code audit of request TTS, bounded and
+  Realtime transcription, speech-to-speech Realtime, custom voices, data
+  controls, and their fit with Sarah; it recommends a chained provider adapter
+  around the existing owner-private Sarah/audio authorities rather than a
+  second voice agent.
+
 - [`receipts/2026-07-18-full-auto-real-owner-acceptance.md`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md)
   — owner-real development receipt for six of six visible Codex/Claude tests,
   durable restart/thread-pressure proof, report/analyzer digests, and one
