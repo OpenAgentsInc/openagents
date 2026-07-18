@@ -4169,9 +4169,11 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       // next admitted candidate in the same pass. Untyped failures classify
       // to null and keep the existing FA-H5 budget semantics.
       const failureClass = classifyFullAutoDispatchFailure(result.reason, result.error)
-      const failureCause = (result as { failureCause?: unknown }).failureCause === "host_thread_missing"
-        ? "host_thread_missing" as const
-        : undefined
+      const providerFailureCause = (result as { failureCause?: unknown }).failureCause
+      const failureCause = providerFailureCause === "host_thread_missing"
+        || providerFailureCause === "provider_session_missing"
+        ? providerFailureCause
+        : failureClass ?? undefined
       return {
         ok: false,
         reason: result.error ?? "dispatch_failed",

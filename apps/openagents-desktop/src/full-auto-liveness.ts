@@ -65,8 +65,8 @@ export const FULL_AUTO_LIVENESS_APP_OFFLINE_GAP_MS = 30 * 60_000
 /**
  * The bounded, distinct classifications the acceptance criteria require:
  * "Missing host thread, missing provider-native session, workspace
- * mismatch, auth/admission failure, stale lease, app offline, and unknown
- * error", plus `dispatch_overdue` for the exact silent-stall shape the
+ * mismatch, auth/admission failure, stale lease, app offline, typed provider
+ * terminal failure, and unknown error", plus `dispatch_overdue` for the exact silent-stall shape the
  * 2026-07-17 audit recorded -- a record that stayed enabled with no failure
  * ever recorded and nothing dispatched. That is deliberately its own bucket
  * rather than folded into `unknown_error`: the run's own durable state
@@ -82,6 +82,9 @@ export const FullAutoStallCauseSchema = Schema.Literals([
   "stale_lease",
   "app_offline",
   "dispatch_overdue",
+  "account_exhausted",
+  "rate_limited",
+  "provider_error",
   "unknown_error",
 ])
 export type FullAutoStallCause = typeof FullAutoStallCauseSchema.Type
@@ -95,8 +98,8 @@ export type FullAutoRecoveryAction = typeof FullAutoRecoveryActionSchema.Type
 /** Causes a retry cannot plausibly fix without owner intervention (a
  * mismatched/unbound workspace, a lane that failed admission, or a thread
  * record that no longer exists at all) fail closed to Stop-only. Every other
- * cause -- a missing provider session, a stale FA-H3 lease, a bare
- * reconciliation gap, or an unclassified error -- is offered "retry now"
+ * cause -- a missing provider session, a typed provider failure, a stale
+ * FA-H3 lease, a bare reconciliation gap, or an unclassified error -- is offered "retry now"
  * because a fresh dispatch attempt is a safe, bounded, exactly-once action
  * (FA-H3 still governs it) that may simply succeed. */
 const NONRECOVERABLE_STALL_CAUSES: ReadonlySet<FullAutoStallCause> = new Set([
@@ -124,6 +127,9 @@ export const classifyFullAutoDispatchFailureReason = (reason: string | null | un
   if (reason === null || reason === undefined || reason.length === 0) return "unknown_error"
   if (reason === "host_thread_missing") return "host_thread_missing"
   if (reason === "provider_session_missing") return "provider_session_missing"
+  if (reason === "account_exhausted") return "account_exhausted"
+  if (reason === "rate_limited") return "rate_limited"
+  if (reason === "provider_error") return "provider_error"
   // Backward compatibility for rows persisted before #9001 added the typed
   // host failure. This display string has always come from the Desktop
   // ThreadStore check in provider-lane.ts, not from a provider session.

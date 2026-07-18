@@ -27,6 +27,8 @@ import {
   type FullAutoAcceptanceTestId,
 } from "../../src/full-auto-acceptance.ts"
 import { openProviderHandoffRegistry } from "../../src/full-auto-provider-handoff.ts"
+import { openFullAutoRegistry } from "../../src/full-auto-registry.ts"
+import { classifyFullAutoDispatchFailureReason } from "../../src/full-auto-liveness.ts"
 import {
   FULL_AUTO_RUN_TERMINAL_STATES,
   openFullAutoRunRegistry,
@@ -105,6 +107,14 @@ const identityStarted = captureFullAutoAcceptanceIdentity({
 const publicResults: PublicTestResult[] = []
 const privateResults: PrivateTestResult[] = []
 let desktop: OwnerDesktopApp | null = null
+
+type ActiveAcceptance = Readonly<{
+  page: Page
+  testId: FullAutoAcceptanceTestId
+  threadRef: string
+  runRef: string | null
+}>
+let activeAcceptance: ActiveAcceptance | null = null
 
 const profileFile = (...segments: ReadonlyArray<string>): string =>
   path.join(desktop!.userDataPath, ...segments)
@@ -326,7 +336,71 @@ const publishVerdict = async (input: Readonly<{
     failureClassification: input.evidence.blockedReason === null ? null : "provider_or_runtime_blocked",
     privateEvidencePointerClass: "owner_local_desktop_profile",
   })
+  if (activeAcceptance?.testId === input.testId) activeAcceptance = null
   console.log(`[fa-real] ${input.testId} ${verdict.disposition}`)
+}
+
+/**
+ * A harness/runtime exception is itself reviewed evidence. Preserve its row,
+ * typed classification, and rerun pointer instead of leaving an unlabelled
+ * acceptance chat behind. Provider-private error text stays only in the
+ * private receipt; the public row carries a digest and bounded cause.
+ */
+const publishActiveFailure = async (error: unknown): Promise<void> => {
+  const active = activeAcceptance
+  if (active === null || publicResults.some(result => result.testId === active.testId)) return
+  const definition = fullAutoAcceptanceTest(active.testId)
+  const record = openFullAutoRegistry(profileFile("full-auto", "registry.json")).record(active.threadRef)
+  const failureClassification = classifyFullAutoDispatchFailureReason(record?.blockedReason)
+  const disposition: FullAutoAcceptanceDisposition =
+    failureClassification === "account_exhausted"
+    || failureClassification === "rate_limited"
+    || failureClassification === "provider_session_missing"
+      ? "BLOCKED"
+      : "FAIL"
+  const title = acceptanceTitleWithDisposition(definition.title, disposition)
+  await renameSelectedThread(active.page, title)
+  const transitions = handoffsFor({
+    threadRef: active.threadRef,
+    ...(active.runRef === null ? {} : { runRef: active.runRef }),
+  }).map(transition => ({
+    handoffRefDigest: sha256(transition.handoffRef),
+    from: transition.from,
+    to: transition.to,
+    actor: transition.actor,
+    disposition: transition.disposition,
+    truncated: transition.truncated,
+  }))
+  const privateReason = error instanceof Error ? error.message : String(error)
+  const failureDigest = sha256(JSON.stringify({
+    schema: "openagents.desktop.full_auto_acceptance_failure.v1",
+    testId: active.testId,
+    classification: failureClassification,
+    privateReasonDigest: sha256(privateReason),
+  }))
+  privateResults.push({
+    testId: active.testId,
+    disposition,
+    threadRef: active.threadRef,
+    runRef: active.runRef,
+    artifactDigests: {},
+    reasons: [privateReason],
+  })
+  publicResults.push({
+    testId: active.testId,
+    title,
+    disposition,
+    threadRefDigest: safeRef(active.threadRef),
+    runRefDigest: safeRef(active.runRef),
+    artifactDigests: {},
+    reportDigest: failureDigest,
+    analysisDigest: failureDigest,
+    transitions,
+    failureClassification,
+    privateEvidencePointerClass: "owner_local_desktop_profile",
+  })
+  activeAcceptance = null
+  console.log(`[fa-real] ${active.testId} ${disposition} (${failureClassification})`)
 }
 
 const runInteractiveHandoff = async (input: Readonly<{
@@ -339,6 +413,7 @@ const runInteractiveHandoff = async (input: Readonly<{
   step2: string
 }>): Promise<void> => {
   const threadRef = await newSession(input.page)
+  activeAcceptance = { page: input.page, testId: input.testId, threadRef, runRef: null }
   await setProvider(input.page, input.source)
   if (input.source === "Claude") await selectStableClaudeModel(input.page)
   const first = await sendAndWait(
@@ -446,6 +521,12 @@ const waitForTerminal = async (page: Page, expectedTurns: number): Promise<strin
   while (Date.now() < deadline) {
     await refreshRun(page)
     const state = await page.locator("[data-full-auto-run-ref]").getAttribute("data-full-auto-run-state")
+    if (state === "stalled") {
+      const threadRef = await selectedThreadRef(page)
+      const blockedReason = openFullAutoRegistry(profileFile("full-auto", "registry.json"))
+        .record(threadRef)?.blockedReason ?? "unknown_error"
+      throw new Error(`run stalled with ${classifyFullAutoDispatchFailureReason(blockedReason)}`)
+    }
     if (state !== null && terminalStates.has(state as never)) {
       if (await completedTurns(page) < expectedTurns) {
         throw new Error(`run reached ${state} with fewer than ${expectedTurns} completed turns`)
@@ -560,6 +641,7 @@ const executeSixRows = async (): Promise<void> => {
     turnCap: 2,
     pauseImmediately: true,
   })
+  activeAcceptance = { page, testId: "test-03", threadRef: run03.threadRef, runRef: run03.runRef }
   await waitForPausedAfterTurn(page)
   const before03 = openFullAutoRunRegistry(profileFile("full-auto", "runs.json")).get(run03.runRef)!
   // Bind the exact provider + admitted target model atomically through the
@@ -632,6 +714,7 @@ const executeSixRows = async (): Promise<void> => {
     lane: "codex-local",
     turnCap: 3,
   })
+  activeAcceptance = { page, testId: "test-04", threadRef: run04.threadRef, runRef: run04.runRef }
   await waitForTerminal(page, 3)
   const after04 = durableRunEvidence(run04.runRef)
   await publishVerdict({
@@ -655,6 +738,7 @@ const executeSixRows = async (): Promise<void> => {
     turnCap: 3,
     pauseImmediately: true,
   })
+  activeAcceptance = { page, testId: "test-05", threadRef: run05.threadRef, runRef: run05.runRef }
   await waitForPausedAfterTurn(page)
   const before05 = durableRunEvidence(run05.runRef)
   const continuity05 = before05.run
@@ -663,6 +747,7 @@ const executeSixRows = async (): Promise<void> => {
   desktop = null
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: true })
   const relaunchedPage = desktop.page
+  activeAcceptance = { page: relaunchedPage, testId: "test-05", threadRef: run05.threadRef, runRef: run05.runRef }
   await relaunchedPage.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
   await relaunchedPage.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await relaunchedPage.locator(`[data-full-auto-run-ref="${run05.runRef}"]`)
@@ -703,6 +788,7 @@ const executeSixRows = async (): Promise<void> => {
     lane: "codex-local",
     turnCap: 3,
   })
+  activeAcceptance = { page: relaunchedPage, testId: "test-06", threadRef: run06.threadRef, runRef: run06.runRef }
   for (let index = 0; index < 6; index += 1) {
     await relaunchedPage.locator('[data-sidebar-destination-id="workspace-new-chat"]').click()
     await relaunchedPage.waitForTimeout(250)
@@ -792,6 +878,11 @@ try {
   automaticRotation = await executeAutomaticRotation()
 } catch (error) {
   failure = error
+  try {
+    await publishActiveFailure(error)
+  } catch (publishError) {
+    console.error("[fa-real] failed to publish active failure receipt", publishError)
+  }
 } finally {
   await (desktop as OwnerDesktopApp | null)?.close()
   const endedAt = new Date().toISOString()

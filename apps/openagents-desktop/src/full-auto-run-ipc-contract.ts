@@ -139,7 +139,8 @@ const FullAutoRunTransitionRecordSchema = Schema.Struct({
 // -- Mirrors full-auto-liveness.ts's stall/recovery vocabulary --
 const FullAutoStallCauseSchema = Schema.Literals([
   "host_thread_missing", "provider_session_missing", "workspace_mismatch",
-  "auth_admission_failure", "stale_lease", "app_offline", "dispatch_overdue", "unknown_error",
+  "auth_admission_failure", "stale_lease", "app_offline", "dispatch_overdue",
+  "account_exhausted", "rate_limited", "provider_error", "unknown_error",
 ])
 const FullAutoRecoveryActionSchema = Schema.Literals(["retry_now", "stop_only", "none"])
 

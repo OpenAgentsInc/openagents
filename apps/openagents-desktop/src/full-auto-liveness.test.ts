@@ -12,6 +12,14 @@ describe("Full Auto dispatch failure taxonomy", () => {
     );
   });
 
+  test("preserves typed provider terminal failures for owner recovery", () => {
+    expect(classifyFullAutoDispatchFailureReason("account_exhausted")).toBe(
+      "account_exhausted",
+    );
+    expect(classifyFullAutoDispatchFailureReason("rate_limited")).toBe("rate_limited");
+    expect(classifyFullAutoDispatchFailureReason("provider_error")).toBe("provider_error");
+  });
+
   test("corrects the legacy ThreadStore display string to host ownership", () => {
     expect(classifyFullAutoDispatchFailureReason("That conversation no longer exists.")).toBe(
       "host_thread_missing",

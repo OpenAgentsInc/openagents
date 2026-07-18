@@ -85,6 +85,11 @@ describe("classifyFullAutoDispatchFailureReason (bounded reason -> stall-cause l
     expect(classifyFullAutoDispatchFailureReason("workspace_mismatch")).toBe("workspace_mismatch")
     expect(classifyFullAutoDispatchFailureReason("workspace_unbound")).toBe("workspace_mismatch")
   })
+  test("retains typed provider terminal-failure causes", () => {
+    expect(classifyFullAutoDispatchFailureReason("account_exhausted")).toBe("account_exhausted")
+    expect(classifyFullAutoDispatchFailureReason("rate_limited")).toBe("rate_limited")
+    expect(classifyFullAutoDispatchFailureReason("provider_error")).toBe("provider_error")
+  })
   test("an unrecognized or absent reason is honestly unknown_error, never a guess", () => {
     expect(classifyFullAutoDispatchFailureReason("some brand new provider error string")).toBe("unknown_error")
     expect(classifyFullAutoDispatchFailureReason(undefined)).toBe("unknown_error")
@@ -98,8 +103,11 @@ describe("recoveryActionForCause (AC-48 fail-closed vs retryable)", () => {
     expect(recoveryActionForCause("workspace_mismatch")).toBe("stop_only")
     expect(recoveryActionForCause("auth_admission_failure")).toBe("stop_only")
   })
-  test("provider_session_missing, stale_lease, app_offline, dispatch_overdue, and unknown_error offer retry_now", () => {
+  test("provider failures and other recoverable causes offer retry_now", () => {
     expect(recoveryActionForCause("provider_session_missing")).toBe("retry_now")
+    expect(recoveryActionForCause("account_exhausted")).toBe("retry_now")
+    expect(recoveryActionForCause("rate_limited")).toBe("retry_now")
+    expect(recoveryActionForCause("provider_error")).toBe("retry_now")
     expect(recoveryActionForCause("stale_lease")).toBe("retry_now")
     expect(recoveryActionForCause("app_offline")).toBe("retry_now")
     expect(recoveryActionForCause("dispatch_overdue")).toBe("retry_now")

@@ -215,7 +215,10 @@ export type FullAutoDispatchResult = Readonly<{
    */
   failureClass?: FullAutoRotationReason
 }>
-export type FullAutoDispatchFailureCause = "host_thread_missing" | "provider_session_missing"
+export type FullAutoDispatchFailureCause =
+  | "host_thread_missing"
+  | "provider_session_missing"
+  | FullAutoRotationReason
 export type FullAutoDispatch = (input: Readonly<{
   threadRef: string
   /** The exact leased continuation turn ref -- the dispatched turn MUST use
