@@ -8,6 +8,8 @@
 - Target: `apps/openagents-desktop/`
 - Companion roadmap:
   [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
+- Effect source-conversion audit:
+  [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
 
 ## Question
 

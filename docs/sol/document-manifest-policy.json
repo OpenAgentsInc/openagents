@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md": {
+      "class": "historical-analysis",
+      "owner": "OpenAgents Effect AI SDK conversion analysis",
+      "disposition": "retain-decision-analysis",
+      "dispatch": false
+    },
     "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md": {
       "class": "historical-analysis",
       "owner": "OpenAgents Desktop AI SDK reset analysis",

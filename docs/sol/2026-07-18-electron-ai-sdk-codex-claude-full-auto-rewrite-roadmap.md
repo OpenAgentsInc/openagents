@@ -9,6 +9,8 @@
 - Target: `apps/electron-ai-sdk-test/`
 - Companion audit:
   [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
+- Effect source-conversion audit:
+  [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
 
 ## Decision
 

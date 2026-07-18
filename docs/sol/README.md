@@ -96,6 +96,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
+  — point-in-time audit of selectively ingesting Apache-2.0 Vercel AI SDK,
+  Harness, adapter, UI-protocol, and AI Elements source and converting the
+  bounded Codex/Claude path into an owned Effect Schema/Effect/Stream/Scope
+  stack; it recommends an upstream-proof-to-differential-port ratchet and does
+  not authorize package creation or product cutover.
 - [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
   — point-in-time technical and product audit of stripping the active
   OpenAgents Desktop app to its hardened Electron/release shell and replacing
