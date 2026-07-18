@@ -3476,6 +3476,15 @@ packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
 - residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `c0f52d55c6a5b7f573fabb120f3a3ba8eedf36cc`
+- implementation_revision: `8588604915502e5a1689de71dba2f6c889a7cb5c`
+- status: released
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
+- released_at: `2026-07-18T03:36:06Z`
+- residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## FF-D1-44 — Desktop confirmed-timeline terminal-authority overlay
 
 Status: claimed implementation packet; not a Day 1 completion claim.
@@ -3552,12 +3561,12 @@ completion remain later packets.
 
 ### CLAIM-RELEASE
 
-- claim_revision: `c0f52d55c6a5b7f573fabb120f3a3ba8eedf36cc`
-- implementation_revision: `8588604915502e5a1689de71dba2f6c889a7cb5c`
+- claim_revision: `76b94796b2e76b1b414c3383958871b6a73c2b18`
+- implementation_revision: `adcdd9c348fe158ad2a717882f08a60bcef1637e`
 - status: released
-- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
-- released_at: `2026-07-18T03:36:06Z`
-- residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-44-desktop-confirmed-timeline-terminal-authority-overlay-receipt.md`
+- released_at: `2026-07-18T03:49:34Z`
+- residual: real supersession/reversion observation and producer composition, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
 ## Explicit non-authority
 

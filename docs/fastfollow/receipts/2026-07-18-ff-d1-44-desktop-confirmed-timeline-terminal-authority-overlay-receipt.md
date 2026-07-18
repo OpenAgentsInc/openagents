@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "afba206ea8c0f55814bc3ab6263b33119345c528"
 claim_revision: "76b94796b2e76b1b414c3383958871b6a73c2b18"
-implementation_revision: "PENDING_REMOTE_IMPLEMENTATION_REVISION"
+implementation_revision: "adcdd9c348fe158ad2a717882f08a60bcef1637e"
 proof_rung: "desktop_confirmed_timeline_terminal_authority_overlay"
 observed_at: "2026-07-18T03:46:51Z"
 ---
@@ -76,5 +76,6 @@ Real observation and producer composition, historical backfill, `main.ts`,
 renderer pixels, named-group authority, and installed runtime evidence remain
 unclaimed.
 
-The exact tested implementation tree will be bound here after it lands on
-`origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`adcdd9c348fe158ad2a717882f08a60bcef1637e` before the documentation-only
+claim release.
