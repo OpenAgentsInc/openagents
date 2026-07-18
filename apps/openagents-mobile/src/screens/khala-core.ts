@@ -937,7 +937,13 @@ export const renderKhalaSurface = (
         role: "region",
         label: `Conversation surface, ${accessibility.textScale} text scale, reduced motion ${accessibility.reduceMotion ? "on" : "off"}`,
       },
-      style: { width: "full", height: "full" },
+      style: {
+        width: "full",
+        height: "full",
+        // Owner-private chat is conversational, so keep its first message
+        // close to the compact row instead of reserving dashboard-like space.
+        ...(runtimeDetails === "hidden" ? { paddingTop: "2" as const } : {}),
+      },
     },
     [
       ...fullAutoRunHeaderViews(fullAutoRun),

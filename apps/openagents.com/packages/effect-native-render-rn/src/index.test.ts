@@ -17,6 +17,7 @@ import {
   type View
 } from "@effect-native/core"
 import { Effect, Stream } from "@effect-native/core/effect"
+import { khalaTheme } from "@effect-native/tokens"
 import { Deferred, FiberSet } from "effect"
 
 import {
@@ -153,7 +154,7 @@ describe("React Native renderer host boundaries", () => {
     expect(paragraph.props.selectable).toBe(true)
     expect(paragraph.props.style).toMatchObject({
       color: expect.any(String),
-      fontSize: 17,
+      fontSize: 16,
       lineHeight: 24,
     })
     expect(link.props.accessibilityRole).toBe("link")
@@ -162,6 +163,34 @@ describe("React Native renderer host boundaries", () => {
     ;(link.props.onPress as () => void)()
     await Promise.resolve()
     expect(opened).toEqual(["https://openagents.com/docs"])
+  })
+
+  test("uses the same body scale for assistant Markdown and user text", () => {
+    const assistant = renderReactNativeView(
+      Markdown({
+        key: "assistant-body-scale",
+        blocks: [{ kind: "paragraph", children: [{ kind: "text", text: "Hello" }] }],
+      }),
+      { React: { createElement }, ReactNative: reactNative },
+      () => Effect.succeed(undefined),
+      { theme: khalaTheme },
+    )
+    const user = renderReactNativeView(
+      Text({ key: "user-body-scale", content: "Hello", variant: "body" }),
+      { React: { createElement }, ReactNative: reactNative },
+      () => Effect.succeed(undefined),
+      { theme: khalaTheme },
+    )
+    const assistantParagraph = assistant.props.children as ReactElementLike
+
+    expect(assistantParagraph.props.style).toMatchObject({
+      fontSize: khalaTheme.typeScale.body.fontSize,
+      lineHeight: khalaTheme.typeScale.body.lineHeight,
+    })
+    expect(assistantParagraph.props.style).toMatchObject({
+      fontSize: (user.props.style as Record<string, unknown>).fontSize,
+      lineHeight: (user.props.style as Record<string, unknown>).lineHeight,
+    })
   })
 
   test("matches T3 Code mobile message geometry", () => {

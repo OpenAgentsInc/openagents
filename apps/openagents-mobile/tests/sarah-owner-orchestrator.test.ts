@@ -90,6 +90,8 @@ describe(`contract ${contractId}`, () => {
       subtitle: null,
     });
     const home = JSON.stringify(renderContentView(program.initialState));
+    expect(home).toContain('"key":"khala-surface"');
+    expect(home).toContain('"paddingTop":"2"');
     expect(home).not.toContain("Owner orchestrator");
     expect(chromeProps(program.initialState).composerPlaceholder).toBe("Message Sarah");
     const drawer = JSON.stringify(renderDrawerView(program.initialState));

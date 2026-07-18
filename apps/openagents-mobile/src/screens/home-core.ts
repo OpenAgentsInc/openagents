@@ -1467,7 +1467,13 @@ export const renderHomeView = (state: HomeState): View =>
           state.workspaceFocusTarget,
         ),
       },
-      style: { width: "full", height: "full", backgroundColor: "background" },
+      style: {
+        width: "full",
+        height: "full",
+        paddingTop: "0",
+        paddingBottom: "0",
+        backgroundColor: "background",
+      },
     },
     [
       Toolbar(

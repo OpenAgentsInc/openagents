@@ -50,7 +50,12 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
       }],
     }
     const serialized = JSON.stringify(renderHomeView(state))
+    const home = renderHomeView(state)
     expect(mobileHeaderProps(state)).toEqual({ title: "Header parity", subtitle: null })
+    expect(home).toMatchObject({
+      padding: "2",
+      style: { paddingTop: "0", paddingBottom: "0" },
+    })
     expect(serialized).toContain('"key":"home-header-title"')
     expect(serialized).toContain('"key":"home-header-actions"')
     expect(serialized).toContain('"icon":"Menu"')

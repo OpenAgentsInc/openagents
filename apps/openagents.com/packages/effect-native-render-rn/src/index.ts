@@ -3960,11 +3960,12 @@ const renderMarkdownBlock = (
 ): ReactElementLike => {
   const key = `mdb-${markdownKeyCounter++}`
   const textColor = colorValue(theme, "textPrimary")
+  const bodyType = typeScaleValue(theme, "body")
   switch (block.kind) {
     case "heading":
       return createElement(dependencies, dependencies.ReactNative.Text, { key, accessibilityRole: "header", selectable: true, style: { color: textColor, fontSize: block.level <= 2 ? 20 : 18, fontWeight: "700", lineHeight: 26, marginBottom: 4 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "paragraph":
-      return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true, style: { color: textColor, fontSize: 17, lineHeight: 24, marginBottom: 8 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
+      return createElement(dependencies, dependencies.ReactNative.Text, { key, selectable: true, style: { color: textColor, ...bodyType, marginBottom: 8 } }, ...block.children.map((child) => renderMarkdownInline(child, dependencies, theme)))
     case "list":
       return createElement(
         dependencies,
@@ -3975,7 +3976,7 @@ const renderMarkdownBlock = (
             dependencies,
             dependencies.ReactNative.View,
             { key: `li-${index}`, style: { alignItems: "flex-start", flexDirection: "row", gap: 6 } },
-            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet", selectable: false, style: { color: colorValue(theme, "textMuted"), fontSize: 17, lineHeight: 24 } }, block.ordered ? `${index + 1}.` : "•"),
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "bullet", selectable: false, style: { color: colorValue(theme, "textMuted"), ...bodyType } }, block.ordered ? `${index + 1}.` : "•"),
             createElement(dependencies, dependencies.ReactNative.View, { key: "content", style: { flex: 1, minWidth: 0 } }, ...item.map((child) => renderMarkdownBlock(child, dependencies, theme)))
           ))
       )
