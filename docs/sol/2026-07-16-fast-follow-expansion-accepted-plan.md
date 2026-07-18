@@ -3464,6 +3464,18 @@ packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-18T03:27:35Z`
 
+### CLAIM-STATUS
+
+- implementation: added a bounded owner-private atomic ledger for exact already-observed superseded/reverted authority-v1 relations
+- fail-closed proof: accepted, malformed, extra-field, self-referential, conflicting, over-capacity, and corrupt inputs are refused without rewriting valid state or projecting native detail
+- lifecycle proof: exact replay is unchanged; state reopens identically with deterministic per-thread order and private permissions where supported
+- authority boundary: the ledger validates and persists supplied terminal facts but does not observe, infer, authorize, or produce them; confirmed accepted facts remain source-owned
+- focused proof: ledger/shared-authority/export/search tests 36/36 passed; Desktop and agent-runtime-schema typechecks passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec compiler reproduced only the recorded environment-profile digest snapshot mismatch, 5/6; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
+- residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
