@@ -3315,6 +3315,69 @@ Day 1 completion remain later packets.
 - released_at: `2026-07-18T02:49:09Z`
 - residual: historical-session backfill, Electron registration/acquisition and `main.ts` composition, Desktop UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-42 — Desktop canonical-event search Electron host acquisition
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-41. Persisted
+canonical-event search is composed behind a close-only main-process resource,
+but no Electron host boundary validates Desktop user-data placement or binds
+that resource to fixed handle/remove seams. Active work still owns Desktop
+`main.ts`, renderer, installed-runtime, Full Auto, mobile, T3, and teardown
+surfaces. This packet therefore adds only a new Electron-host adapter and
+focused proof; the actual `main.ts` call site, UI, pixels, and historical
+backfill remain unchanged.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-event-search-electron-host.ts`
+- `apps/openagents-desktop/src/thread-event-search-electron-host.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-42-desktop-canonical-event-search-electron-host-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-41 search runtime, Desktop's owner-private
+`thread-exports/{artifacts,search-receipts}` layout, and fixed Electron
+handle/remove lifecycle. No receipt, artifact byte, path, event body, main
+call-site, renderer, Sync, provider, or release authority is added.
+
+Required behavior:
+
+- accept only an absolute, non-root, NUL-free Desktop user-data directory and
+  derive the existing private artifact and search-receipt directories beneath
+  it;
+- bind FF-D1-41 to exactly its fixed search channel through injected Electron
+  handle/remove seams and the existing trusted-sender predicate;
+- reject unsafe user-data before registration or private acquisition;
+- map registration failure through FF-D1-41's typed, path-free failure and
+  never project native detail; and
+- remove the fixed handler exactly once, with post-close calls rejected before
+  receipt or artifact access.
+
+Proof: focused Electron-host, host-runtime, handler, bridge/preload,
+acquisition, catalog, and accepted-event projection tests; Desktop and shared-
+package typechecks; Fast Follow, behavior-contract, ProductSpec, Sol,
+AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only safe Electron acquisition and registration
+of the composed canonical-event search resource. Historical-session backfill,
+the actual Desktop `main.ts` call site, Desktop UI consumption and pixels,
+authoritative supersession/reversion producers, named-group authority/
+publication, installed/runtime-rendered evidence, and Day 1 completion remain
+later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-42-20260718`
+- base: `d42c98c066862abefe73a44d5270d2168e17ad41`
+- worktree/branch: `openagents-ff-d1-42` / detached `origin/main`
+- scope: bind FF-D1-41 persisted canonical-event search to validated Desktop user-data and fixed Electron handle/remove seams
+- paths: the FF-D1-42 owned implementation paths above
+- hot files: two new Desktop Electron-host/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: private thread-export directory derivation, fixed-channel Electron registration, trusted sender, typed registration failure, and close-only lifetime
+- dependencies: FF-D1-35 through FF-D1-41 released; no relevant open bug issue or competing claim; active `main.ts`/UI, Full Auto, mobile, T3, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T03:01:26Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
