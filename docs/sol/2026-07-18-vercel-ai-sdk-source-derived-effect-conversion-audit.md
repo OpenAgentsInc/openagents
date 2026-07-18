@@ -1,7 +1,7 @@
 # Vercel AI SDK source-derived Effect conversion audit
 
 - Class: historical-analysis
-- Status: current point-in-time architecture and source-conversion analysis
+- Status: re-baselined point-in-time source-conversion analysis
 - Snapshot: 2026-07-18
 - Dispatch: no; this audit does not authorize package creation, source
   ingestion, application replacement, or production Full Auto changes
@@ -12,6 +12,8 @@
   [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
 - Companion in-place reset audit:
   [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
+- Current sprint recommendation:
+  [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
 
 ## Question
 
@@ -26,42 +28,43 @@ make Effect Schema, `Effect`, `Stream`, `Layer`, `Scope`, typed errors, and
 Effect Native the owning model while retaining Vercel-compatible inputs,
 outputs, and fixtures wherever compatibility is valuable.
 
-The immediate product purpose remains narrow: get the two-lane Codex/Claude
-Full Auto experiment working quickly, then replace upstream authority from the
-inside out without rebuilding unrelated AI SDK breadth.
+The immediate product purpose remains narrow: get the existing Desktop
+Codex/Claude Full Auto run working. Source conversion is now conditional on a
+post-fix native provider lane still failing its bounded proof timebox.
 
 ## Executive conclusion
 
-Yes, this is legally and technically plausible, and it is a better long-term
-fit than making Vercel AI SDK the permanent application authority. It should
-be pursued as a **source-derived, attribution-preserving Effect
-implementation**, not as a line-for-line fork and not as a clean-room rewrite.
+Source-derived conversion remains legally and technically plausible, but the
+original broad destination in this audit was too large. The omitted fact was
+that current Effect v4 already supplies a substantial generic AI SDK under
+`effect/unstable/ai`, including typed prompts, responses, errors, tools,
+streaming model calls, persisted serialized chat, and ordered cross-provider
+execution plans.
 
-The fastest credible route is a ratchet:
+OpenAgents should therefore **not** create parallel `effect-ai-schema`,
+`effect-ai-core`, or generic Effect chat packages as the path to Full Auto.
+The only source-derived Vercel slice that fills a demonstrated Effect gap is
+the coding-agent Harness layer: Codex/Claude native sessions, bridge and
+sandbox lifecycle, coding tools, replay/resume, and event translation.
 
-1. prove the Codex/Claude Full Auto loop with the installed upstream packages;
-2. put one Effect-native session and stream facade in front of that proof;
-3. port the versioned harness contracts, lifecycle, stream translation, and
-   typed errors from a pinned upstream snapshot;
-4. port Codex to parity, then Claude Code, using differential tests against the
-   pinned upstream implementation;
-5. move UI-message state and reduction into an Effect-owned runtime while
-   keeping React as a thin renderer adapter; and
-6. selectively port AI Elements behavior and accessibility into shared
-   OpenAgents UI/Effect Native components.
+The corrected ratchet is:
 
-This produces useful ownership after every phase. The experiment does not wait
-for a replacement of all 50,000-plus relevant upstream lines, and the new SDK
-does not need image, audio, video, realtime, every model provider, every UI
-hook, Workflow DevKit, TUI, or Vercel platform integration before Codex and
-Claude can alternate.
+1. repair and prove the existing Effect-owned Desktop Full Auto state machine;
+2. keep the native Codex app-server and Claude Agent SDK lanes on the critical
+   path;
+3. retain the Vercel Harness experiment as a differential oracle and a
+   one-working-day fallback for a failing native provider lane;
+4. if that fallback is exercised, wrap `HarnessAgent` behind the existing
+   `ProviderLane` / `AcceptanceLaneExecutor` as a scoped Effect service; and
+5. port or source-ingest only Harness behavior for which the wrapper proves an
+   ongoing ownership, stability, or observability need.
 
-The central decision is therefore:
+The central corrected decision is:
 
-> Use Vercel source as a high-quality specification, fixture corpus, and
-> implementation donor. Own the narrower Effect semantics OpenAgents needs.
-> Preserve compatibility at explicit edges; do not preserve upstream
-> architecture merely because its code is available.
+> Reuse Effect AI for generic model/tool/chat semantics. Use Vercel source as
+> a specification and donor only for the missing coding-agent Harness seam.
+> Do not make either a prerequisite for fixing the current mission, host-thread
+> durability, and real-provider proof gaps.
 
 ## What “take as much code as we want” actually permits
 
@@ -100,13 +103,13 @@ parts are cheaper and safer to own than to follow upstream.
 
 The installed workspace snapshot provides a concrete lower bound:
 
-| Package | Installed version | Source scale in installed package |
-| --- | --- | ---: |
-| `ai` | `7.0.31` | 36,596 TypeScript lines |
-| `@ai-sdk/harness` | `1.0.36` | 58 source files / 9,612 TypeScript lines |
-| `@ai-sdk/harness-codex` | `1.0.38` | 2,727 TypeScript lines |
-| `@ai-sdk/harness-claude-code` | `1.0.37` | 2,734 TypeScript lines |
-| `@ai-sdk/react` | `4.0.34` | 2,271 TypeScript/TSX lines |
+| Package                       | Installed version |        Source scale in installed package |
+| ----------------------------- | ----------------- | ---------------------------------------: |
+| `ai`                          | `7.0.31`          |                  36,596 TypeScript lines |
+| `@ai-sdk/harness`             | `1.0.36`          | 58 source files / 9,612 TypeScript lines |
+| `@ai-sdk/harness-codex`       | `1.0.38`          |                   2,727 TypeScript lines |
+| `@ai-sdk/harness-claude-code` | `1.0.37`          |                   2,734 TypeScript lines |
+| `@ai-sdk/react`               | `4.0.34`          |               2,271 TypeScript/TSX lines |
 
 That is already about 54,000 lines. It excludes provider utilities, provider
 contracts, WebSocket and schema dependencies, sandbox implementations, model
@@ -119,14 +122,15 @@ Harness as experimental and warns that breaking changes should be expected.
 This velocity favors pinning and selective ownership; it makes an unbounded
 tracking fork especially expensive.
 
-## Four implementation choices
+## Five implementation choices
 
-| Choice | Time to first Full Auto | Effect ownership | Upstream churn exposure | Long-term fit |
-| --- | ---: | ---: | ---: | --- |
-| Direct Vercel dependency | Fastest | Low | High | Good experiment, weak destination |
-| Thin Effect wrapper over Vercel | Fast | Medium at call boundary | High inside semantics | Useful bridge; current OpenAgents precedent |
-| Source-derived Effect compatibility kernel | Incremental | High | Controlled by explicit intake | **Recommended target** |
-| Wholesale line-by-line Effect transliteration | Slowest | Superficially high | Maximum | Reject |
+| Choice                                        |        Time to first Full Auto |        Effect ownership |       Upstream churn exposure | Long-term fit                               |
+| --------------------------------------------- | -----------------------------: | ----------------------: | ----------------------------: | ------------------------------------------- |
+| Repair current Desktop/native lanes           | **Fastest from current state** |            Already high |                           Low | **Recommended immediate path**              |
+| Direct Vercel dependency                      |             Fast greenfield path |                     Low |                          High | Good experiment, weak destination           |
+| Thin Effect wrapper over Vercel               |                           Fast | Medium at call boundary |         High inside semantics | Useful bridge; current OpenAgents precedent |
+| Source-derived Effect Harness kernel          |                    Incremental |                    High | Controlled by explicit intake | Conditional post-proof target               |
+| Wholesale line-by-line Effect transliteration |                        Slowest |      Superficially high |                       Maximum | Reject                                      |
 
 A wholesale fork would copy provider breadth, framework-specific decisions,
 and compatibility debt before proving any product value. A source-derived
@@ -143,9 +147,9 @@ transport only. It invokes `streamText`, converts parts into the owned
 OpenAgents dispatcher. Its README explicitly says AI SDK parts do not become
 the canonical product transcript.
 
-That is the correct minimum adapter. It is not the proposed destination
-because AI SDK still owns async execution, stream assembly, tool-loop behavior,
-errors, and lifecycle beneath the wrapper.
+That is the correct minimum foreign boundary. A Harness wrapper should follow
+the same rule: upstream may own native coding-agent mechanics beneath the
+boundary while OpenAgents continues to own product state and evidence.
 
 ### Source-ingestion precedent: `agent-client-protocol`
 
@@ -156,8 +160,8 @@ license and third-party notice, generates local types, and runs offline drift
 checks. Networked upstream updates are explicit rather than part of normal
 generation.
 
-The Effect SDK should reuse that discipline for source files and fixtures, not
-invent an informal copy/paste lane.
+Any later Effect Harness source intake should reuse that discipline for source
+files and fixtures, not invent an informal copy/paste lane.
 
 ### Runtime and UI precedents
 
@@ -176,176 +180,99 @@ invent an informal copy/paste lane.
 
 These pieces mean the conversion begins from working seams, not a blank repo.
 
-## Proposed package architecture
+## Corrected package architecture
 
-The names below are architectural placeholders. Public naming must avoid
-confusion with Vercel's packages and receive a separate package-release review.
+The current sprint creates no new SDK package. If the native-lane timebox in
+#9002 fails, the narrow fallback architecture is:
 
 ```mermaid
 flowchart TB
-  A["Effect AI schemas"] --> B["Effect AI core"]
-  A --> C["Effect UI-message protocol"]
-  B --> D["Effect Harness core"]
-  D --> E["Codex adapter"]
-  D --> F["Claude Code adapter"]
-  D --> G["Local/OpenAgents sandbox Layers"]
-  C --> H["Effect chat runtime"]
-  H --> I["React renderer adapter"]
-  H --> J["Effect Native View projection"]
-  E --> K["Codex/Claude Full Auto controller"]
-  F --> K
-  G --> K
-  K --> C
+  A["Existing FullAutoRun and ProviderLane"] --> B["Owned Effect Harness service"]
+  C["effect/unstable/ai where compatible"] --> B
+  B --> D["Pinned Vercel Harness core"]
+  D --> E["Codex Harness adapter"]
+  D --> F["Claude Code Harness adapter"]
+  D --> G["Existing local/OpenAgents sandbox Layers"]
+  B --> H["Existing journal, report, analyzer, and Desktop projection"]
 ```
 
-### 1. `@openagentsinc/effect-ai-schema`
+### Reuse `effect/unstable/ai`; do not duplicate it
 
-Browser-safe, dependency-minimal canonical schemas for:
+The Effect v4 checkout at
+`266cb90bb2c17aabc40563c32db334f09ba3d74b` already contains:
 
-- messages and content parts;
-- model and harness stream parts;
-- tools, tool calls, results, approvals, and execution origin;
-- usage, finish reasons, warnings, provider metadata, and loss metadata;
-- harness identity and capability declarations;
-- sandbox identity and restricted capabilities;
+- `Prompt` and `Response` parts for text, reasoning, files, tool calls,
+  results, and approvals;
+- `AiError` and schema-typed `Tool` / `Toolkit` contracts;
+- `LanguageModel.generateText`, `generateObject`, and `streamText`;
+- `Chat` with serialized turns, JSON import/export, and persisted history;
+- `ResponseIdTracker`; and
+- ordered, scheduled, conditional `ExecutionPlan` fallback across provider
+  Layers.
+
+Those modules are unstable and must be exactly pinned behind an owned boundary,
+but their existence removes the case for a new generic OpenAgents Effect AI
+SDK. Use them where semantics match; retain existing OpenAgents contracts where
+they carry stronger product guarantees.
+
+### Conditional `@openagentsinc/effect-harness`
+
+The only justified new package would own the coding-agent plane:
+
+- a scoped Effect service over `HarnessAgent` / `HarnessV1`;
 - separate resume and active-turn continuation state;
-- UI messages and UI message chunks; and
-- a closed tagged error algebra.
-
-Effect Schema is the source of truth. TypeScript types and JSON Schema are
-derived artifacts. A Vercel-compatibility export may expose structurally
-compatible types without making Vercel types canonical.
-
-### 2. `@openagentsinc/effect-ai-core`
-
-The model-call layer expressed as Effect services:
-
-- `generate` returns `Effect<Result, AiError, Model>`;
-- `stream` returns `Stream<AiPart, AiError, Model>`;
-- tool execution is a typed registry and capability Layer;
-- retries, timeout, clock, telemetry, and interruption are explicit services;
-  and
-- provider-specific Promise/`AsyncIterable` SDKs terminate at adapter
-  boundaries.
-
-This package should not port every `ai` feature initially. Text streaming,
-structured tool calls, usage, finish semantics, and the small UI projection
-needed by Harness are the first closure.
-
-### 3. `@openagentsinc/effect-ai-harness`
-
-The owned harness plane:
-
-- versioned adapter contract;
-- stateless harness definition plus explicit scoped session;
 - sandbox provider and session services;
-- bootstrap recipe and exact source identity;
-- bridge protocol and authenticated channel;
-- permission/filtering declarations;
+- bridge identity and authenticated channel;
+- permission, filtering, approval, and execution-origin facts;
 - turn sequencing and stale-completion fencing;
-- tool approval obligations;
 - detach, stop, suspend, resume, continue, and destroy semantics;
-- native-event plus compatibility-projection streams; and
+- native-event to existing ProviderLane result translation; and
 - typed recovery and loss classification.
 
-A session should be acquired and released with `Scope`, not represented as a
-class whose cleanup callers may forget:
+A session should be acquired and released with `Scope`; Promise,
+`AsyncIterable`, and class cleanup terminate at this foreign boundary. The
+package must not own `FullAutoRun`, scheduling, routing policy, canonical host
+history, reports, or renderer state.
 
-```ts
-interface EffectHarnessSession {
-  readonly stream: (
-    prompt: HarnessPrompt,
-  ) => Stream.Stream<HarnessPart, HarnessError>
-  readonly detach: Effect.Effect<ResumeSessionState, HarnessError>
-  readonly suspendTurn: Effect.Effect<ContinueTurnState, HarnessError>
-  readonly stop: Effect.Effect<ResumeSessionState, HarnessError>
-}
+### Codex and Claude adapters
 
-declare const openSession: Effect.Effect<
-  EffectHarnessSession,
-  HarnessOpenError,
-  HarnessAdapter | SandboxProvider | Scope.Scope
->
-```
-
-The exact type syntax will follow the pinned Effect v4 API. The durable rule is
-that session lifetime, interruption, finalization, and dependencies are visible
-in the type and service graph.
-
-### 4. Codex and Claude Code adapter packages
-
-Port one adapter to closure before adding the second:
+Wrap the pinned upstream adapters first. Port one only if dependency churn,
+missing observability, or a contract gap is proven:
 
 - Codex: bridge process, thread identity, relay authentication, tool relay,
-  step tracking, replay/resume/rerun classification, credentials, and
-  automatic compaction behavior;
+  step tracking, replay/resume/rerun classification, and compaction behavior;
 - Claude Code: SDK/bridge process, session identity, permissions/filtering,
-  thinking modes, manual compaction, skills, replay/resume, and continuation.
+  thinking modes, compaction, skills, replay/resume, and continuation.
 
-The common `HarnessAdapter` contract must not erase their different guarantees.
-Each adapter reports exact placement, built-in tool origin, approval support,
-filter support, compaction mode, resume class, continuation class, and known
-loss.
+The common service must preserve their different guarantees and report exact
+placement, tool origin, approval support, filter support, compaction mode,
+resume class, continuation class, and known loss.
 
-### 5. `@openagentsinc/effect-ai-ui`
+### UI disposition
 
-Port the useful AI SDK UI protocol rather than the React hook model:
-
-- Effect Schema definitions for `UIMessage` and chunk variants;
-- `Stream` encoders/decoders for the wire protocol;
-- a pure, deterministic message reducer;
-- stable part identity and start/delta/end rules;
-- continuation and stream-merge semantics;
-- typed custom data parts for provider, handoff, run state, and evidence; and
-- explicit translation from native harness events with recorded loss.
-
-Vercel's UI message protocol is valuable interoperability. It is still a
-projection, not execution authority, diff authority, authorization proof, or
-durability proof.
-
-### 6. `@openagentsinc/effect-ai-react`
-
-Do not mechanically rewrite `useChat` internals into fibers hidden behind
-hooks. Build an Effect-owned `ChatRuntime` with observable state, then expose a
-thin React adapter through `useSyncExternalStore` or the repository's Effect
-reactivity binding.
-
-React may own mounting and painting. It must not become the canonical run,
-message, session, retry, or tool state store.
-
-### 7. Shared UI / Effect Native components
-
-AI Elements is source-installed React/shadcn code, not a runtime SDK. Selective
-porting should extract:
-
-- component roles and prop contracts;
-- keyboard and screen-reader behavior;
-- disclosure, auto-scroll, copy, branch, tool-state, and loading behavior;
-- visual composition and useful empty/error states; and
-- fixtures and interaction tests.
-
-Owned component definitions belong in shared `packages/ui` and the Effect
-Native component/view contract, with React DOM as one renderer. Do not turn
-presentational components into Effect services, and do not copy the entire AI
-Elements registry merely to claim parity.
+Keep the existing Desktop Full Auto view and Effect-owned application state.
+AI SDK UI messages and AI Elements remain useful experiment references, but
+they are not on the production proof path. A later UI harvest may extract
+bounded component behavior into shared UI / Effect Native through its own
+admitted issue; it must not introduce a second canonical chat or run store.
 
 ## The mechanical Effect conversion map
 
-| Upstream construct | Effect-owned construct | Boundary rule |
-| --- | --- | --- |
-| `Promise<A>` | `Effect<A, E, R>` | Promise exists only inside a foreign SDK adapter. |
-| `AsyncIterable<A>` / `ReadableStream<A>` | `Stream<A, E, R>` | Web streams are encoded/decoded at transport edges. |
-| `AbortSignal` | fiber interruption + `Scope` finalizer | Derive an abort signal only when calling a foreign API. |
-| class with `destroy()` | scoped service + `acquireRelease` | Cleanup is guaranteed on all exits. |
-| event emitter | `PubSub`, `Queue`, or `Stream` | Backpressure and shutdown are explicit. |
-| mutable session map | `Ref`, `SynchronizedRef`, or `FiberMap` | State transitions remain serialized and testable. |
-| callbacks for retry/timeout | `Schedule` + `Clock` | Tests use `TestClock`; no wall-clock sleeps. |
-| thrown/opaque error | `Schema.TaggedErrorClass` algebra | Defects are distinguished from expected failures. |
-| Zod/hand-written TS types | Effect Schema | Generate JSON Schema and compatibility types. |
-| tool object map | schema-indexed tool registry Layer | Execution capability is separate from display shape. |
-| telemetry callback tree | Effect spans, metrics, and logger | Redaction occurs before export. |
-| environment reads | `Config` + `Redacted` | Credentials never enter event or UI schemas. |
-| hook-owned chat state | Effect runtime + observable snapshot | Hook is renderer glue only. |
+| Upstream construct                       | Effect-owned construct                  | Boundary rule                                           |
+| ---------------------------------------- | --------------------------------------- | ------------------------------------------------------- |
+| `Promise<A>`                             | `Effect<A, E, R>`                       | Promise exists only inside a foreign SDK adapter.       |
+| `AsyncIterable<A>` / `ReadableStream<A>` | `Stream<A, E, R>`                       | Web streams are encoded/decoded at transport edges.     |
+| `AbortSignal`                            | fiber interruption + `Scope` finalizer  | Derive an abort signal only when calling a foreign API. |
+| class with `destroy()`                   | scoped service + `acquireRelease`       | Cleanup is guaranteed on all exits.                     |
+| event emitter                            | `PubSub`, `Queue`, or `Stream`          | Backpressure and shutdown are explicit.                 |
+| mutable session map                      | `Ref`, `SynchronizedRef`, or `FiberMap` | State transitions remain serialized and testable.       |
+| callbacks for retry/timeout              | `Schedule` + `Clock`                    | Tests use `TestClock`; no wall-clock sleeps.            |
+| thrown/opaque error                      | `Schema.TaggedErrorClass` algebra       | Defects are distinguished from expected failures.       |
+| Zod/hand-written TS types                | Effect Schema                           | Generate JSON Schema and compatibility types.           |
+| tool object map                          | schema-indexed tool registry Layer      | Execution capability is separate from display shape.    |
+| telemetry callback tree                  | Effect spans, metrics, and logger       | Redaction occurs before export.                         |
+| environment reads                        | `Config` + `Redacted`                   | Credentials never enter event or UI schemas.            |
+| hook-owned chat state                    | Effect runtime + observable snapshot    | Hook is renderer glue only.                             |
 
 Conversion is semantic, not syntactic. Replacing `await` with `Effect.promise`
 while retaining ambient maps, callbacks, nullable lifecycle state, and manual
@@ -363,34 +290,31 @@ architecture.
 - bridge protocol, authentication handshake, cursor/replay classification,
   and bootstrap identity algorithm;
 - tool filtering, approval obligation, and execution-origin semantics;
-- harness-to-model and harness-to-UI translation rules;
-- UI message chunk algebra, reducer, merge, and continuation rules;
+- harness-to-existing-`ProviderLane` translation rules;
 - Codex and Claude adapter protocol mappings; and
 - upstream fixtures and tests that specify observable behavior.
 
 ### Wrap first; port only when pressure justifies ownership
 
-- provider-specific model SDK calls;
-- low-level JSON Schema conversion edge cases;
-- provider utility normalization;
 - WebSocket implementation;
 - Codex and Claude native SDK/CLI clients; and
-- compatibility encoders for public AI SDK consumers.
+- the pinned Vercel Harness packages themselves.
 
 Effect should own their lifecycle and error boundary without reimplementing a
 vendor protocol unnecessarily.
 
-### Omit from the first Effect SDK
+### Omit from the first Effect Harness package
 
-- image, video, speech, transcription, realtime, reranking, and file upload;
-- the broad model-provider catalog and AI Gateway default;
-- `useCompletion`, `useObject`, realtime hooks, MCP app frames, and every
-  framework binding;
+- generic prompt, response, error, model, embedding, and tool APIs already
+  supplied by `effect/unstable/ai`;
+- AI SDK model-provider breadth and AI Gateway;
+- AI SDK UI-message authority, `useChat`, `useCompletion`, `useObject`, and
+  other framework bindings;
 - Workflow DevKit/serverless slicing until a real deployment target requires
   it;
 - TUI packages, broad telemetry reporters, examples, templates, and docs app;
 - Vercel Sandbox as an authority where OpenAgents sandbox Layers already exist;
-- every AI Elements component; and
+- AI Elements and renderer components; and
 - compatibility behavior with no Codex/Claude Full Auto consumer.
 
 This cut is what makes the conversion a fast product path rather than a new
@@ -402,7 +326,7 @@ Create one explicit upstream intake area per adopted snapshot, modeled on
 `agent-client-protocol`:
 
 ```text
-packages/effect-ai-source/
+packages/effect-harness-source/
   upstream/vercel-ai-<commit>/
     LICENSE
     NOTICE                 # only when present upstream
@@ -463,8 +387,8 @@ The conformance suite must cover more than happy-path text:
 - cursor replay, disk replay, corrupt log, and lossy rerun;
 - restricted sandbox capability escape attempts;
 - adapter capability differences;
-- stream merge and UI part identity across continuation; and
-- browser-safe imports for schema/UI packages.
+- exact translation into existing `ProviderLane` terminal/error facts; and
+- no duplicate scheduling, history, or run authority below the adapter.
 
 Effect-specific tests then add what upstream parity cannot prove:
 
@@ -472,7 +396,7 @@ Effect-specific tests then add what upstream parity cannot prove:
 - Layer replacement and dependency-graph checks;
 - finalizer execution under fiber interruption;
 - model-based session-state transition coverage;
-- no secret-bearing type in events or UI messages; and
+- no secret-bearing type in events or projected lane results; and
 - no Promise, ambient singleton, or uncontrolled wall clock below declared
   foreign boundaries.
 
@@ -480,124 +404,67 @@ Parity is a ratchet, not permanent subordination. Once a behavior is promoted
 into an OpenAgents contract, deliberate divergence is allowed and upstream
 output is retained only as historical compatibility evidence.
 
-## Full Auto on the Effect kernel
+## Full Auto on the conditional Effect Harness seam
 
-The two-provider product becomes a small consumer of the packages above:
+The existing `FullAutoRun` remains the sole controller. It owns objective,
+done condition, workspace, cap, lifecycle, owner-admitted ordered routing,
+guardrails, leases, accepted handoff history, reports, and terminal outcome.
 
-```mermaid
-stateDiagram-v2
-  [*] --> Codex
-  Codex --> HandoffToClaude: valid continue handoff
-  HandoffToClaude --> Claude
-  Claude --> HandoffToCodex: valid continue handoff
-  HandoffToCodex --> Codex
-  Codex --> Terminal: complete / blocked / failed / stopped / cap
-  Claude --> Terminal: complete / blocked / failed / stopped / cap
-  Terminal --> [*]
-```
+A Harness adapter owns only provider-native history and lifecycle for its lane.
+The sandbox Layer owns files, processes, ports, and egress. The existing
+Desktop projection owns the read-only UI. Neither provider, renderer, Effect
+AI `Chat`, Vercel `HarnessAgent`, nor compatibility protocol chooses the next
+lane.
 
-The Full Auto controller owns:
-
-- objective, done condition, shared workspace, and turn cap;
-- one scoped Codex session and one scoped Claude session;
-- strict serialized alternation;
-- a schema-valid `full_auto_handoff` obligation per completed turn;
-- stop and interruption;
-- native event retention plus UI projection; and
-- terminal outcome.
-
-The Harness adapters own native history and provider-specific lifecycle. The
-sandbox Layer owns files/processes/ports/egress. The UI runtime owns the
-read-only projection. Neither provider, renderer, nor compatibility protocol
-chooses the next lane.
-
-The Effect rewrite does not automatically supply production durability or
-exactly-once effects. Those require the existing OpenAgents admission log,
-leases, fences, idempotency keys, effect ledger, receipts, and restart
-reconciliation if this experiment is ever promoted. An opaque resume handle or
-replayed Harness event is not that proof.
+The adapter cannot supply production durability or exactly-once effects.
+Existing admission, leases, fences, idempotency, journal, receipts, and restart
+reconciliation remain mandatory. An opaque resume handle or replayed Harness
+event is not that proof.
 
 ## Fastest staged conversion
 
-### E0 — Pin and prove upstream Full Auto
+### E0 — Repair the current Full Auto path
 
-Use the companion experiment roadmap unchanged to land the smallest live
-Codex-first alternation on the installed packages. Freeze exact package
-versions, upstream commits, live acceptance fixture, and normalized event
-transcript.
+Land #9000 and #9001: dispatch the durable mission to every provider turn,
+protect the active run thread from composer-cache eviction, and separate
+host-thread loss from provider-session loss.
 
-**Exit:** Codex and Claude alternate in one workspace with typed handoffs and a
-bounded terminal outcome.
+**Exit:** a provider invocation cannot run without the objective/done
+condition, and six in-flight ordinary chats cannot orphan the active run.
 
-### E1 — Introduce the Effect facade without changing providers
+### E1 — Prove native Codex and Claude
 
-Create schemas for the Full Auto run, handoff, adapter capability, stream part,
-and error surface. Wrap upstream `HarnessAgentSession` in a scoped Effect
-service and convert its `AsyncIterable` once into `Stream`.
+Execute #9002's real-provider gate through the existing Desktop UI and native
+provider lanes.
 
-**Exit:** the Full Auto controller contains no direct Promise lifecycle,
-`AsyncIterable`, or upstream session class; behavior remains differentially
-identical.
+**Exit:** one actual Codex turn and one actual Claude turn succeed with the
+same durable mission, then the six #8976 rows close with public-safe receipts.
 
-### E2 — Own the harness contract and lifecycle
+### E2 — Wrap Harness only if the timebox fails
 
-Ingest the pinned Harness source. Port `HarnessV1`, sandbox/session contracts,
-lifecycle-state validation, turn sequencing, permission/filtering, approval
-obligations, stream translation, and error algebra. Keep upstream Codex and
-Claude adapters behind a compatibility bridge temporarily.
+If E1 cannot produce both provider turns within one working day for a genuine
+coding-agent/session reason, wrap the pinned `HarnessAgentSession` in a scoped
+Effect service and convert its `AsyncIterable` once into `Stream`. Translate
+into existing provider-lane results; do not create another controller or UI.
 
-**Exit:** Effect owns harness state transitions and finalization; upstream
-adapters pass the owned conformance contract.
+**Exit:** the Harness-backed lane satisfies the same mission, durability,
+routing, handoff, report, guardrail, and evidence contracts as a native lane.
 
-### E3 — Port Codex to closure
+### E3 — Own only demonstrated Harness gaps
 
-Convert the Codex adapter, bridge protocol, relay authentication, tool relay,
-step tracking, and recovery classification. Preserve the native Codex CLI/SDK
-as the foreign runtime.
+Keep pinned Vercel packages as the production adapter until a concrete gap
+justifies source ingestion. Port `HarnessV1`, lifecycle, bridge, sandbox, or an
+adapter slice only under differential conformance and provenance controls.
 
-**Exit:** the live Full Auto Codex lane has no runtime dependency on
-`@ai-sdk/harness` or `@ai-sdk/harness-codex` and matches the pinned oracle or a
-recorded intentional divergence.
-
-### E4 — Port Claude Code to closure
-
-Convert the Claude adapter, permissions/filtering, compaction, thinking,
-skills, bridge, and recovery behavior.
-
-**Exit:** both live lanes run on the owned Effect Harness core and adapters.
-
-### E5 — Own the UI-message runtime
-
-Port the bounded UI message schemas, chunk reducer, merge/continuation logic,
-and transport codec. Replace `useChat` authority with the Effect `ChatRuntime`;
-retain a thin React adapter.
-
-**Exit:** removing `ai` and `@ai-sdk/react` from the experiment does not change
-the visible acceptance transcript or run controls.
-
-### E6 — Selectively absorb AI Elements
-
-Port only components used by the run transcript—message, response, reasoning,
-tool/handoff, loader, conversation/scroll, and terminal result—into shared
-OpenAgents UI/Effect Native contracts and renderer components.
-
-**Exit:** no AI Elements source is application-local, component behavior has
-accessibility and interaction tests, and React remains a renderer.
-
-### E7 — Remove compatibility dependencies or freeze them as test-only
-
-Move Vercel packages out of production dependencies once both adapters, core
-streaming, and UI pass live and differential closure. Keep pinned source and
-oracles in the provenance/conformance lane as needed.
-
-**Exit:** the experiment runs solely on the owned Effect stack; upstream
-packages are either test-only or absent.
+**Exit:** every locally owned slice removes a named dependency risk or closes a
+named contract gap; no speculative generic SDK breadth is introduced.
 
 ## Decision gates
 
-Proceed beyond the thin facade only if all are true:
+Proceed beyond the thin Harness facade only if all are true:
 
-- the upstream Full Auto proof works and exposes a real ownership pain;
+- the repaired native Full Auto proof still exposes a real adapter ownership
+  pain;
 - a pinned source snapshot and Apache-2.0 provenance ledger exist;
 - the proposed package owns a narrower documented surface than upstream;
 - differential fixtures can exercise the adopted behavior without live model
@@ -617,50 +484,45 @@ Stop or defer a slice when:
 
 ## Risks and controls
 
-| Risk | Consequence | Control |
-| --- | --- | --- |
-| Tracking-fork treadmill | Continuous low-value merge work | Pin commits; intake only demanded slices; never mirror `main`. |
-| False parity | Same type names hide different lifecycle behavior | Differential streams, state models, live adapter proofs, divergence ledger. |
-| License/provenance erosion | Distribution or attribution failure | Vendored license, notices, per-file digests/origin, offline checker. |
-| Effect v4 beta churn | Framework and upstream churn compound | Exact Effect pin, small stable package seams, no unstable module without a demand. |
-| Compatibility becomes authority | Vercel projections displace native truth | Preserve native events and translator version/loss beside UI projection. |
-| Port scope explosion | Full Auto waits on general SDK parity | Codex-first closure, Claude second, bounded text/tool/UI surface only. |
+| Risk                              | Consequence                                                   | Control                                                                                              |
+| --------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Tracking-fork treadmill           | Continuous low-value merge work                               | Pin commits; intake only demanded slices; never mirror `main`.                                       |
+| False parity                      | Same type names hide different lifecycle behavior             | Differential streams, state models, live adapter proofs, divergence ledger.                          |
+| License/provenance erosion        | Distribution or attribution failure                           | Vendored license, notices, per-file digests/origin, offline checker.                                 |
+| Effect v4 beta churn              | Framework and upstream churn compound                         | Exact Effect pin, owned import boundary, and no unstable module without a demonstrated demand.       |
+| Compatibility becomes authority   | Vercel projections displace native truth                      | Preserve native events and translator version/loss beside UI projection.                             |
+| Port scope explosion              | Full Auto waits on general SDK parity                         | Fix current Desktop first; permit only a conditional Harness seam.                                   |
 | Security claims outpace placement | “Sandboxed” host tools or permissive Codex are misrepresented | Exact placement/capability facts; enforce policy below adapters; no public claim from fixture proof. |
-| React hook state reappears | Effect Native architecture is bypassed | Effect `ChatRuntime`; renderer-only hook; state authority tests. |
-| Copied UI becomes a design fork | Two component systems drift | Extract behavior into shared UI/Effect Native; React implementation remains one renderer. |
+| React hook state reappears        | Effect Native architecture is bypassed                        | Do not import AI SDK UI into the Desktop fallback; preserve existing projection authority.           |
+| Copied UI becomes a design fork   | Two component systems drift                                   | Keep AI Elements outside this package and sprint.                                                    |
 
 ## Recommendation
 
-Adopt the source-derived Effect kernel as the destination, but do not make it a
-prerequisite for the first Full Auto proof.
+Do not adopt a source-derived generic Effect AI kernel as the destination.
+Effect already owns that generic layer, and the current Desktop already owns
+the product state machine.
 
 The correct sequence is:
 
-1. **upstream proof now**;
-2. **Effect facade immediately after proof**;
-3. **harness lifecycle ownership before provider breadth**;
-4. **Codex adapter to closure**;
-5. **Claude adapter to closure**;
-6. **UI protocol ownership**; and
-7. **selective shared-component absorption**.
+1. **repair mission propagation and active-thread durability now**;
+2. **prove both native coding-agent lanes through the real UI**;
+3. **use the Vercel Harness app as an oracle and one-day fallback**;
+4. **wrap Harness at the existing provider seam only if the native timebox
+   fails**; and
+5. **source-convert only demonstrated Harness gaps after live proof**.
 
-This answers the ownership concern without sacrificing speed. Vercel's source
-can be used liberally where it contains hard-won state machines, protocols,
-fixtures, and compatibility behavior. Effect supplies the architecture Vercel
-does not try to supply: typed service requirements, structured concurrency,
-scoped sessions, interruption-safe cleanup, deterministic clocks, one schema
-authority, renderer-independent state, and a test-replaceable application
-graph.
-
-The intended outcome is not “Vercel AI SDK, rewritten for branding.” It is a
-small OpenAgents Effect AI and Harness stack whose Vercel compatibility is
-provable, whose provenance is auditable, and whose first real consumer is the
-focused Codex/Claude Full Auto loop.
+Vercel source may still be used liberally where it contains hard-won coding
+agent state machines, protocols, fixtures, and adapter behavior. Effect
+supplies typed requirements, structured concurrency, scoped cleanup,
+deterministic clocks, and test-replaceable services. Existing Effect AI
+supplies the generic model/prompt/tool/chat foundation. The intended optional
+outcome is therefore a small owned **Effect Harness** boundary, not another AI
+SDK and not a new Full Auto product.
 
 ## Evidence and reading order
 
 1. [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
-   — bounded first proof and acceptance target.
+   — bounded alternative implementation retained as an oracle/fallback.
 2. [`../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md`](../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md)
    — exact upstream Harness architecture, lifecycle, adapter, sandbox, replay,
    and risk analysis.
@@ -681,19 +543,24 @@ focused Codex/Claude Full Auto loop.
    [UI message stream reference](https://ai-sdk.dev/docs/reference/ai-sdk-ui/create-ui-message-stream),
    and [AI Elements setup](https://elements.ai-sdk.dev/docs/setup) — official
    upstream compatibility and UI boundaries at this snapshot.
+8. [Effect AI documentation](https://effect-ts.github.io/effect/docs/ai/ai),
+   [current Effect AI introduction](https://effect.website/docs/ai/introduction/),
+   and local Effect v4 source at
+   `266cb90bb2c17aabc40563c32db334f09ba3d74b` — generic Effect AI capability
+   baseline that supersedes the original duplicate-package proposal.
 
 ## Final disposition
 
-- **Direct upstream packages:** retain for the first proof and as pinned
-  differential oracles.
-- **Thin Effect wrapper:** build first as the migration facade, not the final
-  architecture.
-- **Source-derived Effect Harness and bounded SDK:** recommended destination.
-- **Codex then Claude adapters:** first production-shaped conversion order.
-- **Effect UI-message runtime plus thin React adapter:** recommended UI state
-  destination.
-- **Selective AI Elements port:** recommended; wholesale component import is
-  not.
+- **Current Desktop native lanes:** immediate production proof path.
+- **Direct upstream packages:** retain in the experiment as pinned
+  differential oracles and a bounded fallback.
+- **Thin Effect Harness wrapper:** conditional fallback at the existing
+  provider seam, not an automatic migration phase.
+- **Source-derived Effect Harness:** conditional post-proof destination only
+  when a demonstrated gap justifies ownership.
+- **Generic Effect AI packages:** reuse `effect/unstable/ai`; do not duplicate.
+- **Effect UI-message runtime and AI Elements port:** deferred outside the
+  Full Auto ASAP sprint.
 - **Whole AI SDK transliteration:** rejected.
 - **Production Desktop reset or production Full Auto promotion:** not
   authorized by this audit.

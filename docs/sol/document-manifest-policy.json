@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md": {
+      "class": "authority",
+      "owner": "OpenAgents Desktop Full Auto / epic #8967",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md": {
       "class": "historical-analysis",
       "owner": "OpenAgents Effect AI SDK conversion analysis",

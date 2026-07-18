@@ -10,6 +10,8 @@
   [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
 - Effect source-conversion audit:
   [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
+- Current sprint recommendation:
+  [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
 
 ## Question
 
@@ -38,10 +40,14 @@ small part of its host/distribution machinery while retiring most of the
 current Desktop application, its runtime authority, its UI state model, and
 its enforced guarantees.
 
-The key distinction is:
+The later transcript/code/Effect-AI reconciliation changes the speed ranking:
 
-- **Fastest working proof:** build the separate AI SDK test app described by
-  the companion roadmap.
+- **Fastest working product proof:** repair mission propagation and active-run
+  thread residency in the existing Desktop, then execute the real provider
+  matrix.
+- **Fastest adapter fallback:** wrap the working AI SDK Harness provider path
+  behind the existing Effect provider seam if the native lane misses its
+  one-working-day proof gate.
 - **Smallest eventual Desktop codebase:** reset the current app in place after
   accepting the contract retirements in this audit.
 - **Worst option:** partially insert `useChat` and Harness into the current
@@ -369,8 +375,9 @@ reset. It is not a score for an unbuilt AI SDK UI.
 
 | Path | Time to first live Codex-Claude proof | Destructive scope | Final complexity | Contract risk | Fit for “nothing else” |
 | --- | --- | --- | --- | --- | --- |
-| Separate AI SDK fixture | Fastest | Low | Two apps until a later decision | Low | Excellent for proof, not final product consolidation |
-| Harness adapter inside current Desktop | Medium | Low | High; current product remains | Medium | Poor |
+| Repair current Desktop/native lanes | **Fastest from current state** | Low | Current product only | Low | Excellent for the admitted product |
+| Separate AI SDK fixture | Fast experiment | Low | Two apps until a later decision | Low | Excellent as oracle/fallback, not final product consolidation |
+| Harness adapter inside current Desktop | Fast fallback | Low | Current product plus one foreign adapter | Medium | Good when it preserves one authority |
 | AI SDK renderer over current authorities | Slow | Medium | Highest; duplicate state/projection layers | High | Poor |
 | Literal in-place product reset | Slowest safe landing | Very high | Lowest after completion | Very high | Excellent if current product is intentionally retired |
 
@@ -469,15 +476,19 @@ the reset honest rather than immediately rebuilding the old app.
 
 ## Recommended disposition
 
-Do not reset `apps/openagents-desktop/` before the separate fixture proves the
-exact loop. The fixture is the cheap technical falsifier.
+Do not reset `apps/openagents-desktop/` for the current Full Auto sprint. The
+current implementation already contains the durable product authorities that
+the separate fixture would need to rebuild, and the first observed real-run
+failure is now traced to mission propagation and host-thread cache residency,
+not to the absence of AI SDK.
 
-After that proof, make a binary owner choice:
+Repair the current Desktop first. Keep the separate fixture as the cheap
+technical oracle. If a native Codex or Claude lane still misses the bounded
+proof gate after those fixes, integrate Harness only at the existing provider
+adapter seam.
 
-- keep the current Desktop product and integrate Harness only at the provider
-  adapter seam; or
-- intentionally retire the current Desktop product and execute the literal
-  in-place reset.
+A literal reset remains a separate binary owner choice only if the owner later
+decides to retire the current Desktop product itself.
 
 Do not pursue the middle path of an AI SDK renderer over current Desktop
 authorities. It preserves nearly all current complexity while adding a second

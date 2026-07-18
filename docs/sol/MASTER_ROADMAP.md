@@ -2,13 +2,13 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-17
-- Revision: 119
+- Updated: 2026-07-18
+- Revision: 120
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program; the
-  remaining #8974/#8976/#8978/#8979 chain composes with distribution
-  epic #8913 and the admitted Amp, T3 Desktop, and T3 mobile packet ledgers;
-  live defects remain independently claimable
+  #9000/#9001 -> #9002/#8976 -> #8978/#8979 closure chain composes with
+  distribution epic #8913 and the admitted Amp, T3 Desktop, and T3 mobile
+  packet ledgers; live defects remain independently claimable
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -70,16 +70,17 @@ and accepted ledgers below own executable work.
 The flagship is the named, durable `FullAutoRun`: a user supplies an objective,
 done condition, workspace, provider profile, and cap, walks away, and later
 gets an inspectable report with typed termination and evidence. Full Auto is a
-run, not a per-message option. The dedicated rail launcher/read-only run view,
-six-test real-sidebar batch, assurance, and packaged release gate remain the
-active closure chain; the private dogfood analyzer is already part of the
-landed run-evidence core.
+run, not a per-message option. The dedicated rail launcher/read-only run view
+is landed. Mission propagation, active-thread residency, the six-test real
+provider batch, assurance, and packaged release gate remain the active closure
+chain; the private dogfood analyzer is already part of the landed run-evidence
+core.
 
 ### Reconciled implementation truth at this revision
 
 | Surface | Narrowest current truth | Remaining authority |
 | --- | --- | --- |
-| Full Auto run core | #8968–#8973 and #8975 are closed: ProductSpec rev 10, durable mission/lifecycle, overnight thread-pressure replay, liveness/stall classification, bounded private report/public-safe receipt, offline/private analyzer, comparison metrics, and objective-safe handoff are on `main`. #8977 also closes first-class ACP picker admission. | #8974 dedicated UX, #8976 real-sidebar batch, #8978 AssuranceSpec, #8979 packaged release/promise admission; parent #8967 stays open. |
+| Full Auto run core | #8968–#8975 and #8977 are closed: the durable run/lifecycle, liveness, report/analyzer, handoff, picker, and dedicated UX are on `main`. #8987 and #8991 add owner-bounded routing plus guardrails. | #9000 dispatches the actual durable mission; #9001 protects the active thread and corrects failure taxonomy; #9002 executes the real Codex/Claude proof and closes #8976 before #8978 AssuranceSpec and #8979 packaged release/promise admission. Parent #8967 stays open. |
 | Mobile Full Auto | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey. | Remote Pause/Resume/Stop and report review remain later admitted work; simulator proof is not physical-device or general host-movement proof. |
 | Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed; #8922–#8924 are closed. | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim. |
 | Desktop/T3 workbench | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey. | Signed/cross-platform distribution remains REL authority; the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract. |
@@ -88,11 +89,11 @@ landed run-evidence core.
 
 ### Canonical waves
 
-1. **Wave 0 — make local Full Auto credible.** Execute #8974 from the landed
-   run/report/liveness/handoff/analyzer contracts; then run #8976's six
-   named visible tests. The closed #8980 receipt supplies the bounded simulator
-   observation. #8978 admits proof only after the implemented targets exist,
-   and #8979 consumes that
+1. **Wave 0 — make local Full Auto credible.** Execute #9000 and #9001 against
+   the landed run/report/liveness/handoff/analyzer contracts; then #9002 runs
+   #8976's six named visible real-provider tests. The closed #8980 receipt
+   supplies the bounded simulator observation. #8978 admits proof only after
+   the implemented targets exist, and #8979 consumes that
    evidence plus #8913/#8925 release identity. A real 24–48 hour owner-AFK run
    with a reviewable report is the short-term exit, not a green unit suite.
 2. **Wave 1 — release and operator depth.** Finish the owned platform matrix,
@@ -112,13 +113,13 @@ landed run-evidence core.
    other deferred contracts require their own ProductSpec/invariant/owner
    admission. Surface-spec vision alone is insufficient.
 
-The gap analysis proposed automatic provider/account/model rotation in Wave 0.
-Current Full Auto ProductSpec rev 10 and the root invariant explicitly exclude
-loop-decided provider selection; only manual, receipted handoff is admitted.
-Automatic rotation therefore remains a deliberate future intent revision, not
-a bug fix or an implied Fast Follow capability. Likewise, general PORT-03 host
-movement stays closed even though the bounded mobile directory/control and
-Full Auto projection slices have been reauthorized and landed.
+ProductSpec rev 12 now admits typed same-pass failover only inside a
+human-bound, ordered routing policy (#8987) and enforces non-overridable plus
+owner-configurable guardrails (#8991). That bounded rotation is not autonomous
+provider selection: the loop cannot choose or reorder candidates outside the
+owner grant. General loop-decided provider/account/model selection and PORT-03
+host movement remain closed even though the bounded mobile directory/control
+and Full Auto projection slices have been reauthorized and landed.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -572,10 +573,11 @@ authority outside that label-scoped projection:
 1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
    Observatory proof baseline; neither needs to be re-proved to start a bounded
    successor packet.
-2. Finish Full Auto Wave 0 in dependency order: #8974 proceeds on the landed
-   run/report/liveness/analyzer contracts; #8976 consumes the visible
-   behavior and private analysis; #8978 consumes implemented proof targets; #8979 consumes the
-   dogfood/assurance evidence plus exact release identity.
+2. Finish Full Auto Wave 0 in dependency order: #9000 mission propagation and
+   #9001 active-thread residency/taxonomy may proceed in parallel; #9002 then
+   executes the real provider matrix and closes #8976. #8978 consumes those
+   implemented proof targets; #8979 consumes the dogfood/assurance evidence
+   plus exact release identity.
 3. Retain closed #8980's simulator receipt as bounded first-screen evidence.
    Remote run control, report review, and physical-device acceptance require
    their next exact packet; do not infer them from that projection.
@@ -708,8 +710,9 @@ not authorize work beyond the live issue or accepted packet that cites it.
     `FullAutoRun` retains objective, done condition, workspace, provider
     profile, lifecycle, liveness, transition attribution, and report identity.
     Provider prose cannot prove completion; Pause, Stop, retry, stall, cap,
-    handoff, and terminal dispositions remain distinct. The legacy composer
-    toggle is a migration bridge until #8974 removes it from the active-run UX.
+    handoff, and terminal dispositions remain distinct. #8974 removed the
+    legacy composer toggle from the active-run UX in favor of the dedicated
+    launcher and read-only run view.
 34. **Surface vision is staged.** The three surface ProductSpecs define target
     outcomes, while this roadmap, current invariants, live issues, accepted
     packet ledgers, promise gates, and proof rungs control sequence and claims.

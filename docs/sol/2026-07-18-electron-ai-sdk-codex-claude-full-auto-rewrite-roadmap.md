@@ -1,7 +1,7 @@
 # Electron AI SDK Codex-Claude Full Auto rewrite roadmap
 
 - Class: authority
-- Status: accepted owner-directed experimental roadmap
+- Status: retained owner-directed provider oracle/fallback
 - Snapshot: 2026-07-18
 - Dispatch: no; this is a bounded implementation sequence, not the canonical
   Sol queue
@@ -11,6 +11,22 @@
   [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
 - Effect source-conversion audit:
   [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
+- Current sprint recommendation:
+  [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
+
+## Current disposition
+
+Do not build this separate Full Auto controller before repairing the current
+Desktop. Transcript 257 and the current code show two nearer blockers: the
+durable objective/done condition are not included in actual provider
+continuations, and the active run's host thread can be evicted by six ordinary
+chats while a turn is in flight.
+
+Keep this app as a live Codex/Claude Harness oracle. If the repaired native
+Desktop provider lanes cannot each produce one real turn within #9002's
+one-working-day timebox, adapt this app's `HarnessAgent` path behind the
+existing Desktop `ProviderLane` / `AcceptanceLaneExecutor`. Do not promote this
+roadmap's second scheduler or `useChat` state into production.
 
 ## Decision
 
@@ -37,7 +53,8 @@ experiment. It does not replace or amend:
 
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md);
 - the production Desktop Full Auto ProductSpec;
-- the production rule that does not yet admit loop-decided provider selection;
+- the production rule that permits typed failover only inside a human-bound,
+  ordered routing policy and still forbids provider choice outside that grant;
 - the repository-wide Effect Native UI destination; or
 - the production sandbox, release, mobile, Sync, fleet, account-rotation, or
   evidence-reporting programs.

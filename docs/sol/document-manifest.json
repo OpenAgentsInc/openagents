@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "ae2c51638cb175e100d554a78834a6b505183422c414ddfb6109c1a690eb6a23",
+  "sourceTreeSha256": "d074795551fe243c797db8ba83577d96fb37af304075686d0b60c91ce8726f68",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2034,18 +2034,50 @@
       "owner": "Electron AI SDK Full Auto experiment",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "e5f0ec4fe38c482f8b9b8c7ba5657a73230a9d9bc938ef73f4b3006789cf26eb",
-      "status": "accepted owner-directed experimental roadmap",
+      "sha256": "38b72bf019d310477371d84438e3679928bdb12e4fcd88eea67dbf10252a41ef",
+      "status": "retained owner-directed provider oracle/fallback",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
         "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 3,
-      "issueLinks": []
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        9002
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
+      "class": "authority",
+      "owner": "OpenAgents Desktop Full Auto / epic #8967",
+      "disposition": "retain-active-authority",
+      "dispatch": false,
+      "sha256": "3dc2b3f84a25fca538eae2f12bb90a83ebd7d0d958c71e9bc1f5b39a47cf075c",
+      "status": "owner-directed current sprint recommendation",
+      "snapshot": "2026-07-18",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
+        "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
+        "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8967,
+        8970,
+        8976,
+        8978,
+        8979,
+        9000,
+        9001,
+        9002
+      ]
     },
     {
       "path": "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
@@ -2053,17 +2085,18 @@
       "owner": "OpenAgents Desktop AI SDK reset analysis",
       "disposition": "retain-decision-analysis",
       "dispatch": false,
-      "sha256": "e2842de889c0911dfd13c737e2c56309c3fe716f92a59f69be96da22661ab847",
+      "sha256": "38c56e54dc7b0d393b6c35c6ea791a1d0a858f4d9c2309b40fc83e9bdd702128",
       "status": "current point-in-time decision analysis",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
         "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
+        "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 3,
+      "inboundSourceCount": 4,
       "issueLinks": []
     },
     {
@@ -2072,18 +2105,24 @@
       "owner": "OpenAgents Effect AI SDK conversion analysis",
       "disposition": "retain-decision-analysis",
       "dispatch": false,
-      "sha256": "f69ed64df72ef269817ac2d338478fca8a045c89ecdca0b2e02a5465ec45b477",
-      "status": "current point-in-time architecture and source-conversion analysis",
+      "sha256": "a43706568ddae125ccc718618d2fb32b2e2b1b548fc31bada5a692fc8dac0a71",
+      "status": "re-baselined point-in-time source-conversion analysis",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
         "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
+        "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 3,
-      "issueLinks": []
+      "inboundSourceCount": 4,
+      "issueLinks": [
+        8976,
+        9000,
+        9001,
+        9002
+      ]
     },
     {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
@@ -2172,9 +2211,9 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "d1d78566ce835062b77e8d816489d83424e6734038f9420ad6e6b75dce3bbb34",
+      "sha256": "a52c18d489b8709bd3d59547f52ff2a6408f9c7200ad9454a2ea7a8057ecb5c6",
       "status": "canonical OpenAgents implementation roadmap",
-      "snapshot": "2026-07-17",
+      "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
@@ -2279,7 +2318,12 @@
         8980,
         8981,
         8982,
-        8984
+        8984,
+        8987,
+        8991,
+        9000,
+        9001,
+        9002
       ]
     },
     {
@@ -2308,7 +2352,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "17ab708d0d23b444762f72e325c41f6836fcf2fe33e7fd6ece83d2323a04a411",
+      "sha256": "14dfaf486f3c1d89eea40bc8d0ba5c341698e882c27088d38c83bb94b0c861b7",
       "status": "current",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2327,7 +2371,9 @@
       "issueLinks": [
         8911,
         8928,
-        8967
+        8967,
+        9000,
+        9002
       ]
     },
     {

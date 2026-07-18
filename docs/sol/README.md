@@ -52,14 +52,20 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md)
   — owner admission and bounded packet ledger for the complete T3 mobile
   workbench adaptation through physical-device/distribution closure.
+- [`2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md`](./2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md)
+  — owner-directed architecture decision for the current #9000–#9002 sprint:
+  repair the existing Effect-owned Desktop mission and thread durability,
+  prove the native Codex/Claude lanes, and use Vercel Harness only as a
+  time-boxed provider fallback. Live issues own dispatch.
 - [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
-  — owner-directed, owner-local experimental roadmap for a bounded Codex-first
-  Full Auto loop that alternates with Claude Code through typed handoffs in one
-  shared Vercel AI SDK Harness workspace; it is not production Full Auto
-  authority.
+  — owner-directed, owner-local experimental alternative for a bounded
+  Codex-first Full Auto loop in one shared Vercel AI SDK Harness workspace;
+  it is retained as the provider oracle/fallback, not production Full Auto
+  authority or the selected sprint path.
 - [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
-  — Full Auto rev-10 mission, lifecycle, liveness, evidence, UX, and handoff
-  intent for epic #8967; live child issues own implementation sequence.
+  — Full Auto rev-12 mission, lifecycle, routing, guardrails, liveness,
+  evidence, UX, and handoff intent for epic #8967; live child issues own
+  implementation sequence.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
   tripwires, and review points.
 - [`receipts/README.md`](./receipts/README.md) — indexed proof snapshots, rungs,
@@ -97,17 +103,16 @@ These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
 - [`2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md`](./2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md)
-  — point-in-time audit of selectively ingesting Apache-2.0 Vercel AI SDK,
-  Harness, adapter, UI-protocol, and AI Elements source and converting the
-  bounded Codex/Claude path into an owned Effect Schema/Effect/Stream/Scope
-  stack; it recommends an upstream-proof-to-differential-port ratchet and does
-  not authorize package creation or product cutover.
+  — re-baselined audit of selectively ingesting Apache-2.0 Vercel source after
+  inspecting Effect v4's existing AI modules; it rejects a duplicate generic
+  Effect AI SDK and retains only a conditional, source-derived Effect Harness
+  seam after native proof.
 - [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
   — point-in-time technical and product audit of stripping the active
   OpenAgents Desktop app to its hardened Electron/release shell and replacing
   its runtime and renderer with the bounded Vercel AI SDK Codex-Claude Full
-  Auto experiment; it records the required contract retirements and does not
-  authorize the reset.
+  Auto experiment; its re-baseline rejects that reset for the current sprint,
+  records the required contract retirements, and does not authorize deletion.
 - [`../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
   — detailed AC-by-AC Desktop/mobile/web audit and seven-track proposal;
   MASTER_ROADMAP owns its reconciled sequence and current truth.
