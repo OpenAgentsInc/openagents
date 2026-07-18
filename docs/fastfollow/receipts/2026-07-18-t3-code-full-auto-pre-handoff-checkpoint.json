@@ -1,0 +1,130 @@
+{
+  "schema": "openagents.fast_follow.full_auto_pre_handoff_checkpoint.v0_1",
+  "checkpoint_ref": "checkpoint.t3code.handoff.cd5ba965d092e6aa",
+  "checkpoint_key_digest": "sha256:cd5ba965d092e6aa63695d92c757a02a25b7869fd5370408cf1d8f238a11214b",
+  "checkpoint_key": {
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "continuation_ordinal": 5,
+    "from_lane": "codex-local",
+    "requested_to_lane": "fable-local",
+    "objective_digest": "sha256:4e89bf2494ca69c1b46935472f6a90529ea6f54323579cd58e7576e8a3f63e4f",
+    "done_condition_digest": "sha256:f29129899b05e4abb15900a6bbfdfec4b6c4065204157843be3d6698bc98731a",
+    "manifest_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+    "study_packet_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+    "gap_assessment_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb",
+    "proposal_digest": "sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4"
+  },
+  "mission_binding": {
+    "objective": {
+      "digest": "sha256:4e89bf2494ca69c1b46935472f6a90529ea6f54323579cd58e7576e8a3f63e4f",
+      "byte_length": 1899,
+      "storage": "host_authoritative_mission_packet",
+      "copied_into_public_receipt": false
+    },
+    "done_condition": {
+      "digest": "sha256:f29129899b05e4abb15900a6bbfdfec4b6c4065204157843be3d6698bc98731a",
+      "byte_length": 826,
+      "storage": "host_authoritative_mission_packet",
+      "copied_into_public_receipt": false
+    },
+    "public_summary": "Complete the exact T3 Code Fast Follow evidence bundle through one durable real-provider Full Auto run with a visible Codex/Claude transition, restart-safe retention, terminal report/analyzer evidence, and no false parity, release, or public-capability claim.",
+    "reason_text_is_not_copied": "The host packet includes local-only source location data. Exact digests bind the verbatim owner text without exposing local paths in this public-safe receipt."
+  },
+  "artifact_chain": [
+    {
+      "kind": "FastFollowManifest",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+      "ref": "run.full-auto.mrqbkgry.bbok6dv9",
+      "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+      "landed_commit": "0b602415fd5670528f869e04954c89082f7ff7a0"
+    },
+    {
+      "kind": "StudyPacket",
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-study-packet.json",
+      "ref": "study.t3code.2395916f28f524b8",
+      "content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+      "landed_commit": "54930552e16372e6a4d1399eba05e794b3391645"
+    },
+    {
+      "kind": "GapAssessment",
+      "path": "docs/fastfollow/gaps/2026-07-18-t3-code-full-auto-gap-assessment.json",
+      "ref": "gap.t3code.436c6d129a5c90f2",
+      "content_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb",
+      "landed_commit": "e26595aa45e2a2643e7d7987d440fc83e19f5357"
+    },
+    {
+      "kind": "WorkProposalAndDisposition",
+      "path": "docs/fastfollow/candidates/2026-07-18-t3-code-worktree-creation-proposal.json",
+      "ref": "proposal.t3code.worktree.6d065d3a97fe0795",
+      "content_digest": "sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4",
+      "landed_commit": "1de6a3171662e7ccce36f6bb072f6dd6c5c79231"
+    }
+  ],
+  "source_and_target": {
+    "target_pin": {
+      "repository": "OpenAgentsInc/openagents",
+      "commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+      "tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69"
+    },
+    "artifact_preimage": {
+      "commit": "1de6a3171662e7ccce36f6bb072f6dd6c5c79231",
+      "tree": "bc65d7102b8935e76ab4faeb49ba6e891f21b370"
+    },
+    "source_pin": {
+      "repository": "https://github.com/pingdotgg/t3code",
+      "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+      "mutation_status": "clean"
+    }
+  },
+  "handoff_request": {
+    "status": "requested_not_observed",
+    "from_lane": "codex-local",
+    "to_lane": "fable-local",
+    "provider_transition_claimed": false,
+    "reason": "The artifact bundle is ready for an independent real Claude-lane continuity check. The host must perform the transition through its durable Full Auto lane mechanism; this provider cannot self-record a host transition.",
+    "bounded_context": {
+      "completed_units": [
+        "immutable manifest bound to exact source, target, authority, lesson, and directive identities",
+        "public source-only StudyPacket with five typed patterns",
+        "exact-target GapAssessment with independent axes",
+        "one evidence-only worktree creation proposal and four no_material_delta dispositions"
+      ],
+      "next_lane_unit": "Verify the artifact chain and mission digests from current main, confirm the host-provided handoff envelope names this run/thread and source/target lanes, then produce one public-safe Claude participation/transition receipt without claiming owner acceptance.",
+      "remaining_after_next_lane": [
+        "host-observed restart boundary",
+        "explicit terminal FullAutoRun state",
+        "non-null report and analyzer digests",
+        "final public-safe receipt",
+        "independent issue #8978 and release issue #8979 remain separately owned"
+      ]
+    }
+  },
+  "host_acceptance_conditions": [
+    "The next mission packet has currentLane=fable-local.",
+    "The next mission packet has a non-null previousHandoff bound to this runRef and threadRef.",
+    "The handoff names codex-local as source and fable-local as target and is host-observed, not copied from provider prose.",
+    "The objective and done-condition digests remain exactly unchanged.",
+    "The target lane reads the committed artifact chain from current main and reports independent evidence rather than accepting Codex conclusions.",
+    "A missing, mismatched, stale, or prose-only handoff remains unverified and does not count as Claude participation."
+  ],
+  "local_control_diagnostic": {
+    "control_connection": "unavailable",
+    "owned_desktop_process": "not_observed",
+    "action": "no_local_handoff_attempted",
+    "reason": "Starting or signaling another Desktop instance would create a parallel execution path and would not prove a transition in the host-authoritative run."
+  },
+  "classification": {
+    "visibility": "public_safe_repository_artifact",
+    "contains_raw_objective": false,
+    "contains_local_paths": false,
+    "contains_credentials": false,
+    "contains_provider_private_state": false,
+    "provider_completion_is_verdict": false,
+    "proves_provider_transition": false,
+    "proves_restart": false,
+    "grants_release_or_public_claim_authority": false
+  },
+  "checkpoint_content_digest": "sha256:119435c72c40cb3f1e5814aac156502695181d5c5010d1d9160af8a16bb49cf9"
+}
