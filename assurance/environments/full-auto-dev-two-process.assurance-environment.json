@@ -1,0 +1,48 @@
+{
+  "environment_format_version": "0.1",
+  "profile_id": "ENV-FA-DEV-TWO-PROCESS-1",
+  "revision": 1,
+  "owner": "first_party",
+  "target_class": "local",
+  "mutability": "isolated_write",
+  "platform": {
+    "os": "macos",
+    "architecture": "arm64",
+    "runtime": "Node 24.13.1",
+    "framework": "Electron (dev-mode source-loaded, or a locally-built unsigned Forge package when present)"
+  },
+  "capabilities": [
+    "real_two_os_process_electron_launch",
+    "isolated_temporary_user_data_dir",
+    "conditional_local_forge_package_fallback_to_electron_dot"
+  ],
+  "authentication_strategy": "none",
+  "isolation": {
+    "fresh_identity": true,
+    "reset_between_runs": true,
+    "restart_supported": true
+  },
+  "data_classification": "private_local",
+  "evidence_visibility": "reviewed_public_safe",
+  "redaction_policy": "Smoke receipts assert only public-safe fields (dispatchedLane, phase markers); no transcript or credential content.",
+  "retention": "Ephemeral per-run temp user-data directory; stdout phase-b JSON receipt lines are the retained evidence artifact.",
+  "permitted_actions": [
+    "read_repository",
+    "launch_electron_process_twice",
+    "write_isolated_user_data_dir"
+  ],
+  "forbidden_actions": [
+    "network",
+    "credentials",
+    "production_mutation",
+    "customer_data",
+    "release_publication",
+    "live_provider_calls_beyond_stub_lane"
+  ],
+  "required_commands": [
+    "pnpm run smoke:full-auto-restart",
+    "pnpm run smoke:full-auto-control"
+  ],
+  "known_capability_gap": "signing_unverified: this profile does NOT prove a signed/notarized build. apps/openagents-desktop/scripts/full-auto-restart-smoke.ts prefers a locally-built Forge package at out/OpenAgents-darwin-arm64/OpenAgents.app ONLY IF it already exists (requires a prior separate build+package step); otherwise it falls back to unsigned dev-mode `electron .`. Neither path invokes apps/oa-updates/docs/release-signing-runbook.md. Evidence from this profile is RISK-FA-10-scoped: real two-OS-process, real Electron, but not release-grade.",
+  "notes": "The smoke harness also drives an in-app OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE special-case code path for seeding/asserting phase state -- this is a smoke fixture affordance baked into the main process, not ordinary production behavior under test by itself."
+}

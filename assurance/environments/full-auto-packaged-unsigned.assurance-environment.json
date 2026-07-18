@@ -1,0 +1,34 @@
+{
+  "environment_format_version": "0.1",
+  "profile_id": "ENV-FA-PACKAGED-UNSIGNED-1",
+  "revision": 1,
+  "owner": "first_party",
+  "target_class": "release_artifact",
+  "mutability": "blocked",
+  "platform": {
+    "os": "macos",
+    "architecture": "arm64",
+    "runtime": "Electron Forge package output",
+    "framework": "out/OpenAgents-darwin-arm64/OpenAgents.app"
+  },
+  "capabilities": [],
+  "authentication_strategy": "none",
+  "isolation": {
+    "fresh_identity": true,
+    "reset_between_runs": true,
+    "restart_supported": true
+  },
+  "data_classification": "private_local",
+  "evidence_visibility": "reviewed_public_safe",
+  "redaction_policy": "Not yet applicable -- this profile has no admitted evidence.",
+  "retention": "Not yet applicable.",
+  "permitted_actions": [],
+  "forbidden_actions": [
+    "any_action_until_signing_runbook_executes"
+  ],
+  "required_commands": [
+    "apps/oa-updates/docs/release-signing-runbook.md (not yet executed for Full Auto restart/resume proof)"
+  ],
+  "known_capability_gap": "signing_unverified: no invocation of the release-signing runbook occurred in the FA-AS-01 authoring pass. This profile stays status:proposed and mutability:blocked until a signed, notarized build exists AND pnpm run smoke:full-auto-restart runs against that exact signed artifact with its receipt recorded.",
+  "notes": "This profile is intentionally named/declared even though it has zero current evidence, so a future signed-build proof has a pre-defined honest home instead of being retrofit into ENV-FA-DEV-TWO-PROCESS-1's weaker unsigned claim."
+}

@@ -1,0 +1,47 @@
+{
+  "environment_format_version": "0.1",
+  "profile_id": "ENV-FA-LOCAL-UNIT-1",
+  "revision": 1,
+  "owner": "first_party",
+  "target_class": "local",
+  "mutability": "isolated_write",
+  "platform": {
+    "os": "macos",
+    "architecture": "arm64",
+    "runtime": "Node 24.13.1",
+    "framework": "Effect Native / Vite Plus (Vitest)"
+  },
+  "capabilities": [
+    "vite_plus_test",
+    "real_module_composition",
+    "in_process_effect_http_server",
+    "isolated_temp_dir_registry_files"
+  ],
+  "authentication_strategy": "none",
+  "isolation": {
+    "fresh_identity": true,
+    "reset_between_runs": true,
+    "restart_supported": false
+  },
+  "data_classification": "private_local",
+  "evidence_visibility": "reviewed_public_safe",
+  "redaction_policy": "No raw prompts, transcripts, credentials, hostnames, or absolute local paths in public projections; adversarial redaction walks (FA-AC-52) are a required oracle, not a policy statement alone.",
+  "retention": "Private native test output under var/; reviewed normalized receipts committed by digest when they exist.",
+  "permitted_actions": [
+    "read_repository",
+    "run_vite_plus_tests",
+    "write_isolated_temp_dirs"
+  ],
+  "forbidden_actions": [
+    "network",
+    "credentials",
+    "production_mutation",
+    "customer_data",
+    "release_publication",
+    "live_provider_calls"
+  ],
+  "required_commands": [
+    "vp"
+  ],
+  "notes": "The overwhelming majority of Full Auto's real evidence lives here: real production modules (full-auto-registry.ts, full-auto-run-registry.ts, full-auto-reconcile.ts, thread-store.ts, local-turn-journal.ts) composed together in-process, plus real in-process Effect HTTP control servers exercised with real bearer auth. No live Electron process and no live provider round trip exist in this tier -- see ENV-FA-DEV-TWO-PROCESS-1 and ENV-FA-OWNER-REAL-SIDEBAR-1 for those."
+}

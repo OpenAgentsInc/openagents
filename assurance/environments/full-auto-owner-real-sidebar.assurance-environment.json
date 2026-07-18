@@ -1,0 +1,36 @@
+{
+  "environment_format_version": "0.1",
+  "profile_id": "ENV-FA-OWNER-REAL-SIDEBAR-1",
+  "revision": 1,
+  "owner": "first_party",
+  "target_class": "production",
+  "mutability": "explicitly-armed-write",
+  "platform": {
+    "os": "macos",
+    "architecture": "arm64",
+    "runtime": "signed OpenAgents Desktop app (owner install)",
+    "framework": "real Desktop sidebar, real linked Codex/Claude accounts"
+  },
+  "capabilities": [],
+  "authentication_strategy": "owner_operator_session (real linked Codex/Claude accounts)",
+  "isolation": {
+    "fresh_identity": false,
+    "reset_between_runs": false,
+    "restart_supported": true
+  },
+  "data_classification": "private_owner",
+  "evidence_visibility": "reviewed_public_safe_projection_only",
+  "redaction_policy": "Raw transcripts, prompts, and provider session content stay private per root INVARIANTS.md Full Auto Authority Boundaries; only the bounded FullAutoRunReport public-safe projection and named-test pass/fail receipts may be cited publicly.",
+  "retention": "Owner-private FullAutoRunReport plus a named receipt per #8976 TEST 01-06.",
+  "permitted_actions": [
+    "owner_only: run named tests in the real Desktop sidebar with linked provider accounts"
+  ],
+  "forbidden_actions": [
+    "any_automated_agent_action",
+    "credential_extraction",
+    "unattended_arming"
+  ],
+  "required_commands": [],
+  "known_capability_gap": "UNAVAILABLE as of this authoring pass: zero owner_real-classed receipts exist anywhere in the repository (confirmed by grep across docs/qa, docs/mobile/receipts, and the repository generally). #8976 itself is still open. This profile stays status:proposed and is never silently satisfied by ENV-FA-LOCAL-UNIT-1's fixture/headless machinery evidence for the same six named tests -- see full-auto-acceptance.ts's own fixture vs owner_real FullAutoAcceptanceProfileClassSchema distinction.",
+  "notes": "GATE-OWNER-REAL-PROVIDER is the only gate keyed to this profile and stays BLOCKED until an explicit owner-armed run produces a receipt here."
+}
