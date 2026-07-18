@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { existsSync } from "node:fs";
 import { Readable } from "node:stream";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +18,7 @@ let aiSdk: typeof import("ai");
 
 const resumeStates = new Map<string, HarnessAgentResumeSessionState>();
 const activeSessions = new Set<HarnessSession>();
+const CHATGPT_CODEX_BIN = "/Applications/ChatGPT.app/Contents/Resources/codex";
 let harnessServer: Server | undefined;
 let harnessEndpoint: string | undefined;
 let mainWindow: BrowserWindow | undefined;
@@ -65,7 +67,7 @@ async function initializeHarness(): Promise<void> {
     env: {
       // This deliberately uses the user's installed, signed-in Codex CLI. The
       // adapter's old bundled executable is not used by this proof of concept.
-      OPENAGENTS_CODEX_BIN: process.env.CODEX_BIN ?? "codex",
+      OPENAGENTS_CODEX_BIN: resolveCodexBin(),
     },
     rootDirectory: join(app.getPath("userData"), "harness-workspaces"),
   });
@@ -77,6 +79,14 @@ async function initializeHarness(): Promise<void> {
       "You are a concise coding assistant. Work only in the owner-local harness workspace and explain results briefly.",
     sandbox,
   });
+}
+
+function resolveCodexBin(): string {
+  if (process.env.CODEX_BIN !== undefined) return process.env.CODEX_BIN;
+  if (process.platform === "darwin" && existsSync(CHATGPT_CODEX_BIN)) {
+    return CHATGPT_CODEX_BIN;
+  }
+  return "codex";
 }
 
 app.on("window-all-closed", () => {
