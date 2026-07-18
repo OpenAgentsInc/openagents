@@ -163,6 +163,36 @@ describe("H2 local thread fork persistence", () => {
     }
   })
 
+  test("retains reviewed PASS/FAIL/BLOCKED acceptance rows in a separate bounded audit set", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "desktop-thread-acceptance-verdicts-"))
+    const file = path.join(root, "threads.json")
+    try {
+      const store = makeThreadStore(file)
+      const dispositions = ["PASS", "FAIL", "BLOCKED", "PASS", "PASS", "PASS"] as const
+      const verdictRefs = dispositions.map((disposition, index) => {
+        const thread = store.newThread(`Test ${index + 1}`)
+        const renamed = store.rename(
+          thread.id,
+          `${disposition} · TEST ${String(index + 1).padStart(2, "0")} · audit row`,
+        )
+        expect(renamed).not.toBeNull()
+        return thread.id
+      })
+
+      for (let index = 0; index < 6; index += 1) store.newThread(`Ordinary ${index}`)
+
+      const retained = store.list()
+      expect(retained).toHaveLength(11)
+      expect(verdictRefs.every(threadRef => store.open(threadRef) !== null)).toBe(true)
+      expect(retained.filter(thread => thread.title.startsWith("Ordinary "))).toHaveLength(5)
+
+      const reopened = makeThreadStore(file)
+      expect(verdictRefs.every(threadRef => reopened.open(threadRef) !== null)).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("creates distinct seeded threads while leaving the seed and first fork unmutated", () => {
     const root = mkdtempSync(path.join(tmpdir(), "desktop-history-fork-"))
     try {

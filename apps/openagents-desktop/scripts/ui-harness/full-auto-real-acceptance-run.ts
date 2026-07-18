@@ -285,6 +285,26 @@ const publishVerdict = async (input: Readonly<{
     disposition: transition.disposition,
     truncated: transition.truncated,
   }))
+  // Interactive handoff tests do not own a FullAutoRun report. They still
+  // need a bounded, reviewable report/analyzer pair under #8976, so derive
+  // public-safe digests from the acceptance evaluator's typed facts. Raw
+  // provider text remains private; only its evidence digest crosses this
+  // boundary. Full Auto tests keep their native run report/analyzer digests.
+  const acceptanceReportDigest = sha256(JSON.stringify({
+    schema: "openagents.desktop.full_auto_acceptance_report.v1",
+    testId: input.testId,
+    threadRefDigest: safeRef(input.evidence.threadRef),
+    runRefDigest: safeRef(input.runRef ?? null),
+    artifactDigests,
+    transitions,
+    evidenceDigest: sha256(JSON.stringify(input.evidence)),
+  }))
+  const acceptanceAnalysisDigest = sha256(JSON.stringify({
+    schema: "openagents.desktop.full_auto_acceptance_analysis.v1",
+    testId: input.testId,
+    disposition: verdict.disposition,
+    reasonDigests: verdict.reasons.map(sha256),
+  }))
   privateResults.push({
     testId: input.testId,
     disposition: verdict.disposition,
@@ -300,8 +320,8 @@ const publishVerdict = async (input: Readonly<{
     threadRefDigest: safeRef(input.evidence.threadRef),
     runRefDigest: safeRef(input.runRef ?? null),
     artifactDigests,
-    reportDigest: input.reportDigest ?? null,
-    analysisDigest: input.analysisDigest ?? null,
+    reportDigest: input.reportDigest ?? acceptanceReportDigest,
+    analysisDigest: input.analysisDigest ?? acceptanceAnalysisDigest,
     transitions,
     failureClassification: input.evidence.blockedReason === null ? null : "provider_or_runtime_blocked",
     privateEvidencePointerClass: "owner_local_desktop_profile",
@@ -705,6 +725,16 @@ const executeSixRows = async (): Promise<void> => {
       threadAddressableUnderPressure: after06.completed >= 3,
     },
   })
+
+  await assertSixVerdictRowsVisible(relaunchedPage)
+}
+
+const assertSixVerdictRowsVisible = async (page: Page): Promise<void> => {
+  if (publicResults.length !== 6) throw new Error("six verdict rows have not been published")
+  for (const result of publicResults) {
+    await page.getByText(result.title, { exact: true }).first()
+      .waitFor({ state: "visible", timeout: 30_000 })
+  }
 }
 
 const executeAutomaticRotation = async (): Promise<Readonly<{
@@ -740,6 +770,7 @@ const executeAutomaticRotation = async (): Promise<Readonly<{
   if (content !== "AUTOMATIC-SAME-PASS-ROTATION-OK") {
     throw new Error("automatic rotation did not reach a useful accepted Codex result")
   }
+  await assertSixVerdictRowsVisible(page)
   return {
     runRefDigest: sha256(run.runRef),
     threadRefDigest: sha256(run.threadRef),

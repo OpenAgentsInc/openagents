@@ -12,10 +12,16 @@ import {
 } from "./chat-contract.ts"
 
 const maxThreads = 5
+/** Owner-reviewed acceptance verdicts are an audit index, not ordinary chat
+ * recency. Keep a separate bounded set so PASS/FAIL/BLOCKED evidence remains
+ * inspectable without changing the five-entry ordinary composer cache. */
+const maxAcceptanceVerdictThreads = 24
 const maxNotes = 80
 const titleFor = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, 48) || "New chat"
 const compareDesktopThreadsByLastAccess = (left: DesktopThread, right: DesktopThread): number =>
   right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)
+const isAcceptanceVerdictThread = (thread: DesktopThread): boolean =>
+  /^(PASS|FAIL|BLOCKED) · TEST \d{2} · /.test(thread.title)
 
 export type ThreadStoreOptions = Readonly<{
   /** Thread ids owned by nonterminal FullAutoRuns. They remain durable in
@@ -34,8 +40,16 @@ export const makeThreadStore = (file: string, options: ThreadStoreOptions = {}) 
       // cache. Normal LRU behavior remains the fail-safe fallback.
     }
     const protectedThreads = sorted.filter(thread => protectedIds.has(thread.id))
-    const ordinaryThreads = sorted.filter(thread => !protectedIds.has(thread.id)).slice(0, maxThreads)
-    return [...protectedThreads, ...ordinaryThreads].sort(compareDesktopThreadsByLastAccess)
+    const acceptanceVerdictThreads = sorted
+      .filter(thread => !protectedIds.has(thread.id) && isAcceptanceVerdictThread(thread))
+      .slice(0, maxAcceptanceVerdictThreads)
+    const retainedIds = new Set([
+      ...protectedThreads.map(thread => thread.id),
+      ...acceptanceVerdictThreads.map(thread => thread.id),
+    ])
+    const ordinaryThreads = sorted.filter(thread => !retainedIds.has(thread.id)).slice(0, maxThreads)
+    return [...protectedThreads, ...acceptanceVerdictThreads, ...ordinaryThreads]
+      .sort(compareDesktopThreadsByLastAccess)
   }
   const read = (): DesktopThread[] => {
     try {
