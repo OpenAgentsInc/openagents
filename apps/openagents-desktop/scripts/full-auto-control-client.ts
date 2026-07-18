@@ -129,6 +129,12 @@ export const controlOperations = (connection: ControlConnection) => ({
     call(connection, "POST", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/resume`),
   runStop: (runRef: string) =>
     call(connection, "POST", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/stop`),
+  // FA-RUN-04 (#8972) / FA-RPT-01 (#8988): the private run report and its
+  // derived public-safe receipt -- thin pass-throughs like everything else.
+  runReport: (runRef: string) =>
+    call(connection, "GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/report`),
+  runReceipt: (runRef: string) =>
+    call(connection, "GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/receipt`),
 })
 
 export type VerifiedControlProcessIdentity = Readonly<{

@@ -22,7 +22,10 @@ import {
   ProviderHandoffRefusalReasonSchema,
 } from "./full-auto-provider-handoff.ts"
 import {
+  FULL_AUTO_METRICS_ENV_FLAG,
   FULL_AUTO_RUN_RECEIPT_SCHEMA,
+  FULL_AUTO_RUN_REPORT_ROTATION_LIMIT,
+  FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT,
   FULL_AUTO_RUN_REPORT_SCHEMA,
   FullAutoRunReportVerificationSchema,
   FullAutoRunReportVerifiedRefKindSchema,
@@ -526,8 +529,15 @@ export const fullAutoControlOpenApiDocument = {
           "activity that happened since the last control-API call touched this run. Aggregates lifecycle " +
           "transitions (FA-RUN-01 #8969), liveness/stall observations and derived gaps/uninterrupted " +
           "intervals (FA-RUN-03 #8971), provider-handoff transitions (FA-HO-01 #8975), and turn outcomes " +
-          "-- never raw transcript text (assistantText/assistantSegments are never copied in). Same " +
-          "authenticated loopback trust tier as the rest of this surface.",
+          "-- never raw transcript text (assistantText/assistantSegments are never copied in). " +
+          "FA-RPT-01 (#8988) adds the bound thread record's typed failure history (consecutive " +
+          "failures, disabledBy attribution), an optional rotation-history passthrough, typed " +
+          "terminal stop attribution, bounded CLAIMED commit-SHA evidence refs extracted from the " +
+          "turn journal (full 40-hex only; never marked verified -- no Git resolution happens " +
+          "here), and local-only metrics counters that are ON by default and disabled only by the " +
+          `explicit owner env override ${FULL_AUTO_METRICS_ENV_FLAG}=0 (unrelated to the #8911 ` +
+          "outbound usage-telemetry consent, which stays default-off). Same authenticated loopback " +
+          "trust tier as the rest of this surface.",
         parameters: [runRefParameter],
         responses: {
           "200": {
@@ -1058,6 +1068,74 @@ export const fullAutoControlOpenApiDocument = {
           costUsd: { type: ["number", "null"] },
         },
       },
+      FullAutoRunReportThreadFailureHistory: {
+        type: "object",
+        required: [
+          "consecutiveFailures", "failureLimit", "lastFailureAt", "blockedReason",
+          "disabledBy", "disabledAt",
+        ],
+        additionalProperties: false,
+        description:
+          "FA-RPT-01 (#8988): the bound thread record's typed failure history -- FA-H5 counters " +
+          "plus the #8928 disable attribution.",
+        properties: {
+          consecutiveFailures: { type: "integer", minimum: 0 },
+          failureLimit: { type: "integer", minimum: 0 },
+          lastFailureAt: { type: ["string", "null"] },
+          blockedReason: { type: ["string", "null"], minLength: 1, maxLength: 300 },
+          disabledBy: {
+            type: ["string", "null"],
+            enum: [
+              "ui_toggle",
+              "control_api",
+              "workspace_guard",
+              "continuation_cap",
+              "dispatch_failure_limit",
+              null,
+            ],
+          },
+          disabledAt: { type: ["string", "null"] },
+        },
+      },
+      FullAutoRunReportRotation: {
+        type: "object",
+        required: ["fromLane", "toLane", "reason", "at"],
+        additionalProperties: false,
+        description:
+          "FA-RPT-01 (#8988): one re-validated entry of the registry record's optional " +
+          "rotationHistory passthrough.",
+        properties: {
+          fromLane: { type: "string", minLength: 1, maxLength: 80 },
+          toLane: { type: "string", minLength: 1, maxLength: 80 },
+          reason: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT },
+          at: { type: "string" },
+        },
+      },
+      FullAutoRunReportMetrics: {
+        type: "object",
+        required: [
+          "turnsObserved", "turnsCompleted", "turnsFailed", "turnsInterrupted",
+          "longestCompletedStreak", "continuationsDispatched", "dispatchFailures",
+          "repoGroundedTurns", "evidenceRefCount", "stopAttributed",
+        ],
+        additionalProperties: false,
+        description:
+          "FA-RPT-01 (#8988): local-only, public-safe counters -- pure counts and booleans, no " +
+          "free text, nothing outbound. On by default; disabled only by the explicit " +
+          `${FULL_AUTO_METRICS_ENV_FLAG}=0 owner env override.`,
+        properties: {
+          turnsObserved: { type: "integer", minimum: 0 },
+          turnsCompleted: { type: "integer", minimum: 0 },
+          turnsFailed: { type: "integer", minimum: 0 },
+          turnsInterrupted: { type: "integer", minimum: 0 },
+          longestCompletedStreak: { type: "integer", minimum: 0 },
+          continuationsDispatched: { type: "integer", minimum: 0 },
+          dispatchFailures: { type: "integer", minimum: 0 },
+          repoGroundedTurns: { type: "integer", minimum: 0 },
+          evidenceRefCount: { type: "integer", minimum: 0 },
+          stopAttributed: { type: "boolean" },
+        },
+      },
       FullAutoRunReport: {
         type: "object",
         required: [
@@ -1106,6 +1184,17 @@ export const fullAutoControlOpenApiDocument = {
           uninterruptedIntervals: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportInterval" } },
           turns: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportTurnEntry" } },
           verifiedRefs: { type: "array", items: { $ref: "#/components/schemas/FullAutoRunReportVerifiedRef" } },
+          // FA-RPT-01 (#8988) additive sections -- optional so pre-#8988
+          // persisted reports remain valid instances of this schema.
+          threadFailureHistory: { $ref: "#/components/schemas/FullAutoRunReportThreadFailureHistory" },
+          rotationHistory: {
+            type: "array",
+            maxItems: FULL_AUTO_RUN_REPORT_ROTATION_LIMIT,
+            items: { $ref: "#/components/schemas/FullAutoRunReportRotation" },
+          },
+          stopAttribution: { type: "string", enum: [...FullAutoRunActorSchema.literals] },
+          metricsEnabled: { type: "boolean" },
+          metrics: { $ref: "#/components/schemas/FullAutoRunReportMetrics" },
           progressDisposition: { type: "string", const: "unknown" },
           usage: { $ref: "#/components/schemas/FullAutoRunReportUsage" },
           rawEvidenceRef: { type: ["string", "null"], minLength: 1, maxLength: 200 },

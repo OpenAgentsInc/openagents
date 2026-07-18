@@ -7,7 +7,7 @@
 // state as separate facts"), adversarial receipt redaction, and store
 // retention/eviction.
 import { describe, expect, test } from "vite-plus/test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -15,10 +15,15 @@ import type { FullAutoLivenessProjection } from "./full-auto-liveness.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import type { ProviderHandoffTransitionRecord } from "./full-auto-provider-handoff.ts"
 import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
+import { FULL_AUTO_MAX_CONSECUTIVE_FAILURES } from "./full-auto-reconcile.ts"
+import type { FullAutoRecord } from "./full-auto-registry.ts"
 import {
+  FULL_AUTO_METRICS_ENV_FLAG,
   FULL_AUTO_RUN_REPORT_LIMIT,
+  FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT,
   deriveFullAutoRunLivenessSpans,
   deriveFullAutoRunReceipt,
+  isFullAutoMetricsEnabled,
   openFullAutoRunReportStore,
   sha256HexDigest,
   type FullAutoRunReportStore,
@@ -585,6 +590,383 @@ describe("full-auto-run receipt redaction (public-safe projection)", () => {
           "failedAttempts",
         ].toSorted(),
       )
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FA-RPT-01 (#8988): report extensions -- terminal-class fixtures, typed
+// failure history + disabledBy attribution, rotation passthrough, claimed
+// commit-SHA evidence, and the default-on local-only metrics gate.
+// ---------------------------------------------------------------------------
+
+const makeThreadRecord = (
+  overrides?: Partial<FullAutoRecord> & Readonly<{ rotationHistory?: unknown }>,
+): FullAutoRecord & Readonly<{ rotationHistory?: unknown }> => ({
+  threadRef: START.threadRef,
+  enabled: true,
+  continuationCount: 3,
+  updatedAt: "2026-07-17T00:00:00.000Z",
+  workspaceRef: GRANTED_WORKSPACE,
+  profile: { lane: "codex-local", accountRef: "codex-primary" },
+  ...overrides,
+})
+
+describe("FA-RPT-01 terminal classes (#8988 acceptance 1)", () => {
+  const terminalFixtures = [
+    { to: "completed", actor: "control_api", expectedStopAttribution: "control_api" },
+    { to: "cap_reached", actor: "continuation_cap", expectedStopAttribution: "continuation_cap" },
+    { to: "failed", actor: "dispatch_failure_limit", expectedStopAttribution: "dispatch_failure_limit" },
+    { to: "stopped", actor: "control_api", expectedStopAttribution: "control_api" },
+  ] as const
+
+  for (const fixture of terminalFixtures) {
+    test(`${fixture.to}: every section renders with exact bounded values and typed stop attribution`, () => {
+      const harness = startHarness()
+      try {
+        const started = harness.runRegistry.startNew(START)
+        expect(started.ok).toBe(true)
+        if (!started.ok) return
+        const run = started.run
+        const turn = makeTurn({
+          threadRef: run.threadRef!,
+          turnRef: "turn.full-auto.1",
+          phase: "completed",
+          disposition: "completed",
+          createdAt: harness.now().toISOString(),
+          updatedAt: harness.now().toISOString(),
+        })
+        harness.runRegistry.recordAttempt(run.runRef, "success", { turnRef: turn.turnRef })
+        harness.advance(1_000)
+        const result = harness.runRegistry.transition(run.runRef, {
+          to: fixture.to,
+          actor: fixture.actor,
+          reason: `test fixture: ${fixture.to}`,
+        })
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+        const report = harness.reportStore.sync({
+          run: result.run,
+          turns: [turn],
+          handoffs: [],
+          threadRecord: makeThreadRecord({
+            enabled: false,
+            disabledBy: fixture.to === "cap_reached"
+              ? "continuation_cap"
+              : fixture.to === "failed"
+                ? "dispatch_failure_limit"
+                : "control_api",
+            disabledAt: harness.now().toISOString(),
+          }),
+          metricsEnabled: true,
+        })
+        expect(report.state).toBe(fixture.to)
+        expect(report.endedAt).toBeDefined()
+        expect(report.stopAttribution).toBe(fixture.expectedStopAttribution)
+        expect(report.turns).toHaveLength(1)
+        expect(report.turns[0]!.lane).toBe("codex-local")
+        expect(report.turns[0]!.accountRef).toBe("codex-primary")
+        expect(report.threadFailureHistory).toBeDefined()
+        expect(report.threadFailureHistory!.failureLimit).toBe(FULL_AUTO_MAX_CONSECUTIVE_FAILURES)
+        expect(report.metricsEnabled).toBe(true)
+        expect(report.metrics).toBeDefined()
+        expect(report.metrics!.stopAttributed).toBe(true)
+        expect(report.metrics!.continuationsDispatched).toBe(1)
+        // Never raw transcript/objective text, in ANY terminal class.
+        const raw = JSON.stringify(report)
+        expect(raw).not.toContain("SECRET_TRANSCRIPT_TEXT_MUST_NEVER_LEAK")
+        expect(raw).not.toContain("SECRET_OBJECTIVE")
+        expect(raw).not.toContain("SECRET_DONE_CONDITION")
+      } finally {
+        harness.dispose()
+      }
+    })
+  }
+
+  test("a non-terminal run has no stopAttribution and metrics.stopAttributed is false", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const report = harness.reportStore.sync({
+        run: started.run,
+        turns: [],
+        handoffs: [],
+        metricsEnabled: true,
+      })
+      expect(report.stopAttribution).toBeUndefined()
+      expect(report.metrics!.stopAttributed).toBe(false)
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("FA-RPT-01 thread failure history + rotation passthrough", () => {
+  test("the thread record's typed failure history (counters, disabledBy attribution) lands on the report", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const report = harness.reportStore.sync({
+        run: started.run,
+        turns: [],
+        handoffs: [],
+        threadRecord: makeThreadRecord({
+          enabled: false,
+          consecutiveFailures: 5,
+          lastFailureAt: "2026-07-17T00:10:00.000Z",
+          blockedReason: "dispatch failed: provider unavailable",
+          disabledBy: "dispatch_failure_limit",
+          disabledAt: "2026-07-17T00:11:00.000Z",
+        }),
+      })
+      expect(report.threadFailureHistory).toEqual({
+        consecutiveFailures: 5,
+        failureLimit: FULL_AUTO_MAX_CONSECUTIVE_FAILURES,
+        lastFailureAt: "2026-07-17T00:10:00.000Z",
+        blockedReason: "dispatch failed: provider unavailable",
+        disabledBy: "dispatch_failure_limit",
+        disabledAt: "2026-07-17T00:11:00.000Z",
+      })
+
+      // A later sync WITHOUT a thread record never regresses the captured
+      // section (merge, never replace).
+      const again = harness.reportStore.sync({ run: harness.runRegistry.get(started.run.runRef)!, turns: [], handoffs: [] })
+      expect(again.threadFailureHistory).toEqual(report.threadFailureHistory)
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("rotationHistory passthrough: absent today, re-validated/bounded when a future record carries one, invalid entries skipped", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      // Every current record has no rotationHistory -- the section is absent.
+      const plain = harness.reportStore.sync({
+        run: started.run,
+        turns: [],
+        handoffs: [],
+        threadRecord: makeThreadRecord(),
+      })
+      expect(plain.rotationHistory).toBeUndefined()
+
+      const report = harness.reportStore.sync({
+        run: harness.runRegistry.get(started.run.runRef)!,
+        turns: [],
+        handoffs: [],
+        threadRecord: makeThreadRecord({
+          rotationHistory: [
+            { fromLane: "codex-local", toLane: "fable-local", reason: "x".repeat(500), at: "2026-07-17T00:05:00.000Z" },
+            { fromLane: "fable-local", toLane: "codex-local", reason: "rate limited", at: "2026-07-17T00:20:00.000Z" },
+            { garbage: true }, // invalid entries are skipped, never guessed into shape
+          ],
+        }),
+      })
+      expect(report.rotationHistory).toHaveLength(2)
+      expect(report.rotationHistory![0]!.reason).toHaveLength(FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT)
+      expect(report.rotationHistory![1]).toEqual({
+        fromLane: "fable-local",
+        toLane: "codex-local",
+        reason: "rate limited",
+        at: "2026-07-17T00:20:00.000Z",
+      })
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("FA-RPT-01 claimed commit-SHA evidence", () => {
+  test("full 40-hex SHAs from the journal become claimed commit refs -- deduplicated, turn-attributed, never verified, never leaking surrounding text", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const sha = "0123456789abcdef0123456789abcdef01234567"
+      const otherSha = "fedcba9876543210fedcba9876543210fedcba98"
+      const turnOne = makeTurn({
+        threadRef: started.run.threadRef!,
+        turnRef: "turn.full-auto.1",
+        phase: "completed",
+        disposition: "completed",
+        createdAt: harness.now().toISOString(),
+        updatedAt: harness.now().toISOString(),
+        assistantText: `SECRET_PROSE committed ${sha}; short abc1234 must not count; again ${sha}.`,
+      })
+      const report = harness.reportStore.sync({ run: started.run, turns: [turnOne], handoffs: [] })
+      expect(report.verifiedRefs).toEqual([
+        { ref: sha, kind: "commit", verification: "claimed", turnRef: "turn.full-auto.1" },
+      ])
+      expect(JSON.stringify(report)).not.toContain("SECRET_PROSE")
+
+      // A later sync with a SHRUNKEN journal read never drops the captured
+      // ref, and new SHAs merge in.
+      harness.advance(1_000)
+      const turnTwo = makeTurn({
+        threadRef: started.run.threadRef!,
+        turnRef: "turn.full-auto.2",
+        phase: "completed",
+        disposition: "completed",
+        createdAt: harness.now().toISOString(),
+        updatedAt: harness.now().toISOString(),
+        assistantText: `pushed ${otherSha}`,
+      })
+      const again = harness.reportStore.sync({
+        run: harness.runRegistry.get(started.run.runRef)!,
+        turns: [turnTwo],
+        handoffs: [],
+      })
+      expect(again.verifiedRefs.map((ref) => ref.ref).toSorted()).toEqual([sha, otherSha].toSorted())
+      expect(again.verifiedRefs.every((ref) => ref.verification === "claimed")).toBe(true)
+
+      // The public-safe receipt reflects the claimed count without carrying
+      // the refs' surrounding context (it never could -- counts only).
+      const receipt = deriveFullAutoRunReceipt(again, harness.now)
+      expect(receipt.claimedRefCount).toBe(2)
+      expect(receipt.verifiedRefCount).toBe(0)
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("FA-RPT-01 metrics default-on (#8988 acceptance 3)", () => {
+  test("the env gate is ON by default and disabled only by the explicit owner override", () => {
+    expect(isFullAutoMetricsEnabled({})).toBe(true)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: undefined })).toBe(true)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: "" })).toBe(true)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: "1" })).toBe(true)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: "0" })).toBe(false)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: "false" })).toBe(false)
+    expect(isFullAutoMetricsEnabled({ [FULL_AUTO_METRICS_ENV_FLAG]: "off" })).toBe(false)
+  })
+
+  test("a fresh sync with no explicit gate input follows the env default (ON in this test environment)", () => {
+    const harness = startHarness()
+    try {
+      expect(process.env[FULL_AUTO_METRICS_ENV_FLAG]).toBeUndefined()
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const report = harness.reportStore.sync({ run: started.run, turns: [], handoffs: [] })
+      expect(report.metricsEnabled).toBe(true)
+      expect(report.metrics).toBeDefined()
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("enabled metrics carry exact public-safe counters over the merged turn history", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const sha = "0123456789abcdef0123456789abcdef01234567"
+      const at = (seconds: number) => new Date(Date.UTC(2026, 6, 17, 0, 0, seconds)).toISOString()
+      const turns = [
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.1", phase: "completed", disposition: "completed", createdAt: at(1), updatedAt: at(1), assistantText: `did ${sha}` }),
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.2", phase: "completed", disposition: "completed", createdAt: at(2), updatedAt: at(2) }),
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.3", phase: "failed", disposition: "failed", createdAt: at(3), updatedAt: at(3) }),
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.4", phase: "completed", disposition: "completed", createdAt: at(4), updatedAt: at(4) }),
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.5", phase: "interrupted", disposition: "owner_interrupted", createdAt: at(5), updatedAt: at(5) }),
+      ]
+      harness.runRegistry.recordAttempt(started.run.runRef, "success", { turnRef: "turn.full-auto.1" })
+      harness.runRegistry.recordAttempt(started.run.runRef, "success", { turnRef: "turn.full-auto.2" })
+      harness.runRegistry.recordAttempt(started.run.runRef, "failure", { turnRef: "turn.full-auto.3" })
+      const report = harness.reportStore.sync({
+        run: harness.runRegistry.get(started.run.runRef)!,
+        turns,
+        handoffs: [],
+        metricsEnabled: true,
+      })
+      expect(report.metrics).toEqual({
+        turnsObserved: 5,
+        turnsCompleted: 3,
+        turnsFailed: 1,
+        turnsInterrupted: 1,
+        longestCompletedStreak: 2,
+        continuationsDispatched: 2,
+        dispatchFailures: 1,
+        repoGroundedTurns: 1,
+        evidenceRefCount: 1,
+        stopAttributed: false,
+      })
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("a disabled gate is an honest absence -- metricsEnabled false and NO metrics row -- and everything else still derives", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const report = harness.reportStore.sync({
+        run: started.run,
+        turns: [],
+        handoffs: [],
+        metricsEnabled: false,
+      })
+      expect(report.metricsEnabled).toBe(false)
+      expect(report.metrics).toBeUndefined()
+      expect(report.state).toBe("running")
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("FA-RPT-01 back-compat with pre-#8988 report files", () => {
+  test("a persisted report file written before the #8988 fields existed still decodes (no quarantine) and upgrades on the next sync", () => {
+    const harness = startHarness()
+    try {
+      const started = harness.runRegistry.startNew(START)
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      harness.reportStore.sync({ run: started.run, turns: [], handoffs: [], metricsEnabled: true })
+
+      // Strip every #8988-added field from the durable file, reproducing a
+      // file written by the original FA-RUN-04 code.
+      const filePath = path.join(harness.root, "reports.json")
+      const file = JSON.parse(readFileSync(filePath, "utf8")) as {
+        schema: string
+        reports: Array<Record<string, unknown>>
+      }
+      for (const report of file.reports) {
+        delete report.threadFailureHistory
+        delete report.rotationHistory
+        delete report.stopAttribution
+        delete report.metricsEnabled
+        delete report.metrics
+      }
+      writeFileSync(filePath, `${JSON.stringify(file)}\n`, "utf8")
+
+      // Reopen: decodes cleanly (a quarantine would start empty).
+      const reopened = openFullAutoRunReportStore(filePath, harness.now)
+      const stored = reopened.get(started.run.runRef)
+      expect(stored).not.toBeNull()
+      expect(stored!.metricsEnabled).toBeUndefined()
+
+      // The next sync upgrades the row in place with the new sections.
+      const upgraded = reopened.sync({
+        run: harness.runRegistry.get(started.run.runRef)!,
+        turns: [],
+        handoffs: [],
+        metricsEnabled: true,
+      })
+      expect(upgraded.metricsEnabled).toBe(true)
+      expect(upgraded.metrics).toBeDefined()
     } finally {
       harness.dispose()
     }

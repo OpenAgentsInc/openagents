@@ -27,6 +27,10 @@ import {
   startFullAutoControlServer,
   type FullAutoControlServer,
 } from "./full-auto-control-server.ts"
+import {
+  controlOperations,
+  readControlConnection,
+} from "../scripts/full-auto-control-client.ts"
 
 // Hoisted so the (repeated) response-decode calls below never recompile the
 // same schema per call (root INVARIANTS.md: Effect Workspace Boundary).
@@ -77,7 +81,9 @@ type Harness = Readonly<{
   dispose: () => Promise<void>
 }>
 
-const startHarness = async (): Promise<Harness> => {
+const startHarness = async (
+  options?: Readonly<{ metricsEnabled?: () => boolean }>,
+): Promise<Harness> => {
   const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-report-control-"))
   const registry = openFullAutoRegistry(path.join(root, "registry.json"))
   const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
@@ -104,6 +110,7 @@ const startHarness = async (): Promise<Harness> => {
       },
       isLaneEligible: (laneRef) => laneRef === "codex-local",
       interruptLiveTurn: () => true,
+      ...(options?.metricsEnabled === undefined ? {} : { metricsEnabled: options.metricsEnabled }),
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
   })
@@ -329,6 +336,136 @@ describe("GET /v1/full-auto/runs/{runRef}/receipt (FA-RUN-04 #8972)", () => {
       expect(decoded.receipt.providerTransitionCount).toBe(1)
       expect(decoded.receipt.providerTransitionDispositions).toEqual(["complete_within_bounds"])
       expect(JSON.stringify(result.body)).not.toContain("SECRET_HANDOFF_REASON_never_in_receipt")
+    } finally {
+      await harness.dispose()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FA-RPT-01 (#8988): control-API surface for the report extensions --
+// default-on metrics through the route, thread failure history / stop
+// attribution sourced from the live registry, and the CLI/MCP shared thin
+// client returning the exact same report as a direct HTTP call.
+// ---------------------------------------------------------------------------
+
+describe("FA-RPT-01 report extensions over the control API (#8988)", () => {
+  test("metrics are ON by default through the route (no gate capability, no env override) and carry counters", async () => {
+    const harness = await startHarness()
+    try {
+      expect(process.env.OPENAGENTS_DESKTOP_FULL_AUTO_METRICS).toBeUndefined()
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      const threadRef = started.body.run.threadRef
+      harness.turns.push(makeTurn({
+        threadRef,
+        turnRef: "turn.full-auto.metrics-1",
+        updatedAt: new Date().toISOString(),
+        disposition: "completed",
+      }))
+      const result = await harness.request("GET", `/v1/full-auto/runs/${runRef}/report`)
+      expect(result.status).toBe(200)
+      const decoded = decodeReportResponse(result.body)
+      expect(decoded.report.metricsEnabled).toBe(true)
+      expect(decoded.report.metrics).toBeDefined()
+      expect(decoded.report.metrics!.turnsObserved).toBe(1)
+      expect(decoded.report.metrics!.turnsCompleted).toBe(1)
+      expect(decoded.report.metrics!.stopAttributed).toBe(false)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("an owner metrics disable (env-derived gate) yields metricsEnabled false and NO metrics row", async () => {
+    const harness = await startHarness({ metricsEnabled: () => false })
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      const result = await harness.request("GET", `/v1/full-auto/runs/${runRef}/report`)
+      expect(result.status).toBe(200)
+      const decoded = decodeReportResponse(result.body)
+      expect(decoded.report.metricsEnabled).toBe(false)
+      expect(decoded.report.metrics).toBeUndefined()
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("stop through the control API lands typed stop attribution + the thread record's disabledBy on the report", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      const stopped = await harness.request("POST", `/v1/full-auto/runs/${runRef}/stop`)
+      expect(stopped.status).toBe(200)
+      const result = await harness.request("GET", `/v1/full-auto/runs/${runRef}/report`)
+      const decoded = decodeReportResponse(result.body)
+      expect(decoded.report.state).toBe("stopped")
+      expect(decoded.report.stopAttribution).toBe("control_api")
+      expect(decoded.report.threadFailureHistory).toBeDefined()
+      expect(decoded.report.threadFailureHistory!.disabledBy).toBe("control_api")
+      expect(decoded.report.metrics!.stopAttributed).toBe(true)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("claimed commit-SHA evidence from the journal reaches the report over HTTP without any surrounding transcript text", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+      const threadRef = started.body.run.threadRef
+      const sha = "0123456789abcdef0123456789abcdef01234567"
+      harness.turns.push({
+        ...makeTurn({
+          threadRef,
+          turnRef: "turn.full-auto.evidence",
+          updatedAt: new Date().toISOString(),
+          disposition: "completed",
+        }),
+        assistantText: `SECRET_RAW_TRANSCRIPT_MUST_NEVER_APPEAR_IN_ANY_RESPONSE committed ${sha}`,
+      })
+      const result = await harness.request("GET", `/v1/full-auto/runs/${runRef}/report`)
+      const decoded = decodeReportResponse(result.body)
+      expect(decoded.report.verifiedRefs).toEqual([
+        { ref: sha, kind: "commit", verification: "claimed", turnRef: "turn.full-auto.evidence" },
+      ])
+      expect(JSON.stringify(result.body)).not.toContain("SECRET_RAW_TRANSCRIPT")
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("acceptance 2: the CLI/MCP shared thin client returns the exact same report and receipt as a direct control-API call", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      const runRef = started.body.run.runRef
+
+      // The exact discovery + call path scripts/full-auto-cli.ts (`report`/
+      // `receipt`) and scripts/full-auto-mcp.ts (full_auto_run_report/
+      // full_auto_run_receipt) use: read the mode-0600 connection file, then
+      // pass through.
+      const operations = controlOperations(readControlConnection(harness.root))
+      const cliReport = await operations.runReport(runRef)
+      expect(cliReport.status).toBe(200)
+      const direct = await harness.request("GET", `/v1/full-auto/runs/${runRef}/report`)
+      const cliDecoded = decodeReportResponse(cliReport.body)
+      const directDecoded = decodeReportResponse(direct.body)
+      // Same report identity/content up to the monotonically increasing
+      // sync revision (each GET re-syncs by design).
+      expect(cliDecoded.report.runRef).toBe(directDecoded.report.runRef)
+      expect(cliDecoded.report.objectiveDigest).toBe(directDecoded.report.objectiveDigest)
+      expect(cliDecoded.report.state).toBe(directDecoded.report.state)
+      expect(cliDecoded.report.metricsEnabled).toBe(directDecoded.report.metricsEnabled)
+      expect(cliDecoded.report.turns).toEqual(directDecoded.report.turns)
+      expect(cliDecoded.report.verifiedRefs).toEqual(directDecoded.report.verifiedRefs)
+
+      const cliReceipt = await operations.runReceipt(runRef)
+      expect(cliReceipt.status).toBe(200)
+      const receiptDecoded = decodeReceiptResponse(cliReceipt.body)
+      expect(receiptDecoded.receipt.runRef).toBe(runRef)
     } finally {
       await harness.dispose()
     }

@@ -151,6 +151,24 @@ const TOOLS = [
     description: "Stop a run. Terminal; legal from any non-terminal state; a stopped run is never resumed.",
     inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
   },
+  // FA-RUN-04 (#8972) / FA-RPT-01 (#8988): the run report/receipt surface.
+  {
+    name: "full_auto_run_report",
+    description:
+      "One run's bounded PRIVATE FullAutoRunReport, freshly synced on read: lifecycle transitions, " +
+      "liveness gaps, provider handoffs, per-turn dispositions with lane/account identity, typed " +
+      "thread failure history with disabledBy attribution, rotation history when present, typed " +
+      "stop attribution, claimed commit-SHA evidence refs, and local-only default-on metrics " +
+      "counters. Never raw transcript text.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
+  {
+    name: "full_auto_run_receipt",
+    description:
+      "One run's derived PUBLIC-SAFE FullAutoRunReceipt: identities, digests, dispositions, and " +
+      "counts only -- structurally incapable of carrying objective/reason/path/transcript text.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
+  },
 ] as const
 
 type JsonRpcRequest = Readonly<{
@@ -222,6 +240,10 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
     ? await operations.runResume(runRef)
     : name === "full_auto_run_stop"
     ? await operations.runStop(runRef)
+    : name === "full_auto_run_report"
+    ? await operations.runReport(runRef)
+    : name === "full_auto_run_receipt"
+    ? await operations.runReceipt(runRef)
     : null
   if (result === null) {
     return { content: [{ type: "text", text: `unknown tool: ${name}` }], isError: true }

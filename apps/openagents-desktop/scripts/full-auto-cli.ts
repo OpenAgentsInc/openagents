@@ -19,6 +19,11 @@
  *   node --import tsx scripts/full-auto-cli.ts run-pause <runRef>
  *   node --import tsx scripts/full-auto-cli.ts run-resume <runRef>
  *   node --import tsx scripts/full-auto-cli.ts run-stop <runRef>
+ *
+ * FA-RPT-01 (#8988) run report/receipt pass-throughs (aliases: run-report,
+ * run-receipt):
+ *   node --import tsx scripts/full-auto-cli.ts report <runRef>
+ *   node --import tsx scripts/full-auto-cli.ts receipt <runRef>
  * Options: --user-data <path> (or OPENAGENTS_DESKTOP_USER_DATA) when Desktop
  * runs against a non-default userData directory.
  */
@@ -45,7 +50,9 @@ commands:
   run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>]
   run-pause <runRef>
   run-resume <runRef>
-  run-stop <runRef>`
+  run-stop <runRef>
+  report <runRef>
+  receipt <runRef>`
 
 const main = async (): Promise<void> => {
   const argv = [...process.argv.slice(2)]
@@ -140,6 +147,10 @@ const main = async (): Promise<void> => {
     ? await operations.runResume(requireRunRef())
     : command === "run-stop"
     ? await operations.runStop(requireRunRef())
+    : command === "report" || command === "run-report"
+    ? await operations.runReport(requireRunRef())
+    : command === "receipt" || command === "run-receipt"
+    ? await operations.runReceipt(requireRunRef())
     : null
 
   if (result === null) {

@@ -10,15 +10,22 @@ import {
 } from "node:fs"
 import path from "node:path"
 
-import { Schema } from "effect"
+import { Exit, Schema } from "effect"
 
-import { FullAutoProfileSchema } from "./full-auto-registry.ts"
+import {
+  FullAutoDisabledBySchema,
+  FullAutoProfileSchema,
+  type FullAutoRecord,
+} from "./full-auto-registry.ts"
+import { FULL_AUTO_MAX_CONSECUTIVE_FAILURES } from "./full-auto-reconcile.ts"
 import {
   isFullAutoRunActive,
   isFullAutoRunTerminal,
+  FullAutoRunActorSchema,
   FullAutoRunStateSchema,
   FullAutoRunTransitionRecordSchema,
   type FullAutoRun,
+  type FullAutoRunActor,
   type FullAutoRunState,
 } from "./full-auto-run-registry.ts"
 import {
@@ -82,7 +89,14 @@ import {
  * `stallCause`/`recoveryAction` control-API fields already are, with no new
  * inference.
  *
- * Fields the repository has no independent source for yet (verified
+ * FA-RPT-01 (#8988) extends the report with the thread record's typed
+ * failure history and optional rotation passthrough (via the sync input's
+ * `threadRecord`), typed terminal stop attribution, CLAIMED commit-SHA
+ * evidence extracted from the turn journal, and default-on local-only
+ * metrics counters. Every added field is optional so previously persisted
+ * report files still decode.
+ *
+ * Fields the repository has no independent source for yet (VERIFIED
  * commit/artifact refs, objective/done-condition progress, token/cost usage)
  * are modeled as explicit, honestly-empty/`unknown` typed placeholders per
  * the issue's evidence rules ("missing evidence is explicit, not
@@ -108,6 +122,28 @@ export const FULL_AUTO_RUN_REPORT_LIVENESS_OBSERVATION_LIMIT = 400
  * at most one of either, so this comfortably exceeds any realistic count). */
 export const FULL_AUTO_RUN_REPORT_SPAN_LIMIT = 400
 export const FULL_AUTO_RUN_REPORT_VERIFIED_REF_LIMIT = 200
+/** FA-RPT-01 (#8988): bound on the rotation-history passthrough section. */
+export const FULL_AUTO_RUN_REPORT_ROTATION_LIMIT = 50
+export const FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT = 300
+
+/**
+ * FA-RPT-01 (#8988) metrics default flip: local-only, public-safe Full Auto
+ * metrics counters are ON by default and disabled only by an explicit owner
+ * env override. This is deliberately NOT the #8911 outbound token-usage
+ * telemetry path -- that consent gate (default-off, in-app opt-in,
+ * owner-approved copy; see desktop-codex-usage-reporter.ts) is a privacy
+ * boundary this flag never touches. Nothing gated here leaves the machine:
+ * the metrics are counters embedded in this locally-stored, locally-served
+ * report.
+ */
+export const FULL_AUTO_METRICS_ENV_FLAG = "OPENAGENTS_DESKTOP_FULL_AUTO_METRICS" as const
+const METRICS_DISABLED_VALUES = new Set(["0", "false", "off"])
+export const isFullAutoMetricsEnabled = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean => {
+  const value = env[FULL_AUTO_METRICS_ENV_FLAG]?.trim().toLowerCase()
+  return value === undefined || value === "" || !METRICS_DISABLED_VALUES.has(value)
+}
 
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
 const LaneRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))
@@ -288,12 +324,14 @@ export const deriveFullAutoRunLivenessSpans = (
 // -----------------------------------------------------------------------
 
 /** "A Git ref is recorded only after resolving it against the expected
- * repository/workspace; mismatch is explicit." This module does not yet
- * perform that independent resolution (no Git integration in this pass), so
- * `verification` here is always `claimed` when populated by a future
- * caller, never `verified` -- `verified` is reserved for a caller that has
- * actually checked. The array itself is always empty in this v1 aggregator
- * see the module header note on FA transcript-analysis #8973. */
+ * repository/workspace; mismatch is explicit." This module does not perform
+ * that independent resolution (no Git integration), so every ref it records
+ * is `claimed`, never `verified` -- `verified` stays reserved for a caller
+ * that has actually checked. Since FA-RPT-01 (#8988) the sync pass populates
+ * the array itself: full 40-hex commit SHAs observed in the turn journal's
+ * assistant text (structurally hex-only -- a 40-char lowercase hex match can
+ * never carry prose), deduplicated, attributed to the turn they appeared in,
+ * and bounded. Deeper verification remains FA transcript-analysis #8973. */
 export const FullAutoRunReportVerifiedRefKindSchema = Schema.Literals([
   "commit",
   "artifact",
@@ -325,6 +363,68 @@ const UNKNOWN_USAGE: FullAutoRunReportUsage = {
   costUsdKnown: false,
   costUsd: null,
 }
+
+// -----------------------------------------------------------------------
+// FA-RPT-01 (#8988) sections: thread-record failure history, rotation
+// passthrough, terminal stop attribution, and local-only metrics counters.
+// All OPTIONAL on the report schema so every previously persisted report
+// file still decodes (the FA-H10-style quarantine path must never eat a
+// user's report history because of this upgrade).
+// -----------------------------------------------------------------------
+
+/** Typed failure history from the bound thread's own durable record (FA-H5
+ * counters, #8928 disable attribution). `blockedReason` is the record's
+ * bounded typed-ish reason string -- the same trust tier as the report's
+ * existing `terminalReason`/`workspaceRef` (this report is PRIVATE; the
+ * public-safe receipt never carries it). */
+export const FullAutoRunReportThreadFailureHistorySchema = Schema.Struct({
+  consecutiveFailures: Count,
+  failureLimit: Count,
+  lastFailureAt: Schema.NullOr(Schema.String),
+  blockedReason: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+  disabledBy: Schema.NullOr(FullAutoDisabledBySchema),
+  disabledAt: Schema.NullOr(Schema.String),
+})
+export type FullAutoRunReportThreadFailureHistory =
+  typeof FullAutoRunReportThreadFailureHistorySchema.Type
+
+/** Rotation passthrough (#8988): `rotationHistory` is an OPTIONAL additive
+ * field a sibling change may add to the thread registry record ({ fromLane,
+ * toLane, reason, at }). Entries are re-validated and bounded here; a record
+ * without the field (every current row) simply produces no section. */
+export const FullAutoRunReportRotationSchema = Schema.Struct({
+  fromLane: LaneRef,
+  toLane: LaneRef,
+  reason: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT),
+  ),
+  at: Schema.String,
+})
+export type FullAutoRunReportRotation = typeof FullAutoRunReportRotationSchema.Type
+const decodeRotationExit = Schema.decodeUnknownExit(FullAutoRunReportRotationSchema)
+
+/** Local-only, public-safe counters (#8988; roadmap FA-E4.2 "repo-grounded
+ * first actions, consecutive turns, stop reliability"). Pure counts and
+ * booleans -- structurally incapable of carrying free text; nothing
+ * outbound. Recomputed from the report's own merged state on every sync so
+ * the counters stay consistent across restart. */
+export const FullAutoRunReportMetricsSchema = Schema.Struct({
+  turnsObserved: Count,
+  turnsCompleted: Count,
+  turnsFailed: Count,
+  turnsInterrupted: Count,
+  /** Longest run of consecutive `completed` dispositions, in turn order. */
+  longestCompletedStreak: Count,
+  continuationsDispatched: Count,
+  dispatchFailures: Count,
+  /** Turns whose journal row carried at least one commit-SHA evidence ref. */
+  repoGroundedTurns: Count,
+  evidenceRefCount: Count,
+  /** Stop reliability: a terminal run always names its stopper. */
+  stopAttributed: Schema.Boolean,
+})
+export type FullAutoRunReportMetrics = typeof FullAutoRunReportMetricsSchema.Type
 
 // -----------------------------------------------------------------------
 // The private report itself.
@@ -368,6 +468,25 @@ export const FullAutoRunReportSchema = Schema.Struct({
   verifiedRefs: Schema.Array(FullAutoRunReportVerifiedRefSchema).check(
     Schema.isMaxLength(FULL_AUTO_RUN_REPORT_VERIFIED_REF_LIMIT),
   ),
+  /** FA-RPT-01 (#8988): thread-record failure history; absent when no
+   * thread record has ever been observed for this run. */
+  threadFailureHistory: Schema.optional(FullAutoRunReportThreadFailureHistorySchema),
+  /** FA-RPT-01 (#8988): rotation passthrough; absent while the registry
+   * record carries none (every current row). */
+  rotationHistory: Schema.optional(
+    Schema.Array(FullAutoRunReportRotationSchema).check(
+      Schema.isMaxLength(FULL_AUTO_RUN_REPORT_ROTATION_LIMIT),
+    ),
+  ),
+  /** FA-RPT-01 (#8988): typed stop attribution -- the actor of the
+   * transition that made the run terminal. Present exactly when the run is
+   * terminal and its own transition history names that edge. */
+  stopAttribution: Schema.optional(FullAutoRunActorSchema),
+  /** FA-RPT-01 (#8988): the local-only metrics gate state at last sync.
+   * `metrics` is present exactly when this is true -- a disabled gate is an
+   * honest absence, never a fabricated zero row. Absent on pre-#8988 rows. */
+  metricsEnabled: Schema.optional(Schema.Boolean),
+  metrics: Schema.optional(FullAutoRunReportMetricsSchema),
   /** Always `"unknown"` in this v1 aggregator -- no done-condition evaluator
    * exists yet. A typed, honest placeholder rather than an omitted field. */
   progressDisposition: Schema.Literal("unknown"),
@@ -560,6 +679,15 @@ export type FullAutoRunReportSyncInput = Readonly<{
    * liveness classifier in scope (e.g. a pure migration/backfill path)
    * omitting it never regresses previously recorded observations. */
   livenessProjection?: FullAutoLivenessProjection
+  /** FA-RPT-01 (#8988): fresh read of the bound thread's registry record
+   * (or null when the record is missing / the run is unbound). Sources the
+   * typed failure history and the optional rotation passthrough. Omitting
+   * it never regresses previously captured sections. */
+  threadRecord?: (FullAutoRecord & Readonly<{ rotationHistory?: unknown }>) | null
+  /** FA-RPT-01 (#8988): the local-only metrics gate. Defaults to the env
+   * gate (`isFullAutoMetricsEnabled(process.env)`) -- ON unless the owner
+   * set the explicit disable override. */
+  metricsEnabled?: boolean
 }>
 
 export type FullAutoRunReportStore = Readonly<{
@@ -589,6 +717,157 @@ const mergeByKey = <T, K>(
   return [...byKey.values()]
     .toSorted((left, right) => updatedAtOf(left).localeCompare(updatedAtOf(right)))
     .slice(-limit)
+}
+
+// -----------------------------------------------------------------------
+// FA-RPT-01 (#8988) derivation helpers -- all pure.
+// -----------------------------------------------------------------------
+
+/** Full 40-char lowercase hex only: shorter fragments are too collision- and
+ * prose-adjacent to count as commit evidence. */
+const COMMIT_SHA_PATTERN = /\b[0-9a-f]{40}\b/g
+
+/** Extracts claimed commit-SHA evidence from fresh journal rows -- the only
+ * place assistant text is ever read, and the output is structurally hex-only
+ * plus the turn's own ref. Never marks anything `verified` (no Git
+ * resolution happens here). */
+const extractClaimedCommitRefs = (
+  turns: ReadonlyArray<LocalTurnRecord>,
+): ReadonlyArray<FullAutoRunReportVerifiedRef> => {
+  const seen = new Set<string>()
+  const refs: Array<FullAutoRunReportVerifiedRef> = []
+  for (const turn of turns) {
+    for (const match of turn.assistantText.matchAll(COMMIT_SHA_PATTERN)) {
+      const sha = match[0]
+      if (seen.has(sha)) continue
+      seen.add(sha)
+      refs.push({ ref: sha, kind: "commit", verification: "claimed", turnRef: turn.turnRef })
+    }
+  }
+  return refs
+}
+
+/** Union keyed by kind+ref, existing first (earliest attribution wins),
+ * bounded -- the same never-drop-a-captured-fact merge discipline as turns
+ * and handoffs. */
+const mergeVerifiedRefs = (
+  existing: ReadonlyArray<FullAutoRunReportVerifiedRef>,
+  incoming: ReadonlyArray<FullAutoRunReportVerifiedRef>,
+): ReadonlyArray<FullAutoRunReportVerifiedRef> => {
+  const byKey = new Map<string, FullAutoRunReportVerifiedRef>()
+  for (const ref of [...existing, ...incoming]) {
+    const key = `${ref.kind}:${ref.ref}`
+    if (!byKey.has(key)) byKey.set(key, ref)
+  }
+  return [...byKey.values()].slice(0, FULL_AUTO_RUN_REPORT_VERIFIED_REF_LIMIT)
+}
+
+/** Per-entry re-validation of a (future, optional) registry-record rotation
+ * history: reasons are truncated to the bound, invalid entries are skipped
+ * -- never guessed into shape -- and the section is absent when nothing
+ * valid remains. */
+const decodeRotationHistory = (
+  value: unknown,
+): ReadonlyArray<FullAutoRunReportRotation> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const entries: Array<FullAutoRunReportRotation> = []
+  for (const entry of value) {
+    const truncated =
+      typeof entry === "object" && entry !== null &&
+      typeof (entry as { reason?: unknown }).reason === "string"
+        ? {
+            ...(entry as Record<string, unknown>),
+            reason: (entry as { reason: string }).reason.slice(
+              0,
+              FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT,
+            ),
+          }
+        : entry
+    const decoded = decodeRotationExit(truncated)
+    if (Exit.isSuccess(decoded)) entries.push(decoded.value)
+    if (entries.length >= FULL_AUTO_RUN_REPORT_ROTATION_LIMIT) break
+  }
+  return entries.length === 0 ? undefined : entries
+}
+
+const deriveThreadFailureHistory = (
+  run: FullAutoRun,
+  threadRecord: FullAutoRecord | null | undefined,
+): FullAutoRunReportThreadFailureHistory | undefined => {
+  if (threadRecord !== null && threadRecord !== undefined) {
+    return {
+      consecutiveFailures: threadRecord.consecutiveFailures ?? 0,
+      failureLimit: FULL_AUTO_MAX_CONSECUTIVE_FAILURES,
+      lastFailureAt: threadRecord.lastFailureAt ?? null,
+      blockedReason: threadRecord.blockedReason ?? null,
+      disabledBy: threadRecord.disabledBy ?? null,
+      disabledAt: threadRecord.disabledAt ?? null,
+    }
+  }
+  // No fresh thread record in this sync: fall back to the run's own mirrored
+  // failure fields when it carries any, else report nothing (the caller's
+  // stored section, if one exists, is preserved by sync).
+  if (run.consecutiveFailures === undefined && run.lastFailureAt === undefined) return undefined
+  return {
+    consecutiveFailures: run.consecutiveFailures ?? 0,
+    failureLimit: FULL_AUTO_MAX_CONSECUTIVE_FAILURES,
+    lastFailureAt: run.lastFailureAt ?? null,
+    blockedReason: null,
+    disabledBy: null,
+    disabledAt: null,
+  }
+}
+
+/** The actor of the transition that made the run terminal -- typed stop
+ * attribution (#8988). Undefined for a non-terminal run, and for a terminal
+ * run whose history somehow lacks the edge (honest absence, never guessed). */
+const deriveStopAttribution = (run: FullAutoRun): FullAutoRunActor | undefined =>
+  isFullAutoRunTerminal(run.state)
+    ? run.transitions.findLast((transition) => transition.to === run.state)?.actor
+    : undefined
+
+const deriveReportMetrics = (input: Readonly<{
+  run: FullAutoRun
+  turns: ReadonlyArray<FullAutoRunReportTurnEntry>
+  verifiedRefs: ReadonlyArray<FullAutoRunReportVerifiedRef>
+  stopAttribution: FullAutoRunActor | undefined
+}>): FullAutoRunReportMetrics => {
+  const ordered = input.turns.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt))
+  let completed = 0
+  let failed = 0
+  let interrupted = 0
+  let longestCompletedStreak = 0
+  let streak = 0
+  for (const turn of ordered) {
+    if (turn.disposition === "completed") {
+      completed += 1
+      streak += 1
+      longestCompletedStreak = Math.max(longestCompletedStreak, streak)
+      continue
+    }
+    if (turn.disposition !== null) streak = 0
+    if (turn.disposition === "failed") failed += 1
+    if (turn.disposition === "owner_interrupted" || turn.disposition === "interrupted_by_restart") {
+      interrupted += 1
+    }
+  }
+  const repoGroundedTurns = new Set(
+    input.verifiedRefs
+      .filter((ref) => ref.kind === "commit" && ref.turnRef !== undefined)
+      .map((ref) => ref.turnRef),
+  ).size
+  return {
+    turnsObserved: ordered.length,
+    turnsCompleted: completed,
+    turnsFailed: failed,
+    turnsInterrupted: interrupted,
+    longestCompletedStreak,
+    continuationsDispatched: input.run.successfulAttempts,
+    dispatchFailures: input.run.failedAttempts,
+    repoGroundedTurns,
+    evidenceRefCount: input.verifiedRefs.length,
+    stopAttributed: input.stopAttribution !== undefined,
+  }
 }
 
 export const openFullAutoRunReportStore = (
@@ -671,6 +950,19 @@ export const openFullAutoRunReportStore = (
         transition.actor === "mcp",
     )
 
+    // FA-RPT-01 (#8988): claimed commit evidence, thread failure history,
+    // rotation passthrough, stop attribution, and the metrics counters.
+    const verifiedRefs = mergeVerifiedRefs(
+      existing?.verifiedRefs ?? [],
+      extractClaimedCommitRefs(input.turns),
+    )
+    const threadFailureHistory =
+      deriveThreadFailureHistory(run, input.threadRecord) ?? existing?.threadFailureHistory
+    const rotationHistory =
+      decodeRotationHistory(input.threadRecord?.rotationHistory) ?? existing?.rotationHistory
+    const stopAttribution = deriveStopAttribution(run)
+    const metricsEnabled = input.metricsEnabled ?? isFullAutoMetricsEnabled(process.env)
+
     const next: FullAutoRunReport = decodeFullAutoRunReport({
       schema: FULL_AUTO_RUN_REPORT_SCHEMA,
       runRef: run.runRef,
@@ -698,7 +990,21 @@ export const openFullAutoRunReportStore = (
       livenessGaps: spans.gaps,
       uninterruptedIntervals: spans.intervals,
       turns: mergedTurns,
-      verifiedRefs: existing?.verifiedRefs ?? [],
+      verifiedRefs,
+      ...(threadFailureHistory === undefined ? {} : { threadFailureHistory }),
+      ...(rotationHistory === undefined ? {} : { rotationHistory }),
+      ...(stopAttribution === undefined ? {} : { stopAttribution }),
+      metricsEnabled,
+      ...(metricsEnabled
+        ? {
+            metrics: deriveReportMetrics({
+              run,
+              turns: mergedTurns,
+              verifiedRefs,
+              stopAttribution,
+            }),
+          }
+        : {}),
       progressDisposition: "unknown",
       usage: existing?.usage ?? UNKNOWN_USAGE,
       rawEvidenceRef: run.threadRef === undefined ? null : `thread:${run.threadRef}`,

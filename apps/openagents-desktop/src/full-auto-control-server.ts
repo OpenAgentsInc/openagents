@@ -46,7 +46,11 @@ import {
   providerHandoffDispositionForEnvelope,
   type ProviderHandoffRegistry,
 } from "./full-auto-provider-handoff.ts"
-import { deriveFullAutoRunReceipt, type FullAutoRunReportStore } from "./full-auto-run-report.ts"
+import {
+  deriveFullAutoRunReceipt,
+  isFullAutoMetricsEnabled,
+  type FullAutoRunReportStore,
+} from "./full-auto-run-report.ts"
 
 /**
  * FA-H13 (#8886): the Phase 1 local Full Auto control server. A plain
@@ -183,6 +187,13 @@ export type FullAutoControlCapabilities = Readonly<{
    * -- every run-touching route below syncs it so the report and the derived
    * public-safe receipt are never more than one settle pass stale. */
   reportStore: FullAutoRunReportStore
+  /** FA-RPT-01 (#8988): the local-only report-metrics gate. ON by default;
+   * absent means the env gate (`isFullAutoMetricsEnabled(process.env)` --
+   * disabled only by the explicit OPENAGENTS_DESKTOP_FULL_AUTO_METRICS=0
+   * owner override). Injectable so tests control the gate without touching
+   * the process environment. Unrelated to the #8911 outbound usage-telemetry
+   * consent, which stays default-off. */
+  metricsEnabled?: () => boolean
 }>
 
 export type StartFullAutoControlServerInput = Readonly<{
@@ -309,7 +320,19 @@ const settleAndSyncReport = (
   const settled = settleRun(capabilities, run, now)
   const turns = settled.run.threadRef === undefined ? [] : capabilities.listTurns(settled.run.threadRef)
   const handoffs = capabilities.providerHandoffRegistry?.list({ runRef: settled.run.runRef }) ?? []
-  capabilities.reportStore.sync({ run: settled.run, turns, handoffs, livenessProjection: settled.projection })
+  capabilities.reportStore.sync({
+    run: settled.run,
+    turns,
+    handoffs,
+    livenessProjection: settled.projection,
+    // FA-RPT-01 (#8988): a fresh thread-record read sources the typed
+    // failure history / rotation passthrough, and the local-only metrics
+    // gate rides along (default ON via the env gate).
+    threadRecord: settled.run.threadRef === undefined
+      ? null
+      : capabilities.registry.record(settled.run.threadRef),
+    metricsEnabled: capabilities.metricsEnabled?.() ?? isFullAutoMetricsEnabled(process.env),
+  })
   return settled
 }
 
