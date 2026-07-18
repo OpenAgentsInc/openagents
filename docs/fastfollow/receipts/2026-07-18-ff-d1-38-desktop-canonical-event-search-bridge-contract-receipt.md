@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "341164e633bcfeb0098c16e80ad7effbae948fc6"
 claim_revision: "73035dd3f885703999eeeb8425edcedc12b35fdc"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "4f62498da69376ca7eb372fc7c455cc7347c73d1"
 proof_rung: "desktop_canonical_event_search_bridge_contract"
 observed_at: "2026-07-18T01:57:56Z"
 ---
@@ -83,5 +83,6 @@ pixels, backfill historical sessions, produce supersession/reversion facts,
 authorize named groups, or prove an installed runtime journey. Those residuals,
 owner acceptance, and Day 1 completion remain unclaimed.
 
-The exact tested implementation tree will replace `pending_remote_landing`
-when it lands on `origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`4f62498da69376ca7eb372fc7c455cc7347c73d1` before this documentation-only
+claim release.

@@ -3066,6 +3066,15 @@ later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-38-desktop-canonical-event-search-bridge-contract-receipt.md`
 - residual: historical-session backfill, preload and main-process registration, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `73035dd3f885703999eeeb8425edcedc12b35fdc`
+- implementation_revision: `4f62498da69376ca7eb372fc7c455cc7347c73d1`
+- status: released; FF-D1-38 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-38-desktop-canonical-event-search-bridge-contract-receipt.md`
+- released_at: `2026-07-18T02:00:36Z`
+- residual: historical-session backfill, preload and main-process registration, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
