@@ -437,6 +437,40 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(await host.laneForThread?.(localThread.id)).toBe("codex-local")
   })
 
+  test("preserves local rename authority through the converging facade", async () => {
+    const localThread: DesktopThread = {
+      id: "thread.local.rename",
+      title: "Before",
+      updatedAt: now,
+      notes: [],
+    }
+    const renamed: Array<Readonly<{ threadRef: string; title: string }>> = []
+    const local: ChatHost = {
+      listThreads: async () => [localThread],
+      newThread: async () => localThread,
+      openThread: async id => id === localThread.id ? localThread : null,
+      renameThread: async input => {
+        renamed.push(input)
+        return { ok: true, thread: { ...localThread, title: input.title } }
+      },
+      sendMessage: async () => ({ ok: true, thread: localThread }),
+    }
+    const host = makeConvergingDesktopChatHost({
+      local,
+      request: async raw => ({
+        kind: "conversation_catalog",
+        requestId: (raw as { requestId: string }).requestId,
+        status,
+        threads: [],
+      }),
+    })
+
+    await host.listThreads()
+    expect(await host.renameThread?.({ threadRef: localThread.id, title: "After" }))
+      .toEqual({ ok: true, thread: { ...localThread, title: "After" } })
+    expect(renamed).toEqual([{ threadRef: localThread.id, title: "After" }])
+  })
+
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {
     const threads = new Map<string, { title: string; messages: Array<{ ref: string; body: string }> }>([
       ["thread.synced.1", { title: "Synced", messages: [{ ref: "message.synced.1", body: "Confirmed" }] }],

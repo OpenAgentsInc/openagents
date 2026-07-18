@@ -855,6 +855,20 @@ export const makeConvergingDesktopChatHost = (input: Readonly<{
         return selected.host.laneForThread?.(threadRef) ?? null
       },
     }),
+    // The visible rename affordance is intentionally local-row-only. The
+    // converging facade used to omit this optional method, so boot supplied a
+    // fully capable local host but the shell reported "Renaming is
+    // unavailable." Forward it through the same pinned host authority as
+    // open/send; never reinterpret a local ref as a hosted mutation.
+    ...(input.local.renameThread === undefined ? {} : {
+      renameThread: async (renameInput: Readonly<{ threadRef: string; title: string }>) => {
+        const selected = await hostForThread(renameInput.threadRef)
+        return selected.host.renameThread?.(renameInput) ?? {
+          ok: false,
+          error: "Renaming is unavailable for this conversation.",
+        }
+      },
+    }),
     interruptActive: async () => active?.interruptActive?.() ?? false,
     interruptActiveControlIdentity: async threadRef =>
       active?.interruptActiveControlIdentity?.(threadRef) ?? null,
