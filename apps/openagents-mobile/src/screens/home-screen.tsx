@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { khalaTheme } from "@effect-native/tokens"
+import type { IntentReporter } from "@effect-native/core"
 
 import type { MobileCodingDirectory, MobileCodingTarget } from "../coding/mobile-coding-navigation"
 import type {
@@ -40,6 +41,10 @@ import type { MobileConversationSelection } from "../conversation/mobile-convers
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
+import {
+  enableMobileLayoutAnimation,
+  prepareMobileNativeIntentFeedback,
+} from "../effect-native/mobile-native-feedback"
 import { sendKhalaTurn } from "../khala/khala-client"
 import { mobileWorkspaceKeyboardCommand } from "./mobile-workspace-keyboard"
 import {
@@ -154,6 +159,11 @@ export const HomeScreen = ({
     // never tears down and rebuilds the whole Effect Native program.
     [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth],
   )
+  const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
+    prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)
+    return program.report(ref, runtimeValue)
+  }, [program, accessibility.reduceMotion])
+  useEffect(enableMobileLayoutAnimation, [])
   useEffect(() => {
     let active = true
     void AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
@@ -223,7 +233,7 @@ export const HomeScreen = ({
         <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1 }}>
           <EffectNativeHost
             viewStream={program.viewStream}
-            report={program.report}
+            report={report}
             theme={khalaTheme}
             platform={enPlatform}
             initialView={renderHomeView({ ...program.initialState, accessibility })}

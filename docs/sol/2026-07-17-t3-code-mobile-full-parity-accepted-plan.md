@@ -1452,3 +1452,51 @@ receipts remain `T3M-F2`.
   environment observation, physical iOS/Android journeys, packaged native
   modules, signed distribution, and owner acceptance remain `T3M-F2`
 - verified_at: `2026-07-18T00:46:02Z`
+
+## Active packet — T3M-F2
+
+Outcome: close the implementation and installed-simulator portion of the
+mobile parity program with a complete component census, adaptive-layout
+boundary, restrained motion/haptics, accessible native controls, and real iOS
+and Android release-mode journeys without manufacturing physical-device,
+signed-distribution, or owner-acceptance evidence.
+
+Required behavior: every named T3 mobile component is accounted for once with
+source evidence and an explicit complete/adapted disposition; compact and
+regular layout selection is deterministic; route motion honors Reduce Motion;
+haptics are bounded to a closed semantic intent set; native controls retain
+authored accessible names; and release-mode iOS/Android simulator builds must
+install and complete the transcript → settings → notifications journey.
+
+Close rule: implementation and installed-simulator evidence may close while
+the full-parity behavior contract remains pending. Full parity requires signed
+physical iOS/Android journeys, real VoiceOver/TalkBack traversal, and owner
+acceptance.
+
+### CLAIM
+
+- packet: `T3M-F2`
+- base: `f7da63e20a`
+- claimed_at: `2026-07-18T01:31:00Z`
+- scope: 43-row component census, compact/regular boundary, native motion and
+  haptics, iOS Liquid Glass accessible-name repair, release-mode iOS/Android
+  simulator builds and journeys, behavior contract, and Sol receipt
+- exclusions: release signing/upload, physical-device execution, live
+  VoiceOver/TalkBack acceptance, and owner sign-off
+
+### CLAIM-STATUS
+
+- implementation: all 43 named components have exact evidence; 41 are
+  complete and two are intentional OpenAgents adaptations; route-only layout
+  motion honors Reduce Motion; a closed haptic policy covers selection,
+  action, and warning semantics; and native glass controls expose authored
+  action names instead of SF Symbol names
+- installed proof: an iPhone 17 Pro / iOS 26.5 Release simulator build and an
+  Android API 35 Release APK both installed and passed the Khala → Settings →
+  Notifications Maestro journey
+- automated proof: 259 mobile tests, 22 RN renderer tests, and 36 behavior
+  contract tests passed; mobile and renderer TypeScript passed
+- receipt: `docs/sol/receipts/2026-07-17-t3m-f2-mobile-native-finish.md`
+- residual: signed physical iOS/Android compact and regular journeys, real
+  VoiceOver/TalkBack traversal, and owner acceptance; the full-parity contract
+  remains pending and this is not a full-parity release claim

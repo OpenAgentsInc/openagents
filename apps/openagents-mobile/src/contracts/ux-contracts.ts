@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.20",
+    version: "2026-07-17.21",
     contracts: [
       {
         contractId: "openagents_mobile.settings_connections_native_finish.v1",
@@ -750,17 +750,28 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         evidenceRefs: [
           "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
           "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md",
+          "docs/sol/receipts/2026-07-17-t3m-f2-mobile-native-finish.md",
           "reference:t3code@8b5469863ae1dd696e696de30240ec3da607962d",
-          "apps/openagents-mobile/tests/mobile-transcript-content.test.ts",
+          "apps/openagents-mobile/src/contracts/t3-mobile-component-census.ts",
+          "apps/openagents-mobile/tests/t3-mobile-component-census.test.ts",
+          "apps/openagents-mobile/tests/mobile-native-feedback.test.ts",
         ],
         oracles: [
           {
-            id: "mobile_t3_parity_transcript_a1",
+            id: "mobile_t3_parity_component_census",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-mobile/tests/mobile-transcript-content.test.ts",
+            ref: "apps/openagents-mobile/tests/t3-mobile-component-census.test.ts",
             description:
-              "First enforced rung: bounded rich assistant Markdown, fenced code, safe links, and native clipboard actions without changing transcript authority.",
+              "Accounts for every named mobile component exactly once, ties each row to implementation evidence, covers the full A1-F2 ledger, and freezes compact/regular layout boundaries.",
+          },
+          {
+            id: "mobile_t3_parity_native_feedback",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/mobile-native-feedback.test.ts",
+            description:
+              "Proves restrained haptic classes, no haptics for draft/terminal traffic, and reduced-motion-safe route-only layout transitions.",
           },
           {
             id: "mobile_t3_full_parity_physical_matrix",
@@ -768,11 +779,11 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
             mode: "e2e",
             ref: "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md#epic-f--connections-and-native-finish",
             description:
-              "Pending complete component census, compact/regular layouts, physical iOS/Android journeys, VoiceOver/TalkBack traversal, signed build evidence, and owner acceptance.",
+              "Pending physical iOS/Android compact and regular journeys, real VoiceOver/TalkBack traversal, signed distribution evidence, and owner acceptance.",
           },
         ],
         verification:
-          "T3M-A1 focused tests plus mobile typecheck and repository checks; full parity remains pending through T3M-F2.",
+          "The 43-row census, 259-test mobile sweep, renderer accessibility tests, mobile/RN typechecks, and installed iOS 26.5 plus Android API 35 release-mode simulator journeys are green. Full parity remains pending only on physical VoiceOver/TalkBack, signed distribution, and owner acceptance.",
       },
       {
         contractId: "openagents_mobile.seam.identity.local_first_account_link.v1",

@@ -9,6 +9,12 @@
       "disposition": "retain-active-authority",
       "dispatch": false
     },
+    "docs/sol/receipts/2026-07-17-t3m-f2-mobile-native-finish.md": {
+      "class": "receipt",
+      "owner": "Sol T3 Code mobile parity",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
     "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md": {
       "class": "authority",
       "owner": "Sol Fast Follow expansion",

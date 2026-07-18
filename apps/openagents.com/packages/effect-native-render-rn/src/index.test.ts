@@ -4,6 +4,7 @@ import {
   ComponentValueBinding,
   Composer,
   DiffView,
+  IconButton,
   Image,
   IntentRef,
   Markdown,
@@ -42,6 +43,54 @@ const createElement = (
       ? {}
       : { children: children.length === 1 ? children[0] : children })
   }
+})
+
+test("passes the authored accessible name into the iOS glass IconButton", () => {
+  const expoUi: ExpoUiSwiftUiRuntime = {
+    Host: "SwiftHost", HStack: "SwiftHStack", VStack: "SwiftVStack", Button: "SwiftButton",
+    Image: "SwiftImage", Text: "SwiftText", Spacer: "SwiftSpacer", TextField: "SwiftTextField",
+    useNativeState: <Value>(value: Value) => ({ get: () => value, set: () => undefined }),
+    modifiers: {
+      glassEffect: value => ({ kind: "glass", value }),
+      foregroundStyle: value => ({ kind: "foreground", value }),
+      frame: value => ({ kind: "frame", value }),
+      accessibilityLabel: value => ({ kind: "accessibilityLabel", value }),
+      accessibilityHidden: value => ({ kind: "accessibilityHidden", value }),
+      labelStyle: value => ({ kind: "labelStyle", value }),
+    },
+  }
+  const rendered = renderReactNativeView(
+    IconButton({ key: "settings", icon: "Ellipsis", accessibilityLabel: "Open settings", surface: "glass", onPress: IntentRef("SettingsPressed") }),
+    { React: { createElement }, ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } } },
+    () => Effect.succeed(undefined),
+    { expoUi, platform: "ios" },
+  )
+  const host = rendered.props.children as ReactElementLike
+  const image = host.props.children as ReactElementLike
+  expect(rendered.type).toBe("Pressable")
+  expect(rendered.props.accessible).toBe(true)
+  expect(rendered.props.accessibilityLabel).toBe("Open settings")
+  expect(host.props.pointerEvents).toBe("none")
+  expect(host.props.accessibilityElementsHidden).toBe(true)
+  expect(image.props.systemName).toBe("ellipsis")
+  expect(image.props.modifiers).toContainEqual({ kind: "accessibilityHidden", value: true })
+
+  const grouped = renderReactNativeView(
+    Stack(
+      { key: "actions", direction: "row", style: { surface: "glass" } },
+      [IconButton({ key: "grouped-settings", icon: "Ellipsis", accessibilityLabel: "Open settings", onPress: IntentRef("SettingsPressed") })],
+    ),
+    { React: { createElement }, ReactNative: { ...reactNative, Platform: { OS: "ios", Version: 26 } } },
+    () => Effect.succeed(undefined),
+    { expoUi, platform: "ios" },
+  )
+  const groupedHost = grouped.props.children as ReactElementLike
+  const groupedStack = groupedHost.props.children as ReactElementLike
+  const groupedButton = groupedStack.props.children as ReactElementLike
+  expect(groupedButton.props.label).toBe("Open settings")
+  expect(groupedButton.props.systemImage).toBe("ellipsis")
+  expect(groupedButton.props.modifiers).toContainEqual({ kind: "accessibilityLabel", value: "Open settings" })
+  expect(groupedButton.props.modifiers).toContainEqual({ kind: "labelStyle", value: "iconOnly" })
 })
 
 const reactNative = {

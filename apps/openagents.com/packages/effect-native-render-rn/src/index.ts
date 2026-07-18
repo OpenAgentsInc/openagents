@@ -4826,6 +4826,9 @@ export interface ExpoUiSwiftUiRuntime {
     }) => unknown
     readonly foregroundStyle: (style: string) => unknown
     readonly frame: (params: Record<string, number | string>) => unknown
+    readonly accessibilityLabel?: (label: string) => unknown
+    readonly accessibilityHidden?: (hidden?: boolean) => unknown
+    readonly labelStyle?: (style: "automatic" | "iconOnly" | "titleAndIcon" | "titleOnly") => unknown
     readonly padding?: (params?: Record<string, number>) => unknown
     readonly disabled?: (disabled?: boolean) => unknown
     // Hit-testing shape (SwiftUI contentShape): without it only the visible
@@ -5069,20 +5072,33 @@ const renderExpoUiLeaf = (
         expoUi.Button,
         {
           key: child.key,
+          label: child.accessibilityLabel,
+          systemImage: sfSymbolForIcon[child.icon],
+          accessibilityLabel: child.accessibilityLabel,
           onPress: () => {
             if (child.disabled !== true) {
               runReportedIntent(report, child.onPress)
             }
           },
-          ...(child.disabled === true && expoUi.modifiers.disabled !== undefined
-            ? { modifiers: [expoUi.modifiers.disabled(true)] }
-            : {})
+          modifiers: [
+            ...(child.accessibilityLabel !== undefined && expoUi.modifiers.accessibilityLabel !== undefined
+              ? [expoUi.modifiers.accessibilityLabel(child.accessibilityLabel)]
+              : []),
+            ...(expoUi.modifiers.labelStyle !== undefined
+              ? [expoUi.modifiers.labelStyle("iconOnly")]
+              : []),
+            ...(child.disabled === true && expoUi.modifiers.disabled !== undefined
+              ? [expoUi.modifiers.disabled(true)]
+              : [])
+          ]
         },
-        createElement(dependencies, expoUi.Image, {
-          systemName: sfSymbolForIcon[child.icon],
-          size: 17,
-          color: colorValue(theme, "textPrimary")
-        })
+        ...(expoUi.modifiers.labelStyle === undefined
+          ? [createElement(dependencies, expoUi.Image, {
+              systemName: sfSymbolForIcon[child.icon],
+              size: 17,
+              color: colorValue(theme, "textPrimary")
+            })]
+          : [])
       )
     case "Button": {
       const flat = resolvedFlatStyle(child, options)
@@ -5183,30 +5199,44 @@ const renderExpoUiIconButton = (
   )
   return createElement(
     dependencies,
-    dependencies.ReactNative.View,
+    dependencies.ReactNative.Pressable,
     {
       ...baseProps(view, style),
       testID: `en-icon-button:${view.icon}`,
+      accessible: true,
       accessibilityRole: "button",
       accessibilityLabel: view.accessibilityLabel,
-      accessibilityState: { disabled: view.disabled === true }
+      accessibilityState: { disabled: view.disabled === true },
+      disabled: view.disabled === true,
+      onPress: () => {
+        if (view.disabled !== true) {
+          runReportedIntent(report, view.onPress)
+        }
+      }
     },
     createElement(
       dependencies,
       expoUi.Host,
-      { key: "host", style: { flex: 1 } },
+      {
+        key: "host",
+        accessible: false,
+        accessibilityElementsHidden: true,
+        importantForAccessibility: "no-hide-descendants",
+        pointerEvents: "none",
+        style: { flex: 1 }
+      },
       createElement(
         dependencies,
-        expoUi.Button,
+        expoUi.Image,
         {
-          key: "button",
-          onPress: () => {
-            if (view.disabled !== true) {
-              runReportedIntent(report, view.onPress)
-            }
-          },
+          systemName: sfSymbolForIcon[view.icon],
+          size: 17,
+          color: colorValue(theme, "textPrimary"),
           modifiers: [
             expoUi.modifiers.frame({ width: 44, height: 44 }),
+            ...(expoUi.modifiers.accessibilityHidden !== undefined
+              ? [expoUi.modifiers.accessibilityHidden(true)]
+              : []),
             expoUi.modifiers.glassEffect({
               glass: { variant: "regular", interactive: true },
               shape: "circle"
@@ -5215,12 +5245,7 @@ const renderExpoUiIconButton = (
               ? [expoUi.modifiers.disabled(true)]
               : [])
           ]
-        },
-        createElement(dependencies, expoUi.Image, {
-          systemName: sfSymbolForIcon[view.icon],
-          size: 17,
-          color: colorValue(theme, "textPrimary")
-        })
+        }
       )
     )
   )

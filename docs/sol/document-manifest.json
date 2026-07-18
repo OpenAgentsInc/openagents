@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "1120b4fa495ad9c19cccd6360051be31e6c971231b403ef2eb442c9be1483fa4",
+  "sourceTreeSha256": "9fdc33cc158793fb7e3c66e4f9dcfa234c0dd6fd31eed7ca3749ee9263302b30",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1974,7 +1974,7 @@
       "owner": "Sol T3 Code mobile parity",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "0ffe866f1527af24d788bf8d7a6a7e56752d1d8229e3a6ee4d062436f84a888b",
+      "sha256": "b9a5f2883735892049ba4057ebdcbf4d23b4d74cf42e772ce41fd935c4cbb701",
       "status": "active — full mobile parity",
       "snapshot": "`eb15ce99c54af497874a998192b1afbb2fa8268b`",
       "reviewedAt": "2026-07-12",
@@ -3488,6 +3488,21 @@
         8948,
         8949
       ]
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-17-t3m-f2-mobile-native-finish.md",
+      "class": "receipt",
+      "owner": "Sol T3 Code mobile parity",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "df08b8fcdec6358e651838d1503c79d57452bdca291a93db7d00470098b83814",
+      "status": "source and installed-simulator implementation complete; physical,",
+      "snapshot": "2026-07-17",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
     },
     {
       "path": "docs/sol/receipts/README.md",
