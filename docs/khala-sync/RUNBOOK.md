@@ -126,6 +126,17 @@ to find the drift, restore the exact landed file content (the ledger's
 `NNNN_*.sql` instead. Editing `khala_sync_migrations` by hand is a
 last-resort owner decision and must be recorded on an issue.
 
+**Incident (0071 ledger drift, reconciled 2026-07-18):** migration
+`0071_google_cloud_only_admission.sql` entered both staging and production
+ledgers before a second Google Cloud history-cleanup block was appended to the
+working copy. The appended block was then applied directly to both databases,
+but its bytes were never represented by a new ledger row. Session archaeology
+recovered the exact originally applied 0071 bytes and their recorded SHA-256;
+the checked-in 0071 file was restored to those bytes without editing either
+ledger. The already-applied, idempotent cleanup now lives in
+`0077_google_cloud_history_reconciliation.sql`, so the normal staging-then-prod
+runner records it honestly and future hash guards remain useful.
+
 **Incident (KS-6.4 migration-ledger audit, 2026-07-05): never-committed
 migration file `0036_drop_treasury_mpp_replay_tables.sql`.** A sibling
 KS-6.4 agent flagged that `check:pending-migrations` was refusing to run
