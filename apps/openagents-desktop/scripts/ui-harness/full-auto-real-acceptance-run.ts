@@ -360,7 +360,7 @@ const runInteractiveHandoff = async (input: Readonly<{
 }
 
 const openFullAutoLauncher = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: "Full Auto" }).click()
+  await page.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await page.waitForSelector('[data-en-key="full-auto-launcher-title-field"]', { timeout: 30_000 })
 }
 
@@ -487,7 +487,7 @@ const commonRunEvidence = (input: Readonly<{
 })
 
 const stopExistingStaleTestRun = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: "Full Auto" }).click()
+  await page.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await page.waitForFunction(() =>
     document.querySelector("[data-full-auto-run-ref]") !== null ||
     document.querySelector('[data-en-key="full-auto-launcher-title-field"]') !== null,
@@ -644,7 +644,7 @@ const executeSixRows = async (): Promise<void> => {
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: true })
   const relaunchedPage = desktop.page
   await relaunchedPage.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
-  await relaunchedPage.getByRole("button", { name: "Full Auto" }).click()
+  await relaunchedPage.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await relaunchedPage.locator(`[data-full-auto-run-ref="${run05.runRef}"]`)
     .waitFor({ state: "visible", timeout: 30_000 })
   if (desktop.userDataPath !== userDataPath) throw new Error("owner-profile restart changed userData identity")
@@ -687,7 +687,7 @@ const executeSixRows = async (): Promise<void> => {
     await relaunchedPage.getByRole("button", { name: "New session" }).click()
     await relaunchedPage.waitForTimeout(250)
   }
-  await relaunchedPage.getByRole("button", { name: "Full Auto" }).click()
+  await relaunchedPage.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await relaunchedPage.locator(`[data-full-auto-run-ref="${run06.runRef}"]`)
     .waitFor({ state: "visible", timeout: 30_000 })
   await waitForTerminal(relaunchedPage, 3)
