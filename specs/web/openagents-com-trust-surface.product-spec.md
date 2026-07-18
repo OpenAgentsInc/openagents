@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "openagents.com: Public Trust Surface and Remote Supervision Client"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -26,6 +26,7 @@ tool_metadata:
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with public promise, copy, settlement, and proof gates intact"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the Khala public API surface with self-serve keys and per-request routing disclosure (242, 243, 244); the live tokens-served counter law — realtime, strictly monotonic, converging exactly to the ledger sum, with internal dogfood demand distinguishable from external demand (243); the /stats page with per-day token history and model-family mix (244); agents.md as the standing agent front door and the Forum as the agent community surface (238, 244); the seller path — run a Pylon — and the live money loop rendered legibly (238, 247); refer-once-earn-forever referral attribution on homepage, landing pages, and sites, with the affiliate program and sell-in-public revenue graphs (239, 247); Observer at openagents.com/observer with shareable CONFIRMED/REFUTED QA run views, videos, and exact accounting (252); /trace/{uuid} as the reusable public evidence grammar and the proof-first project board direction (252-notes, 253-notes); trace visibility tiers with pay-for-privacy and free-tier data-policy candor (242, 243, 245); benchmark publications as receipts-not-vibes with cost-per-accepted-outcome and latency percentiles (243); pricing as a thin margin over BYO tokens plus premium bulk services (255); the Verse visualization direction (240, 241, 243)."
   openagents_revision_4_note: "Rev 4 binds Cursor web/cloud-agent and Remote Control parity: start and supervise background work, search history, review changes and artifacts, intervene, rerun, and hand back to Desktop across optional local, owner-managed, or managed placement, without making the browser or cloud the canonical runtime or transcript owner."
+  openagents_revision_5_note: "Rev 5 incorporates MemoHarness where web has legitimate authority: public verification and safe remote projection. Benchmark and comparison claims must bind provider, model, harness bundle, toolset, evaluator, environment, static/global/adapted class, and cache state. The trust ledger verifies harness release, adaptation, promotion, and rollback receipts; the data-flow matrix discloses experience capture, storage, retention, retrieval/training eligibility, deletion, and visibility. The browser may select only released compatible bundles/policies for remote launch and never receives raw bank contents, runs retrieval/optimization, mutates modules, promotes candidates, or gains execution authority."
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
 
@@ -86,10 +87,14 @@ in:
   - Carry refer-once-earn-forever attribution: referral codes linked into the homepage, landing pages, and generated sites; durable referral binding on signup; accrual display backed by receipted rows; and the affiliate program presented with sell-in-public candor, including public revenue graphs when the owner publishes them.
   - Publish usage and model truth as product: every billable call resolves to provider, model, and cost in a routing receipt; budgets are visible before spend and reconciled against exact usage rows after; no silent model substitution, ever.
   - Publish benchmark and comparison numbers as receipts, not vibes: latency percentiles (p50/p90/p99, never the mean), cost per accepted outcome, and verification rates, sourced only from decision-grade real-seam runs — fixture runs are illustrative and never published as measurements.
+  - Bind every benchmark, comparison, and adaptive-harness claim to the complete effective execution tuple: provider, model, `HarnessPolicyBundle` digest, toolset, evaluator, environment, static/global/adapted classification, experience-bank snapshot policy, and cold/warm adaptation-cache state. Results with different tuple members are separate measurements, never silently aggregated.
   - Host the public proof surfaces: Observer at its own route as the proof-design product page; shareable QA run views with honest CONFIRMED/REFUTED verdicts, videos, exact accounting, and a live board where nodes and edges light only when real receipts land; and the public trace view as the single reusable evidence grammar (agent, model, goal, verdict, cost, steps, stable anchors) rather than a second transcript viewer.
   - Grow the proof-first project board direction: public project pages generated from authority records (specs, packets, leases, verdicts, receipts) with generation timestamps and staleness, never manually editable and never an unreceipted percent-complete guess — the intended replacement class for issue-tracker coordination surfaces.
   - Publish a dereferenceable public trust ledger: release-set manifests and signing keys, the component compatibility ledger, receipt verification endpoints, and the product-promise registry, so third parties can verify artifacts and claims mechanically.
+  - Extend the trust ledger to verify public-safe MemoHarness lineage: released bundle/module digests, compatibility claims, adaptation receipt signatures/digests, candidate promotion and rollback receipts, held-out evaluation refs, and the independent Blueprint release decision. A receipt proves the declared lineage and decision, not the truth of private experience content.
   - Publish trace visibility and data-policy candor: visibility tiers with named audiences, the free-tier trains-models data policy stated plainly, pay-for-privacy and confidential-compute options disclosed, and a per-work-unit data-flow matrix stating local reads, uploads, provider destinations, storage, visibility, retention, and training as separate facts consistent with observed behavior.
+  - Make MemoHarness data use explicit in that matrix: whether a terminal run may compile an experience; where metadata and large evidence reside; which tenant/workspace/visibility/consent filters govern snapshot eligibility; whether an artifact is retrieval-eligible, training-eligible, or neither; retention; export; deletion/tombstone behavior; and whether any released aggregate pattern can cross workspace boundaries.
+  - Project safe MemoHarness state into remote supervision: base/effective bundle digests, dimension-policy refs, adaptation state and redacted receipt ref, frozen bank-snapshot ref, compatibility, release state, and effective execution tuple. Web launch may select only released compatible bundles and admitted policies exposed by the target; the authoritative host performs retrieval, adaptation, and authority checks.
   - Ship an onboarding gradient measured in seconds: a zero-install command front door that stands up a paired supervising session with the pairing token confined to the URL fragment, import lanes that meet users inside their existing tool histories, and UI-first pairing, device-linking, and fleet-account connection flows.
   - Present pricing with margin candor: a thin transparent margin over the user's own tokens and subscriptions, premium services (bulk FastFollow runs, privacy, confidential compute) priced explicitly, and no pricing claim the receipts cannot back.
   - Pursue the Verse visualization as the public spectacle layer: live network traffic rendered spatially (requests fanned to Pylons and models) as a projection of the same receipted state the counters show, once those counters and receipts exist.
@@ -103,6 +108,7 @@ out:
   - Bitcoin, Lightning, and Nostr are the only rails: never a token, no shitcoin acceptance, no custodial treasury for users beyond small-balance agent wallets with sweep-out guidance.
   - No lock-in: one-click complete data export is a standing capability, and once a public surface works for users or agents it keeps working (don't-break-userspace binds the web surface too).
   - Pays-you economics copy (plugin royalties, trace monetization, paid free-tier usage) renders only per the promise registry's recorded states; planned promises are presented as planned.
+  - No raw private experiences or patterns, prompts, transcript text, provider tool output, embeddings, retrieval queries or private scores, secrets, credentials, or filesystem paths in public-safe MemoHarness projections; no browser-side experience-bank mutation, retrieval/optimization execution, module editing, candidate self-verification/promotion, or authority expansion.
 cut:
   - CUT-WEB-01: Public thread discovery feeds and leaderboards are cut; threads are shared deliberately or not at all.
   - CUT-WEB-02: An in-browser IDE or editor surface is cut; the web workbench is supervision and review, not editing.
@@ -144,6 +150,16 @@ cut:
   criterion: When work is launched from the web, the target picker distinguishes owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider placement and discloses harness, model, custody, reachability, cost, index/data flows, and retention before admission; the browser itself never gains workspace execution authority.
 - id: AC-16
   criterion: When the selected owner-local target is unreachable or a managed target is not configured, the web renders the exact unavailable capability and recovery options without silently moving execution, copying the canonical transcript to cloud, or claiming the command was accepted.
+- id: AC-17
+  criterion: When a benchmark or comparison involving a harness is published, every result binds provider, model, HarnessPolicyBundle digest, toolset, evaluator, environment, static/global/adapted class, bank-snapshot policy, and cold/warm adaptation-cache state; materially different tuples render as separate cohorts and fixture results never become decision-grade measurements.
+- id: AC-18
+  criterion: When a third party verifies a MemoHarness trust-ledger entry, the endpoint mechanically checks bundle/module content digests, compatibility lineage, adaptation receipt integrity, held-out evidence refs, and independent Blueprint promotion or rollback receipt without exposing or claiming to validate private source-experience content.
+- id: AC-19
+  criterion: When MemoHarness state is viewed or controlled from web, the typed projection may contain only safe base/effective digests, dimension-policy refs, static/global/adapted class, adaptation state and redacted receipt ref, frozen snapshot ref, compatibility, release state, and effective execution tuple; schema decoding rejects private experiences, prompts, transcripts, tool output, embeddings, retrieval queries or scores, secrets, credentials, and filesystem paths, and no bank/optimizer/module/promotion command exists.
+- id: AC-20
+  criterion: When the data-flow matrix covers a MemoHarness-enabled work unit, it separately states terminal experience compilation, metadata and evidence destinations, snapshot scope and consent, retrieval versus training eligibility, retention, visibility, export, deletion/tombstone behavior, and any released aggregate cross-workspace use, and those statements match audited behavior.
+- id: AC-21
+  criterion: When a user launches work from web with Advanced harness controls, the target supplies only released compatible bundles and admitted adaptation policies, the browser submits immutable refs through the ordinary typed command path, and the target may fail closed before run creation; the browser never performs retrieval/adaptation or gains workspace execution authority.
 ```
 
 ## Success Metrics
@@ -195,6 +211,11 @@ cut:
   target: "100% across the maintained web parity corpus"
   target_status: committed
   window: every release candidate
+- id: SM-9
+  metric: published_memo_harness_measurements_with_complete_effective_tuple_and_verifiable_lineage
+  target: "100%"
+  target_status: committed
+  window: continuously
 ```
 
 ## Solution
@@ -213,6 +234,16 @@ rows. The onboarding gradient (zero-install command, fragment-token pairing,
 import lanes) connects them: verification first, supervision seconds later,
 participation after that. The Verse spectacle layer renders the same
 receipted state spatially when the substrate is real.
+
+For MemoHarness, web is verifier and safe controller, never optimizer or
+memory host by implication. Shared Effect Schema projections expose immutable
+bundle and receipt lineage; the receipt verifier recomputes public digests and
+Blueprint release relationships; and benchmark views compare only identical
+effective tuples. Authoritative Desktop or managed Effect services own
+private retrieval, Cloud SQL metadata, private Cloud Storage evidence,
+adaptation, terminal experience compilation, optimization, and release
+resolution. Browser commands can name released refs but cannot acquire those
+services' data or authority.
 
 ## Strategic Positioning
 
@@ -257,6 +288,12 @@ dividends — rather than pooling value at the top.
   the mobile/desktop programs; web sequencing cannot outrun them.
 - The Verse layer is spectacle on top of receipts; building it before the
   counters converge would invert the honesty ordering.
+- Public adaptive-harness claims can become irreproducible marketing if the
+  harness/evaluator/environment tuple or cache state is omitted; incomplete
+  tuples are unpublished, not footnoted away.
+- Trust-ledger lineage can accidentally disclose private retrieval evidence;
+  public receipt schemas must verify digests and decisions while keeping raw
+  experiences, embeddings, queries, and scores private.
 
 ## Open Questions
 
@@ -268,6 +305,8 @@ dividends — rather than pooling value at the top.
   shared thread (read-only projection versus none)?
 - When does the proof-first project board graduate from OpenAgents' own
   projects to a general offering?
+- Which MemoHarness aggregate patterns, if any, may be public artifacts, and
+  what privacy evidence is required before their release?
 
 ## Related Artifacts
 
@@ -303,6 +342,8 @@ dividends — rather than pooling value at the top.
   `specs/mobile/mobile-any-host-fleet-controller.product-spec.md`
 - Public-claim authority remains the promise registry
   (`docs/promises/`, `/api/public/product-promises`).
+- MemoHarness and Blueprint integration authority:
+  `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
 
 ## Owner Gates
 
@@ -312,6 +353,9 @@ dividends — rather than pooling value at the top.
   owner release decision.
 - The data-flow matrix wording requires owner review before publication,
   since it is a standing public claim.
+- Public MemoHarness benchmark copy, any cross-workspace aggregate-pattern
+  publication, and the exact safe receipt/projection schema require owner or
+  designated independent privacy review plus the normal promise-registry gate.
 - Any team-workspace visibility defaults require owner sign-off.
 - Referral/affiliate program terms, revenue-graph publication, and any
   pays-you economics promotion from planned to live are owner decisions
@@ -325,9 +369,10 @@ Planned receipt kinds this surface renders or verifies: visibility-transition
 receipts, model/usage routing receipts, release-manifest verification
 results, receipt-verification endpoint results, continuation-handoff records,
 counter-reconciliation attestations, referral-attribution records, verified-
-work payout receipts, and QA/assurance run receipts behind shareable run
-views. This section plans kinds; evidence lives in the receipt systems, not
-in this spec.
+work payout receipts, public-safe HarnessAdaptationReceipts, harness release/
+promotion/rollback receipts, and QA/assurance run receipts behind shareable
+run views. This section plans kinds; evidence lives in the receipt systems,
+not in this spec.
 
 ## Promise Links
 

@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop: Trust-Complete Coding Workbench"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -25,6 +25,7 @@ tool_metadata:
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to live issues and exact accepted plans/work packets, with owner gates and proof rungs intact"
   openagents_revision_3_note: "Rev 3 elevates Full Auto to the roadmap-defining flagship per the episode-256 draft transcript (owner: an AFK-reliable multi-account multi-provider autonomous mode is 'important enough of an unserved need to build the whole short-term roadmap of the company around'). Full Auto becomes a dedicated run mode launched beside New Session (lightning action, one-time objective/workspace/provider-policy setup, full-screen read-only run view, explicit Play/Pause/Stop, no composer while running — 'steering is not Full Auto'); adds automatic model/account/provider failover on limits (the overnight Fable-limit halt is the named incumbent failure), same-thread cross-provider handoff with end-to-end acceptance proof (the live Claude-error -> Codex-continues-same-chat moment), active-run thread retention (the five-thread cache eviction root cause), and the run -> bounded report -> transcript analysis -> replayable fixture iteration loop. Also folds in back-catalog direction from episodes 200-237: the episode-206 Guidance Module lineage (between-turn decision engine with shared state/budget/environment, confidence-gated actions, hard guardrails over soft guidance, budget-bound autonomy); episode-237 clearing-layer doctrine (scoped-in-advance done, rubric grading, dereferenceable receipts, draft/verified/reviewed/bonded confidence tiers); episode-225 account-visibility peeves (at-a-glance identity, rate-limit burn-down, API-key fallback); episode-204 don't-break-userspace; episode-227 one-click full data export; the one-app cockpit/earning thesis deferred to its own contract."
   openagents_revision_4_note: "Rev 4 makes complete Cursor-class capability parity explicit rather than assuming trust advantages compensate for missing breadth. It binds the exhaustive parity ledger, restores editor depth, computer use, voice, automation, remote/background, marketplace, light/high-contrast themes, and agent-first/classic workbench outcomes to scope, and requires an unbundled harness/model/provider/placement/index architecture with inspectable local and remote data lifecycle."
+  openagents_revision_5_note: "Rev 5 incorporates MemoHarness as the optimization layer for the already-unbundled harness plane. Desktop owns released six-dimension HarnessPolicyBundle selection, run-start adaptation from a frozen private experience-bank snapshot, selected-versus-effective provenance, adaptation receipts, private experience-bank lifecycle controls, and candidate/shadow/production release states. It forbids per-turn self-modification, current-run evaluation leakage, authority expansion, raw-memory projection to mobile/web, and candidate self-promotion. The Effect application/control plane owns schemas, retrieval, optimization, policy, storage, and release; Rust remains an isolated native-helper boundary for containment, PTY, and local-inference primitives only."
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -94,6 +95,11 @@ in:
   - Ship two complete densities over one canonical state graph: a classic coding workbench with editor, files, symbols, search, diagnostics, source control, diff, terminal, preview, extensions, settings, themes, and keymaps; and an agent-first operations window optimized for concurrent sessions, plans, worktrees, subagents, attention, and review.
   - Match Cursor-class AI editing and repository intelligence: low-latency completion and next-edit prediction, inline ask/edit/generate, multi-file apply/review/undo, explicit file/symbol/path/docs/web context, and hybrid local lexical/symbol/path search plus selectable local or remote semantic embeddings with visible scope, freshness, custody, cost, export, rebuild, and deletion.
   - Unbundle workbench/editor, harness runtime, model/provider, execution placement, sync/relay, and persistence/indexing so each can be replaced independently without changing canonical session identity; support owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider execution where the selected capability permits it.
+  - Make MemoHarness a first-class optimization layer over that replaceable harness plane: a released, content-addressed `HarnessPolicyBundle` independently versions its six dimension policies (context assembly, tool interaction, generation control, orchestration, memory management, and output processing) and declares compatibility with engine protocol, provider/model/toolset, execution profile, and evaluator versions; experience construction, global optimization, pattern extraction/selection, and per-case adaptation remain separate typed pipeline components around the bundle.
+  - Bind each run to both a selected base harness and an observed effective harness. An admitted run-start adaptation may retrieve only from a frozen, scope-filtered experience-bank snapshot, apply only already-released bounded module patches, emit a `HarnessAdaptationReceipt`, and freeze the resulting effective bundle for the entire run; no continuation silently changes policy beneath an active run.
+  - Treat the experience bank as private evidence with two explicit layers: append-only `HarnessExecutionExperience` records compiled only after terminal runs, and `HarnessPatternCandidate` records derived offline whose released forms may become adaptation inputs. Desktop shows scope, provenance, retention, retrieval/training eligibility, export, deletion, tombstone, and release state for both layers without presenting raw transcripts, secrets, or provider tool output as ordinary memory.
+  - Run global optimization asynchronously against admitted evaluation sets to produce candidate module versions. Candidate, shadow/dogfood, released, active, rejected, and rolled-back states are visibly distinct; no optimizer, run, or executor may promote its own candidate, and production selection resolves only released compatible versions through the Blueprint release gate.
+  - Keep learning outside action authority: a harness adaptation may change prompt/policy modules and bounded runtime formatting, but never workspace grants, execution placement, provider/account admission, tool scopes, approval policy, guardrails, budgets, done conditions, release authority, or any external-effect permission.
   - Cover Cursor-class agent and ecosystem breadth: ask, plan, execute, review/debug, design, and custom modes; browser and receipted computer use; side chats and conversation search; checkpoints and compaction; CLI and protocol clients; remote/background agents; schedules and event-triggered automations; skills, MCP, rules, hooks, plugins, extensions, team bundles, and signed marketplace discovery under isolation.
   - Make local and remote state inspectable: inventory chats, object graphs, search indexes, embeddings, manifests, checkpoints, worktrees, terminal/browser state, extension state, auth material, telemetry, and caches with per-category location, size, retention, sync, export, reset, revocation, and verified deletion.
   - Consume one generated, versioned engine protocol with the hierarchy Thread -> Turn -> Item, extended with Work Unit (task identity plus delivery lifecycle), Authority Manifest, Execution Receipt, and Delivery Receipt; the renderer holds projections only and never conversation, tool, Git, or PTY authority.
@@ -148,6 +154,7 @@ out:
   - No ambient screen-recording or inferred-memory capability in this revision; any future ambient memory is a separate spec bound to private-by-construction custody.
   - No additional provider integrations before one provider is complete under the eleven-predicate closure bar (known, decoded, owned, retained, projected, presented, authorized, recovered, fast, receipted, shipped).
   - No third-party plugin execution inside the trusted engine or shell process; extensions run under declared isolation profiles with signatures and receipts or they do not run.
+  - No ambient personal-memory product, cross-tenant experience retrieval, raw transcript synchronization for optimization, continuous per-turn self-rewriting harness, or automatic candidate promotion; MemoHarness is bounded run optimization over explicit evidence and release policy, not a new authority or surveillance mode.
 cut:
   - CUT-DSK-01: Arbitrary unreviewed theme code is cut; first-party dark, light, high-contrast, system-following, and accessible theme switching are required, and portable declarative themes may be admitted through the extension isolation path.
   - CUT-DSK-02: Simultaneous token-by-token mirroring of every child agent is cut; the roster shows live typed lifecycle and any child transcript opens on demand.
@@ -224,6 +231,18 @@ cut:
   criterion: When background agents or automations are launched from schedule, repository, issue/PR, webhook, or manual triggers, they may use an admitted local, owner-managed, or OpenAgents-managed placement, survive client closure, accept typed intervention, enforce caps and idempotency, and return reviewable outcomes and receipts.
 - id: AC-32
   criterion: When a clean Cursor profile is migrated, supported settings, keybindings, rules, skills, and MCP configuration import through an allowlist, credentials and proprietary state do not, and every item receives an imported, skipped, or rejected reason.
+- id: AC-33
+  criterion: When a user inspects or launches any run, Desktop identifies the selected base HarnessPolicyBundle and the observed effective bundle by immutable digest, displays each of the six dimension-policy refs and compatibility result, and never collapses requested and effective harness identity into one label.
+- id: AC-34
+  criterion: When run-start adaptation is enabled, Desktop shows the frozen experience-bank snapshot, scope filters, adaptation state, bounded released patches, and HarnessAdaptationReceipt one gesture away; the effective bundle is fixed before the first turn and remains byte-identical through continuations, restart, pause/resume, and provider handoff unless the run fails closed as incompatible.
+- id: AC-35
+  criterion: When a user inspects the experience bank, Desktop separately inventories execution experiences and released patterns with source-run provenance, visibility, retention, retrieval/training eligibility, size, export, deletion, and tombstone status; deleting a source makes it ineligible for future snapshots and preserves only the minimum non-content tombstone needed to prevent resurrection.
+- id: AC-36
+  criterion: When offline optimization produces a harness candidate, the UI distinguishes candidate, shadow/dogfood, released, active, rejected, and rolled-back states, presents held-out evaluation and compatibility evidence, and exposes no path by which the producing optimizer or run can self-verify or self-promote into production.
+- id: AC-37
+  criterion: When an adapted harness executes, its authority manifest is identical to the base run's authority manifest for workspace, placement, provider/account candidates, tools, approvals, guardrails, budgets, done condition, and external effects; any proposed delta outside the admitted harness-module schema refuses before dispatch with a typed reason.
+- id: AC-38
+  criterion: When Desktop projects MemoHarness state to mobile, web, exports, or public receipts, the projection is explicit-field allowlisted and may include safe digests, release state, compatibility, adaptation status, and redacted receipt refs, but never raw experiences, prompts, transcript text, tool output, embeddings, retrieval queries, private scores, secrets, or filesystem paths.
 ```
 
 ## Success Metrics
@@ -306,6 +325,16 @@ cut:
   target: "100%"
   target_status: committed
   window: before a full-parity claim
+- id: SM-15
+  metric: runs_with_complete_selected_and_effective_harness_provenance
+  target: "100%"
+  target_status: committed
+  window: every release candidate and rolling 30-day dogfood
+- id: SM-16
+  metric: memo_harness_self_promotion_or_authority_expansion_incidents
+  target: "0"
+  target_status: committed
+  window: continuously
 ```
 
 ## Solution
@@ -335,6 +364,18 @@ failure into a regression. FastFollow keeps its work queue full. Distribution
 is a signed transaction verified fail-closed on the client. The synthesis
 essay, transcripts 200–255, and the episode-256 Full Auto audit record the
 evidence and the owner's stated direction for each element.
+
+MemoHarness is the learning loop around that flagship, not a second runtime.
+The TypeScript/Effect control plane owns `HarnessPolicyBundle`, experience,
+pattern, candidate, adaptation, receipt, retention, and release schemas;
+semantic retrieval and offline optimization; Cloud SQL metadata; private
+Cloud Storage evidence; and Blueprint admission. Run start resolves a released
+base bundle, freezes an eligible bank snapshot, optionally derives one bounded
+effective bundle, and records the result before dispatch. A separate terminal-
+run compiler may create a new experience only after the run can no longer be
+influenced by it. Rust is reserved for isolated native containment, PTY, or
+local-inference helpers behind generated Effect-owned contracts; it does not
+own a parallel MemoHarness daemon, database, policy engine, or release path.
 
 ## Strategic Positioning
 
@@ -378,6 +419,14 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   expensive; sequencing must not let breadth starve depth.
 - Rendering the full agent tree live at fleet scale has real performance
   risk; the perf-baseline gates exist to keep it honest.
+- A shared experience bank can leak private run content or create cross-tenant
+  influence if scope and retention are implicit; eligible snapshots must be
+  consented, tenant/workspace filtered, content-addressed, and deletion-aware.
+- Adaptation can make evaluation meaningless if a run learns from its own
+  outcome or changes policy between turns; the frozen pre-run snapshot and
+  immutable effective bundle are release-blocking invariants.
+- Optimization creates a false-green shortcut if candidates can self-promote;
+  held-out evidence and an independent Blueprint release gate are mandatory.
 
 ## Open Questions
 
@@ -394,6 +443,11 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   connected accounts) live — per-run, per-spec, or global?
 - When does the local-model lane graduate from fallback to a routable
   first-class capacity source?
+- Which released adaptation policies are defaults for interactive sessions,
+  Full Auto, and hermetic runs, and which stay explicit opt-in?
+- What are the default retention and retrieval/training eligibility windows
+  for private execution experiences before owner or enterprise policy changes
+  them?
 
 ## Related Artifacts
 
@@ -412,6 +466,9 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   product vision above it) and
   `docs/fable/2026-07-17-full-auto-implementation-audit.md` (the corrected
   post-incident audit from the episode-256 session)
+- MemoHarness architecture and Blueprint integration:
+  `docs/research/2026-07-18-memoharness-paper-summary.md` and
+  `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
 - Transcript sources: `docs/transcripts/200.md`–`209.md` (Guidance Module
   lineage in `206.md`, identity/wallet in `207.md`, don't-break-userspace in
   `204.md`), `docs/transcripts/214.md` + `225.md` (account visibility,
@@ -441,9 +498,13 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
 - Release channel policy (stable/RC identity split, rollback windows).
 - In-app rate-limit reset triggering stays withheld until the owner
   explicitly admits it.
-- Any future ambient-memory capability requires a separate owner-admitted
-  spec; voice, multiplayer contribution, and the Pylon provider/earning mode
-  ship as their own owner-admitted contracts.
+- Owner sign-off is required for default experience retention, retrieval and
+  training eligibility, any cross-workspace pattern sharing, and promotion of
+  a MemoHarness release policy from shadow/dogfood to production.
+- MemoHarness's bounded, run-derived optimization bank does not admit ambient
+  personal memory. Any future ambient-memory capability still requires a
+  separate owner-admitted spec; voice, multiplayer contribution, and the
+  Pylon provider/earning mode ship as their own owner-admitted contracts.
 
 ## Receipts
 
@@ -452,9 +513,10 @@ authority manifests, delivery receipts, worktree cleanup receipts, rewind
 receipts, update/rollback receipts, hermetic admitted-input manifests,
 fan-out comparison records, account/model/provider rotation records, Full
 Auto run reports, handoff acceptance-test records, packet evidence links,
-and assurance receipts rendered from the resident proof layer. This section
-plans kinds; the evidence ledger lives in the assurance and receipt systems,
-not in this spec.
+HarnessAdaptationReceipts, harness release/promotion/rollback receipts,
+experience-compilation receipts, deletion tombstones, and assurance receipts
+rendered from the resident proof layer. This section plans kinds; the evidence
+ledger lives in the assurance and receipt systems, not in this spec.
 
 ## Promise Links
 

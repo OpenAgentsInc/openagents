@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -26,6 +26,7 @@ tool_metadata:
   openagents_admission_status: "roadmap-reconciled by docs/sol/MASTER_ROADMAP.md revision 119 as surface vision and target intent; implementation dispatch remains limited to the T3 mobile accepted packet ledger or another exact admitted issue/plan, with owner gates and proof rungs intact; closed #8980 is bounded first-screen/simulator evidence, not continuing dispatch authority"
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
   openagents_revision_4_note: "Rev 4 makes Cursor mobile and Remote Control breadth a floor: launch and supervise local or background/cloud sessions, voice, notifications/live status, search/history, changes and artifacts, and workstation handback, while retaining the stronger any-host, no-credential, exactly-once command, portable-session, and receipt laws."
+  openagents_revision_5_note: "Rev 5 incorporates MemoHarness strictly as safe remote supervision. Mobile may select only released compatible harness bundles/adaptation policies exposed by the host, and projects a run's base/effective bundle digests, adaptation state, frozen bank-snapshot ref, effective execution tuple, candidate/release state, and redacted receipts. It never receives raw experiences, prompts, transcripts, tool output, embeddings, retrieval queries or scores, secrets, credentials, or paths; never runs retrieval/optimization; and cannot mutate the bank, edit modules, promote candidates, or expand run authority."
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -84,6 +85,9 @@ in:
   - Bind every environment-facing grant to DPoP-style scope-limited, revocable capability tokens stored in the device vault; every consequential remote action records a durable outcome and receipt.
   - Make overnight-fleet supervision the anchor journey: see every running workstream across hosts and accounts, catch a run that stalled on an exhausted account or a blocking question, steer or re-dispatch it from the phone, and arrive at a morning review of what completed, what needs attention, and what evidence backs each claim.
   - Surface Full Auto runs as first-class supervised objects: every active run on any connected host listed with its live run state (playing, paused, blocked), current provider/account lane, rotation and failure history, and elapsed budget; Pause, Resume, and Stop issued from the phone as typed durable commands with receipts; and the bounded run report delivered to the attention inbox when a run ends.
+  - Project MemoHarness provenance for each Full Auto run through an explicit safe schema: released base and effective `HarnessPolicyBundle` digests, six dimension-policy refs, static/global/adapted classification, frozen experience-bank snapshot ref, adaptation state and receipt ref, compatibility, and the effective provider/model/harness/toolset/evaluator/environment tuple. Private evidence remains on its authoritative host or managed evidence service.
+  - Let a mobile launch choose only among released compatible harness bundles and admitted adaptation policies returned by the selected host, behind Advanced disclosure. Mobile submits immutable refs as part of the same typed launch intent; the host performs compatibility, snapshot, retrieval, adaptation, and authority checks and may refuse without minting a run.
+  - Render candidate, shadow/dogfood, released, active, rejected, and rolled-back harness states as supervision facts, including owner-action-needed release or privacy gates, without turning the phone into an optimizer, bank editor, or promotion authority.
   - Show fleet capacity as quantities, not presence: connected accounts and Pylons with available, busy, and queued counts, readiness lights lit only from decoded fresh receipts ("no receipt means no light"), and honest provider-condition errors (exhausted, rate-limited) rather than generic failures.
   - Display effective execution identity on mobile exactly as on Desktop: every message's metadata shows the observed effective model, provider, and account, never an inference from the requested brand.
   - Treat the portable session as the stable object: a session moves owner-local to managed cloud and back through quiesce, checkpoint, detach, attach, resume, and failback verbs, with exclusive attachment generations so exactly one host executes, secret-free checkpoints, and source-cleanup receipts.
@@ -103,6 +107,7 @@ out:
   - No web-wrapper shell and no second UI tree; one typed component contract renders both phone and tablet.
   - Notification state is never completion authority; only durable outcomes and receipts complete an action in the UI.
   - Mobile authoring of ProductSpecs and full workroom authoring flows are deferred; supervision precedes authoring on this surface, per the multiplayer contract's explicit exclusion.
+  - No raw MemoHarness experience or pattern content, prompt/transcript/tool output, embedding, retrieval query or private score, secret, credential, filesystem path, experience-bank mutation, optimization start, module editing, candidate verification/promotion, or cross-tenant retrieval on mobile.
 cut:
   - CUT-MOB-01: Pixel-streaming remote desktop is cut; the phone renders typed projections, not screen mirrors.
   - CUT-MOB-02: General on-phone code editing is cut to bounded review comments and small staged edits; full editing remains a desktop concern.
@@ -145,6 +150,14 @@ cut:
   criterion: When a user launches work from mobile, the target picker distinguishes owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider placement and discloses reachability, custody, harness, model, cost, and retained data before admission; unavailable targets fail visibly.
 - id: AC-16
   criterion: When voice, push, or lock-screen controls are used, every input is editable or confirmable according to policy, resolves through the same typed command and exactly-once outcome path as touch controls, and neither notification nor transcription state becomes execution authority.
+- id: AC-17
+  criterion: When a MemoHarness-enabled Full Auto run is inspected, mobile shows its released base and effective bundle digests, dimension-policy refs, static/global/adapted class, adaptation state, frozen bank-snapshot ref, compatibility, and effective provider/model/harness/toolset/evaluator/environment tuple from the host's typed projection; requested and effective harness identity are never merged.
+- id: AC-18
+  criterion: When a user launches work from mobile with Advanced harness controls, the picker contains only released compatible bundles and admitted adaptation policies supplied by the target host, submits immutable refs in the typed launch command, and leaves snapshot selection, retrieval, adaptation, and fail-closed compatibility enforcement to that host.
+- id: AC-19
+  criterion: When MemoHarness state crosses the mobile boundary, schema decoding rejects any payload carrying raw experiences, pattern content, prompts, transcripts, tool output, embeddings, retrieval queries or private scores, secrets, credentials, or filesystem paths; the phone exposes no command to mutate a bank, start optimization, edit modules, verify or promote a candidate, or change run authority.
+- id: AC-20
+  criterion: When a MemoHarness-enabled run ends, the attention inbox retrieves a bounded report containing safe base/effective bundle and adaptation receipt refs plus candidate/release follow-up state, while private source evidence remains dereferenceable only through an owner-authorized higher-trust surface.
 ```
 
 ## Success Metrics
@@ -190,6 +203,11 @@ cut:
   target: "100% across the maintained mobile parity corpus"
   target_status: committed
   window: every release candidate
+- id: SM-8
+  metric: memo_harness_runs_with_complete_safe_mobile_provenance
+  target: "100%"
+  target_status: committed
+  window: every release candidate and rolling 30-day dogfood
 ```
 
 ## Solution
@@ -206,6 +224,15 @@ modes, outbox, and attention inbox make supervision complete; receipts make
 it trustworthy; and the overnight-fleet morning review is the journey the
 whole surface is tuned for. T3 Code's mobile app is the breadth bar; the
 trust layer is the difference.
+
+MemoHarness follows the same projection-only law. The Effect Native client
+decodes shared Effect Schema DTOs for base/effective harness identity,
+adaptation, compatibility, and release state, then sends only ordinary typed
+launch or supervision commands. The authoritative Desktop or managed Effect
+service freezes the bank snapshot, retrieves, adapts, compiles terminal
+experiences, optimizes, stores private evidence, and resolves Blueprint
+release state. The phone neither reproduces that control plane nor receives
+its private working set.
 
 ## Strategic Positioning
 
@@ -234,6 +261,9 @@ position no one else can copy without rebuilding their custody model.
   consequences.
 - Voice adds transcription privacy surface; it stays behind the controller
   core and its own custody review.
+- A convenient harness inspector could accidentally become a private-memory
+  exfiltration or remote self-promotion surface; the shared safe-projection
+  schema and absence of bank/optimizer/promotion commands are hard boundaries.
 
 ## Open Questions
 
@@ -246,6 +276,8 @@ position no one else can copy without rebuilding their custody model.
   reliable?
 - When supervision is solid, what is the first authoring affordance worth
   adding — spec review sign-off, or full conversational spec authoring?
+- Which harness/adaptation facts merit lock-screen visibility versus requiring
+  an authenticated run-detail view?
 
 ## Related Artifacts
 
@@ -271,6 +303,8 @@ position no one else can copy without rebuilding their custody model.
 - Sibling surface specs: `specs/desktop/desktop-trust-complete-workbench.product-spec.md`,
   `specs/web/openagents-com-trust-surface.product-spec.md`
 - Portable-session intent: `specs/openagents/portable-coding-sessions.product-spec.md`
+- MemoHarness and Blueprint integration authority:
+  `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
 
 ## Owner Gates
 
@@ -281,6 +315,10 @@ position no one else can copy without rebuilding their custody model.
 - Push-notification entitlement and APNs key management.
 - Sign-off on the lost-device revocation flow before scoped tokens ship
   broadly.
+- Sign-off on the exact MemoHarness mobile safe-projection fields and on any
+  mobile surface that can request a released adaptation policy; candidate
+  promotion and private bank access remain separate higher-trust,
+  independently admitted owner workflows, not mobile capabilities.
 - Any earnings, payout, or referral-accrual display requires the matching
   promise-registry state and settlement evidence before it renders as more
   than a receipted projection.
@@ -290,9 +328,10 @@ position no one else can copy without rebuilding their custody model.
 Planned receipt kinds this surface renders or triggers: remote-action
 outcome receipts, writeback post-image receipts, session-movement and
 source-cleanup receipts, grant issuance and revocation receipts, outbox
-replay records, account-rotation records surfaced from the engine, and
-earnings/counter projections reconcilable to exact rows. This section plans
-kinds; evidence lives in the receipt systems, not in this spec.
+replay records, account-rotation records surfaced from the engine, safe
+HarnessAdaptationReceipt refs, harness release/rollback state, and earnings/
+counter projections reconcilable to exact rows. This section plans kinds;
+evidence lives in the receipt systems, not in this spec.
 
 ## Promise Links
 

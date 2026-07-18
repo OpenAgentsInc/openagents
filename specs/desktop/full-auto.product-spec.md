@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Full Auto Autonomous Run Contract"
 artifact_type: "prd"
-spec_revision: 13
+spec_revision: 14
 author: "OpenAgents"
 created_at: "2026-07-15T22:15:41.850Z"
 updated_at: "2026-07-18T12:30:00.000Z"
@@ -24,13 +24,15 @@ tool_metadata:
   openagents_issue: "8852 (initial), 8853 (restart-durable continuation), 8875 (FA-H2 workspace binding), 8876 (FA-H3 exactly-once dispatch), 8877 (FA-H4 background in-flight state, stop, send-fencing), 8878 (FA-H5 failure policy), 8879 (FA-H6 profile continuity), 8880 (FA-H7 cap semantics), 8882 (FA-H9 metrics), 8883 (FA-H10 registry robustness), 8885 (FA-H12 two-process restart smoke), 8886 (FA-H13 local programmatic control surface)"
   openagents_design_doc: "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md"
   openagents_assurance_spec: "specs/desktop/full-auto.assurance-spec.md"
-  openagents_assurance_spec_status: "reconciled_proposed: AssuranceSpec rev 3 binds the exact ProductSpec rev 13 digest and updates AO-FA-AC-39-01 for bounded concurrent-run admission. It remains lifecycle_state=proposed and grants no admission or release authority."
+  openagents_assurance_spec_status: "reconciled_proposed: AssuranceSpec rev 4 binds the exact ProductSpec rev 14 digest, preserves all prior criterion obligations, and adds explicit needs-design obligations for FA-AC-69..76. It remains lifecycle_state=proposed and grants no admission or release authority."
   openagents_revision_8_issue: "8901 (L6 provider-lane generalization)"
   openagents_revision_8_note: "Rev 8 generalizes the durable loop over the L1 ProviderLane SPI. The additive optional profile.lane defaults legacy rows to codex-local; reconciliation capability-gates the selected lane; built-in Codex and Claude use one lane-keyed instruction/background-question policy; and control start/enable, OpenAPI, MCP, and CLI accept an optional lane selector. Claude background questions deny immediately with proceed-with-judgment guidance instead of parking without a renderer."
   openagents_revision_9_issue: "8902 (L7 lane-independent ProductSpec/AssuranceSpec workflow)"
   openagents_revision_9_note: "Rev 9 projects a bounded, read-only ProductSpec/AssuranceSpec context through the shared ProviderLane dispatcher for every lane; adds specs/** unmet obligations to Full Auto candidate discovery; and re-runs the authority packages after each dispatched turn to append an evidence-only system note. Provider lanes receive no parsing, admission, verification, release, or public-claim authority."
   openagents_revision_13_issue: "2026-07-18 owner directive: one-click launcher and concurrent run monitor"
   openagents_revision_13_note: "Rev 13 supersedes rev 10's one-active-run-per-profile product cut after direct owner review of the real Full Auto UI. It makes the default launcher a single bounded mission prompt, deterministically infers title and done condition when their Advanced fields are blank, pre-admits Codex then Claude as the default typed routing policy, keeps every provider/model/budget/workspace knob behind collapsed Advanced disclosure, and admits multiple independently active FullAutoRun records. Lifecycle, Pause/Resume/Stop, reports, and liveness remain runRef-scoped; each run owns a distinct threadRef and the existing durable per-thread lease remains the exactly-once dispatch boundary. The monitor lists every active run and permits runRef-scoped open/stop while the authenticated loopback API/CLI/MCP keep the same arbitrary-run monitor/control authority. This revision changes FA-AC-39 from a profile-wide refusal to concurrent independent admission and records the owner's instruction in this thread as the explicit acceptance that rev 10 left outstanding. It does not admit fleet scheduling, cross-machine authority, or concurrent turns within one thread."
+  openagents_revision_14_issue: "2026-07-18 owner directive: incorporate MemoHarness across Desktop, web, and mobile specs"
+  openagents_revision_14_note: "Rev 14 incorporates MemoHarness into Full Auto as a bounded, Effect-owned harness optimization loop. Every run binds a released six-dimension HarnessPolicyBundle and frozen eligible experience-bank snapshot; optional adaptation happens exactly once before first dispatch, applies only released compatible patches, emits a HarnessAdaptationReceipt, and freezes the effective bundle for the run. Terminal runs compile into private HarnessExecutionExperience records only afterward. Offline global optimization produces candidates that require held-out evidence and an independent Blueprint release gate; no run or optimizer self-promotes. Adaptation cannot change workspace, placement, provider/account admission, tools, approvals, guardrails, budgets, done condition, release authority, or external-effect authority. The TypeScript/Effect control plane owns schemas, storage, retrieval, optimization, and policy; Rust remains an isolated native-helper boundary. Adds FA-AC-69..76 and reconciles AssuranceSpec rev 4 without claiming implementation evidence."
   openagents_revision_12_issue: "8991 (FA-GD-01, epic #8967)"
   openagents_revision_12_note: "Rev 12 adds guardrails, budgets, and confidence-gated continuation (FA-GD-01 #8991). The durable per-thread registry record gains OPTIONAL owner-configurable `guardrails` ({maxWallClockMs, maxTurns generalizing the 20-cap with cap semantics preserved when absent, maxPerTurnFailures generalizing the 5-failure budget, tokenBudgetRef -- the latter carried as an owner-visible ref only, honestly unenforced until a local token-usage source exists}), a durable `enabledAt` wall-clock anchor, a bounded typed per-continuation `decisionHistory` ({at, decision: continue|rotate|pause_low_confidence|stop_guardrail, reason, budgetRemaining?, goalRef?}, oldest-evicted at 40), and a durable low-confidence paused state (`pausedReason`/`pausedAt`, cleared only by an explicit attributed resume that stamps `lastResumedAt`/`resumedBy`). A NON-OVERRIDABLE core guardrail set -- workspace binding (FA-H2), own-capacity-only lane admission, and no rate-limit-reset triggering -- is enforced in code with no config/env surface at all (FULL_AUTO_NON_OVERRIDABLE_GUARDRAILS; unknown guardrail keys are dropped at decode), proven immune by test. A deterministic no-progress detector (3 consecutive settled failed/interrupted_by_restart turns after the lastResumedAt ?? enabledAt anchor) pauses the run durably with a typed reason instead of continuing blind; guardrail violations terminate with typed blockedReason/disabledBy=guardrail that flow into the FA-RUN-04 report's threadFailureHistory and settle the bound FullAutoRun to Stopped with the new typed `guardrail` actor. Legacy registry files without the new optional fields decode and behave exactly as before. Control-server/OpenAPI/UI wiring for bind-guardrails/resume and the decision-history projection is an explicit follow-up seam (the resume API and public-safe projection are exported; no control route ships in this revision). Adds FA-AC-68."
   openagents_revision_11_issue: "8987 (FA-RT-01, epic #8967)"
@@ -82,6 +84,12 @@ product-model defects the fix does not touch:
   admission), but no test has proven a real, same-thread, sequential
   Codex-to-Claude (or reverse) handoff with legible context and a visible
   transition receipt.
+- **The harness cannot improve safely from completed work.** Run reports and
+  transcript analysis can reveal failures, but there is no typed path from
+  terminal evidence to a reusable experience, no released policy-bundle
+  identity, no reproducible per-run adaptation receipt, and no independent
+  gate separating an optimizer's candidate from production. A naive learning
+  loop would either remain manual or become an unbounded self-modifying agent.
 
 Implementation must not proceed under a ProductSpec that forbids the intended
 result. This revision is the first of 12 issues under epic #8967 and exists
@@ -111,6 +119,16 @@ dogfood tests in the audit (Codex-to-Claude and reverse context handoff,
 objective retention under context pressure, a three-turn unattended run, a
 restart-survival run, and a thread-pressure replay of the actual incident)
 should then pass in the owner's real profile.
+
+If the same run contract also binds a released, content-addressed harness
+bundle; optionally derives one immutable effective bundle before first
+dispatch from a frozen, scope-filtered private experience-bank snapshot;
+records exactly how that derivation happened; compiles a terminal run into a
+new experience only after it can no longer affect that run; and routes every
+offline optimizer candidate through held-out evaluation plus an independent
+Blueprint release gate, then Full Auto can improve across runs without
+changing authority, leaking private evidence, contaminating evaluation, or
+self-promoting unreviewed policy.
 
 This revision commits the target contract; FA-AC-38 onward are implemented
 across the 11 remaining child issues of epic #8967, each named in its own
@@ -142,6 +160,12 @@ in:
   - packaged release and product-promise admission gated on the above, including a signed build from an exact tag containing the run model passing the owner restart-resume observation (FA-REL-01, #8979)
   - a multi-lane never-halt routing policy on the durable per-thread registry record: an OPTIONAL ordered, bounded list of admitted lane/account candidates (`routingPolicy`) validated fail-closed at bind time (unknown, unadmitted, or Full-Auto-ineligible lanes refuse the whole policy at validation, never at dispatch), plus an OPTIONAL bounded typed rotation history (`rotationHistory`: fromLane/toLane/reason/at, oldest-evicted) surfaced through the control-API status projections; on a typed account_exhausted/rate_limited/provider_error dispatch failure the reconciler rotates to the next admitted candidate in the same pass under a fresh exactly-once lease, a full unsuccessful cycle consumes exactly one FA-H5 failure-budget step, and legacy single-lane records behave exactly as before (FA-RT-01, #8987)
   - typed guardrails, budgets, and confidence-gated continuation on the durable per-thread registry record: OPTIONAL owner-configurable `guardrails` (maxWallClockMs against a durable `enabledAt` anchor; maxTurns generalizing the 20-continuation cap with existing cap semantics preserved byte-for-byte when absent; maxPerTurnFailures generalizing the 5-consecutive-failure budget; tokenBudgetRef as an owner-visible unenforced ref until a local token-usage source exists), a NON-OVERRIDABLE code-enforced core set with no config or env surface (workspace binding, own-capacity-only lane admission, no rate-limit-reset triggering), a bounded typed per-continuation decision history (continue/rotate/pause_low_confidence/stop_guardrail with reason and remaining budget, oldest-evicted), and a deterministic no-progress detector that transitions the record to a durable `pausedReason`-carrying paused state instead of continuing blind -- resume is an explicit attributed command, guardrail terminations carry typed reasons into the FA-RUN-04 report and settle the bound run to Stopped with a typed guardrail actor, and legacy records without the new optional fields decode and behave exactly as before (FA-GD-01, #8991)
+  - a released, content-addressed `HarnessPolicyBundle` selected before run admission and recorded on the `FullAutoRun`, independently versioning MemoHarness's six dimension policies -- context assembly, tool interaction, generation control, orchestration, memory management, and output processing -- with exact compatibility claims for engine protocol, provider/model/toolset, execution profile, evaluator, and environment versions; experience construction, global optimization, pattern extraction/selection, and per-case adaptation are separate typed pipeline components around the bundle
+  - an OPTIONAL run-start adaptation policy that freezes an eligible private experience-bank snapshot before first dispatch, performs semantic retrieval only within tenant/workspace/visibility/retention/consent filters, applies only pre-released bounded module patches, emits a `HarnessAdaptationReceipt`, and freezes the effective bundle digest for the entire run across continuations, restart, Pause/Resume, and provider handoff
+  - a private dual-layer experience bank: append-only `HarnessExecutionExperience` records compiled by a separate Effect service only after a run reaches a terminal state, and content-addressed `HarnessPatternCandidate` records produced by offline extraction whose released forms are admitted through Blueprint; raw prompts, transcripts, provider tool output, secrets, credentials, and filesystem paths remain private evidence and never become ordinary pattern text or public projections
+  - asynchronous global optimization over admitted evaluation sets, producing candidate module versions with lineage, held-out evaluation, compatibility, regression, privacy, and safety evidence; candidate, shadow/dogfood, released, active, rejected, and rolled-back states remain distinct, and only an independently released compatible bundle may be selected for a production Full Auto run
+  - a strict authority-preservation rule: adaptation may alter only the admitted harness-module schema and may never change objective/done condition, workspace grant, execution placement/profile, provider/account candidate set or order, tool scopes, approval policy, guardrails, budgets, release authority, action authority, or external-effect permissions; any forbidden delta or incompatible result fails closed before dispatch
+  - one Effect-owned control plane for MemoHarness schemas, storage metadata, semantic retrieval, optimization orchestration, adaptation, retention/deletion, and Blueprint release policy; Cloud SQL stores metadata/lineage, private Cloud Storage stores large evidence, and Rust is limited to isolated containment/PTY/local-inference helpers behind generated Effect-owned contracts rather than a parallel MemoHarness daemon or policy store
 out:
   - Phase 2 cross-machine programmatic control (relaying Full Auto routes through the openagents.com OpenAPI/Omni-SDK/public-MCP triad and Khala Sync to a running Desktop); the control surface remains same-machine loopback only
   - the control API granting a new, previously-ungranted workspace; granting stays a human/UI action
@@ -153,6 +177,7 @@ out:
   - a separate permission/envelope/policy system beyond the run lifecycle and the existing full-trust Codex/Claude execution profile every other Desktop turn already uses
   - claiming ACP Full Auto or handoff readiness before an ACP lane's admitted peer profile and background-question behavior are proven; unknown/unadmitted lanes fail closed
   - any change to release or public-claim authority beyond what FA-REL-01 (#8979) explicitly gates
+  - per-turn or mid-run harness self-modification, learning from the current run's labels/feedback before it terminates, automatic candidate self-promotion, unscoped or cross-tenant experience retrieval, raw experience-bank projection to mobile/web, or treating MemoHarness as ambient personal memory
 cut:
   - CUT-FA-01: fine-grained autonomy policy beyond Pause/Resume/Stop and the 20-turn safety cap
   - CUT-FA-02 (rev 1): main-process durable goal state for restart-survivable continuation -- CLOSED (rev 2, #8853)
@@ -160,6 +185,7 @@ cut:
   - CUT-FA-04: automatic done-condition verification (provider or product code deciding a run's objective was actually satisfied) -- deferred past this revision; Completed stays self-reported/owner-reviewable
   - CUT-FA-05: multi-repo/fleet-wide Full Auto scheduling remains deferred; local concurrent independently controlled runs are admitted in rev 13
   - CUT-FA-06: autonomous (loop-decided) provider selection and free-form mid-run steering -- deferred past this revision; provider/lane and objective are set at launch or through the explicit Pause -> switch/instruct -> Resume sequence only
+  - CUT-FA-07: continuous online self-modification and ambient/cross-tenant memory -- cut; this revision admits only one pre-run bounded adaptation from a frozen eligible snapshot plus post-terminal offline learning through an independent release gate
 ```
 
 ## Acceptance Criteria
@@ -814,6 +840,85 @@ that issue lands.
   report pickup); control-server/OpenAPI/UI wiring for bind-guardrails,
   resume, and the decision-history projection is an explicit named
   follow-up seam, not claimed by this revision.
+- **FA-AC-69:** Before a Full Auto run is admitted, the host resolves exactly
+  one released `HarnessPolicyBundle` and persists its immutable digest plus
+  the six independently versioned dimension-policy refs (context assembly,
+  tool interaction, generation control, orchestration, memory management,
+  output processing). Compatibility is checked against the
+  exact engine protocol, provider/model/toolset, execution profile,
+  evaluator, and environment; an unknown, candidate-only, revoked, or
+  incompatible bundle fails closed before a thread or first turn dispatch.
+  Proof: planned; new MemoHarness/Blueprint implementation authority is
+  required before dispatch.
+- **FA-AC-70:** When adaptation is enabled, run admission freezes an eligible
+  experience-bank snapshot before the first dispatch. Retrieval is semantic
+  through the central typed selector and is filtered by tenant, workspace,
+  visibility, retention, consent, evaluator compatibility, deletion, and
+  tombstone state; it never uses ad hoc keyword intent routing and never
+  retrieves raw cross-tenant or ineligible evidence. The snapshot identity,
+  safe experience/pattern refs, scores, filters, and cache/cost facts are
+  recorded in the adaptation receipt, while raw prompts, transcripts, tool
+  output, embeddings, secrets, credentials, and filesystem paths remain
+  private.
+  Proof: planned; the retrieval, privacy, and deletion-aware snapshot suites
+  do not yet exist.
+- **FA-AC-71:** Per-case adaptation happens at most once, after the snapshot
+  freezes and before the first provider turn. It applies only released,
+  compatible, bounded module patches and emits a `HarnessAdaptationReceipt`
+  containing base/result bundle digests, snapshot, selected patch refs,
+  compatibility and risk decisions, and explicit no-current-run-label and
+  no-current-run-feedback facts. The effective digest is immutable through
+  every continuation, restart, Pause/Resume, retry, and provider handoff;
+  an incompatible result fails closed rather than silently falling back or
+  changing policy mid-run.
+  Proof: planned; run-start adaptation and restart/handoff invariance tests do
+  not yet exist.
+- **FA-AC-72:** The authority manifest before and after adaptation is
+  identical for objective/done condition, workspace grant, execution
+  placement/profile, provider/account candidate set and order, tool scopes,
+  approval policy, guardrails, budgets, release authority, action authority,
+  and external effects. The adapter schema cannot express those fields, and
+  a malformed or hand-edited delta that attempts to change one refuses before
+  dispatch with a typed reason.
+  Proof: planned; a bounded authority-immunity model and regression suite do
+  not yet exist.
+- **FA-AC-73:** Every `FullAutoRunReport`, private control record, and
+  public-safe projection records the effective execution tuple of provider,
+  model, harness bundle digest, toolset, evaluator, and environment, plus the
+  adaptation policy/receipt refs and static/global/adapted classification.
+  Public-safe projections are explicit-field allowlists and never include raw
+  experience content, retrieval queries, embeddings, private scores, prompts,
+  transcripts, tool output, secrets, credentials, or filesystem paths.
+  Proof: planned; report and cross-surface projection schemas require an
+  additive implementation revision.
+- **FA-AC-74:** A run can become a `HarnessExecutionExperience` only through a
+  separate Effect-owned compiler after the run is terminal and its report is
+  immutable. The experience records source run/report/evaluator/provenance,
+  outcome and quality facts, visibility, retention, and retrieval/training
+  eligibility; it cannot alter the source run, its effective bundle, or the
+  frozen snapshot that source run used. Export, deletion, and tombstone flows
+  prevent deleted evidence from re-entering later snapshots or candidates.
+  Proof: planned; no terminal-run experience compiler or deletion receipt
+  suite is claimed by this revision.
+- **FA-AC-75:** Offline global optimization and pattern extraction consume
+  only admitted immutable experience/evaluation snapshots and produce
+  content-addressed candidate module versions with complete lineage. A
+  candidate cannot become production by optimizer, executor, or run action:
+  it must pass held-out quality, regression, compatibility, privacy, and
+  safety evidence, then cross an independent Blueprint release gate. Shadow/
+  dogfood execution is explicit; production Full Auto resolves only released
+  compatible versions and records promotion or rollback receipts.
+  Proof: planned; the optimizer, evidence packet, and Blueprint BP-MH release
+  gate are not implemented or admitted by this document.
+- **FA-AC-76:** MemoHarness application and control-plane code is TypeScript
+  on Effect: Effect Schema contracts, services/layers, structured errors,
+  semantic retrieval, storage policy, optimization orchestration, adaptation,
+  retention/deletion, and release resolution. Any Rust is an isolated native
+  helper for containment, PTY/process primitives, or local inference behind a
+  generated Effect-owned contract; no Rust MemoHarness daemon, policy engine,
+  release authority, metadata database, or second source of truth is admitted.
+  Proof: planned; architecture conformance tests must reject ownership drift
+  when implementation begins.
 
 ## Criterion Disposition Map (Rev 9 -> Rev 10)
 
@@ -950,6 +1055,18 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   window: before any Full Auto release claim
   segment: owner dogfood, real Desktop sidebar (not a headless fixture profile)
   source: FA-QA-01 (#8976) retained receipts
+- id: full_auto_complete_harness_provenance
+  metric: terminal_runs_with_complete_base_effective_bundle_and_adaptation_receipt_provenance
+  target: "100%"
+  window: before any MemoHarness-enabled Full Auto release claim and continuously afterward
+  segment: all static, global, and adapted Full Auto runs
+  source: decoded FullAutoRunReport and HarnessAdaptationReceipt rows
+- id: full_auto_harness_authority_or_self_promotion_incidents
+  metric: confirmed_adaptation_authority_expansion_or_candidate_self_promotion_incidents
+  target: "0"
+  window: continuously
+  segment: all MemoHarness candidates and runs
+  source: Blueprint release and authority-immunity audit receipts
 ```
 
 ## Owner Gates
@@ -983,9 +1100,26 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   model (CUT-FA-03). Rev 13 now admits the local multi-run monitor; a future
   fleet scheduler or cross-machine admission surface remains a separate owner
   decision.
+- **OPEN FOR MEMOHARNESS.** Owner or an explicitly designated independent
+  reviewer must admit the default experience retention/retrieval/training
+  policy, any cross-workspace pattern-sharing policy, the production
+  adaptation policy, and every candidate promotion beyond shadow/dogfood.
+  This ProductSpec authorizes none of those policy decisions and no optimizer
+  or executor may supply its own acceptance.
 
 ## Receipts
 
+- **Rev 14 (MemoHarness spec incorporation):** ProductSpec and AssuranceSpec
+  only; no application code, optimizer, storage migration, experience bank,
+  or Blueprint release is claimed. Adds FA-AC-69..76; binds every run to a
+  released base/effective harness identity; freezes one pre-run eligible bank
+  snapshot; requires an immutable adaptation receipt and authority-preserving
+  delta; moves experience compilation after terminal state; keeps offline
+  candidates behind held-out evidence and an independent release gate; and
+  assigns the application/control plane to TypeScript/Effect with Rust limited
+  to isolated native helpers. Research basis:
+  `docs/research/2026-07-18-memoharness-paper-summary.md` and
+  `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`.
 - **Rev 11 (FA-RT-01 #8987):** multi-lane never-halt routing policy,
   main-process only. `full-auto-registry.ts` gains the OPTIONAL
   `routingPolicy` / `rotationHistory` record fields (backward-compatible:

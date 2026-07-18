@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.full.auto.codex.composer.loop"
-assurance_revision: 3
+assurance_revision: 4
 title: "Full Auto Autonomous-Run Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,17 +10,17 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-This revision reconciles the Full Auto AssuranceSpec to ProductSpec rev 13, including the owner-directed one-click launcher, bounded concurrent-run admission, and run monitor. It preserves rev 2's complete FA-AC-01..68 subject set and changes AO-FA-AC-39-01 from a second-run refusal oracle to positive independent admission plus a negative ninth-run capacity oracle. It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
+This revision reconciles the Full Auto AssuranceSpec to ProductSpec rev 14, including MemoHarness's released bundle identity, frozen pre-run adaptation, terminal-only experience compilation, independent Blueprint release gate, and Effect/Rust ownership boundary. It preserves rev 3's complete FA-AC-01..68 subject set and adds one explicit obligation for each new FA-AC-69..76 criterion. It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
 
-**What this revision DOES establish:** a real risk model (Risk Model section); explicit local/dev/packaged/owner-real environment profiles with honest capability gaps (Environments section); a criterion-to-obligation map covering every one of the 68 FA-AC-* criteria with no criterion silently dropped from the subject binding (Obligations section, `uncovered_acceptance_criterion` is structurally impossible here); and, for the nine highest-risk clusters FA-AS-01 (#8978) names, DESIGNED obligations (oracle + falsifier + technique + environment + evidence + independence + activation gate) citing real, currently-passing test files in `apps/openagents-desktop` by exact path -- not placeholder text.
+**What this revision DOES establish:** a real risk model (Risk Model section), extended with MemoHarness privacy, evaluation-leakage, self-promotion, authority-expansion, and provenance-drift risks; explicit local/dev/packaged/owner-real environment profiles with honest capability gaps (Environments section); a criterion-to-obligation map covering every one of the 76 FA-AC-* criteria with no criterion silently dropped from the subject binding (Obligations section, `uncovered_acceptance_criterion` is structurally impossible here); and retention of the 31 previously DESIGNED obligations with their exact existing evidence tier -- not a fabricated claim that old Full Auto tests prove new learning behavior.
 
-**What this revision explicitly does NOT establish:** (1) Admission. `lifecycle_state` stays `proposed`; no agent may self-admit (Law 10, and #8978's own text: "the implementation/analyzer cannot self-admit"). (2) Full FA-AC-66 closure -- of 68 criteria, 31 have a fully designed obligation in this revision; the remaining 37 stay honestly `needs_design` (see the `custom-criterion-coverage-ledger` section for the exact split and why). This is a deliberate, disclosed partial pass, not a silent gap. (3) Release or public-claim authority for any obligation, regardless of design completeness -- design readiness is a proof-PLAN property, never an observation; no receipt-ingestion pass has run against this revision, so every obligation's Observation axis is honestly `not_run` per `check_completion_claim` semantics (ASSURANCE_SPEC.md Law 7) even where design is complete. (4) Real-provider (owner-armed Codex/Claude account) evidence for FA-AC-62..65 -- those obligations are designed to the fixture/headless proof rung only; the real-sidebar rung stays an explicit residual pending #8976's own still-open real-provider run. (5) A signed/notarized packaged-build proof for restart/resume (FA-AC-07/08/29 -- FA-AC-09 itself stays needs_design in this pass, see the coverage ledger) -- the only two-OS-process evidence available is `pnpm run smoke:full-auto-restart`, which conditionally falls back to unsigned dev-mode Electron when no Forge package exists locally; this revision cites that evidence at its real tier and does not upgrade it to a release-artifact claim.
+**What this revision explicitly does NOT establish:** (1) Admission. `lifecycle_state` stays `proposed`; no agent may self-admit (Law 10, and #8978's own text: "the implementation/analyzer cannot self-admit"). (2) Full FA-AC-66 closure -- of 76 criteria, 31 have a fully designed obligation in this revision; the remaining 45 stay honestly `needs_design`, including every new FA-AC-69..76 obligation because no MemoHarness production implementation or evidence suite exists yet (see the `custom-criterion-coverage-ledger`). This is a deliberate, disclosed partial pass, not a silent gap. (3) Release or public-claim authority for any obligation, regardless of design completeness -- design readiness is a proof-PLAN property, never an observation; no receipt-ingestion pass has run against this revision, so every obligation's Observation axis is honestly `not_run` per `check_completion_claim` semantics (ASSURANCE_SPEC.md Law 7) even where design is complete. (4) Real-provider (owner-armed Codex/Claude account) evidence for FA-AC-62..65 -- those obligations are designed to the fixture/headless proof rung only; the real-sidebar rung stays an explicit residual pending #8976's own still-open real-provider run. (5) A signed/notarized packaged-build proof for restart/resume (FA-AC-07/08/29 -- FA-AC-09 itself stays needs_design in this pass, see the coverage ledger) -- the only two-OS-process evidence available is `pnpm run smoke:full-auto-restart`, which conditionally falls back to unsigned dev-mode Electron when no Forge package exists locally; this revision cites that evidence at its real tier and does not upgrade it to a release-artifact claim. (6) Any MemoHarness optimizer, experience bank, adapted run, held-out evaluation, Blueprint promotion, privacy deletion, or authority-immunity observation -- those remain future implementation and independent review work.
 
 ## Subject
 
-This revision binds the subject to the exact ProductSpec rev-13 bytes at `specs/desktop/full-auto.product-spec.md`. All 68 `FA-AC-01` through `FA-AC-68` criterion refs remain bound below. Rev 13 changes the intent of FA-AC-39 without adding a new criterion identity, so this pass updates its exact source snapshot/digest, oracle, falsifier, and test evidence instead of pretending the rev-12 refusal plan still covers the new policy.
+This revision binds the subject to the exact ProductSpec rev-14 bytes at `specs/desktop/full-auto.product-spec.md`. All 76 `FA-AC-01` through `FA-AC-76` criterion refs are bound below. The eight MemoHarness criteria are new and therefore receive new base obligations with exact source snapshots/digests; they remain `needs_design` rather than borrowing evidence from the pre-MemoHarness run loop.
 
-A future rebind to ProductSpec rev 14+ must repeat this same digest/criterion-set update; per ASSURANCE_SPEC.md Law/§13, any ProductSpec revision or intent change stales this AssuranceSpec until explicit reconciliation.
+A future rebind to ProductSpec rev 15+ must repeat this same digest/criterion-set update; per ASSURANCE_SPEC.md Law/§13, any ProductSpec revision or intent change stales this AssuranceSpec until explicit reconciliation.
 
 ```assurancespec-subject
 {
@@ -93,13 +93,21 @@ A future rebind to ProductSpec rev 14+ must repeat this same digest/criterion-se
       "FA-AC-65",
       "FA-AC-66",
       "FA-AC-67",
-      "FA-AC-68"
+      "FA-AC-68",
+      "FA-AC-69",
+      "FA-AC-70",
+      "FA-AC-71",
+      "FA-AC-72",
+      "FA-AC-73",
+      "FA-AC-74",
+      "FA-AC-75",
+      "FA-AC-76"
     ],
-    "document_digest": "sha256:edf0663cc8e74024efa78b25c3ba3da7358285a56671b05e59b2b569bf215982",
+    "document_digest": "sha256:1ec816bd58dce62b71060381188e2a82307d4e50baa3ba86ee2d0f8a827857ef",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 12
+    "spec_revision": 14
   }
 }
 ```
@@ -166,6 +174,26 @@ The bound ProductSpec has no `## Risks` section (confirmed by the mechanical pro
     {
       "id": "RISK-FA-14",
       "statement": "Claimed commit evidence taken as verified: a report's claimed commit SHA (extracted from the local turn journal) could be presented as independently verified against real git state when the current implementation only extracts the claim and never re-verifies it."
+    },
+    {
+      "id": "RISK-FA-15",
+      "statement": "Private-experience leakage or cross-scope influence: adaptation, pattern extraction, a safe projection, or deletion handling could expose raw prompts/transcripts/tool output/embeddings/secrets or retrieve evidence outside the admitted tenant, workspace, visibility, consent, retention, and tombstone scope."
+    },
+    {
+      "id": "RISK-FA-16",
+      "statement": "Evaluation leakage and mid-run policy drift: a run could learn from its own labels or feedback, retrieve from a bank that changes during execution, or alter its effective harness between continuations, making the outcome irreproducible and the evaluation circular."
+    },
+    {
+      "id": "RISK-FA-17",
+      "statement": "Optimizer self-promotion: the component that produces a candidate could verify or activate it without independent held-out evidence and Blueprint review, converting an experimental policy into production through the same authority that benefits from the claim."
+    },
+    {
+      "id": "RISK-FA-18",
+      "statement": "Authority expansion through adaptation: a harness delta could change workspace, placement, provider/account admission, tools, approvals, guardrails, budgets, done condition, release authority, or external-effect permissions even though learning is not an action-authority grant."
+    },
+    {
+      "id": "RISK-FA-19",
+      "statement": "Provenance or compatibility drift: a report could omit or misstate the base/effective bundle, module versions, bank snapshot, evaluator/environment, cache state, or release decision, or silently reuse an adapted bundle after a provider/model/toolset change makes it incompatible."
     }
   ],
   "source_digest": "sha256:1084a9edb589ef44d32854a76620d88fe517c9cce4ceba15b537b96bf839849c",
@@ -175,7 +203,7 @@ The bound ProductSpec has no `## Risks` section (confirmed by the mechanical pro
 
 ## Assurance Scope
 
-Every one of the 68 executable FA-AC-* criteria from ProductSpec rev 12 is in assurance scope (see Subject). No criterion carries a `not_applicable` disposition in this revision -- rev 10's own Criterion Disposition Map already resolved FA-AC-01..37 (`changed-superseded`, `retained`, or `deferred`) and none of those dispositions map to "does not need assurance"; a superseded criterion's assurance obligation is superseded by its replacement criterion's obligation, not dropped. In scope: local unit/module proof (Vite Plus `vp test`), in-process HTTP control-server contract proof, two-OS-process dev-mode Electron smoke proof, and the still-outstanding real-provider owner-sidebar proof tier (#8976). Out of scope for THIS revision (named explicitly rather than silently omitted): a genuinely signed/notarized packaged-build resume proof (no signing runbook was executed in this pass); a new TLA+ formal model (the repository has none for Full Auto -- see Formal-model note below and the `custom-evidence-tier-ledger`); and independent re-verification of claimed commit SHAs in the FullAutoRunReport against live git state (the current implementation only extracts the claim, per FA-AC-51's own "verified independently where possible" hedge -- this revision does not claim stronger verification than the code performs).
+Every one of the 76 executable FA-AC-* criteria from ProductSpec rev 14 is in assurance scope (see Subject). No criterion carries a `not_applicable` disposition in this revision -- rev 10's own Criterion Disposition Map already resolved FA-AC-01..37 (`changed-superseded`, `retained`, or `deferred`) and none of those dispositions map to "does not need assurance"; a superseded criterion's assurance obligation is superseded by its replacement criterion's obligation, not dropped. In scope: local unit/module proof (Vite Plus `vp test`), in-process HTTP control-server contract proof, two-OS-process dev-mode Electron smoke proof, the still-outstanding real-provider owner-sidebar proof tier (#8976), and future MemoHarness unit/contract/privacy/evaluation/release/architecture evidence explicitly required by FA-AC-69..76. Out of scope for THIS revision (named explicitly rather than silently omitted): a genuinely signed/notarized packaged-build resume proof (no signing runbook was executed in this pass); a new TLA+ formal model (the repository has none for Full Auto -- see Formal-model note below and the `custom-evidence-tier-ledger`); independent re-verification of claimed commit SHAs in the FullAutoRunReport against live git state; and any execution claim for the not-yet-implemented MemoHarness experience, retrieval, adaptation, optimization, deletion, or Blueprint release seams.
 
 ## Environments
 
@@ -3414,7 +3442,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
 
 ## Obligations
 
-31 of 68 criteria carry a fully DESIGNED obligation in this revision (domains, technique, environment_refs, oracle, falsifier, evidence, independence, and activation_gate all present) -- selected specifically to cover FA-AS-01's nine named highest-risk clusters plus the FullAutoRun lifecycle/migration core they depend on. The remaining 37 stay `needs_design`: their base binding (criterion ref, source claim snapshot, source digest) is present so subject coverage is complete, but no proof plan has been authored for them in this pass. This is a disclosed, bounded partial pass -- see `custom-criterion-coverage-ledger` for the exact per-criterion split and `custom-owner-gates` for what closing the remainder needs. No designed obligation in this revision claims the `seam` domain: every cited evidence file is in-process (real production modules composed together, or a real in-process Effect HTTP server) rather than a genuine two-real-process wire connection with independently qualifying evidence on both sides, so claiming `domains: ["seam"]` here would trip `false_green_mocked_seam` honestly -- it would BE a mocked/one-sided seam claim. The two-OS-process `smoke:full-auto-restart` harness is real cross-process evidence but is modeled under the `resilience` technique / `ENV-FA-DEV-TWO-PROCESS-1` environment rather than `seam`, because its own in-app `PROBE=phase` special-casing (see the harness's own env var) makes it a smoke fixture, not two independently-authored real sides meeting at an ordinary production boundary.
+31 of 76 criteria carry a fully DESIGNED obligation in this revision (domains, technique, environment_refs, oracle, falsifier, evidence, independence, and activation_gate all present) -- retained exactly from rev 3 to cover FA-AS-01's nine named highest-risk clusters plus the FullAutoRun lifecycle/migration core they depend on. The remaining 45 stay `needs_design`: their base binding (criterion ref, source claim snapshot, source digest) is present so subject coverage is complete, but no proof plan has been authored for them in this pass. FA-AC-69..76 are deliberately in that set because no MemoHarness implementation, independent verifier, or executable evidence seam exists yet; pre-MemoHarness tests cannot prove them by association. This is a disclosed, bounded partial pass -- see `custom-criterion-coverage-ledger` for the exact per-criterion split and `custom-owner-gates` for what closing the remainder needs. No designed obligation in this revision claims the `seam` domain: every cited evidence file is in-process (real production modules composed together, or a real in-process Effect HTTP server) rather than a genuine two-real-process wire connection with independently qualifying evidence on both sides, so claiming `domains: ["seam"]` here would trip `false_green_mocked_seam` honestly -- it would BE a mocked/one-sided seam claim. The two-OS-process `smoke:full-auto-restart` harness is real cross-process evidence but is modeled under the `resilience` technique / `ENV-FA-DEV-TWO-PROCESS-1` environment rather than `seam`, because its own in-app `PROBE=phase` special-casing (see the harness's own env var) makes it a smoke fixture, not two independently-authored real sides meeting at an ordinary production boundary.
 
 ```assurancespec-obligations
 [
@@ -5101,6 +5129,94 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "source_claim_digest": "sha256:42198d0dc4dd0e1dc88785133fb9636e22677ee468114b2ae42a6105dc057af4",
     "source_claim_snapshot": "Owner-configurable guardrails and the confidence gate bound\nevery unattended run. Each configured guardrail class provably halts a\nsynthetic run with its typed reason and durable attribution: maxWallClockMs\n(against the durable `enabledAt` anchor, failing CLOSED when a\nguardrail-bearing record lacks the anchor) and maxTurns terminate with\n`guardrail_max_wall_clock`/`guardrail_max_turns` and\n`disabledBy: \"guardrail\"`; maxPerTurnFailures tightens the FA-H5 budget\nwhile keeping its `dispatch_failure_limit` attribution; tokenBudgetRef is\ncarried durably as an owner-visible ref and never fabricated into\nenforcement. Absent guardrails preserve the existing 20-cap and 5-failure\nsemantics byte-for-byte. Every between-turn decision persists as a typed,\nbounded, oldest-evicted decision record (continue / rotate /\npause_low_confidence / stop_guardrail with reason and remaining budget)\nthat survives restart and disable/enable, with a public-safe explicit\nfield-by-field projection. A deterministic no-progress detector (three\nconsecutive settled failed/interrupted_by_restart turns after the\nlastResumedAt ?? enabledAt anchor) transitions the record to a durable\n`pausedReason`-carrying paused state instead of continuing blind; the\npause survives restart, only an explicit attributed resume\n(`resumeFullAuto`) clears it, and pre-resume evidence can never\nimmediately re-pause the resumed loop. The non-overridable core set --\nworkspace binding, own-capacity-only admission, no rate-limit-reset\ntriggering -- is enforced in code with no config/env surface: unknown\nguardrail keys are dropped at decode, and no environment variable or\nhand-edited durable field relaxes any of the three (proven by the\nimmunity test). Guardrail terminations flow into the FA-RUN-04 report's\nthreadFailureHistory and settle the bound FullAutoRun to Stopped with the\ntyped `guardrail` actor. Legacy registry files without the new optional\nfields decode unquarantined and behave exactly as before.\nProof: FA-GD-01 (#8991); `tests/full-auto-guardrails.test.ts` (guardrail\nschema/legacy decode, decision records, per-class typed halts, durable\npause + restart survival + explicit resume, non-overridable immunity, run\nreport pickup); control-server/OpenAPI/UI wiring for bind-guardrails,\nresume, and the decision-history projection is an explicit named\nfollow-up seam, not claimed by this revision.",
     "title": "Assure FA-AC-68"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-69"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-69-01",
+    "source_claim_digest": "sha256:cd15ea0f2c2a7bdd8c9a58b880a7fe6935997e511b0028c24bfbeea45492c233",
+    "source_claim_snapshot": "Before a Full Auto run is admitted, the host resolves exactly\none released `HarnessPolicyBundle` and persists its immutable digest plus\nthe six independently versioned dimension-policy refs (context assembly,\ntool interaction, generation control, orchestration, memory management,\noutput processing). Compatibility is checked against the\nexact engine protocol, provider/model/toolset, execution profile,\nevaluator, and environment; an unknown, candidate-only, revoked, or\nincompatible bundle fails closed before a thread or first turn dispatch.\nProof: planned; new MemoHarness/Blueprint implementation authority is\nrequired before dispatch.",
+    "title": "Assure FA-AC-69"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-70"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-70-01",
+    "source_claim_digest": "sha256:07bf96fb6a114bfe4ef69473312c4a9542d831d451b9fc274b9fdfa00fffcb7b",
+    "source_claim_snapshot": "When adaptation is enabled, run admission freezes an eligible\nexperience-bank snapshot before the first dispatch. Retrieval is semantic\nthrough the central typed selector and is filtered by tenant, workspace,\nvisibility, retention, consent, evaluator compatibility, deletion, and\ntombstone state; it never uses ad hoc keyword intent routing and never\nretrieves raw cross-tenant or ineligible evidence. The snapshot identity,\nsafe experience/pattern refs, scores, filters, and cache/cost facts are\nrecorded in the adaptation receipt, while raw prompts, transcripts, tool\noutput, embeddings, secrets, credentials, and filesystem paths remain\nprivate.\nProof: planned; the retrieval, privacy, and deletion-aware snapshot suites\ndo not yet exist.",
+    "title": "Assure FA-AC-70"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-71"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-71-01",
+    "source_claim_digest": "sha256:8e56e60b71e97c71a5cb015289d48230cdc544575cfa3a585a142d4d29481bde",
+    "source_claim_snapshot": "Per-case adaptation happens at most once, after the snapshot\nfreezes and before the first provider turn. It applies only released,\ncompatible, bounded module patches and emits a `HarnessAdaptationReceipt`\ncontaining base/result bundle digests, snapshot, selected patch refs,\ncompatibility and risk decisions, and explicit no-current-run-label and\nno-current-run-feedback facts. The effective digest is immutable through\nevery continuation, restart, Pause/Resume, retry, and provider handoff;\nan incompatible result fails closed rather than silently falling back or\nchanging policy mid-run.\nProof: planned; run-start adaptation and restart/handoff invariance tests do\nnot yet exist.",
+    "title": "Assure FA-AC-71"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-72"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-72-01",
+    "source_claim_digest": "sha256:6b3028616af9475e8941d26e70b77442926d93d106735aaa53546abbc06b5db2",
+    "source_claim_snapshot": "The authority manifest before and after adaptation is\nidentical for objective/done condition, workspace grant, execution\nplacement/profile, provider/account candidate set and order, tool scopes,\napproval policy, guardrails, budgets, release authority, action authority,\nand external effects. The adapter schema cannot express those fields, and\na malformed or hand-edited delta that attempts to change one refuses before\ndispatch with a typed reason.\nProof: planned; a bounded authority-immunity model and regression suite do\nnot yet exist.",
+    "title": "Assure FA-AC-72"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-73"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-73-01",
+    "source_claim_digest": "sha256:b665295b430e6b5690fe058f4832ba3533f0bd5e22029b88998d5b5b01427f55",
+    "source_claim_snapshot": "Every `FullAutoRunReport`, private control record, and\npublic-safe projection records the effective execution tuple of provider,\nmodel, harness bundle digest, toolset, evaluator, and environment, plus the\nadaptation policy/receipt refs and static/global/adapted classification.\nPublic-safe projections are explicit-field allowlists and never include raw\nexperience content, retrieval queries, embeddings, private scores, prompts,\ntranscripts, tool output, secrets, credentials, or filesystem paths.\nProof: planned; report and cross-surface projection schemas require an\nadditive implementation revision.",
+    "title": "Assure FA-AC-73"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-74"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-74-01",
+    "source_claim_digest": "sha256:64d472a8991b10c07decb6948452d157710cf7dbcaa9ab3f872b7e69755dd412",
+    "source_claim_snapshot": "A run can become a `HarnessExecutionExperience` only through a\nseparate Effect-owned compiler after the run is terminal and its report is\nimmutable. The experience records source run/report/evaluator/provenance,\noutcome and quality facts, visibility, retention, and retrieval/training\neligibility; it cannot alter the source run, its effective bundle, or the\nfrozen snapshot that source run used. Export, deletion, and tombstone flows\nprevent deleted evidence from re-entering later snapshots or candidates.\nProof: planned; no terminal-run experience compiler or deletion receipt\nsuite is claimed by this revision.",
+    "title": "Assure FA-AC-74"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-75"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-75-01",
+    "source_claim_digest": "sha256:91ced3de6e86519d789498743b436deaff1d70113f49318ddd1b60e34d174831",
+    "source_claim_snapshot": "Offline global optimization and pattern extraction consume\nonly admitted immutable experience/evaluation snapshots and produce\ncontent-addressed candidate module versions with complete lineage. A\ncandidate cannot become production by optimizer, executor, or run action:\nit must pass held-out quality, regression, compatibility, privacy, and\nsafety evidence, then cross an independent Blueprint release gate. Shadow/\ndogfood execution is explicit; production Full Auto resolves only released\ncompatible versions and records promotion or rollback receipts.\nProof: planned; the optimizer, evidence packet, and Blueprint BP-MH release\ngate are not implemented or admitted by this document.",
+    "title": "Assure FA-AC-75"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "FA-AC-76"
+    ],
+    "disposition": "required",
+    "id": "AO-FA-AC-76-01",
+    "source_claim_digest": "sha256:b0f9b83855ae085ad89e1032193d087c33b68b1e64a2137f185782e8745555ec",
+    "source_claim_snapshot": "MemoHarness application and control-plane code is TypeScript\non Effect: Effect Schema contracts, services/layers, structured errors,\nsemantic retrieval, storage policy, optimization orchestration, adaptation,\nretention/deletion, and release resolution. Any Rust is an isolated native\nhelper for containment, PTY/process primitives, or local inference behind a\ngenerated Effect-owned contract; no Rust MemoHarness daemon, policy engine,\nrelease authority, metadata database, or second source of truth is admitted.\nProof: planned; architecture conformance tests must reject ownership drift\nwhen implementation begins.",
+    "title": "Assure FA-AC-76"
   }
 ]
 ```
@@ -5132,7 +5248,7 @@ Four gates, one per Environment Profile, express exactly when each evidence tier
 
 ## Evidence Policy
 
-Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry or an `oracle.evaluator_ref` names where evidence WOULD be found, not that it was observed passing in this authoring pass. Missing, stale, or unexecuted evidence stays `INCONCLUSIVE` (schema-enforced: `missing_evidence_verdict` is a literal `"INCONCLUSIVE"`). `required_for_ready_obligation` below names the four axes every obligation's design must resolve before it can be considered execution-ready: an oracle observation, a falsifier observation demonstrating sensitivity, an environment binding, and independent (non-producer) review. This revision resolves the DESIGN of those four axes for 31 obligations; it does not itself constitute an observation receipt for any of them -- no receipt-ingestion tool ran against this revision as part of authoring it. Evidence tier must never round up: fixture/headless evidence (FA-AC-62..65) stays labeled `fixture_headless` and is never presented as `owner_real_dogfood`; unsigned dev-mode two-process evidence (FA-AC-07/08/09/29) stays labeled `local_dev_two_process_unsigned` and is never presented as a signed packaged-release proof.
+Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry or an `oracle.evaluator_ref` names where evidence WOULD be found, not that it was observed passing in this authoring pass. Missing, stale, or unexecuted evidence stays `INCONCLUSIVE` (schema-enforced: `missing_evidence_verdict` is a literal `"INCONCLUSIVE"`). `required_for_ready_obligation` below names the four axes every obligation's design must resolve before it can be considered execution-ready: an oracle observation, a falsifier observation demonstrating sensitivity, an environment binding, and independent (non-producer) review. This revision resolves the DESIGN of those four axes for 31 obligations; it does not itself constitute an observation receipt for any of them -- no receipt-ingestion tool ran against this revision as part of authoring it. Evidence tier must never round up: fixture/headless evidence (FA-AC-62..65) stays labeled `fixture_headless` and is never presented as `owner_real_dogfood`; unsigned dev-mode two-process evidence (FA-AC-07/08/09/29) stays labeled `local_dev_two_process_unsigned` and is never presented as a signed packaged-release proof; existing Full Auto lifecycle/report tests provide zero MemoHarness observation for FA-AC-69..76 until new oracles, falsifiers, environments, and independent review are designed and run.
 
 ```assurancespec-evidence-policy
 {
@@ -5150,7 +5266,7 @@ Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry o
 
 ## Authority Boundaries
 
-This document cannot admit itself (`proposal_may_self_admit: false`), execute (`proposal_may_execute: false`), verify (`proposal_may_verify: false`), release (`proposal_may_release: false`), or change a public promise (`proposal_may_change_public_promises: false`) -- all four are schema-literal `false` and cannot be flipped by editing this file. `admitted_roles` names who CAN admit this revision: the existing authorized review boundary named in #8978's own text -- concretely, the owner or an explicitly owner-designated independent reviewer distinct from the obligation's producer (this repo's agents, including the one authoring this revision, are producers, never admitters, of their own obligations). `verifier_roles` requires that an obligation's verifier differ from its evidence producer (mirrors `independence.producer_may_verify: false` set on every designed obligation below). `release_roles` stays the owner alone; this AssuranceSpec's existence, however complete, never itself authorizes a release or public claim -- the product-promise registry remains the sole authority for that (root `CLAUDE.md`).
+This document cannot admit itself (`proposal_may_self_admit: false`), execute (`proposal_may_execute: false`), verify (`proposal_may_verify: false`), release (`proposal_may_release: false`), or change a public promise (`proposal_may_change_public_promises: false`) -- all four are schema-literal `false` and cannot be flipped by editing this file. `admitted_roles` names who CAN admit this revision: the existing authorized review boundary named in #8978's own text -- concretely, the owner or an explicitly owner-designated independent reviewer distinct from the obligation's producer (this repo's agents, including the one authoring this revision, are producers, never admitters, of their own obligations). `verifier_roles` requires that an obligation's verifier differ from its evidence producer (mirrors `independence.producer_may_verify: false` set on every designed obligation below). `release_roles` stays the owner alone; this AssuranceSpec's existence, however complete, never itself authorizes a release or public claim -- the product-promise registry remains the sole authority for that. The same separation applies inside MemoHarness: candidate production, evaluation, verification, Blueprint release, and production activation are distinct roles, and neither an optimizer nor the run that supplied an experience may self-promote its output.
 
 ```assurancespec-authority
 {
@@ -5175,7 +5291,7 @@ This document cannot admit itself (`proposal_may_self_admit: false`), execute (`
 
 ## custom-criterion-coverage-ledger
 
-Per-criterion disposition for this revision. "designed (ready)" means the obligation's oracle/falsifier/technique/environment/evidence/independence/activation_gate are all present (mechanically verified by `assurance-spec coverage` -- see the CLAUDE.md-mandated `pnpm run check` / CLI verification run cited in the accompanying issue status comment). "needs_design" means only the base criterion binding exists; no proof plan has been authored for it in this pass. 31/68 designed, 37/68 needs_design. (FA-AC-09 -- a rev-9-era criterion now largely mooted by the new launcher minting run+thread together, per rev 10's own disposition note -- was deliberately left needs_design rather than force-designed in this pass; it belongs with the FA-AC-54/55/56 launcher-UI cluster, not the restart-resume cluster it was originally grouped under.)
+Per-criterion disposition for this revision. "designed (ready)" means the obligation's oracle/falsifier/technique/environment/evidence/independence/activation_gate are all present (mechanically verified by `assurance-spec coverage` -- see the CLAUDE.md-mandated `pnpm run check` / CLI verification run cited in the accompanying issue status comment). "needs_design" means only the base criterion binding exists; no proof plan has been authored for it in this pass. 31/76 designed, 45/76 needs_design. (FA-AC-09 -- a rev-9-era criterion now largely mooted by the new launcher minting run+thread together, per rev 10's own disposition note -- was deliberately left needs_design rather than force-designed in this pass; it belongs with the FA-AC-54/55/56 launcher-UI cluster, not the restart-resume cluster it was originally grouped under.)
 
 | Criterion | Disposition (this revision) |
 | --- | --- |
@@ -5247,8 +5363,16 @@ Per-criterion disposition for this revision. "designed (ready)" means the obliga
 | FA-AC-66 | needs_design |
 | FA-AC-67 | designed (ready) |
 | FA-AC-68 | needs_design |
+| FA-AC-69 | needs_design |
+| FA-AC-70 | needs_design |
+| FA-AC-71 | needs_design |
+| FA-AC-72 | needs_design |
+| FA-AC-73 | needs_design |
+| FA-AC-74 | needs_design |
+| FA-AC-75 | needs_design |
+| FA-AC-76 | needs_design |
 
-Undesigned criteria fall into three honest buckets, not one silent pile: (a) FA-AC-01..05/10-12/18-28/30-37 -- rev-9-era criteria retained unchanged or with stronger proof per rev 10's own Criterion Disposition Map; real historical evidence likely exists for several of these (the same suites cited above cover some incidentally) but this pass did not re-verify and re-cite each one individually, so they stay honestly `needs_design` rather than claimed by association. (b) FA-AC-49/50/53-57/68 -- newer rev-10/11/12 criteria (durable objective field, report retention bound, Success Metric transcript-analysis criterion, launcher/run-view UI criteria, sidebar entry, guardrails) that this pass did not reach. (c) FA-AC-66 -- this AssuranceSpec's OWN completeness criterion; by definition it cannot be marked `designed (ready)` while (a) and (b) remain open, and it must never be self-marked complete by the same pass that left work outstanding.
+Undesigned criteria fall into four honest buckets, not one silent pile: (a) FA-AC-01..05/10-12/18-28/30-37 -- rev-9-era criteria retained unchanged or with stronger proof per rev 10's own Criterion Disposition Map; real historical evidence likely exists for several of these (the same suites cited above cover some incidentally) but this pass did not re-verify and re-cite each one individually, so they stay honestly `needs_design` rather than claimed by association. (b) FA-AC-49/50/53-57/68 -- newer rev-10/11/12 criteria (durable objective field, report retention bound, Success Metric transcript-analysis criterion, launcher/run-view UI criteria, sidebar entry, guardrails) that this pass did not reach. (c) FA-AC-69..76 -- new MemoHarness criteria requiring fresh privacy, evaluation-leakage, authority-immunity, provenance, deletion, optimizer, Blueprint-release, and architecture-boundary proof designs after an implementation seam exists. (d) FA-AC-66 -- this AssuranceSpec's OWN completeness criterion; by definition it cannot be marked `designed (ready)` while (a), (b), and (c) remain open, and it must never be self-marked complete by the same pass that left work outstanding.
 
 ## custom-evidence-tier-ledger
 
@@ -5287,6 +5411,16 @@ What DOES exist, both real and bounded: (1) `apps/openagents-desktop/tests/full-
 
 What remains genuinely unmodeled: the COMPOSED reachable state space of {lifecycle state x lease-claimed-boolean x retry-attempt-count x routing-candidate-index}. No artifact in this repository -- before or after this pass -- exhaustively checks that composition; the existing e2e scenario tests (apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts, apps/openagents-desktop/tests/full-auto-thread-pressure.e2e.test.ts) cover hand-picked overlapping scenarios, not the full reachable product. This is a named, disclosed residual, not a closed obligation: a future well-scoped follow-up could add a genuine TLA+ spec under `specs/desktop/full-auto-run/` mirroring the existing `specs/khala-fleet-delegate/` pattern (a supervisor process model with an explicit lease/retry/rotation state variable set and `specs/run-tlc.sh`-style pass/fail mutation configs), but building that model was judged out of safe scope for this single pass given the risk of a hastily-authored formal model asserting properties beyond what was actually verified against production code (ASSURANCE_SPEC.md Law 9: "a passing model... cannot... override contradictory runtime evidence" -- and an under-verified model is worse than an honestly absent one).
 
+MemoHarness adds a second explicitly unmodeled bounded product:
+{bundle release state x snapshot frozen x adaptation count x run terminality x
+candidate release state x authority-delta-valid}. A future model should prove
+at least: adaptation count never exceeds one; current-run labels/feedback are
+unreachable before terminal state; effective bundle identity is immutable
+after first dispatch; deleted/tombstoned experiences are ineligible; forbidden
+authority deltas never reach dispatch; and candidate production activation is
+unreachable without an independent release decision. This revision names the
+model boundary but does not claim a model or implementation exists.
+
 ## custom-owner-gates
 
 What this AssuranceSpec cannot self-provide and needs an explicit owner (or owner-designated independent reviewer) action:
@@ -5294,5 +5428,6 @@ What this AssuranceSpec cannot self-provide and needs an explicit owner (or owne
 1. **Admission.** This document must stay `lifecycle_state: "proposed"` until the owner or an owner-designated independent reviewer distinct from its producer reviews and admits it. No agent, including the one that authored this revision, may flip that field.
 2. **Real-provider dogfood receipts (#8976, gates FA-AC-62..65).** Requires linking real Codex/Claude accounts and running the six named tests in the real OpenAgents Desktop sidebar -- not a headless fixture profile. #8976 itself is still open.
 3. **Signed/notarized packaged-build resume proof (gates FA-AC-07/29 at release tier).** Requires running `apps/oa-updates/docs/release-signing-runbook.md` against a real packaged build, then re-running `pnpm run smoke:full-auto-restart` against that signed artifact specifically.
-4. **The remaining 36 `needs_design` criteria.** Closing FA-AC-66 (this document's own completeness criterion) requires either continuing this reconciliation in a follow-up pass or an explicit owner decision to narrow FA-AC-66's bar for a partial-but-admitted first admission.
+4. **The remaining 45 `needs_design` criteria.** Closing FA-AC-66 (this document's own completeness criterion) requires continuing this reconciliation in a follow-up pass or an explicit owner decision to narrow FA-AC-66's bar for a partial-but-admitted first admission. FA-AC-69..76 specifically require implementation-shaped proof plans and independent privacy/release review; old run-loop evidence cannot close them.
 5. **A future composed formal model (optional, not blocking).** See `custom-formal-model-status` above.
+6. **MemoHarness policy and release decisions.** The owner or an explicitly designated independent reviewer must admit default experience retention/retrieval/training policy, any cross-workspace aggregate sharing, production adaptation policy, and candidate promotion beyond shadow/dogfood. The optimizer, executor, and source run are never eligible to supply their own release acceptance.
