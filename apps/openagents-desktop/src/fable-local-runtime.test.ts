@@ -658,6 +658,68 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
   })
 
+  test("a terminal SDK result settles even when the iterator never closes", async () => {
+    let nextCalls = 0
+    let returnCalled = false
+    const harness = makeRuntimeHarness({
+      script: () => ({
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<unknown>> => {
+            nextCalls += 1
+            if (nextCalls === 1) {
+              return {
+                done: false,
+                value: {
+                  type: "system",
+                  subtype: "init",
+                  session_id: "session-stuck-close",
+                  model: FABLE_LOCAL_MODEL,
+                },
+              }
+            }
+            if (nextCalls === 2) {
+              return {
+                done: false,
+                value: {
+                  type: "result",
+                  subtype: "success",
+                  is_error: false,
+                  result: "terminal result is authoritative",
+                },
+              }
+            }
+            return await new Promise<IteratorResult<unknown>>(() => undefined)
+          },
+          return: async (): Promise<IteratorResult<unknown>> => {
+            returnCalled = true
+            return await new Promise<IteratorResult<unknown>>(() => undefined)
+          },
+        }),
+      }),
+    })
+    const sink = collect()
+    const result = await Promise.race([
+      harness.runtime.runTurn({
+        turnRef: "turn-stuck-close",
+        threadRef: "thread-stuck-close",
+        history: [],
+        message: "finish once the result record arrives",
+        emit: sink.emit,
+      }),
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error("terminal result did not settle")), 250)),
+    ])
+    expect(result).toEqual({
+      ok: true,
+      text: "terminal result is authoritative",
+      totalTokens: null,
+      accountRef: "claude-pylon-b",
+    })
+    expect(nextCalls).toBe(2)
+    expect(returnCalled).toBe(true)
+    expect(sink.events.at(-1)?.kind).toBe("turn_completed")
+  })
+
   test("owner-selected Opus 4.8 and Sonnet 5 slugs reach SDK Options.model exactly", async () => {
     for (const model of ["claude-opus-4-8", "claude-sonnet-5"] as const) {
       const harness = makeRuntimeHarness({

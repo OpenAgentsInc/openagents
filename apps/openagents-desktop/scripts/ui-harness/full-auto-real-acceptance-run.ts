@@ -409,6 +409,10 @@ const commonRunEvidence = (input: Readonly<{
 
 const stopExistingStaleTestRun = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Full Auto" }).click()
+  await page.waitForFunction(() =>
+    document.querySelector("[data-full-auto-run-ref]") !== null ||
+    document.querySelector('[data-en-key="full-auto-launcher-title-field"]') !== null,
+  undefined, { timeout: 30_000 })
   const run = page.locator("[data-full-auto-run-ref]")
   if (await run.count() === 0) return
   const state = await run.getAttribute("data-full-auto-run-state")

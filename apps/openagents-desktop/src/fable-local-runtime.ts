@@ -1291,7 +1291,45 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             ...(resumeSessionId === undefined ? {} : { resume: resumeSessionId }),
           },
         })
-        for await (const message of session) {
+        // The SDK's `result` record is the provider-terminal authority. Do
+        // not wait for a buggy/stuck iterator close after that record: a real
+        // Claude Code session can yield its complete result and then leave
+        // `next()` pending until CLAUDE_CODE_STREAM_CLOSE_TIMEOUT, which
+        // strands the journal in `streaming` despite a useful final answer.
+        // Manual iteration also lets the host's AbortController win a
+        // pending `next()` race at the actual turn wall-clock deadline.
+        const iterator = session[Symbol.asyncIterator]()
+        const aborted = abort.signal.aborted
+          ? Promise.resolve({ kind: "aborted" as const })
+          : new Promise<Readonly<{ kind: "aborted" }>>(resolve => {
+              abort.signal.addEventListener(
+                "abort",
+                () => resolve({ kind: "aborted" }),
+                { once: true },
+              )
+            })
+        const closeIterator = (): void => {
+          try {
+            const closing = iterator.return?.()
+            if (closing !== undefined) void Promise.resolve(closing).catch(() => undefined)
+          } catch {
+            // A terminal provider result is already durable authority; an
+            // iterator cleanup exception cannot turn it back into streaming.
+          }
+        }
+        while (true) {
+          const next = iterator.next().then(
+            value => ({ kind: "next" as const, value }),
+            error => ({ kind: "error" as const, error }),
+          )
+          const iteration = await Promise.race([next, aborted])
+          if (iteration.kind === "aborted") {
+            closeIterator()
+            break
+          }
+          if (iteration.kind === "error") throw iteration.error
+          if (iteration.value.done === true) break
+          const message = iteration.value.value
           const record = message as SdkRecord
           const type = typeof record.type === "string" ? record.type : undefined
           if (type === "system" && record.subtype === "init") {
@@ -1445,6 +1483,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             }
             totalTokens = usageTotalTokens(record.usage)
             usageSplit = usageSplitFromResult(record.usage)
+            closeIterator()
+            break
           }
         }
       } catch (error) {
