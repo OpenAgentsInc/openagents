@@ -13,6 +13,23 @@ export const ProviderLaneRegistrySelectChannel = "openagents:provider-lanes:sele
 
 export type ProviderLaneAuthentication = "ready" | "missing" | "unknown"
 
+/**
+ * Bug #8998: the live-authentication mapping every native lane (`codex-local`,
+ * `fable-local`) must use to compute its `ProviderLaneRegistryEntry.authentication`
+ * field. `switchThread` below refuses any lane whose `authentication !== "ready"`
+ * with `missing_auth` -- so a caller that never probes live (or that trusts a
+ * cache nothing populates) permanently strands a genuinely-authenticated
+ * account at the "unknown" default and every switch is wrongly refused. This
+ * helper exists so callers (main.ts's `providerLaneEntries()`) always derive
+ * `authentication` from an actual `{ state: "available" | "unavailable" }`
+ * probe result -- never from a passive cache alone. See this file's test
+ * suite for the regression contract this enforces.
+ */
+export const nativeLaneAuthenticationFromAvailability = (
+  availability: Readonly<{ state: "available" | "unavailable" }>,
+): Extract<ProviderLaneAuthentication, "ready" | "missing"> =>
+  availability.state === "available" ? "ready" : "missing"
+
 export type ProviderLaneRegistryEntry = Readonly<{
   laneRef: string
   provider: string

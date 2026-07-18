@@ -161,6 +161,7 @@ import {
   ProviderLaneRegistrySelectChannel,
   decodeProviderLaneSelectRequest,
   makeProviderLaneRegistry,
+  nativeLaneAuthenticationFromAvailability,
   type ProviderLaneRegistryEntry,
 } from "./provider-lane-registry.ts"
 import {
@@ -3015,7 +3016,7 @@ ipcMain.handle(DiagnosticsActionChannel, (_event, value: unknown) => {
 
 ipcMain.handle(FableLocalAvailabilityChannel, async () => {
   const availability = await fableLocal.availability()
-  providerLaneAuthentication.set("fable-local", availability.state === "available" ? "ready" : "missing")
+  providerLaneAuthentication.set("fable-local", nativeLaneAuthenticationFromAvailability(availability))
   return availability
 })
 // Image file picker (capability I1): open the native dialog in MAIN, read the
@@ -3357,7 +3358,7 @@ if (reactSmokeMode) (releaseSmokeCodexAvailability as (() => void) | null)?.()
 ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
   if (smokeCodexAvailabilityGate !== null) await smokeCodexAvailabilityGate
   const availability = await codexLocal.availability()
-  providerLaneAuthentication.set("codex-local", availability.state === "available" ? "ready" : "missing")
+  providerLaneAuthentication.set("codex-local", nativeLaneAuthenticationFromAvailability(availability))
   return availability
 })
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
@@ -3768,22 +3769,46 @@ const providerLaneCapabilityByRef = (laneRef: string) =>
         : laneRef === "acp:cursor-agent" ? cursorAcpLane.capabilities()
           : null
 
+// Bug #8998: nativeEntries previously sourced `authentication` from the
+// passive `providerLaneAuthentication` Map, which is only ever populated by
+// the `CodexLocalAvailabilityChannel`/`FableLocalAvailabilityChannel` IPC
+// handlers above -- i.e. only when the renderer explicitly invokes them.
+// #8974 removed the last renderer caller (the old composer-embedded Codex
+// chip), so the Map stayed stuck at its permanent "unknown" default and
+// every ordinary provider switch was refused for `missing_auth` regardless
+// of real login state. Fix: probe live here, exactly like the ACP lanes a
+// few lines below already do via `ensureAcpProviders()`/`acpProviderHost.status()`.
+// `codexLocal.availability()`/`fableLocal.availability()` are safe to call on
+// every `providerLaneEntries()` invocation -- Codex's underlying preflight
+// (`ensureProbed`) is itself memoized after the first probe round, and
+// Claude's `discover()` is a lightweight local account-registry read, not a
+// fresh network/subprocess probe per call.
 const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistryEntry>> => {
-  const lanes = [fableLocalLane, codexLocalLane] as const
-  const nativeEntries: ReadonlyArray<ProviderLaneRegistryEntry> = lanes.map(lane => {
-    const report = lane.capabilities()
-    const capabilities = projectProviderLaneCapabilities(report)
-    return {
-      laneRef: lane.laneRef,
-      provider: report.provider,
-      profileRef: report.policy.profileRef,
-      configuration: "configured",
-      authentication: providerLaneAuthentication.get(lane.laneRef) ?? "unknown",
-      admission: capabilities.admission,
-      reason: capabilities.reason,
-      capabilities,
-    }
-  })
+  const nativeLanes = [
+    { lane: fableLocalLane, availability: () => fableLocal.availability() },
+    { lane: codexLocalLane, availability: () => codexLocal.availability() },
+  ] as const
+  const nativeEntries: ReadonlyArray<ProviderLaneRegistryEntry> = await Promise.all(
+    nativeLanes.map(async ({ lane, availability }) => {
+      const report = lane.capabilities()
+      const capabilities = projectProviderLaneCapabilities(report)
+      const authentication = nativeLaneAuthenticationFromAvailability(await availability())
+      // Keep the passive cache consistent too, in case anything else ever
+      // reads it (nothing does today) -- the live check above is now the
+      // source of truth for `providerLaneEntries()` itself.
+      providerLaneAuthentication.set(lane.laneRef, authentication)
+      return {
+        laneRef: lane.laneRef,
+        provider: report.provider,
+        profileRef: report.policy.profileRef,
+        configuration: "configured",
+        authentication,
+        admission: capabilities.admission,
+        reason: capabilities.reason,
+        capabilities,
+      }
+    }),
+  )
   await ensureAcpProviders()
   const providerStatus = acpProviderHost.status()
   const acpPeerEntry = (lane: ProviderLane<null>): ProviderLaneRegistryEntry => {
@@ -4698,6 +4723,51 @@ const smokeReactWorkbench = `(async () => {
     compatibilityRoots: document.querySelectorAll('[data-en-key="shell-root"]').length,
     composerFocused: document.activeElement === textarea,
     newSession: newSession !== undefined,
+  }
+})()`
+
+/**
+ * Bug #8998 regression proof: an ordinary (non-Full-Auto) composer provider
+ * switch must never be refused for `missing_auth` when the account is
+ * genuinely authenticated. Drives the REAL renderer-exposed
+ * `window.openagentsDesktop.providerLanes` bridge -- the exact same IPC path
+ * (`ProviderLaneRegistryListChannel` / `ProviderLaneRegistrySelectChannel`)
+ * a real composer provider-picker click would use -- against a fresh thread,
+ * with the same fixture "genuinely logged in" Codex/Claude accounts every
+ * other react-smoke step already runs against. Pre-fix, `providerLaneEntries()`
+ * sourced native-lane `authentication` from a passive cache nothing populates
+ * (#8974 removed the last renderer caller of the availability IPC channels),
+ * so this switch always failed with `missing_auth` regardless of real login
+ * state. Post-fix, `providerLaneEntries()` probes `codexLocal.availability()`
+ * / `fableLocal.availability()` live on every call, matching this fixture's
+ * genuinely-available accounts.
+ */
+const smokeReactProviderAuthSwitch = `(async () => {
+  const bridge = globalThis.openagentsDesktop
+  const thread = await bridge?.newThread?.({ laneRef: "fable-local" })
+  if (typeof thread?.id !== "string") {
+    return { ok: false, step: "new-thread", thread }
+  }
+  const lanes = await bridge?.providerLanes?.list?.()
+  const laneEntries = Array.isArray(lanes?.lanes) ? lanes.lanes : []
+  const codexEntry = laneEntries.find((entry) => entry?.laneRef === "codex-local")
+  const fableEntry = laneEntries.find((entry) => entry?.laneRef === "fable-local")
+  if (codexEntry?.authentication !== "ready" || fableEntry?.authentication !== "ready") {
+    return { ok: false, step: "lane-authentication", codexEntry, fableEntry }
+  }
+  const toCodex = await bridge?.providerLanes?.select?.({ threadRef: thread.id, laneRef: "codex-local" })
+  if (toCodex?.ok !== true) {
+    return { ok: false, step: "switch-to-codex", result: toCodex }
+  }
+  const backToFable = await bridge?.providerLanes?.select?.({ threadRef: thread.id, laneRef: "fable-local" })
+  if (backToFable?.ok !== true) {
+    return { ok: false, step: "switch-back-to-fable", result: backToFable }
+  }
+  return {
+    ok: true,
+    threadRef: thread.id,
+    codexAuthentication: codexEntry.authentication,
+    fableAuthentication: fableEntry.authentication,
   }
 })()`
 
@@ -6990,6 +7060,9 @@ const runSmoke = (window: BrowserWindow): void => {
             finish(0)
             return
           }
+          // Bug #8998 regression proof: ordinary provider switch must never
+          // refuse `missing_auth` for a genuinely-authenticated native lane.
+          await step("react-provider-auth-switch", smokeReactProviderAuthSwitch)
           await step("react-sidebar-destinations", smokeReactSidebarDestinations)
           await captureShot(window, "react-sidebar-expanded")
           await step("react-image-attachment", smokeReactImageAttachment)

@@ -8,6 +8,7 @@ import type { DesktopThread } from "./chat-contract.ts"
 import type { ProviderLaneComposerProjection } from "./provider-lane-capabilities.ts"
 import {
   makeProviderLaneRegistry,
+  nativeLaneAuthenticationFromAvailability,
   PROVIDER_SWITCH_HISTORY_MESSAGES,
   type ProviderLaneAuthentication,
   type ProviderLaneRegistryEntry,
@@ -133,5 +134,64 @@ describe("provider lane registry", () => {
       expect(result.history.at(-1)?.text).toBe(`message ${PROVIDER_SWITCH_HISTORY_MESSAGES + 4}`)
     }
     expect(registry.selection("thread.one")).toBe("fable-local")
+  })
+
+  // Bug #8998: a live-P0 regression where every ordinary (non-Full-Auto)
+  // provider switch to a native lane (codex-local, fable-local) was refused
+  // with `missing_auth` regardless of real login state. Root cause: the
+  // caller (main.ts's `providerLaneEntries()`) sourced `authentication` from
+  // a passive cache that nothing populated after #8974 removed the last
+  // renderer caller of the availability IPC channels, so it stayed stuck at
+  // the "unknown" default forever. `switchThread` itself was never at fault
+  // (it is a pure function of whatever `lanes` the caller passes in) -- these
+  // cases pin the contract the fix now relies on: a caller MUST derive
+  // `authentication` from a live availability probe, never from a stale
+  // default, or a genuinely-authenticated account gets permanently locked out.
+  test("nativeLaneAuthenticationFromAvailability maps a live probe to ready/missing, never unknown", () => {
+    expect(nativeLaneAuthenticationFromAvailability({ state: "available" })).toBe("ready")
+    expect(nativeLaneAuthenticationFromAvailability({ state: "unavailable" })).toBe("missing")
+  })
+
+  test("a native lane whose authentication reflects a live-probed available account is never refused for missing_auth", () => {
+    const { registry } = setup()
+    // Simulates the FIXED `providerLaneEntries()`: authentication computed
+    // fresh from `codexLocal.availability()` on every call via
+    // `nativeLaneAuthenticationFromAvailability`, never from a passive cache.
+    const liveAuthentication = nativeLaneAuthenticationFromAvailability({ state: "available" })
+    const result = registry.switchThread({
+      threadRef: "thread.one",
+      laneRef: "codex-local",
+      lanes: [lane("codex-local", liveAuthentication)],
+      thread: thread(),
+    })
+    expect(result).toMatchObject({ ok: true, laneRef: "codex-local" })
+    // Repeated calls (as would happen across repeated `providerLaneEntries()`
+    // invocations from repeated composer opens) must never regress to a
+    // stale-cache refusal as long as the live probe keeps reporting available.
+    expect(registry.switchThread({
+      threadRef: "thread.one",
+      laneRef: "fable-local",
+      lanes: [lane("fable-local", nativeLaneAuthenticationFromAvailability({ state: "available" }))],
+      thread: thread(),
+    })).toMatchObject({ ok: true, laneRef: "fable-local" })
+  })
+
+  test("a native lane still stuck at the pre-#8998-fix stale 'unknown' default is correctly refused (proves the bug shape)", () => {
+    const { registry } = setup()
+    // This is exactly the pre-fix bug: a lane reported with the permanent
+    // "unknown" default (the passive `providerLaneAuthentication` Map's
+    // seed value, never updated because nothing calls the availability IPC
+    // channel anymore) is refused even though the account is genuinely
+    // authenticated. The fix's job is ensuring production callers never
+    // actually construct lanes this way for a native lane -- see
+    // `nativeLaneAuthenticationFromAvailability` above and its use in
+    // `providerLaneEntries()` (apps/openagents-desktop/src/main.ts).
+    const result = registry.switchThread({
+      threadRef: "thread.one",
+      laneRef: "codex-local",
+      lanes: [lane("codex-local", "unknown")],
+      thread: thread(),
+    })
+    expect(result).toMatchObject({ ok: false, reason: "missing_auth" })
   })
 })
