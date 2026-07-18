@@ -60,7 +60,7 @@ describe("release feedback intake", () => {
       {
         id: "feedback-1",
         author: "lathe-agent-oa",
-        body: "Result: BLOCKED\nSeverity: P0\nObserved: Signed app cannot start Codex.",
+        body: `Candidate-Version: ${manifest.version}\nResult: BLOCKED\nSeverity: P0\nObserved: Signed app cannot start Codex.`,
         url: "https://github.example/feedback-1",
         createdAt: "2026-07-18T00:10:00Z",
       },
@@ -102,7 +102,7 @@ describe("release feedback intake", () => {
       {
         id: "feedback-pass",
         author: "lathe-agent-oa",
-        body: "Result: PASS\nSeverity: P2\nObserved: Signed candidate works.",
+        body: `Candidate-Version: ${manifest.version}\nResult: PASS\nSeverity: P2\nObserved: Signed candidate works.`,
         url: "https://github.example/feedback-pass",
         createdAt: "2026-07-18T00:10:00Z",
       },
@@ -137,7 +137,7 @@ describe("release feedback intake", () => {
     const feedback: ReleaseIssueComment = {
       id: "feedback-existing",
       author: "lathe-agent-oa",
-      body: "Result: BLOCKED\nObserved: Existing.",
+      body: `Candidate-Version: ${manifest.version}\nResult: BLOCKED\nObserved: Existing.`,
       url: "https://github.example/existing",
       createdAt: "2026-07-18T00:10:00Z",
     };
@@ -162,6 +162,92 @@ describe("release feedback intake", () => {
     expect(result.alreadyIngested).toBe(1);
   });
 
+  test("ignores unrelated prior-RC comments and wrong-version replies", async () => {
+    const comments: ReleaseIssueComment[] = [
+      candidateComment,
+      {
+        id: "rc20-retest",
+        author: "lathe-agent-oa",
+        body: "rc.20 signed-DMG retest — the fix holds end to end on the real notarized build.",
+        url: "https://github.example/rc20-retest",
+        createdAt: "2026-07-18T00:05:00Z",
+      },
+      {
+        id: "wrong-candidate",
+        author: "lathe-agent-oa",
+        body: "Candidate-Version: 0.1.0-rc.98\nResult: BLOCKED\nObserved: Different candidate.",
+        url: "https://github.example/wrong-candidate",
+        createdAt: "2026-07-18T00:06:00Z",
+      },
+      {
+        id: "current-candidate",
+        author: "lathe-agent-oa",
+        body: `Candidate-Version: ${manifest.version}\nResult: PASS\nObserved: Current candidate works.`,
+        url: "https://github.example/current-candidate",
+        createdAt: "2026-07-18T00:10:00Z",
+      },
+    ];
+    let acknowledgement = "";
+    const port: ReleaseFeedbackPort = {
+      comments: async () => comments,
+      findIssueByMarker: async () => null,
+      createIssue: async () => {
+        throw new Error("unrelated comments must not create an issue");
+      },
+      commentOnIssue: async (_issue, body) => {
+        acknowledgement = body;
+      },
+    };
+
+    const result = await ingestReleaseFeedback({
+      manifest,
+      releaseUrl:
+        "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.99",
+      port,
+    });
+
+    expect(result).toEqual({
+      inspected: 1,
+      passesAcknowledged: 1,
+      followupIssuesCreated: 0,
+      alreadyIngested: 0,
+    });
+    expect(acknowledgement).toContain(releaseFeedbackMarker("current-candidate"));
+  });
+
+  test("triages unstructured feedback only when it names the exact candidate", async () => {
+    const comments: ReleaseIssueComment[] = [
+      candidateComment,
+      {
+        id: "bound-unstructured",
+        author: "lathe-agent-oa",
+        body: `Candidate-Version: ${manifest.version}\nIt still asks for Keychain.`,
+        url: "https://github.example/bound-unstructured",
+        createdAt: "2026-07-18T00:10:00Z",
+      },
+    ];
+    let created = false;
+    const port: ReleaseFeedbackPort = {
+      comments: async () => comments,
+      findIssueByMarker: async () => null,
+      createIssue: async () => {
+        created = true;
+        return { number: 9005, url: "https://github.example/issues/9005" };
+      },
+      commentOnIssue: async () => undefined,
+    };
+
+    const result = await ingestReleaseFeedback({
+      manifest,
+      releaseUrl:
+        "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.99",
+      port,
+    });
+
+    expect(created).toBe(true);
+    expect(result.followupIssuesCreated).toBe(1);
+  });
+
   test("ingests a blocked reply from the release-candidates Forum topic", async () => {
     const forumCandidate: ReleaseIssueComment = {
       ...candidateComment,
@@ -171,7 +257,7 @@ describe("release feedback intake", () => {
     const forumFeedback: ReleaseIssueComment = {
       id: "forum-feedback",
       author: "lathe-agent-oa",
-      body: "Result: BLOCKED\nSeverity: P1\nObserved: Claude handoff stalled.",
+      body: `Candidate-Version: ${manifest.version}\nResult: BLOCKED\nSeverity: P1\nObserved: Claude handoff stalled.`,
       url: "https://openagents.com/forum/t/fixture#feedback",
       createdAt: "2026-07-18T00:15:00Z",
     };

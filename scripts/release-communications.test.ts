@@ -46,6 +46,7 @@ describe("release communications", () => {
     });
 
     expect(body).toContain("@fixture-tester");
+    expect(body).toContain(`Candidate-Version: ${manifest.version}`);
     expect(body).toContain("Result: PASS | BLOCKED");
     expect(body).toContain("tester_feedback");
     expect(body).toContain("revision 2");

@@ -65,11 +65,11 @@ const assertReleaseCommunicationUrls = (releaseUrl: string, changelogUrl: string
     throw new Error("release communication changelog URL must be openagents.com/changelog");
 };
 
-const testerInstructions = (testers: readonly string[]): string =>
+const testerInstructions = (testers: readonly string[], version: string): string =>
   testers.length === 0
     ? "Candidate feedback is welcome on this issue."
     : `${testers.join(" ")}: please test the candidate and reply here with:\n\n` +
-      "```text\nResult: PASS | BLOCKED\nSeverity: P0 | P1 | P2\nObserved: <what happened>\n```";
+      `\`\`\`text\nCandidate-Version: ${version}\nResult: PASS | BLOCKED\nSeverity: P0 | P1 | P2\nObserved: <what happened>\n\`\`\``;
 
 export const renderReleaseCommunication = (
   input: Readonly<{
@@ -91,7 +91,7 @@ export const renderReleaseCommunication = (
       `${manifest.publicationClass === "desktop_signed_release_set" ? "Signed ReleaseSet candidate" : "Experimental candidate"}: ${input.releaseUrl}`,
       `Changelog: ${input.changelogUrl}`,
       "",
-      testerInstructions(manifest.requestedTesters),
+      testerInstructions(manifest.requestedTesters, manifest.version),
       "",
       `Trigger: ${manifest.trigger.kind} — ${manifest.trigger.actor} (${manifest.trigger.ref})`,
       `Authority: ${manifest.authority.profileId} revision ${manifest.authority.profileRevision}; ${manifest.authority.grantRef}`,

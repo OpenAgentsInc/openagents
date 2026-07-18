@@ -81,6 +81,14 @@ export const releaseFeedbackMarker = (commentId: string): string =>
 
 const normalizedTester = (value: string): string => value.replace(/^@/, "").toLowerCase();
 
+/**
+ * A tester identity and a later timestamp do not bind a comment to a release.
+ * The generated candidate request supplies this exact field so both structured
+ * and unstructured replies can be correlated without guessing from prose.
+ */
+const isFeedbackForCandidate = (body: string, version: string): boolean =>
+  field(body, "Candidate-Version") === version;
+
 const labelsFor = (feedback: ParsedTesterFeedback): readonly string[] => {
   const labels = ["area:release", "area:desktop"];
   if (feedback.severity === "P0") labels.push("priority:P0");
@@ -156,7 +164,11 @@ export const ingestReleaseFeedback = async (
     if (candidateIndex < 0) continue;
     const feedbackComments = comments
       .slice(candidateIndex + 1)
-      .filter((comment) => requested.has(normalizedTester(comment.author)));
+      .filter(
+        (comment) =>
+          requested.has(normalizedTester(comment.author)) &&
+          isFeedbackForCandidate(comment.body, input.manifest.version),
+      );
     for (const comment of feedbackComments) {
       inspected += 1;
       const marker = releaseFeedbackMarker(comment.id);
@@ -219,7 +231,11 @@ export const ingestReleaseFeedback = async (
         ? []
         : comments
             .slice(candidateIndex + 1)
-            .filter((comment) => requested.has(normalizedTester(comment.author)));
+            .filter(
+              (comment) =>
+                requested.has(normalizedTester(comment.author)) &&
+                isFeedbackForCandidate(comment.body, input.manifest.version),
+            );
     for (const comment of feedbackComments) {
       inspected += 1;
       const marker = releaseFeedbackMarker(comment.id);

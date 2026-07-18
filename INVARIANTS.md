@@ -728,6 +728,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   idempotence, route state, attribution, and cross-artifact consistency tests
   are the intended automated boundary; the two indefinitely retained dated
   artifacts and signed ReleaseSet notes refs are the release boundary.
+- Candidate feedback intake binds every GitHub or Forum tester response to the
+  exact generated `Candidate-Version` field. Requested-tester identity and
+  comment chronology alone are not release correlation; an unbound or
+  wrong-version comment cannot be acknowledged, mint a follow-up issue, or
+  trigger another candidate. Bounded PASS/BLOCKED parsing and unstructured
+  triage occur only after that exact candidate binding succeeds.
 - (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
   build descriptor (`openagents.desktop.target_build_descriptor.v1`; the six
   closed target keys; EXACT per-target format coverage — darwin dmg+zip,
