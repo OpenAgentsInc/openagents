@@ -169,7 +169,7 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
 const selectStableClaudeModel = async (page: Page): Promise<void> => {
   const select = page.locator('[data-en-key="shell-model-select"]')
   await select.waitFor({ state: "visible", timeout: 30_000 })
-  await select.selectOption("claude-sonnet-5")
+  await select.selectOption("claude-opus-4-8")
 }
 
 const sendAndWait = async (page: Page, prompt: string): Promise<string> => {
@@ -528,7 +528,7 @@ const executeSixRows = async (): Promise<void> => {
     return await bridge?.fullAutoRun?.handoff?.({
       runRef,
       targetLaneRef: "fable-local",
-      model: "claude-sonnet-5",
+      model: "claude-opus-4-8",
       reason: "Bind the admitted Claude model for the real owner acceptance run.",
     })
   }, { runRef: run03.runRef })
@@ -606,7 +606,7 @@ const executeSixRows = async (): Promise<void> => {
     objective: "Complete one missing restart packet per turn: create TEST05_PACKET_1.txt, then _2, then _3; each contains exactly RESTART-PACKET-N-COMPLETE.",
     doneCondition: "All three TEST05 packet files exist exactly, across a complete Desktop quit/relaunch after packet one.",
     lane: "fable-local",
-    model: "claude-sonnet-5",
+    model: "claude-opus-4-8",
     turnCap: 3,
     pauseImmediately: true,
   })
