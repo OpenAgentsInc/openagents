@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "de18ab353fe45aa726080deb2216c67a2e521fab"
 claim_revision: "c0f52d55c6a5b7f573fabb120f3a3ba8eedf36cc"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "8588604915502e5a1689de71dba2f6c889a7cb5c"
 proof_rung: "desktop_terminal_thread_event_authority_relation_ledger"
 observed_at: "2026-07-18T03:34:58Z"
 ---
@@ -74,5 +74,6 @@ observation and producer composition, merging terminal facts with confirmed
 accepted timelines, historical backfill, `main.ts`, renderer pixels,
 named-group authority, and installed runtime evidence remain unclaimed.
 
-The exact tested implementation tree will replace `pending_remote_landing`
-when it lands on `origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`8588604915502e5a1689de71dba2f6c889a7cb5c` before the documentation-only
+claim release.

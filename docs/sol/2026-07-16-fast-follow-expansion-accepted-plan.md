@@ -3476,6 +3476,15 @@ packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
 - residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `c0f52d55c6a5b7f573fabb120f3a3ba8eedf36cc`
+- implementation_revision: `8588604915502e5a1689de71dba2f6c889a7cb5c`
+- status: released
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-43-desktop-thread-event-authority-relation-ledger-receipt.md`
+- released_at: `2026-07-18T03:36:06Z`
+- residual: real supersession/reversion observation and producer composition, merging those facts with confirmed accepted timelines, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
