@@ -68,6 +68,31 @@ const waitForMessages = async (messages: ReadonlyArray<unknown>, count: number):
   expect(messages.length).toBeGreaterThanOrEqual(count)
 }
 
+const installedResumeResponse = () => ({
+  approvalPolicy: "never",
+  approvalsReviewer: "user",
+  cwd: "/workspace",
+  model: "gpt-5.6-sol",
+  modelProvider: "openai",
+  sandbox: { type: "dangerFullAccess" },
+  thread: {
+    cliVersion: "0.151.0",
+    createdAt: 1,
+    cwd: "/workspace",
+    ephemeral: false,
+    id: "thread-1",
+    modelProvider: "openai",
+    preview: "",
+    sessionId: "session-1",
+    source: "appServer",
+    status: { type: "idle" },
+    turns: [],
+    updatedAt: 1,
+  },
+  itemsBackwardsCursor: null,
+  turnsBackwardsCursor: null,
+})
+
 describe("Codex app-server native integration", () => {
   test("opts into experimental API only when the complete host explicitly requests it", async () => {
     const fake = fakeServer()
@@ -293,6 +318,29 @@ describe("Codex app-server native integration", () => {
     expect(delivered).toEqual([{ method: "item/agentMessage/delta", params: {
       threadId: "thread-1", turnId: "turn-1", itemId: "item-1", delta: "hello",
     } }])
+    client.close()
+  })
+
+  test("strictly resumes an installed Codex thread with known additive pagination cursors", async () => {
+    const fake = fakeServer()
+    const protocol: string[] = []
+    const client = openCodexAppServerClient({
+      binary: "/Applications/ChatGPT.app/Contents/Resources/codex",
+      env: {},
+      cwd: "/workspace",
+      spawnImpl: fake.spawn,
+      strictGeneratedDecoding: true,
+      onProtocolMessage: message => protocol.push(`${message.decoded._tag}:${message.decoded.method}`),
+    })
+
+    const response = client.request("thread/resume", { threadId: "thread-1" })
+    await waitForMessages(fake.messages, 1)
+    fake.respond(1, installedResumeResponse())
+
+    await expect(response).resolves.toMatchObject({ thread: { id: "thread-1" } })
+    expect(await response).not.toHaveProperty("itemsBackwardsCursor")
+    expect(await response).not.toHaveProperty("turnsBackwardsCursor")
+    expect(protocol).toEqual(["Decoded:thread/resume"])
     client.close()
   })
 

@@ -679,6 +679,11 @@ Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
   app-server's visible `model/list` catalog. Stale model/effort selections
   reconcile to advertised defaults, and main admits turns against that same
   exact catalog.
+- Installed-Codex `thread/resume` remains strict generated protocol: only the
+  observed additive `itemsBackwardsCursor` and `turnsBackwardsCursor` fields
+  are projected away before validation because Desktop does not consume them.
+  Every remaining response field and any other unknown drift still fails
+  closed; the two compatibility cursors never become downstream authority.
 
 Contracts: `openagents_desktop.chat.codex_first_class_local_lane.v1`,
 `openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1`.

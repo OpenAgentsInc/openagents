@@ -112,6 +112,26 @@ const decode = (
 export const decodeBundledClientResponse = (method: string, payload: unknown): CodexProtocolDecodeResult =>
   decode("bundled-0.144.1", "client-response", method, payload)
 
+/**
+ * The owner-installed Codex may be forward-additive relative to the reviewed
+ * bundled schema. Its current `thread/resume` response adds two pagination
+ * cursors that OpenAgents does not consume. Project only those exact fields
+ * away before generated validation; every authority-bearing response field
+ * remains subject to the complete bundled schema and unknown drift elsewhere
+ * still fails closed.
+ */
+export const decodeInstalledClientResponse = (method: string, payload: unknown): CodexProtocolDecodeResult => {
+  if (method !== "thread/resume" || payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return decodeBundledClientResponse(method, payload)
+  }
+  const {
+    itemsBackwardsCursor: _itemsBackwardsCursor,
+    turnsBackwardsCursor: _turnsBackwardsCursor,
+    ...generatedProjection
+  } = payload as Record<string, unknown>
+  return decodeBundledClientResponse(method, generatedProjection)
+}
+
 export const decodeBundledServerRequest = (method: string, payload: unknown): CodexProtocolDecodeResult =>
   decode("bundled-0.144.1", "server-request", method, payload)
 

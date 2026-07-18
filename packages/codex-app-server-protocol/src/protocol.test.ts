@@ -9,7 +9,11 @@ import * as CurrentMeta from "./_generated/current-source/meta.gen.ts";
 import { bundledCodex01441ProtocolManifest, currentSourceProtocolManifest } from "./parity.ts";
 import { evaluateCodexBinaryCompatibility } from "./compatibility.ts";
 import { renderProtocolDiff } from "./drift.ts";
-import { decodeCurrentServerNotification } from "./decode.ts";
+import {
+  decodeBundledClientResponse,
+  decodeCurrentServerNotification,
+  decodeInstalledClientResponse,
+} from "./decode.ts";
 import currentNotificationFixtures from "../fixtures/current-source-notifications.json" with { type: "json" };
 import currentThreadItemFixtures from "../fixtures/current-source-thread-items.json" with { type: "json" };
 
@@ -102,6 +106,47 @@ describe("Codex app-server protocol authority", () => {
       reason: "unknown_method",
     });
     expect(decodeCurrentServerNotification("item/agentMessage/delta", { delta: 1 })).toMatchObject({
+      _tag: "DecodeFailure",
+      reason: "invalid_payload",
+    });
+  });
+
+  it("admits only the installed Codex thread/resume pagination cursor additions", () => {
+    const response = {
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      cwd: "/workspace",
+      model: "gpt-5.6-sol",
+      modelProvider: "openai",
+      sandbox: { type: "dangerFullAccess" },
+      thread: {
+        cliVersion: "0.151.0",
+        createdAt: 1,
+        cwd: "/workspace",
+        ephemeral: false,
+        id: "thread-1",
+        modelProvider: "openai",
+        preview: "",
+        sessionId: "session-1",
+        source: "appServer",
+        status: { type: "idle" },
+        turns: [],
+        updatedAt: 1,
+      },
+      itemsBackwardsCursor: null,
+      turnsBackwardsCursor: null,
+    };
+
+    expect(decodeBundledClientResponse("thread/resume", response)).toMatchObject({
+      _tag: "DecodeFailure",
+      reason: "invalid_payload",
+    });
+    expect(decodeInstalledClientResponse("thread/resume", response)).toMatchObject({
+      _tag: "Decoded",
+      method: "thread/resume",
+      payload: { thread: { id: "thread-1" } },
+    });
+    expect(decodeInstalledClientResponse("thread/resume", { ...response, futureAuthority: true })).toMatchObject({
       _tag: "DecodeFailure",
       reason: "invalid_payload",
     });

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.3",
+    version: "2026-07-17.4",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -65,14 +65,16 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "kinda works but i get this fucked up warnings. and i cant choose anything other than gpt 5.5 WHAET TH EFUCK. FIX THAT. and no new rc build until i test it locally. tell me when its ready to test\\",
         authorityBoundary:
-          "Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the renderer offers a direct native model select, chooses the installed default when a stale selection is absent, and reconciles unsupported reasoning to that model's advertised default. Exact turn admission remains main-owned and fails closed against the same catalog. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.",
+          "Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the renderer offers a direct native model select, chooses the installed default when a stale selection is absent, and reconciles unsupported reasoning to that model's advertised default. Exact turn admission remains main-owned and fails closed against the same catalog. The installed Codex thread/resume response may carry its two newer pagination cursors; the wire boundary projects away only itemsBackwardsCursor and turnsBackwardsCursor before complete generated-schema validation, so all authority-bearing response fields and any other unknown drift still fail closed. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-control-plane.ts",
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/provider-lane-capabilities.ts",
           "apps/openagents-desktop/src/renderer/react-composer.tsx",
           "apps/openagents-desktop/src/renderer/tool-cards.ts",
+          "apps/openagents-desktop/src/codex-app-server-client.ts",
           "apps/openagents-desktop/src/codex-app-server-turn.ts",
+          "packages/codex-app-server-protocol/src/decode.ts",
           "github:OpenAgentsInc/openagents#8995",
         ],
         oracles: [
@@ -107,6 +109,14 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             ref: "apps/openagents-desktop/src/renderer/tool-cards.test.ts",
             description:
               "Proves a compatibility notice persisted by a pre-fix build is omitted from transcript projection while Guardian, account-rotation, and assistant-authored text remain visible.",
+          },
+          {
+            id: "installed_codex_model_catalog.resume_additive_cursors_are_bounded",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/codex-app-server-protocol/src/protocol.test.ts",
+            description:
+              "Proves strict installed-Codex thread resume accepts only the two observed additive pagination cursors, omits them from the decoded payload, and still rejects any other unknown response authority.",
           },
         ],
         verification:

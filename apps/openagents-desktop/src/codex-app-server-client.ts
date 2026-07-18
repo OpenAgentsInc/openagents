@@ -2,7 +2,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { spawn } from "node:child_process"
 import { createInterface } from "node:readline"
 import {
-  decodeBundledClientResponse,
+  decodeInstalledClientResponse,
   decodeBundledServerNotification,
   decodeBundledServerRequest,
   decodeBundledServerRequestResponse,
@@ -204,7 +204,7 @@ export const openCodexAppServerClient = (input: Readonly<{
           : "Codex app-server request failed"
         operation.reject(new CodexAppServerError("request_failed", detail))
       } else {
-        const decoded = decodeBundledClientResponse(operation.method, message.result)
+        const decoded = decodeInstalledClientResponse(operation.method, message.result)
         input.onProtocolMessage?.({ requestId: message.id, decoded })
         if (decoded._tag === "DecodeFailure" && input.strictGeneratedDecoding === true) {
           operation.reject(new CodexAppServerError("invalid_message", `Codex ${operation.method} response failed generated decoding`))
