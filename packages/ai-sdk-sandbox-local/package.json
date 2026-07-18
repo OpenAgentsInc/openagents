@@ -19,9 +19,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/harness": "1.0.18",
-    "@ai-sdk/provider-utils": "5.0.5",
-    "zod": "^3.25.76"
+    "@ai-sdk/harness": "1.0.36",
+    "@ai-sdk/provider-utils": "5.0.11",
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "typescript": "catalog:"

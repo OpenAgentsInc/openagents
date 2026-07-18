@@ -82,6 +82,10 @@ describe("createLocalAiSdkSandboxProvider", () => {
       await expect(
         sandbox.readTextFile({ path: resolve(tmpdir(), "outside-openagents.txt") }),
       ).rejects.toThrow("escapes local sandbox")
+      const bootstrapFile = "/tmp/harness/local-provider-test.txt"
+      await sandbox.writeTextFile({ content: "bootstrap\n", path: bootstrapFile })
+      expect(await sandbox.readTextFile({ path: bootstrapFile })).toBe("bootstrap\n")
+      await rm(bootstrapFile, { force: true })
     } finally {
       await session.destroy()
     }

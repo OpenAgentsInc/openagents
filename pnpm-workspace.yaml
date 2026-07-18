@@ -22,6 +22,7 @@ packages:
   - packages/probe
   - packages/probe/packages/*
   - types/*
+  - apps/ai-sdk-harness-poc
 
 publicHoistPattern:
   - "*electron*"
@@ -85,3 +86,8 @@ supportedArchitectures:
 
 minimumReleaseAgeExclude:
   - blume@1.0.4
+  - "@ai-sdk/gateway@4.0.23"
+  - "@ai-sdk/harness-codex@1.0.38"
+  - "@ai-sdk/harness@1.0.36"
+  - "@ai-sdk/provider-utils@5.0.11"
+  - ai@7.0.31

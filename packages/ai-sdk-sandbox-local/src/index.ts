@@ -17,6 +17,9 @@ import {
 } from "@ai-sdk/provider-utils"
 
 const DEFAULT_PROVIDER_ID = "openagents-local-sandbox"
+// AI SDK harness adapters place reproducible bridge assets here. It is the
+// only absolute host path accepted by this owner-local provider.
+const HARNESS_BOOTSTRAP_DIRECTORY = "/tmp/harness"
 
 export type LocalAiSdkSandboxAccountHomes = Readonly<{
   home: string
@@ -147,6 +150,19 @@ export class LocalAiSdkSandboxProvider implements HarnessV1SandboxProvider {
     })
     this.sessions.set(options.sessionId, session)
     return session
+  }
+
+  destroySession = async (sessionId: string): Promise<void> => {
+    const session = this.sessions.get(sessionId)
+    if (session === undefined) return
+    this.sessions.delete(sessionId)
+    await session.destroy()
+  }
+
+  destroyAllSessions = async (): Promise<void> => {
+    const sessions = [...this.sessions.values()]
+    this.sessions.clear()
+    await Promise.all(sessions.map((session) => session.destroy()))
   }
 }
 
@@ -407,9 +423,12 @@ export class LocalAiSdkNetworkSandboxSession
     const hostPath = path.startsWith(sep)
       ? resolve(path)
       : resolve(this.defaultWorkingDirectory, path)
-    if (!isPathInside(this.defaultWorkingDirectory, hostPath)) {
+    if (
+      !isPathInside(this.defaultWorkingDirectory, hostPath) &&
+      !isPathInside(HARNESS_BOOTSTRAP_DIRECTORY, hostPath)
+    ) {
       throw new Error(
-        `Path ${path} escapes local sandbox workspace ${this.defaultWorkingDirectory}.`,
+        `Path ${path} escapes local sandbox workspace ${this.defaultWorkingDirectory} or the reserved harness bootstrap directory.`,
       )
     }
     return hostPath
