@@ -732,6 +732,11 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
 
 ## Sarah Terminal-History Harness Learning
 
+- Sarah bootstrap and hosted dispatch are owner-only. The authenticated user
+  must resolve to the one admitted admin email through a current active,
+  non-deleted `users` or `auth_identities` row on every authority check. A
+  deterministic Sarah-shaped thread ref or historical authority receipt is
+  never sufficient and cannot bypass current identity admission.
 - Sarah's active conversational harness is one released, content-addressed
   six-dimension policy bundle. The server binds its exact ref and digest to a
   turn before provider inference; activation during that turn cannot change

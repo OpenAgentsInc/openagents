@@ -25,6 +25,7 @@ import {
   methodNotAllowedResult,
   noStoreJsonResult,
 } from "./http/responses";
+import { isOpenAgentsAdminEmail } from "./admin-identity";
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,
@@ -88,6 +89,29 @@ export const hasSarahThreadAuthority = async (
   threadRef: string,
 ): Promise<boolean> => {
   if (!(await isSarahThreadForOwner(ownerUserId, threadRef))) return false;
+  const identities: Array<{ email: string | null }> = await sql`
+    SELECT owner_user.primary_email AS email
+      FROM users AS owner_user
+     WHERE owner_user.id = ${ownerUserId}
+       AND owner_user.status = 'active'
+       AND owner_user.deleted_at IS NULL
+    UNION
+    SELECT identity.email
+      FROM auth_identities AS identity
+      JOIN users AS owner_user
+        ON owner_user.id = identity.user_id
+     WHERE identity.user_id = ${ownerUserId}
+       AND identity.deleted_at IS NULL
+       AND owner_user.status = 'active'
+       AND owner_user.deleted_at IS NULL
+  `;
+  if (
+    !identities.some(
+      ({ email }) => email !== null && isOpenAgentsAdminEmail(email),
+    )
+  ) {
+    return false;
+  }
   const rows: Array<{ receipt_ref: string }> = await sql`
     SELECT receipt_ref
       FROM sarah_authority_decision_receipts

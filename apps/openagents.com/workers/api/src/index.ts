@@ -27,6 +27,10 @@ import { Exit } from 'effect'
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import {
+  OPENAGENTS_ADMIN_EMAILS,
+  isOpenAgentsAdminEmail,
+} from './admin-identity'
+import {
   ADMIN_OPS_HEALTH_PATH,
   ADMIN_OPS_RUNS_PATH,
   makeAdminOpsRoutes,
@@ -1354,7 +1358,10 @@ export {
   threadFileSyncValue,
 } from './sync-notifier'
 
-export const OPENAGENTS_ADMIN_EMAILS = ['chris@openagents.com'] as const
+export {
+  OPENAGENTS_ADMIN_EMAILS,
+  isOpenAgentsAdminEmail,
+} from './admin-identity'
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const workerRuntime = {
@@ -1485,11 +1492,6 @@ type UserSubject = typeof UserSubject.Type
 const subjects = createSubjects({
   user: S.toStandardSchemaV1(UserSubject),
 })
-
-export const isOpenAgentsAdminEmail = (email: string): boolean =>
-  OPENAGENTS_ADMIN_EMAILS.some(
-    adminEmail => adminEmail === email.trim().toLowerCase(),
-  )
 
 const GitHubUser = S.Struct({
   id: S.Union([S.Number, S.String]),

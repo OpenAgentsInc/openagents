@@ -90,10 +90,14 @@ describe(`contract ${contractId}`, () => {
   test("requires a persisted admitted receipt before a Sarah-shaped thread gains authority", async () => {
     const ownerUserId = "owner.fixture.123";
     const threadRef = await sarahThreadRefForOwner(ownerUserId);
-    const withoutReceipt = (async () => []) as unknown as SyncSql;
-    const withReceipt = (async () => [
-      { receipt_ref: "receipt.authority.sarah.fixture" },
-    ]) as unknown as SyncSql;
+    const withoutReceipt = (async (strings: TemplateStringsArray) =>
+      strings.join("?").includes("FROM users AS owner_user")
+        ? [{ email: "chris@openagents.com" }]
+        : []) as unknown as SyncSql;
+    const withReceipt = (async (strings: TemplateStringsArray) =>
+      strings.join("?").includes("FROM users AS owner_user")
+        ? [{ email: "chris@openagents.com" }]
+        : [{ receipt_ref: "receipt.authority.sarah.fixture" }]) as unknown as SyncSql;
     expect(await hasSarahThreadAuthority(withoutReceipt, ownerUserId, threadRef)).toBe(false);
     expect(await hasSarahThreadAuthority(withReceipt, ownerUserId, threadRef)).toBe(true);
     expect(
@@ -103,6 +107,17 @@ describe(`contract ${contractId}`, () => {
         "thread.sarah.ffffffffffffffffffffffff",
       ),
     ).toBe(false);
+  });
+
+  test("refuses a historical Sarah receipt when its current identity is not the admitted owner", async () => {
+    const ownerUserId = "owner.fixture.not-admin";
+    const threadRef = await sarahThreadRefForOwner(ownerUserId);
+    const sql = (async (strings: TemplateStringsArray) =>
+      strings.join("?").includes("FROM users AS owner_user")
+        ? [{ email: "someone-else@example.com" }]
+        : [{ receipt_ref: "receipt.authority.sarah.historical" }]) as unknown as SyncSql;
+
+    expect(await hasSarahThreadAuthority(sql, ownerUserId, threadRef)).toBe(false);
   });
 
   test("parses the authority evidence parameter through text before storing jsonb", async () => {
@@ -129,6 +144,9 @@ describe(`contract ${contractId}`, () => {
     const insertedValues: Array<ReadonlyArray<unknown>> = [];
     const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
       const statement = strings.join("?");
+      if (statement.includes("FROM users AS owner_user")) {
+        return [{ email: "chris@openagents.com" }];
+      }
       if (statement.includes("profile_revision") && statement.includes("SELECT receipt_ref")) {
         return [];
       }
@@ -157,6 +175,9 @@ describe(`contract ${contractId}`, () => {
     const insertedValues: Array<ReadonlyArray<unknown>> = [];
     const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
       const statement = strings.join("?");
+      if (statement.includes("FROM users AS owner_user")) {
+        return [{ email: "chris@openagents.com" }];
+      }
       if (statement.includes("SELECT receipt_ref")) {
         return [{ receipt_ref: "receipt.authority.sarah.current" }];
       }
@@ -186,6 +207,9 @@ describe(`contract ${contractId}`, () => {
     const insertedValues: Array<ReadonlyArray<unknown>> = [];
     const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
       const statement = strings.join("?");
+      if (statement.includes("FROM users AS owner_user")) {
+        return [{ email: "chris@openagents.com" }];
+      }
       if (statement.includes("SELECT receipt_ref")) {
         return [{ receipt_ref: "receipt.authority.sarah.current" }];
       }

@@ -271,6 +271,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   is projected from bounded owner-scoped/public-safe adapters. Raw credentials,
   mnemonics, private paths, customer-private payloads, and unbounded database or
   tool output never enter the prompt, Sync post-images, logs, or receipts.
+- Every Sarah bootstrap and hosted dispatch revalidates that the authenticated
+  account still has a current active, non-deleted identity for the one admitted
+  owner email. A deterministic Sarah-shaped thread ref and a historical
+  authority receipt remain necessary evidence but never substitute for that
+  current identity check.
 - Every delegated mutation resolves exact actor, action, resource, program,
   conditions, claim/lease, and reserved-action exclusions before execution and
   again before production deploy, release, spend, destructive action, or
