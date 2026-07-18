@@ -661,8 +661,12 @@ describe("makeFableLocalRuntime.runTurn", () => {
   test("a terminal SDK result settles even when the iterator never closes", async () => {
     let nextCalls = 0
     let returnCalled = false
+    let closeCalled = false
     const harness = makeRuntimeHarness({
       script: () => ({
+        close: () => {
+          closeCalled = true
+        },
         [Symbol.asyncIterator]: () => ({
           next: async (): Promise<IteratorResult<unknown>> => {
             nextCalls += 1
@@ -716,6 +720,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
       accountRef: "claude-pylon-b",
     })
     expect(nextCalls).toBe(2)
+    expect(closeCalled).toBe(true)
     expect(returnCalled).toBe(true)
     expect(sink.events.at(-1)?.kind).toBe("turn_completed")
   })

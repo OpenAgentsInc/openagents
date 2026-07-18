@@ -160,18 +160,47 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
 }
 
 const sendAndWait = async (page: Page, prompt: string): Promise<string> => {
+  const threadRef = await selectedThreadRef(page)
+  const journalFile = profileFile("local-turns", "journal.json")
+  const beforeTurns = new Set(
+    openLocalTurnJournal(journalFile).list()
+      .filter(record => record.threadRef === threadRef)
+      .map(record => record.turnRef),
+  )
   const before = await page.locator(".oa-react-assistant-message-body").count()
   const editor = page.locator('[data-en-key="shell-input"] [contenteditable="true"]')
   await editor.fill(prompt)
   await page.getByRole("button", { name: "Send", exact: true }).click()
+  const deadline = Date.now() + 240_000
+  let completedText: string | null = null
+  while (Date.now() < deadline) {
+    const next = openLocalTurnJournal(journalFile).list()
+      .filter(record => record.threadRef === threadRef && !beforeTurns.has(record.turnRef))
+      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+      .at(-1)
+    if (next?.disposition === "completed" && next.assistantText.trim() !== "") {
+      completedText = next.assistantText
+      break
+    }
+    if (next !== undefined && next.disposition !== null) {
+      throw new Error(`real provider turn settled ${next.disposition} before a useful assistant result`)
+    }
+    await page.waitForTimeout(250)
+  }
+  if (completedText === null) {
+    throw new Error("real provider turn did not settle in the durable journal within 240000ms")
+  }
+  // The durable record is response authority, but the owner acceptance path
+  // still requires the selected UI to project a new assistant row and return
+  // its composer to idle before the next provider or thread action.
   await page.waitForFunction(expected =>
     document.querySelectorAll(".oa-react-assistant-message-body").length > Number(expected),
-  before, { timeout: 240_000 })
+  before, { timeout: 30_000 })
   await page.getByRole("button", { name: "Send", exact: true }).waitFor({
     state: "visible",
-    timeout: 240_000,
+    timeout: 30_000,
   })
-  return page.locator(".oa-react-assistant-message-body").last().innerText()
+  return completedText
 }
 
 const newSession = async (page: Page): Promise<string> => {

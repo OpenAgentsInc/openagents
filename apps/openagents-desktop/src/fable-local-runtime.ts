@@ -205,10 +205,19 @@ export type FableLocalSdkUserMessage = Readonly<{
   parent_tool_use_id: null
 }>
 
+export type FableLocalQuerySession = AsyncIterable<unknown> & Readonly<{
+  /**
+   * Claude Agent SDK Query.close(): forcefully terminate the CLI subprocess
+   * and release its resources. Optional only so fixture/test iterables remain
+   * structurally valid; the real SDK always supplies it.
+   */
+  close?: () => void
+}>
+
 export type FableLocalQuery = (input: {
   prompt: string | AsyncIterable<FableLocalSdkUserMessage>
   options: Record<string, unknown>
-}) => AsyncIterable<unknown>
+}) => FableLocalQuerySession
 
 /**
  * Build the streaming-input user message for an image-carrying turn
@@ -1308,7 +1317,20 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 { once: true },
               )
             })
+        let sessionClosed = false
         const closeIterator = (): void => {
+          if (sessionClosed) return
+          sessionClosed = true
+          // Query.close() is the SDK's documented subprocess/resource
+          // authority. AsyncGenerator.return() alone can settle our consumer
+          // while leaving Claude Code alive, which then strands a subsequent
+          // fresh query on the same ordinary account. Invoke close first,
+          // then best-effort iterator return for non-SDK iterables/fixtures.
+          try {
+            session.close?.()
+          } catch {
+            // Terminal provider truth still wins cleanup exceptions.
+          }
           try {
             const closing = iterator.return?.()
             if (closing !== undefined) void Promise.resolve(closing).catch(() => undefined)
