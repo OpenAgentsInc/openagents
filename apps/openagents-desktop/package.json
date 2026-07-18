@@ -99,6 +99,7 @@
     "app-builder-lib": "26.15.3",
     "electron": "^43.1.0",
     "happy-dom": "^20.10.6",
+    "playwright": "^1.61.0",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
