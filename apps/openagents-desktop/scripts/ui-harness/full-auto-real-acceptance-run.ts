@@ -650,7 +650,8 @@ const stopExistingStaleTestRun = async (page: Page): Promise<void> => {
 const executeSixRows = async (): Promise<void> => {
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: true })
   const page = desktop.page
-  await page.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
+  await page.locator('[data-sidebar-destination-id="workspace-new-chat"]')
+    .waitFor({ state: "visible", timeout: 60_000 })
   await stopExistingStaleTestRun(page)
   // Stale-run cleanup deliberately leaves the shell on the Full Auto
   // surface, which has no provider picker. Open a disposable setup chat so
@@ -796,7 +797,8 @@ const executeSixRows = async (): Promise<void> => {
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: true })
   const relaunchedPage = desktop.page
   activeAcceptance = { page: relaunchedPage, testId: "test-05", threadRef: run05.threadRef, runRef: run05.runRef }
-  await relaunchedPage.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
+  await relaunchedPage.locator('[data-sidebar-destination-id="workspace-new-chat"]')
+    .waitFor({ state: "visible", timeout: 60_000 })
   await relaunchedPage.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
   await relaunchedPage.locator(`[data-full-auto-run-ref="${run05.runRef}"]`)
     .waitFor({ state: "visible", timeout: 30_000 })
@@ -889,7 +891,8 @@ const executeAutomaticRotation = async (): Promise<Readonly<{
   await new Promise(resolve => setTimeout(resolve, 1_500))
   desktop = await launchOwnerDesktopApp({ launchCwd: scratchRoot, armDefaultClaudeSession: false })
   const page = desktop.page
-  await page.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
+  await page.locator('[data-sidebar-destination-id="workspace-new-chat"]')
+    .waitFor({ state: "visible", timeout: 60_000 })
   const run = await startRun({
     page,
     title: "FA-ASAP-03 automatic Claude to Codex rotation",
