@@ -703,6 +703,49 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "vercel.ai_sdk_v7_harnesses",
+    "title": "AI SDK v7 Harnesses",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/vercel/ai",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "separate_harness_runtime_plane",
+        "kind": "architecture",
+        "summary": "Keep complete stateful agent runtimes as peers to model providers, with exact adapter identity, native state, capabilities, placement, losses, and recovery semantics.",
+        "stance": "adapt"
+      },
+      {
+        "id": "explicit_session_and_continuation",
+        "kind": "reliability",
+        "summary": "Separate stateless agent configuration, between-turn resume, active-turn continuation, pending approvals, and attach, replay, or rerun recovery classes.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "sandbox_provider_boundary",
+        "kind": "security",
+        "summary": "Use a thin sandbox provider and restricted tool surface while enforcing path, process, network, secret, quota, workload, and lifecycle policy below the adapter.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "native_and_portable_stream_planes",
+        "kind": "protocol",
+        "summary": "Project native harness events into portable AI SDK streams without discarding exact native events, translator identity, semantic losses, or authoritative effect evidence.",
+        "stance": "adapt"
+      },
+      {
+        "id": "permissive_and_best_effort_authority",
+        "kind": "security",
+        "summary": "Reject default allow-all built-ins, provider-optional containment, host tool execution as sandboxed execution, best-effort replay as exactly-once recovery, and opaque resume state as a receipt.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
