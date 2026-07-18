@@ -108,9 +108,11 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(1);
+    expect(readFrontmatterInteger("authority_revision")).toBe(2);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
-    expect(readFrontmatterString("admitted_by")).toBe("current_owner_direction_2026-07-18");
+    expect(readFrontmatterString("admitted_by")).toBe(
+      "current_owner_direction_2026-07-18_release_autonomy",
+    );
     expect(order).toMatchObject({
       authority_may_amplify: false,
       explicit_deny_wins: true,
@@ -175,6 +177,36 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     });
   });
 
+  test("admits autonomous RC publication and bounded release communication", () => {
+    const grant = grants.find(({ id }) => id === "grant.autonomous_rc_release_and_communication");
+    expect(grant?.roles).toEqual(["release_operator"]);
+    expect(grant?.actions).toEqual(
+      expect.arrayContaining([
+        "classify_release_impact",
+        "publish_verified_github_prerelease",
+        "promote_signed_rc_release",
+        "request_candidate_test",
+        "ingest_release_feedback",
+        "publish_release_changelog",
+      ]),
+    );
+    expect(grant?.resources).toEqual(
+      expect.arrayContaining([
+        "OpenAgentsInc/openagents_rc_releases",
+        "github_linked_release_issues",
+        "openagents_forum_release_candidates",
+      ]),
+    );
+    expect(grant?.condition_refs).toEqual(
+      expect.arrayContaining([
+        "condition.autonomous_rc_only",
+        "condition.release_impact",
+        "condition.release_communication",
+        "condition.release_attribution",
+      ]),
+    );
+  });
+
   test("requires real reviewer independence", () => {
     expect(independence).toMatchObject({
       producer_may_verify_own_obligation: false,
@@ -216,6 +248,7 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
       "reserved.invariant_weakening",
       "reserved.unsupported_claim",
       "reserved.self_amplification",
+      "reserved.stable_release_without_direction",
     ];
     expect(reserved.map(({ id }) => id).toSorted()).toEqual(requiredReservedIds.toSorted());
     for (const item of reserved) expect(item.category.length, item.id).toBeGreaterThan(30);
@@ -264,6 +297,6 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     }
     expect(agents).toContain("## Delegated Authority");
     expect(invariants).toContain("Delegated action authority is explicit");
-    expect(productSpec).toContain("AD-AC-16");
+    expect(productSpec).toContain("AD-AC-20");
   });
 });

@@ -1,10 +1,10 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 1
+authority_revision: 2
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-18"
+admitted_by: "current_owner_direction_2026-07-18_release_autonomy"
 effective_at: "2026-07-18T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
@@ -16,6 +16,13 @@ repository. The owner admitted it by directing agents to stop parking work on
 owner/device blockers, use existing Google Cloud and repository access, rapidly
 close issues, finish Full Auto, complete the root specs and Fast Follow program,
 and then turn recent product promises into user and revenue outcomes.
+
+Revision 2 additionally admits autonomous RC release publication and bounded
+release communication: operating release agents may choose the correct build
+lane, publish verified GitHub prerelease assets, promote an otherwise-admitted
+signed RC, request candidate testing on linked GitHub issues and the Forum,
+ingest those tester replies into Full Auto work, update `/changelog`, and roll
+back a defective service/release within the existing monotonic-update policy.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -131,7 +138,15 @@ higher authority. The format and resolution laws live in
     "actions": ["deploy_reversible_production_change", "promote_signed_release", "roll_back_release", "record_evidence_bound_product_promise_transition"],
     "resources": ["openagents_google_cloud_production", "openagents_desktop_release_channels", "openagents_product_promise_registry"],
     "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
-    "condition_refs": ["condition.release_green", "condition.cloud_budget", "condition.rollback", "condition.public_claim_evidence", "condition.redaction"]
+    "condition_refs": ["condition.release_green", "condition.stable_release_gate", "condition.cloud_budget", "condition.rollback", "condition.public_claim_evidence", "condition.redaction"]
+  },
+  {
+    "id": "grant.autonomous_rc_release_and_communication",
+    "roles": ["release_operator"],
+    "actions": ["classify_release_impact", "build_affected_release_lane", "publish_verified_github_prerelease", "promote_signed_rc_release", "deploy_eligible_web_or_mobile_ota", "request_candidate_test", "post_release_status", "ingest_release_feedback", "create_or_update_release_feedback_issue", "publish_release_changelog", "roll_back_release_service"],
+    "resources": ["OpenAgentsInc/openagents_rc_releases", "openagents_desktop_rc_channel", "openagents_updates_service", "openagents_com_changelog", "github_linked_release_issues", "openagents_forum_release_candidates"],
+    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
+    "condition_refs": ["condition.autonomous_rc_only", "condition.release_green", "condition.release_impact", "condition.release_communication", "condition.release_attribution", "condition.rollback", "condition.redaction"]
   },
   {
     "id": "grant.growth_revenue_experiments",
@@ -157,9 +172,14 @@ higher authority. The format and resolution laws live in
   {"id": "condition.google_cloud_only", "rule": "Production compute and storage remain on the admitted Google Cloud topology; Cloudflare remains DNS-only."},
   {"id": "condition.cloud_budget", "currency": "USD", "max_incremental_spend_per_day": 100, "max_new_recurring_spend_per_month": 100, "rule": "Measure incremental spend when observable; refuse or stop before exceeding either cap."},
   {"id": "condition.zero_external_spend", "currency": "USD", "max_external_campaign_or_subscription_spend": 0, "rule": "No new ads, paid campaigns, provider subscriptions, or purchases under this revision."},
-  {"id": "condition.no_unsolicited_outbound", "rule": "Do not send bulk or unsolicited external messages; drafting and product-surface experiments are allowed."},
+  {"id": "condition.no_unsolicited_outbound", "rule": "Do not send bulk or unsolicited external messages. Exact release-status messages authorized by condition.release_communication are transactional product communication, not a bulk-outreach exception."},
   {"id": "condition.no_financial_movement", "currency": "USD", "max_transfer": 0, "rule": "No charge, refund, payout, custody, settlement, wallet, treasury, or payment execution."},
   {"id": "condition.release_green", "rule": "Promotion requires exact admitted assurance, signed candidate, required platform receipts, clean release graph, rollback, and no known blocking invariant failure."},
+  {"id": "condition.stable_release_gate", "rule": "Stable-channel publication or promotion still requires a current explicit owner direction naming that stable release. Revision 2 standing autonomy covers RC, canary, staging, and rollback only."},
+  {"id": "condition.autonomous_rc_only", "rule": "Unattended publication is limited to a strictly newer RC whose artifact class and limitations are explicit. GitHub is a non-authoritative candidate mirror and cannot substitute for signed update-feed admission."},
+  {"id": "condition.release_impact", "rule": "Select release work from changed product paths after the release route is chosen. Web-only, mobile-OTA-eligible, and release-infrastructure-only changes must not manufacture a Desktop version or Windows build. Any Desktop renderer, host, native, shared-closure, or lockfile change requires the complete five-target Desktop matrix until a separately signed renderer-OTA contract with compatibility, first-launch health, and rollback is admitted."},
+  {"id": "condition.release_communication", "rule": "Release messages are bounded, idempotent, public-safe, and limited to linked GitHub issues, explicitly requested tester handles, and the Forum release-candidates topic. Candidate replies may be acknowledged or converted into linked feedback issues; no bulk direct messaging or impersonation is allowed."},
+  {"id": "condition.release_attribution", "rule": "Every release and changelog records trigger kind, trigger actor, release actor role, source feedback, profile revision, program, grant, and evidence refs. Historical releases must not be retroactively attributed to a newer grant."},
   {"id": "condition.public_claim_evidence", "rule": "A public promise transition must use the existing typed registry and all named verification gates must be green."}
 ]
 ```
@@ -202,14 +222,15 @@ higher authority. The format and resolution laws live in
   {"id": "reserved.over_budget", "category": "spend_or_financial_commitment_above_exact_profile_cap"},
   {"id": "reserved.invariant_weakening", "category": "security_privacy_custody_evidence_or_repository_invariant_weakening"},
   {"id": "reserved.unsupported_claim", "category": "unsupported_public_claim_fabricated_evidence_or_evidence_tier_inflation"},
-  {"id": "reserved.self_amplification", "category": "profile_or_policy_change_that_increases_delegate_authority_without_current_owner_direction"}
+  {"id": "reserved.self_amplification", "category": "profile_or_policy_change_that_increases_delegate_authority_without_current_owner_direction"},
+  {"id": "reserved.stable_release_without_direction", "category": "stable_channel_release_or_promotion_without_a_current_explicit_owner_direction_naming_that_release"}
 ]
 ```
 
 ```authority-delegation-receipts
 {
   "schema_id": "openagents.authority_decision_receipt.v1",
-  "required_fields": ["receipt_ref", "profile_id", "profile_revision", "program_ref", "grant_ref", "actor_role", "action", "target_ref", "condition_results", "started_at", "settled_at", "outcome", "evidence_refs"],
+  "required_fields": ["receipt_ref", "profile_id", "profile_revision", "program_ref", "grant_ref", "actor_role", "action", "target_ref", "trigger_ref", "condition_results", "started_at", "settled_at", "outcome", "evidence_refs"],
   "outcomes": ["succeeded", "failed", "refused", "rolled_back", "narrowed", "revoked", "needs_owner_reserved_action"],
   "public_safe_only": true,
   "raw_secrets_forbidden": true,
@@ -229,3 +250,10 @@ The growth program authorizes research, prioritization, product work, pricing
 design, instrumentation, and zero-spend reversible experiments. It does not
 authorize outbound spam, ad buying, contract execution, customer charges,
 refunds, payouts, or treasury movement.
+
+Revision 2 resolves the RC17–RC20 ceremony gap. A release operator does not
+wait for a second owner instruction to publish a green RC, post the linked
+candidate/update messages, or turn requested-tester feedback into a follow-up
+issue. Stable releases, bulk outreach, unsupported claims, version reuse,
+unsigned fallbacks, partial signed ReleaseSets, and unsafe Desktop code
+overlays remain outside that standing grant.

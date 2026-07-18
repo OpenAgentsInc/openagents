@@ -281,6 +281,23 @@ More specific invariant ledgers apply inside imported apps and packages.
   self-amplification are always reserved unless a higher current owner
   instruction lawfully and explicitly revises the profile; evidence gates and
   secret-handling invariants cannot be waived by profile text.
+- The delegated release operator MAY autonomously publish, communicate,
+  promote, or roll back a Desktop **RC** only under `AUTHORITY.md` revision
+  2's exact `grant.autonomous_rc_release_and_communication` scope. Stable
+  releases still require current explicit owner direction. Every candidate
+  and publication records the exact trigger ref, release actor, authority
+  revision/grant, source revision, and distribution boundary; GitHub and
+  Forum messages are bounded, idempotent release-transaction communications
+  rather than a general outbound-comms grant.
+- Release impact is selected from changed product paths, never from prose or
+  a user-intent keyword router. Web-only, mobile-only, update-service-only,
+  and release-infrastructure-only changes run only their affected delivery
+  lanes and MUST NOT manufacture a Desktop release. Any Desktop host,
+  renderer, native, packaging, shared-runtime, or lockfile change still
+  requires the complete five-target ReleaseSet matrix. A renderer-only
+  over-the-air lane is unadmitted until a later invariant defines a signed
+  compatibility envelope, first-launch health proof, atomic fallback, and
+  rollback receipt.
 
 - Desktop local Codex usage collection is triple-gated: the review-only
   Desktop control gate, an explicit default-off user preference, and the
@@ -587,7 +604,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - (DIST-01, #8914) Cross-platform Desktop release policy is owned by
   `docs/deploy/openagents-desktop-cross-platform-release.md`. ReleaseSet v2
   preserves the pinned Ed25519 authority above while closing target keys to
-  `darwin-{arm64,x64}`, `win32-{arm64,x64}`, and
+  `darwin-{arm64,x64}`, `win32-x64`, and
   `linux-{arm64,x64}`. Stable and RC are separate application identities and
   state roots. Exactly one version/source revision must converge across all
   required target/format cells before atomic promotion; a declared maker,
@@ -622,6 +639,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   quarantine. Repository authority guards and runner-registry validation are
   the intended automated boundary; owned worker and native-host attestations
   are the release boundary.
+- (DIST-01, #8914) GitHub Releases is a verified prerelease transport and
+  discovery mirror, never update authority. An asset is uploaded only from an
+  exact local path whose length and SHA-256 match the publication manifest,
+  then GitHub's server-reported digest is rechecked before the draft is made
+  public. A published tag/version is immutable: assets are never replaced in
+  place, byte disagreement fails closed, and a corrected build receives a new
+  monotonically increasing RC version. This is the durable RC17 lesson.
 - (DIST-01, #8914) `oa-updates` Desktop publication must preserve the complete
   mobile OTA export, manifest selection, headers, assets, and known-good probe.
   A Desktop metadata-only deploy cannot replace the service image. Route/asset
@@ -676,14 +700,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   refusal, idempotence, and pre-promotion failure tests are the intended
   automated boundary; a real RC command receipt is the release boundary. The
   v1 macOS compatibility runbook is the sole temporary exception until #8915.
-- (DIST-01, #8914) Every Desktop release has a reviewed human changelog and a
-  detailed public-safe agent changelog with the exact ProductSpec §15.1 names.
-  The bounded human notes and digest-bound refs enter ReleaseSet v2 before its
-  signature; `/changelog`, `/download`, and the in-app prompt cannot diverge
-  from those signed inputs. Accumulator generation, bounds, roll-forward
-  idempotence, route state, and cross-artifact consistency tests are the
-  intended automated boundary; the two indefinitely retained dated artifacts
-  and signed ReleaseSet notes refs are the release boundary.
+- (DIST-01, #8914) Every Desktop release has a release-operator-reviewed
+  public changelog and a detailed public-safe agent changelog with the exact
+  ProductSpec §15.1 names. Under the revision-2 autonomous RC grant, the
+  delegated release operator performs this review without a second owner
+  ceremony; stable still follows its explicit owner gate. Both artifacts bind
+  trigger kind/ref, release actor, exact authority revision/grant, release URL,
+  and source-feedback refs in addition to the bounded human notes and
+  digest-bound refs that enter ReleaseSet v2 before its signature.
+  `/changelog`, `/download`, GitHub, and the in-app prompt cannot diverge from
+  those signed inputs. Accumulator generation, bounds, roll-forward
+  idempotence, route state, attribution, and cross-artifact consistency tests
+  are the intended automated boundary; the two indefinitely retained dated
+  artifacts and signed ReleaseSet notes refs are the release boundary.
 - (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
   build descriptor (`openagents.desktop.target_build_descriptor.v1`; the six
   closed target keys; EXACT per-target format coverage — darwin dmg+zip,

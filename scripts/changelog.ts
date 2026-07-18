@@ -13,9 +13,9 @@
 //   node --import tsx scripts/changelog.ts notes --version 0.1.0-rc.13
 //
 // `roll` moves the UNRELEASED.md entries into a dated release file, drafts
-// the human changelog from each entry's first summary paragraph (the draft
-// MUST be reviewed before commit — the committed artifact is reviewed text,
-// not raw generation), resets the accumulator, regenerates the committed
+// the human changelog from each entry's first summary paragraph (the delegated
+// release operator MUST review it before commit — the committed artifact is
+// reviewed text, not raw generation), resets the accumulator, regenerates the committed
 // /changelog data module, and prints the bounded release-notes string.
 //
 // The /changelog Start route imports the generated data module at build time.
@@ -74,6 +74,16 @@ export type ReleaseChangelog = Readonly<{
   date: string;
   humanMarkdown: string;
   entries: readonly ChangelogEntry[];
+  attribution: ReleaseAttribution;
+}>;
+
+export type ReleaseAttribution = Readonly<{
+  triggerKind: string;
+  triggeredBy: string;
+  releaseActor: string;
+  authorityRef: string;
+  releaseUrl: string;
+  sourceFeedback: string;
 }>;
 
 export type ChangelogHumanBlock =
@@ -87,6 +97,7 @@ export type ChangelogReleaseData = Readonly<{
   title: string;
   blocks: readonly ChangelogHumanBlock[];
   agentChangelogUrl: string;
+  attribution: ReleaseAttribution;
 }>;
 
 const splitParagraphs = (text: string): readonly string[] =>
@@ -200,6 +211,14 @@ export const parseReleaseFile = (fileName: string, text: string): ReleaseChangel
     );
   }
   return {
+    attribution: {
+      authorityRef: readMeta("authority"),
+      releaseActor: readMeta("release-actor"),
+      releaseUrl: readMeta("release-url"),
+      sourceFeedback: readMeta("source-feedback"),
+      triggeredBy: readMeta("triggered-by"),
+      triggerKind: readMeta("trigger-kind"),
+    },
     channel: readMeta("channel"),
     date,
     entries: splitSections(agent.body, "### ").map((section) =>
@@ -247,6 +266,12 @@ export const renderReleaseMarkdown = (release: Omit<ReleaseChangelog, "fileName"
     `- version: ${release.version}`,
     `- channel: ${release.channel}`,
     `- date: ${release.date}`,
+    `- trigger-kind: ${release.attribution.triggerKind}`,
+    `- triggered-by: ${release.attribution.triggeredBy}`,
+    `- release-actor: ${release.attribution.releaseActor}`,
+    `- authority: ${release.attribution.authorityRef}`,
+    `- release-url: ${release.attribution.releaseUrl}`,
+    `- source-feedback: ${release.attribution.sourceFeedback}`,
     "",
     "## Human changelog",
     "",
@@ -271,7 +296,18 @@ export type RollInput = Readonly<{
   version: string;
   channel: string;
   date: string;
+  attribution?: ReleaseAttribution;
 }>;
+
+export const defaultAutonomousReleaseAttribution = (version: string): ReleaseAttribution => ({
+  triggerKind: "agent_change",
+  triggeredBy: "OpenAgents release transaction (no external feedback trigger)",
+  releaseActor: "OpenAgents release operator",
+  authorityRef:
+    "AUTHORITY.md revision 2; program.full_auto_release; grant.autonomous_rc_release_and_communication",
+  releaseUrl: `https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v${version}`,
+  sourceFeedback: "none recorded",
+});
 
 export type RollOutput = Readonly<{
   releaseFileName: string;
@@ -291,6 +327,7 @@ export const rollUnreleased = (input: RollInput): RollOutput => {
   }
   const humanMarkdown = draftHumanChangelog(entries);
   const releaseMarkdown = renderReleaseMarkdown({
+    attribution: input.attribution ?? defaultAutonomousReleaseAttribution(input.version),
     channel: input.channel,
     date: input.date,
     entries,
@@ -368,6 +405,7 @@ export const toReleaseData = (release: ReleaseChangelog): ChangelogReleaseData =
   date: release.date,
   title: release.title,
   version: release.version,
+  attribution: release.attribution,
 });
 
 /** Newest first: date desc, then file name desc for same-day releases. */
@@ -397,6 +435,14 @@ export const renderRouteDataModule = (releases: readonly ReleaseChangelog[]): st
     "  title: string;",
     "  blocks: ReadonlyArray<ChangelogHumanBlock>;",
     "  agentChangelogUrl: string;",
+    "  attribution: Readonly<{",
+    "    triggerKind: string;",
+    "    triggeredBy: string;",
+    "    releaseActor: string;",
+    "    authorityRef: string;",
+    "    releaseUrl: string;",
+    "    sourceFeedback: string;",
+    "  }>;",
     "}>;",
     "",
     "/** Newest release first. */",
@@ -475,8 +521,10 @@ const main = (): void => {
       console.log(`wrote ${CHANGELOG_DIR}/${rolled.releaseFileName}`);
       console.log(`reset ${CHANGELOG_DIR}/${UNRELEASED_FILE}`);
       console.log(`regenerated ${ROUTE_DATA_MODULE_PATH}`);
-      console.log("\nREVIEW REQUIRED: the human changelog section is a draft. Edit it");
-      console.log("for clarity before committing — the committed artifact is reviewed");
+      console.log("\nRELEASE-OPERATOR REVIEW: the human changelog section is a draft. Edit it");
+      console.log(
+        "for clarity and attribution before committing — the committed artifact is reviewed",
+      );
       console.log("text, not raw generation.\n");
       console.log(
         `release-notes string (${rolled.releaseNotes.length}/${RELEASE_NOTES_MAX_LENGTH} chars):\n`,

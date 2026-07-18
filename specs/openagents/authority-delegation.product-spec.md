@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Owner-Delegated Autonomous Delivery"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -19,7 +19,7 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_design: "docs/authority/AUTHORITY_DELEGATION_SPEC.md"
-  openagents_profile: "AUTHORITY.md revision 1"
+  openagents_profile: "AUTHORITY.md revision 2"
   openagents_accepted_plan: "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md"
   openagents_assurance_level: "cross-resource-action-authority"
 ---
@@ -61,6 +61,7 @@ in:
   - a mandatory verify, use-existing-access, use-product-surface, substitute, automate, repair, narrow, and irreducible-escalation ladder
   - typed authority-decision receipts that reference private evidence without exposing it
   - current-profile validation and later Effect service, runtime adapter, revocation, budget, and model-checking enforcement
+  - autonomous RC impact selection, signed-candidate GitHub publication, linked issue and Forum communication, tester-feedback intake, changelog attribution, and bounded rollback
 out:
   - AuthorityDelegationSpec deciding product intent, evidence sufficiency, learning relevance, issue priority, or public truth by itself
   - possession of a credential, cloud role, device, provider session, model output, test result, or upstream source implying additional authority
@@ -72,7 +73,9 @@ cut:
   - wallet, treasury, custody, payout, settlement, charge, refund, or irreversible financial movement
   - legal contracts, employment decisions, regulatory attestations, or human identity ceremonies
   - destructive customer-data deletion or irreversible production migration
-  - paid advertising, bulk unsolicited outbound, or new paid subscriptions in revision 1
+  - paid advertising, bulk unsolicited outbound, or new paid subscriptions in revision 2
+  - stable release publication without a current explicit owner direction naming that release
+  - unsigned Desktop code overlays or partial ReleaseSet promotion presented as OTA
   - self-modification that increases delegated authority
 ```
 
@@ -155,6 +158,26 @@ never changes the visible evidence tier.
   profile's required blocks, IDs, refs, order, anti-amplification literal,
   mandatory reserved categories, spend caps, independence, and links from
   repository law.
+- **AD-AC-17:** Revision 2 authorizes a release operator to publish a strictly
+  newer verified RC and its non-authoritative GitHub mirror, promote an
+  otherwise-admitted signed RC, deploy eligible web/mobile OTA lanes, publish
+  `/changelog`, and roll back the bounded service path without repeating an
+  owner ceremony. Stable publication retains an exact current-owner gate.
+- **AD-AC-18:** Release impact selection prevents web-only, mobile-only, docs,
+  or release-infrastructure work from manufacturing a Desktop version or
+  Windows build. Desktop renderer/host/native/shared-closure/lockfile changes
+  retain the complete five-target requirement until a separately signed,
+  compatibility-bound, first-launch-checked, rollback-capable renderer OTA is
+  admitted.
+- **AD-AC-19:** Candidate and publication communication is bounded and
+  idempotent across linked GitHub issues, explicitly requested tester handles,
+  and the Forum `release-candidates` topic. A structured tester PASS is
+  receipted; BLOCKED or unstructured feedback becomes a linked Full Auto issue
+  even when the source issue is already closed.
+- **AD-AC-20:** Every public changelog row records trigger kind, triggering
+  actor, release actor, source feedback, release URL, authority profile
+  revision, program, and grant. Historical releases identify their historical
+  owner direction and never borrow revision-2 authority retroactively.
 
 ## Success Metrics
 
@@ -203,12 +226,16 @@ never changes the visible evidence tier.
 
 ## Owner Gates
 
-- **RESOLVED FOR REVISION 1 BY CURRENT OWNER DIRECTION.** The owner explicitly
+- **RESOLVED FOR REVISION 2 BY CURRENT OWNER DIRECTION.** The owner explicitly
   directed OpenAgents to formalize broad delegated authority, stop waiting on
   ordinary owner/device blockers, use existing Google Cloud access, rapidly
   close issues, prioritize Full Auto, complete root specs and all Fast Follow,
-  and then pursue transcript-backed user and revenue outcomes. `AUTHORITY.md`
-  revision 1 is the admitted profile for that direction.
+  and then pursue transcript-backed user and revenue outcomes. The owner then
+  explicitly directed agents to publish release builds, automate the
+  RC17–RC20 tester/issue/update loop, avoid unnecessary Windows builds, use
+  OTA where safely admitted, communicate through GitHub and Forum, and expose
+  actor/authority attribution on `/changelog`. `AUTHORITY.md` revision 2 is
+  the admitted profile for those directions.
 - Any increase to the numeric spend caps, permission for paid outreach or new
   subscriptions, financial movement, legal commitments, destructive customer
   data action, raw secret access, or weakening of a mandatory invariant needs

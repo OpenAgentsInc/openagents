@@ -14,6 +14,13 @@ Every OpenAgents release carries two changelog artifacts:
    is linked from the human changelog, but it is never the primary public
    surface.
 
+Every dated release also records a public-safe provenance header: trigger
+kind, trigger actor, release actor, authority reference, release URL, and
+source-feedback reference. Historical releases say when they predate the
+admitted authority profile rather than retroactively claiming a newer grant.
+New autonomous RCs name the exact `AUTHORITY.md` profile revision, program,
+and grant that permitted publication and communication.
+
 ## Directory layout
 
 | Path                              | Role                                                            |
@@ -89,9 +96,10 @@ pnpm changelog notes --version 0.1.0-rc.13
 ```
 
 `roll` drafts the human changelog from the first summary paragraph of each
-UNRELEASED entry plus the release header. **The draft is a draft**: when an
-agent runs the release, it must review and edit the human section for clarity
-before committing — the committed artifact is reviewed text, not raw
+UNRELEASED entry plus the release header. The release operator is authorized
+to review and edit that bounded draft under `AUTHORITY.md` revision 2; a
+separate owner ceremony is not required for an RC. Stable publication retains
+its explicit gate. The committed artifact is reviewed text, not raw
 generation. `roll` refuses to overwrite an existing release file and refuses
 to run when UNRELEASED has no entries, so re-running it is safe.
 

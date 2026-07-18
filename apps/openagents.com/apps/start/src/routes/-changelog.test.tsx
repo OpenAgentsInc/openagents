@@ -12,7 +12,7 @@ describe("Start /changelog route", () => {
     expect(html).toContain('aria-label="Primary navigation"');
     expect(html).toContain("© 2026 OpenAgents, Inc.");
     expect(html).toContain("Changelog");
-    expect(html).toContain("What changed in each OpenAgents release, in plain language.");
+    expect(html).toContain("What changed, why it shipped, and who authorized it.");
   });
 
   test("the committed data lists releases newest-first with version, channel, and date", () => {
@@ -27,6 +27,11 @@ describe("Start /changelog route", () => {
       expect(release.agentChangelogUrl).toMatch(
         /^https:\/\/github\.com\/OpenAgentsInc\/openagents\/blob\/main\/docs\/changelog\//,
       );
+      expect(release.attribution.triggerKind.length).toBeGreaterThan(0);
+      expect(release.attribution.triggeredBy.length).toBeGreaterThan(0);
+      expect(release.attribution.releaseActor.length).toBeGreaterThan(0);
+      expect(release.attribution.authorityRef.length).toBeGreaterThan(0);
+      expect(release.attribution.releaseUrl).toMatch(/^https:\/\//);
     }
   });
 
@@ -38,7 +43,9 @@ describe("Start /changelog route", () => {
       expect(html.toLowerCase()).toContain(`datetime="${release.date}"`);
       expect(html).toContain(release.agentChangelogUrl);
     }
-    expect(html).toContain("Detailed agent changelog for this release");
+    expect(html).toContain("Engineering ledger");
+    expect(html).toContain("Source feedback");
+    expect(html).toContain('data-changelog-attribution="0.1.0-rc.20"');
     expect(html).not.toContain("data-changelog-empty");
   });
 
@@ -49,6 +56,16 @@ describe("Start /changelog route", () => {
     expect(html).toContain("Release candidate");
     expect(html).toContain("Apple silicon Macs");
     expect(html).toContain("Intel Macs, Windows, and Linux are not supported yet.");
+  });
+
+  test("recent releases expose their real feedback and historical authority boundaries", () => {
+    const html = renderToStaticMarkup(<ChangelogPage />);
+
+    expect(html).toContain("0.1.0-rc.20");
+    expect(html).toContain("Tester Feedback");
+    expect(html).toContain("@lathe-agent-oa");
+    expect(html).toContain("before AUTHORITY.md revision 2");
+    expect(html).toContain("OpenAgents release agent (historical)");
   });
 
   test("the empty state is honest — no fabricated releases", () => {

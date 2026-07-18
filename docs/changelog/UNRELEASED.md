@@ -5,6 +5,27 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Autonomous RC releases, tester follow-up, and attributed updates (#8926, #8993, #8995)
+
+- issues: #8926, #8993, #8995 (epic #8913)
+- commits: integration commit (this entry)
+- contracts-specs: AUTHORITY.md revision 2; authority-delegation ProductSpec revision 2; Desktop cross-platform release ProductSpec 1.2.0; openagents.release_publication.v1; openagents.desktop.release_transaction.v2; openagents.desktop.release_receipt.v2
+- invariants: RC release and bounded transaction communications are delegated; stable remains owner-gated; GitHub bytes are immutable and non-authoritative; unrelated web/mobile/release changes cannot trigger a Desktop matrix; Desktop renderer OTA remains unadmitted
+- evidence: release-impact, GitHub publication, release communications, feedback intake, changelog, authority, and /changelog route test suites; RC17–RC20 history and #8995
+- lane: codex-autonomous-release-feedback-20260718
+
+The changelog now explains what triggered each update, who released it, and
+the exact authority used. Recent RC17–RC20 history links back to the tester
+feedback and release conversations that caused those builds.
+
+Release agents can now verify and publish immutable GitHub RC candidates,
+request focused testing through the linked GitHub issue and Forum, turn a
+blocked reply into one linked follow-up issue, and communicate publication or
+rollback without waiting for another owner ceremony. An impact planner avoids
+building Windows or the rest of the Desktop matrix for unrelated web, mobile,
+or release-process changes. Desktop runtime changes still require the full
+five-target signed matrix until a safe renderer-OTA contract exists.
+
 ## Windows releases are x64-only (#8913)
 
 - issues: #8913, #8917, #8920, #8924, #8926

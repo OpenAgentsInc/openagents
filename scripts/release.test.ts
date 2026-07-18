@@ -16,7 +16,6 @@ import {
   RELEASE_SET_SIGNING_ENV_NAMES,
   RELEASE_STEP_GRAPH,
   RELEASE_TRANSACTION_SCHEMA,
-  ReleaseGateError,
   ReleasePortNotImplementedError,
   TRANSACTION_REF_PATTERN,
   assertPublicSafeReceiptLine,
@@ -109,6 +108,16 @@ const makePlan = (overrides: Partial<ReleasePlan> = {}): ReleasePlan => ({
   date: "2026-07-16",
   unattended: false,
   approvedGates: [],
+  attribution: {
+    triggerKind: "tester_feedback",
+    triggeredBy: "@fixture-tester (issue:#8995)",
+    releaseActor: "OpenAgents release operator",
+    authorityRef:
+      "AUTHORITY.md revision 2; program.full_auto_release; grant.autonomous_rc_release_and_communication",
+    releaseUrl:
+      "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.18",
+    sourceFeedback: "https://github.com/OpenAgentsInc/openagents/issues/8995",
+  },
   ...overrides,
 });
 
@@ -371,7 +380,7 @@ describe("dry-run end-to-end", () => {
     // Promotion was simulated through the fixture port only.
     expect(ports.coordinatorCalls).toContain("promoteChannelPointer");
     expect(result.state.steps.promote.receiptLines.join(" ")).toContain("SIMULATED");
-    // Owner gates are surfaced by name in the output.
+    // Release approval gates are surfaced by name in the output.
     expect(io.lines.join("\n")).toContain("changelog_human_review");
     expect(io.lines.join("\n")).toContain("rc_promotion");
   });
@@ -465,7 +474,7 @@ describe("changelog step", () => {
     expect(state.steps.promote.status).toBe("pending");
   });
 
-  test("real mode rolls the fixture changelog dir and requires the review gate before promote", async () => {
+  test("real RC mode rolls and completes with delegated changelog review under --yes", async () => {
     const root = makeFixtureRoot();
     const io = makeIo(root);
     // Real coordinator/feed stand-ins so real mode can pass the port guard in
@@ -473,8 +482,6 @@ describe("changelog step", () => {
     const coordinator = { ...createFixtureCoordinatorPort(), kind: "real" as const };
     const feed = { ...createFixtureFeedPort(), kind: "real" as const };
     const plan = makePlan({ mode: "real", unattended: true });
-    // Unattended real mode stops at the changelog_human_review gate (NOT safe
-    // for --yes) — after the roll has produced the reviewable draft.
     await expect(
       runRelease({
         plan,
@@ -482,31 +489,30 @@ describe("changelog step", () => {
         ports: { coordinator, feed },
         io,
       }),
-    ).rejects.toThrow(ReleaseGateError);
+    ).resolves.toBeDefined();
     const releaseFile = join(root, CHANGELOG_DIR, "2026-07-16-desktop-0.1.0-rc.18.md");
     expect(existsSync(releaseFile)).toBe(true);
     expect(readFileSync(join(root, CHANGELOG_DIR, UNRELEASED_FILE), "utf8")).not.toContain("#8926");
     const state = loadTransactionState(io.scratchDir, plan.transactionRef);
     expect(state.steps.changelog.status).toBe("succeeded");
-    // The gate refusal is recorded on the promote step and is resumable.
-    expect(state.steps.promote.status).toBe("failed");
-    expect(state.steps.promote.failure).toContain("changelog_human_review");
+    expect(state.steps.promote.status).toBe("succeeded");
+    expect(state.steps.final_receipt.status).toBe("succeeded");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Owner gates
+// Release approval gates
 // ---------------------------------------------------------------------------
 
-describe("owner gates", () => {
-  test("rc promotion is safe for unattended --yes; stable and review are owner-explicit", () => {
+describe("release approval gates", () => {
+  test("RC promotion and changelog review are delegated; stable is owner-explicit", () => {
     const rcPlan = makePlan({ unattended: true });
     const gates = gatesForPlan(rcPlan);
     expect(gates.map((gate) => gate.id)).toEqual(["changelog_human_review", "rc_promotion"]);
     expect(isGateApproved(gates.find((gate) => gate.id === "rc_promotion")!, rcPlan)).toBe(true);
     expect(
       isGateApproved(gates.find((gate) => gate.id === "changelog_human_review")!, rcPlan),
-    ).toBe(false);
+    ).toBe(true);
 
     const stablePlan = makePlan({ channel: "stable", version: "0.1.0", unattended: true });
     const stableGates = gatesForPlan(stablePlan);
@@ -580,7 +586,9 @@ describe("release receipt", () => {
     expect(markdown).toContain("- version: 0.1.0-rc.18");
     expect(markdown).toContain("- channel: rc");
     expect(markdown).toContain(`- source-revision: ${HEAD_SHA}`);
-    expect(markdown).toContain("## Owner gates");
+    expect(markdown).toContain("- trigger-kind: tester_feedback");
+    expect(markdown).toContain("AUTHORITY.md revision 2");
+    expect(markdown).toContain("## Release approval gates");
     expect(markdown).toContain("changelog_human_review");
     expect(markdown).toContain("DRY-RUN — NOT A RELEASE RECEIPT");
   });

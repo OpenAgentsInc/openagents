@@ -44,6 +44,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — active owner direction to eliminate generic owner/device waiting, finish
   Full Auto, complete root specs and Fast Follow, then pursue transcript-backed
   user and revenue outcomes within the admitted profile.
+- [`2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md`](./2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md)
+  — active revision-2 RC release authority, RC17–RC20 feedback-loop correction,
+  impact-based delivery/OTA boundaries, immutable GitHub publication, bounded
+  issue/Forum communications, and attributed `/changelog` closure plan.
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — canonical product direction,
   durable gates, non-goals, current issue set, and next-ready sequence.
 - [`issues/README.md`](./issues/README.md) — classification and navigation for

@@ -1,7 +1,7 @@
 # OpenAgents Desktop cross-platform release ProductSpec
 
-- ProductSpec version: 1.1.0
-- Date: 2026-07-17
+- ProductSpec version: 1.2.0
+- Date: 2026-07-18
 - Status: normative target contract; support remains evidence-gated
 - Owner: OpenAgents Desktop release authority
 - Parent program: [#8913](https://github.com/OpenAgentsInc/openagents/issues/8913)
@@ -24,13 +24,12 @@ There are three distinct states:
    agent-runtime, update, interruption, shutdown, and applicable rollback
    receipts for the exact target and format.
 
-As of this version, the current repository has a hardened macOS arm64
-DMG/ZIP and signed-manifest v1 lane. It does not yet have a complete
-ReleaseSet v2 or the five-target evidence required here. Therefore **none of
-the five target keys is admitted as cross-platform supported by this spec**.
-The existing macOS arm64 lane remains the only release-capable compatibility
-lane while the child program lands; this statement is current evidence, not a
-new stable-support claim.
+As of this version, ReleaseSet v2, the public resolver, and the release
+coordinator contracts exist, but concrete owned-worker adapters and the
+complete five-target native receipt set are not yet converged. Therefore
+**none of the five target keys is admitted as cross-platform supported by this
+spec**. Existing experimental GitHub prereleases are discovery artifacts, not
+evidence of signed-feed promotion or stable support.
 
 Public copy and `/download` MUST derive availability from promoted evidence.
 An absent or unadmitted target MUST be labeled unavailable, never inferred
@@ -300,15 +299,19 @@ After [#8926](https://github.com/OpenAgentsInc/openagents/issues/8926) lands,
 the only documented production entrypoint is the root package script:
 
 ```sh
-pnpm run release -- --channel <stable|rc> --version <semver>
+pnpm run release -- --channel <stable|rc> --version <semver> \
+  --trigger-kind <owner_direction|agent_change|tester_feedback|release_incident> \
+  --trigger-actor <public-actor> --trigger-ref <public-ref> \
+  [--source-feedback <OpenAgents-issue-URL>]
 ```
 
 The `release` script MUST map exactly to
 `node --import tsx scripts/release.ts`. Supported control flags are `--dry-run`
 (fixture workers and no cloud spend), `--yes` (approve only gates declared
 safe for unattended use), and `--resume <transaction-ref>` (continue one
-durable idempotent transaction). Any required human gate is named before the
-command starts effects and never becomes a silent prompt or stall.
+durable idempotent transaction). The only release-channel human gate is a
+stable release lacking current explicit owner direction; it is named before
+effects and never becomes a silent prompt or stall.
 
 The command freezes inputs, checks credential presence without printing
 secrets, brings up/verifies the GCE/Tailnet inventory, runs all five builds and
@@ -322,9 +325,36 @@ the only temporary exception until its #8915 migration closes.
 
 The default owned substrate is GCE in project `openagentsgemini` for Linux x64,
 Linux arm64, and Windows x64, using the existing scoped automation
-service-account pattern; owned Tailnet Macs for both Darwin architectures; and
-the reviewed DIST-04 arm64 cross-build worker plus a native Windows 11 arm64
-acceptance host. Substrate availability never relaxes the native receipt gate.
+service-account pattern and owned Tailnet Macs for both Darwin architectures.
+Substrate availability never relaxes the native receipt gate.
+
+### 11.2 Release-impact selection
+
+Before provisioning a worker, the coordinator MUST classify the exact changed
+paths between the last delivered source revision and the candidate:
+
+- web-only changes deploy the web lane;
+- mobile-only JavaScript/assets/config changes use the existing signed Expo OTA
+  lane when its runtime-version contract admits them, otherwise they use the
+  mobile native-build lane;
+- `oa-updates` or release-infrastructure-only changes deploy/test those owned
+  services and MUST NOT manufacture a Desktop version;
+- documentation-only changes create no binary release; and
+- any Desktop main/renderer/native/package change, a Desktop-consumed shared
+  package change, or the root lockfile triggers the complete five-target
+  Desktop matrix.
+
+This is deterministic product-path classification after the release route has
+already been selected; it is not user-intent or tool routing. Overlapping paths
+select every affected lane. Unknown product paths fail closed to
+`no_binary_release` plus an operator-visible explanation.
+
+A renderer-only Desktop OTA is intentionally **not admitted** in version 1.2.0.
+Before that lane may skip native packaging, a later ProductSpec revision MUST
+define a signed renderer/runtime compatibility envelope, immutable content
+identity, atomic activation, first-launch health proof, retained fallback,
+rollback receipt, and CSP/native-bridge compatibility gate. Until then,
+"renderer-only" still means the complete Desktop matrix.
 
 ## 12. Update, first-launch, and rollback lifecycle
 
@@ -368,9 +398,22 @@ probe. A Desktop-only metadata directory MUST NOT replace the baked mobile
 export. Mobile preservation failure blocks Desktop promotion and rolls service
 traffic back to the previous ready Cloud Run revision.
 
-GitHub Releases MAY carry a non-authoritative mirror only after promotion if a
-future operator contract explicitly enables it. It is never a client feed,
-promotion barrier, completeness oracle, or `/download` source of truth.
+GitHub Releases MAY carry a non-authoritative prerelease mirror before signed
+feed promotion so named testers can exercise immutable candidate bytes. The
+publisher MUST create a draft, upload only manifest-verified local paths,
+recheck GitHub's server-reported digest for every asset, and only then make the
+prerelease public. A published tag/version is immutable: assets MUST NOT be
+replaced in place, and corrected bytes require a strictly newer RC version.
+The release body records trigger kind/ref, source revision, release actor,
+exact authority revision/grant, and whether the candidate is a complete signed
+ReleaseSet or an explicitly limited experimental build.
+
+GitHub is never a client feed, signed-feed promotion barrier, completeness
+oracle, or `/download` source of truth. Signed-feed promotion still requires
+the complete ReleaseSet and native receipts. Candidate/publication messages to
+linked GitHub issues and the Forum `release-candidates` board are bounded,
+idempotent release-transaction communications; they are not a general outbound
+communications grant.
 
 ## 14. Platform acceptance gates
 
@@ -387,7 +430,7 @@ no app-owned update or rollback claim.
 
 ### 14.2 Windows
 
-Both architectures require the per-user NSIS artifact. The downloaded
+Windows x64 requires the per-user NSIS artifact. The downloaded
 installer and every installed executable listed in the component ledger MUST
 pass Windows trust with publisher `OpenAgents, Inc.`. Clean install, protocol
 registration, Start menu/taskbar identity, uninstall, N-1 update,
@@ -446,6 +489,15 @@ signing:
   invariants, evidence refs, and the public-safe CLAIM actor/session. It is
   linked from the human entry but is never the primary user-facing copy.
 
+Both artifacts and the `/changelog` projection MUST identify the trigger kind
+and exact trigger/source-feedback refs, release actor, exact delegated authority
+revision/grant (or the historical pre-profile authority truth), source
+revision, and public release URL. Attribution describes who or what caused the
+release and who executed it; it never retroactively rewrites historical
+authority. Under `AUTHORITY.md` revision 2, the delegated release operator MAY
+review and publish an RC changelog without a second owner ceremony. A stable
+release still requires current explicit owner direction.
+
 `docs/changelog/UNRELEASED.md` is the sole accumulator. #8927 owns its bounded
 entry schema and the requirement that CLAIM-RELEASE appends one entry. The
 release command at §11.1 consumes the exact since-last-release range, requires
@@ -489,6 +541,15 @@ custody, Cloud DNS/certificate/account administration, and enrollment of
 owned native runner hardware. Automation MUST consume these only through
 scoped secret/runner seams and MUST never inspect or print credentials.
 
+Once those scoped seams exist, RC impact selection, owned builds, candidate
+publication, requested-tester outreach, structured feedback intake, linked
+issue creation, Forum status, changelog publication, signed-feed promotion,
+and rollback are delegated to the release operator by `AUTHORITY.md` revision
+2. Stable publication, bulk unsolicited outreach, unsafe overlay/renderer OTA,
+partial-matrix signed-feed promotion, unsigned production artifacts, asset
+replacement/version reuse, and any credential ceremony outside a scoped seam
+remain reserved.
+
 This ProductSpec does not itself make any such action ready. An action is
 added to root `NEEDS_OWNER.md` only when its implementation is landed, its
 exact UI/account operation and least privilege are known, and automation is
@@ -511,6 +572,8 @@ The following invariants never weaken during this program:
 | No GitHub Actions/hosted CI authority        | repository authority guard                                            | owned coordinator/runner attestations                 |
 | `/download` equals promoted truth            | resolver/schema/route/accessibility tests                             | public resolution/download receipt                    |
 | Dual changelogs are signed release inputs    | accumulator/generation/bound/idempotence and `/changelog` route tests | dated human+agent artifacts and signed notes refs     |
+| Release attribution is exact                 | publication/comms/changelog authority and idempotence tests           | trigger/actor/authority refs on every public update   |
+| Impact selection cannot overbuild            | deterministic changed-path table tests                               | selected-lanes receipt before worker provisioning     |
 | Channel/state isolation                      | identity/state-root model and migration tests                         | clean side-by-side install receipt                    |
 
 ## 19. Delivery issue map
@@ -534,6 +597,8 @@ policy:
 | [#8927 DIST-14](https://github.com/OpenAgentsInc/openagents/issues/8927) | §§8, 11.1, 15.1–16, 18                                         |
 | [#8926 DIST-13](https://github.com/OpenAgentsInc/openagents/issues/8926) | §§10–13, 15–16, 18                                             |
 | [#8925 DIST-12](https://github.com/OpenAgentsInc/openagents/issues/8925) | §§10–16, 18                                                    |
+| [#8993](https://github.com/OpenAgentsInc/openagents/issues/8993)         | §§11.2, 13, 15.1, 17–18; autonomous RC delivery/comms          |
+| [#8995](https://github.com/OpenAgentsInc/openagents/issues/8995)         | §§6–7, 13, 15.1; RC17–RC20 tester-feedback incident evidence   |
 
 The program closes only after each child meets its own close rule and one
 stable ReleaseSet has the complete public-safe evidence required by #8913.

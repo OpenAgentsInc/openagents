@@ -13,11 +13,123 @@ export type ChangelogRelease = Readonly<{
   title: string;
   blocks: ReadonlyArray<ChangelogHumanBlock>;
   agentChangelogUrl: string;
+  attribution: Readonly<{
+    triggerKind: string;
+    triggeredBy: string;
+    releaseActor: string;
+    authorityRef: string;
+    releaseUrl: string;
+    sourceFeedback: string;
+  }>;
 }>;
 
 /** Newest release first. */
 export const CHANGELOG_RELEASES: ReadonlyArray<ChangelogRelease> =
   [
+    {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-18-desktop-0.1.0-rc.20.md",
+      "blocks": [
+        {
+          "items": [
+            "The model selector now uses the visible catalog from the user's installed Codex app-server, including each model's supported reasoning choices.",
+            "Model and reasoning controls became normal select menus instead of click-to-cycle controls.",
+            "Compatibility diagnostics and unchanged specification receipts stay out of the conversation, while genuinely changed specification information remains visible.",
+            "Existing Codex conversations resume across the newly observed pagination fields without accepting unrelated protocol drift.",
+            "The release retained the installed-Codex architecture from the prior corrective candidate and shipped the five-platform package set."
+          ],
+          "kind": "bullets"
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-18",
+      "title": "OpenAgents Desktop 0.1.0-rc.20 — 2026-07-18",
+      "version": "0.1.0-rc.20",
+      "attribution": {
+        "authorityRef": "owner release direction recorded on #8995 before AUTHORITY.md revision 2",
+        "releaseActor": "OpenAgents release agent (historical)",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.20",
+        "sourceFeedback": "https://github.com/OpenAgentsInc/openagents/issues/8995",
+        "triggeredBy": "#8995 owner acceptance and follow-up testing",
+        "triggerKind": "tester_feedback"
+      }
+    },
+    {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-18-desktop-0.1.0-rc.19.md",
+      "blocks": [
+        {
+          "items": [
+            "OpenAgents stopped packaging, copying, or re-signing a second Codex executable. The Desktop app now discovers and uses the compatible Codex installation already owned and authenticated by the user.",
+            "Missing or incompatible Codex installations became an honest prerequisite message instead of a broken repair path.",
+            "The corrected packages shipped for macOS, Linux, and experimental Windows x64, and every package was checked to ensure it contained no bundled Codex runtime.",
+            "This architecture removed the signed-app runtime and Keychain failure reported during the previous candidate retest."
+          ],
+          "kind": "bullets"
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-18",
+      "title": "OpenAgents Desktop 0.1.0-rc.19 — 2026-07-18",
+      "version": "0.1.0-rc.19",
+      "attribution": {
+        "authorityRef": "owner architecture direction recorded on #8995 before AUTHORITY.md revision 2",
+        "releaseActor": "OpenAgents release agent (historical)",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.19",
+        "sourceFeedback": "https://github.com/OpenAgentsInc/openagents/issues/8995",
+        "triggeredBy": "signed-candidate feedback from @lathe-agent-oa",
+        "triggerKind": "release_incident"
+      }
+    },
+    {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-17-desktop-0.1.0-rc.18.md",
+      "blocks": [
+        {
+          "items": [
+            "The candidate addressed the first external Desktop test report: default Codex behavior, account status, navigation, and other high-friction development-mode problems were repaired and packaged for retest.",
+            "Full Auto and the local coding workroom were included in a signed macOS candidate alongside the Linux and experimental Windows packages.",
+            "The signed retest then found a deeper blocker: packaged Codex chat could not start reliably. That feedback led directly to the corrective releases that followed."
+          ],
+          "kind": "bullets"
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-17",
+      "title": "OpenAgents Desktop 0.1.0-rc.18 — 2026-07-17",
+      "version": "0.1.0-rc.18",
+      "attribution": {
+        "authorityRef": "owner-directed tester follow-up before the admitted AUTHORITY.md profile",
+        "releaseActor": "OpenAgents release agent (historical)",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.18",
+        "sourceFeedback": "https://github.com/OpenAgentsInc/openagents/issues/8983",
+        "triggeredBy": "@lathe-agent-oa",
+        "triggerKind": "tester_feedback"
+      }
+    },
+    {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-17-desktop-0.1.0-rc.17.md",
+      "blocks": [
+        {
+          "items": [
+            "OpenAgents Desktop became available as a hands-on release candidate for macOS, Linux, and experimental Windows x64 testing.",
+            "Ordinary startup became Keychain-free. The replacement build stopped account credential custody from initializing during a normal local launch.",
+            "The candidate added the local Codex workroom, durable conversations, repository context, the coding composer, local history, and an early Full Auto preview.",
+            "macOS packages were signed and notarized. Linux packages were built for both supported architectures, while Windows remained an unsigned experimental portable package."
+          ],
+          "kind": "bullets"
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-17",
+      "title": "OpenAgents Desktop 0.1.0-rc.17 — 2026-07-17",
+      "version": "0.1.0-rc.17",
+      "attribution": {
+        "authorityRef": "owner direction recorded on release issues before the admitted AUTHORITY.md profile",
+        "releaseActor": "OpenAgents release agent (historical)",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.17",
+        "sourceFeedback": "https://github.com/OpenAgentsInc/openagents/issues/8919",
+        "triggeredBy": "OpenAgents owner release direction",
+        "triggerKind": "owner_direction"
+      }
+    },
     {
       "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-16-desktop-0.1.0-rc.13.md",
       "blocks": [
@@ -40,6 +152,14 @@ export const CHANGELOG_RELEASES: ReadonlyArray<ChangelogRelease> =
       "channel": "rc",
       "date": "2026-07-16",
       "title": "OpenAgents Desktop 0.1.0-rc.13 — 2026-07-16",
-      "version": "0.1.0-rc.13"
+      "version": "0.1.0-rc.13",
+      "attribution": {
+        "authorityRef": "owner-directed release before the admitted AUTHORITY.md profile",
+        "releaseActor": "OpenAgents release operator (historical)",
+        "releaseUrl": "https://updates.openagents.com/desktop/openagents/rc/release.json",
+        "sourceFeedback": "none recorded",
+        "triggeredBy": "OpenAgents owner",
+        "triggerKind": "owner_direction"
+      }
     }
   ];

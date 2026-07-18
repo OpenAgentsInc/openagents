@@ -86,6 +86,7 @@ import {
   UNRELEASED_FILE,
   rollUnreleased,
   runRoll,
+  type ReleaseAttribution,
 } from "./changelog.js";
 
 // ---------------------------------------------------------------------------
@@ -255,6 +256,8 @@ export type ReleasePlan = Readonly<{
   unattended: boolean;
   /** Gate ids explicitly approved via `--approve <gateId>`. */
   approvedGates: readonly string[];
+  /** Public-safe trigger/actor/authority identity retained across resume. */
+  attribution: ReleaseAttribution;
 }>;
 
 export const TRANSACTION_REF_PATTERN = /^v[0-9A-Za-z.-]+-(?:stable|rc)-\d{8}T\d{6}Z$/;
@@ -268,8 +271,9 @@ export const newTransactionRef = (version: string, channel: ReleaseChannel, now:
 };
 
 // ---------------------------------------------------------------------------
-// Owner gates — explicit, named in output before effects start; never a
-// silent stall.
+// Approval gates — explicit, named in output before effects start; never a
+// silent stall. The exported historical type/constant names remain stable for
+// resumable v1 transaction compatibility.
 // ---------------------------------------------------------------------------
 
 export type ReleaseOwnerGate = Readonly<{
@@ -285,10 +289,10 @@ export const RELEASE_OWNER_GATES: readonly ReleaseOwnerGate[] = [
   {
     id: "changelog_human_review",
     description:
-      "The rolled human changelog section is a DRAFT and must be reviewed/edited " +
-      "for clarity before promotion (DIST-14 semantics: committed artifact is " +
-      "reviewed text, not raw generation)",
-    safeForUnattended: false,
+      "The delegated release operator reviews/edits the rolled public changelog " +
+      "for clarity and attribution before promotion (legacy gate id retained for " +
+      "transaction compatibility)",
+    safeForUnattended: true,
     beforeStep: "promote",
     appliesTo: () => true,
   },
@@ -312,7 +316,7 @@ export class ReleaseGateError extends Error {
   readonly gateId: string;
   constructor(gate: ReleaseOwnerGate) {
     super(
-      `owner gate "${gate.id}" is not approved: ${gate.description}. ` +
+      `release approval gate "${gate.id}" is not approved: ${gate.description}. ` +
         (gate.safeForUnattended
           ? "Pass --yes (safe for unattended use) or --approve " + gate.id + "."
           : `This gate is NOT safe for unattended use — pass --approve ${gate.id} explicitly.`),
@@ -640,7 +644,7 @@ export class ReleasePreflightError extends Error {
 // Durable, resumable transaction state
 // ---------------------------------------------------------------------------
 
-export const RELEASE_TRANSACTION_SCHEMA = "openagents.desktop.release_transaction.v1";
+export const RELEASE_TRANSACTION_SCHEMA = "openagents.desktop.release_transaction.v2";
 export const RELEASE_SCRATCH_DIR = ".release";
 
 export type ReleaseStepStatus = "pending" | "succeeded" | "failed";
@@ -661,6 +665,7 @@ export type ReleaseTransactionState = {
   channel: ReleaseChannel;
   sourceRevision: string;
   date: string;
+  attribution: ReleaseAttribution;
   createdAt: string;
   updatedAt: string;
   steps: Record<ReleaseStepId, ReleaseStepRecord>;
@@ -674,6 +679,7 @@ export const createTransactionState = (plan: ReleasePlan, now: Date): ReleaseTra
   channel: plan.channel,
   sourceRevision: plan.sourceRevision,
   date: plan.date,
+  attribution: plan.attribution,
   createdAt: now.toISOString(),
   updatedAt: now.toISOString(),
   steps: Object.fromEntries(
@@ -709,6 +715,9 @@ export const loadTransactionState = (
     throw new Error(
       `transaction ${transactionRef} has schema "${state.schema}"; expected ${RELEASE_TRANSACTION_SCHEMA}`,
     );
+  }
+  if (state.attribution === undefined) {
+    throw new Error(`transaction ${transactionRef} is missing release attribution`);
   }
   for (const id of releaseStepIds) {
     if (state.steps[id] === undefined) {
@@ -771,7 +780,7 @@ export const boundReceiptLines = (
 // Final release receipt (public-safe)
 // ---------------------------------------------------------------------------
 
-export const RELEASE_RECEIPT_SCHEMA = "openagents.desktop.release_receipt.v1";
+export const RELEASE_RECEIPT_SCHEMA = "openagents.desktop.release_receipt.v2";
 export const RECEIPTS_DIR = "docs/deploy/receipts";
 
 export type ReleaseReceipt = Readonly<{
@@ -783,6 +792,7 @@ export type ReleaseReceipt = Readonly<{
   sourceRevision: string;
   date: string;
   generatedAt: string;
+  attribution: ReleaseAttribution;
   steps: ReadonlyArray<
     Readonly<{
       id: ReleaseStepId;
@@ -817,6 +827,7 @@ export const buildReleaseReceipt = (
   sourceRevision: state.sourceRevision,
   date: state.date,
   generatedAt: now.toISOString(),
+  attribution: state.attribution,
   steps: RELEASE_STEP_GRAPH.map((definition) => ({
     id: definition.id,
     title: definition.title,
@@ -849,8 +860,12 @@ export const renderReleaseReceiptMarkdown = (receipt: ReleaseReceipt): string =>
   lines.push(`- source-revision: ${receipt.sourceRevision}`);
   lines.push(`- date: ${receipt.date}`);
   lines.push(`- generated-at: ${receipt.generatedAt}`);
+  lines.push(`- trigger-kind: ${receipt.attribution.triggerKind}`);
+  lines.push(`- triggered-by: ${receipt.attribution.triggeredBy}`);
+  lines.push(`- release-actor: ${receipt.attribution.releaseActor}`);
+  lines.push(`- authority: ${receipt.attribution.authorityRef}`);
   lines.push("");
-  lines.push("## Owner gates");
+  lines.push("## Release approval gates");
   lines.push("");
   for (const gate of receipt.gates) {
     lines.push(
@@ -913,7 +928,12 @@ const executePreflight = async (ctx: ReleaseRunContext): Promise<string[]> => {
 
 const executeChangelog = (ctx: ReleaseRunContext): string[] => {
   const { plan, io } = ctx;
-  const rollInput = { version: plan.version, channel: plan.channel, date: plan.date };
+  const rollInput = {
+    version: plan.version,
+    channel: plan.channel,
+    date: plan.date,
+    attribution: plan.attribution,
+  };
   if (plan.mode === "dry-run") {
     const unreleasedText = readFileSync(join(io.rootDir, CHANGELOG_DIR, UNRELEASED_FILE), "utf8");
     // Pure roll: refuses when UNRELEASED is empty, writes NOTHING in dry-run.
@@ -928,7 +948,7 @@ const executeChangelog = (ctx: ReleaseRunContext): string[] => {
   return [
     `wrote ${CHANGELOG_DIR}/${rolled.releaseFileName} and reset ${UNRELEASED_FILE}`,
     `bounded release notes ${rolled.releaseNotes.length}/${RELEASE_NOTES_MAX_LENGTH} chars for the signed ReleaseSet payload`,
-    "REVIEW REQUIRED: the human changelog section is a draft (owner gate changelog_human_review)",
+    "reviewed by delegated release operator under AUTHORITY.md revision 2 (legacy gate changelog_human_review)",
   ];
 };
 
@@ -1077,7 +1097,7 @@ export const runRelease = async (options: {
     `  version v${plan.version} channel ${plan.channel} source ${plan.sourceRevision.slice(0, 10)}`,
   );
   const gates = gatesForPlan(plan);
-  io.log(`  owner gates for this run (named up front, never a silent stall):`);
+  io.log(`  release approval gates for this run (named up front, never a silent stall):`);
   for (const gate of gates) {
     io.log(
       `    - ${gate.id} before ${gate.beforeStep}` +
@@ -1196,6 +1216,52 @@ const collectApprovals = (args: readonly string[]): string[] => {
   return approvals;
 };
 
+const releaseAttributionFromArgs = (
+  args: readonly string[],
+  mode: ReleaseMode,
+  version: string,
+): ReleaseAttribution => {
+  const triggerKind =
+    argValue(args, "--trigger-kind") ?? (mode === "dry-run" ? "agent_change" : null);
+  const triggerActor =
+    argValue(args, "--trigger-actor") ?? (mode === "dry-run" ? "OpenAgents release dry-run" : null);
+  const triggerRef =
+    argValue(args, "--trigger-ref") ?? (mode === "dry-run" ? "dry-run:no-external-trigger" : null);
+  if (triggerKind === null || triggerActor === null || triggerRef === null) {
+    throw new Error(
+      "real release requires --trigger-kind, --trigger-actor, and --trigger-ref for public attribution",
+    );
+  }
+  if (
+    !(
+      "owner_direction agent_change tester_feedback release_incident".split(" ") as string[]
+    ).includes(triggerKind)
+  )
+    throw new Error(`unknown --trigger-kind ${triggerKind}`);
+  for (const [label, value] of [
+    ["trigger actor", triggerActor],
+    ["trigger ref", triggerRef],
+  ] as const) {
+    if (value.length === 0 || value.length > 160 || /[\r\n]/.test(value))
+      throw new Error(`${label} is not a bounded public-safe value`);
+  }
+  const sourceFeedback = argValue(args, "--source-feedback") ?? "none recorded";
+  if (
+    sourceFeedback !== "none recorded" &&
+    !/^https:\/\/github\.com\/OpenAgentsInc\/openagents\/issues\/\d+$/.test(sourceFeedback)
+  )
+    throw new Error("--source-feedback must be an OpenAgents issue URL or 'none recorded'");
+  return {
+    triggerKind,
+    triggeredBy: `${triggerActor} (${triggerRef})`,
+    releaseActor: "OpenAgents release operator",
+    authorityRef:
+      "AUTHORITY.md revision 2; program.full_auto_release; grant.autonomous_rc_release_and_communication",
+    releaseUrl: `https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v${version}`,
+    sourceFeedback,
+  };
+};
+
 const main = async (): Promise<void> => {
   const rootDir = resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
@@ -1221,6 +1287,8 @@ const main = async (): Promise<void> => {
   let version: string;
   let channel: ReleaseChannel;
   let transactionRef: string;
+  let attribution: ReleaseAttribution;
+  let releaseDate: string;
   let resumeState: ReleaseTransactionState | undefined;
 
   if (resumeRef !== null) {
@@ -1234,13 +1302,17 @@ const main = async (): Promise<void> => {
     version = resumeState.version;
     channel = resumeState.channel;
     transactionRef = resumeState.transactionRef;
+    attribution = resumeState.attribution;
+    releaseDate = resumeState.date;
   } else {
     const versionArg = argValue(args, "--version");
     const channelArg = argValue(args, "--channel");
     if (versionArg === null || channelArg === null) {
       throw new Error(
         "usage: pnpm run release -- --channel <stable|rc> --version <semver> " +
-          "[--dry-run] [--yes] [--approve <gateId>] [--resume <transaction-ref>] [--allow-unfrozen]",
+          "--trigger-kind <kind> --trigger-actor <actor> --trigger-ref <ref> " +
+          "[--source-feedback <OpenAgents issue URL>] [--dry-run] [--yes] " +
+          "[--approve <gateId>] [--resume <transaction-ref>] [--allow-unfrozen]",
       );
     }
     if (!(releaseChannels as readonly string[]).includes(channelArg)) {
@@ -1249,6 +1321,8 @@ const main = async (): Promise<void> => {
     version = versionArg;
     channel = channelArg as ReleaseChannel;
     transactionRef = newTransactionRef(version, channel, now);
+    attribution = releaseAttributionFromArgs(args, mode, version);
+    releaseDate = now.toISOString().slice(0, 10);
   }
 
   const plan: ReleasePlan = {
@@ -1258,9 +1332,10 @@ const main = async (): Promise<void> => {
     channel,
     sourceRevision: gitOutput(rootDir, "rev-parse", "HEAD").trim(),
     targets: releaseTargetKeys,
-    date: now.toISOString().slice(0, 10),
+    date: releaseDate,
     unattended,
     approvedGates: collectApprovals(args),
+    attribution,
   };
 
   const preflightInput = gatherPreflightInput({

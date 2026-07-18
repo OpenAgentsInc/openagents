@@ -8,36 +8,60 @@ target whose implementation and native receipts are absent.
 
 ## Current transition status
 
-The repository currently implements the existing signed macOS arm64
-DMG/ZIP, update-manifest v1, and `oa-updates` lane. The five-target ReleaseSet
-v2 coordinator and remaining makers are child work in
-[#8913](https://github.com/OpenAgentsInc/openagents/issues/8913). Until those
-children land:
+ReleaseSet v2, the typed feed/resolver, impact planner, GitHub publication
+adapter, candidate communications, requested-tester feedback intake, and
+attributed `/changelog` contract are implemented. The real `scripts/release.ts`
+CLI still uses fixture worker adapters until the owned runner registry and
+native dispatch adapters in
+[#8917](https://github.com/OpenAgentsInc/openagents/issues/8917) and
+[#8926](https://github.com/OpenAgentsInc/openagents/issues/8926) land. This is
+a typed implementation gap, not an owner-approval wait.
 
-- operators MAY run the compatibility procedure in the final section for an
-  explicitly bounded macOS arm64 RC;
-- operators MUST NOT synthesize missing target commands, manually merge
-  artifacts, or call another platform supported;
-- stable cross-platform promotion is unavailable;
-- the current path remains fail-closed on signing and preserves the mobile
-  feed exactly as before.
+Until those adapters land:
 
-## Canonical owner entrypoint
+- the delegated release operator MAY publish an explicitly limited GitHub RC
+  candidate whose manifest and release body disclose the missing signed-feed
+  boundary;
+- operators MUST NOT synthesize missing native receipts, manually merge a
+  partial matrix into ReleaseSet current, or call an unproved target supported;
+- stable cross-platform promotion remains unavailable; and
+- the existing compatibility procedure remains fail-closed on signing and
+  preserves the mobile feed exactly as before.
 
-When DIST-13 lands, operators release only through:
+## Canonical delegated entrypoint
+
+The canonical signed-feed command is:
 
 ```sh
-pnpm run release -- --channel <stable|rc> --version <semver>
+pnpm run release -- --channel <stable|rc> --version <semver> \
+  --trigger-kind <owner_direction|agent_change|tester_feedback|release_incident> \
+  --trigger-actor <public-actor> --trigger-ref <public-ref> \
+  [--source-feedback <OpenAgents-issue-URL>]
 ```
 
 The root package key `release` maps exactly to
 `node --import tsx scripts/release.ts`. `--dry-run` walks the complete graph
 with fixture workers and no cloud spend, `--yes` approves only declared-safe
 gates, and `--resume <transaction-ref>` resumes one durable transaction. The
-command prints bounded receipt lines, names every owner gate before effects,
-and performs sections 1–9 without intermediate manual commands. Until it is
-implemented and its real RC receipt lands, the current macOS arm64 v1 procedure
-in §10 is the sole temporary release exception.
+command prints bounded receipt lines and performs sections 1–9 without
+intermediate manual commands once its concrete worker ports replace the
+fixtures. `AUTHORITY.md` revision 2 delegates unattended RC release and its
+transaction communications; stable is the only release-channel owner gate.
+
+The bounded supporting commands are:
+
+```sh
+pnpm release:impact -- --base <last-delivered-ref> --head <candidate-ref>
+pnpm release:github -- --manifest <publication-manifest.json> --publish
+pnpm release:communicate -- --manifest <publication-manifest.json> \
+  --phase candidate --release-url <github-release-url> --publish
+pnpm release:feedback -- --manifest <publication-manifest.json> \
+  --release-url <github-release-url> --publish
+```
+
+Each defaults to dry-run without `--publish`, validates a closed schema, and
+emits no secret-bearing material. The GitHub publisher is idempotent only for
+identical published bytes; it refuses asset replacement or version reuse.
 
 ## Release roles
 
@@ -53,9 +77,30 @@ them:
 | Publisher         | Uploads immutable candidates and deploys `oa-updates`; cannot declare support                                                                       |
 | Promoter          | Atomically advances a channel only after candidate and public-surface verification                                                                  |
 
+For RCs, `AUTHORITY.md` revision 2 delegates Coordinator, Publisher,
+Promoter, bounded release communications, requested-tester feedback intake,
+linked issue creation, changelog publication, and rollback to the release
+operator. This delegation does not merge evidence roles: the signer and native
+verifiers still enforce their independent machine identities and proofs.
+
 Production secrets never enter source, logs, issue comments, or public
 receipts. Unattended agents MUST NOT probe the macOS Keychain. Owner-only
 actions are requested only under the readiness rule in ProductSpec §17.
+
+## 0. Select affected delivery lanes
+
+Before changing a version or provisioning a worker, run `release:impact`
+between the last delivered source ref and the candidate. Execute every selected
+lane and no unselected binary lane. In particular, web, mobile OTA,
+`oa-updates`, and release-infrastructure changes do not cause a Desktop build.
+Any Desktop or Desktop-consumed shared-runtime/lockfile change selects the
+entire five-target Desktop matrix. Unknown paths produce an operator-visible
+no-binary result; they do not silently trigger spend.
+
+The current impact command is also the explicit guard against the old habit of
+rebuilding Windows and every other platform for unrelated updates. Desktop
+renderer-only OTA remains prohibited until ProductSpec §11.2's signed
+compatibility and rollback boundary is implemented.
 
 ## 1. Freeze immutable release inputs
 
@@ -180,6 +225,29 @@ traffic move, GET and validate:
 Any mobile failure, partial target, or candidate/public-byte mismatch blocks
 promotion.
 
+### 6.1 Publish and communicate the tester candidate
+
+After the candidate bytes pass their available gates, create a strict
+`openagents.release_publication.v1` manifest. For a complete signed candidate,
+it lists exactly all five targets and eleven artifacts. An experimental
+candidate MUST declare `desktop_experimental_prerelease`, remain RC, enumerate
+its limitations, and never be described as feed-promoted or supported.
+
+Run the GitHub publisher. It creates a draft, uploads immutable bytes, compares
+GitHub's reported size and `sha256:` digest with the local manifest, then makes
+the prerelease public. Any existing tag with different bytes fails closed;
+never delete/re-upload an asset or reuse the version. Publish the `candidate`
+communication to every linked source issue and Forum `release-candidates`,
+naming only the requested testers and asking for the structured result block.
+Closed source issues are still valid feedback conversations.
+
+The feedback intake reads only replies after the candidate marker from the
+requested tester identities. A structured `PASS` creates an idempotent receipt
+comment. `BLOCKED` or an unstructured result creates one linked Full Auto issue
+with P0/P1 severity when supplied, comments the source conversation, and hands
+the new issue back to the normal implementation loop. It never infers broad
+intent from comment text and never messages unrelated users.
+
 ## 7. Verify `/download` and `/changelog` candidate truth
 
 Before promotion, the typed download resolver must read the verified candidate
@@ -219,6 +287,13 @@ preservation proof under ProductSpec §16. The command writes and echoes the
 single final receipt at
 `docs/deploy/receipts/YYYY-MM-DD-openagents-desktop-v<version>-<channel>.md`.
 
+Finally publish the idempotent `published` communication to the same source
+issues and Forum topic with the release and `/changelog` URLs. If promotion or
+post-promotion health fails, publish `rolled_back` instead and include the
+bounded failure/rollback ref. A promoted release is not complete until these
+communications and `/changelog` attribution agree on trigger, release actor,
+authority revision/grant, version, and source revision.
+
 ## 9. Failure, service rollback, and revocation
 
 Before channel promotion, abandon/quarantine the candidate and retain the
@@ -236,9 +311,10 @@ locally retained previous slot under the applicable format claim.
 
 ## 10. Current macOS arm64 v1 compatibility procedure
 
-This section preserves the existing lane while ReleaseSet v2 is not yet
-implemented. It is an RC compatibility operation, not cross-platform support
-evidence, and it MUST be retired by the v1 migration close rule in #8915.
+This section preserves the existing lane while the ReleaseSet v2 concrete
+worker adapters and complete native receipt matrix are not yet converged. It
+is an RC compatibility operation, not cross-platform support evidence, and it
+MUST be retired by the v1 migration close rule in #8915.
 
 Prerequisites:
 

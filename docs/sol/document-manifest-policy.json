@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md": {
+      "class": "authority",
+      "owner": "OpenAgents delegated release autonomy",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md": {
       "class": "authority",
       "owner": "OpenAgents delegated autonomy",
