@@ -38,6 +38,7 @@ export type ReleaseIssueComment = Readonly<{
 
 export interface ReleaseFeedbackPort {
   comments(issue: number): Promise<readonly ReleaseIssueComment[]>;
+  forumComments?(topicId: string): Promise<readonly ReleaseIssueComment[]>;
   findIssueByMarker(marker: string): Promise<Readonly<{ number: number; url: string }> | null>;
   createIssue(
     input: Readonly<{
@@ -47,6 +48,7 @@ export interface ReleaseFeedbackPort {
     }>,
   ): Promise<Readonly<{ number: number; url: string }>>;
   commentOnIssue(issue: number, body: string): Promise<void>;
+  replyToForumTopic?(topicId: string, body: string, idempotencyKey: string): Promise<void>;
 }
 
 export type ReleaseFeedbackIntakeResult = Readonly<{
@@ -134,6 +136,7 @@ export const ingestReleaseFeedback = async (
   input: Readonly<{
     manifest: ReleasePublicationManifest;
     releaseUrl: string;
+    forumTopicId?: string;
     port: ReleaseFeedbackPort;
   }>,
 ): Promise<ReleaseFeedbackIntakeResult> => {
@@ -203,6 +206,73 @@ export const ingestReleaseFeedback = async (
       followupIssuesCreated += 1;
     }
   }
+
+  if (input.forumTopicId !== undefined) {
+    if (input.port.forumComments === undefined || input.port.replyToForumTopic === undefined)
+      throw new Error("Forum feedback intake requires Forum comment and reply ports");
+    const comments = await input.port.forumComments(input.forumTopicId);
+    const candidateIndex = comments.findIndex((comment) =>
+      comment.body.includes(releaseCommunicationMarker(input.manifest.version, "candidate")),
+    );
+    const feedbackComments =
+      candidateIndex < 0
+        ? []
+        : comments
+            .slice(candidateIndex + 1)
+            .filter((comment) => requested.has(normalizedTester(comment.author)));
+    for (const comment of feedbackComments) {
+      inspected += 1;
+      const marker = releaseFeedbackMarker(comment.id);
+      // eslint-disable-next-line no-await-in-loop
+      const existing = await input.port.findIssueByMarker(marker);
+      if (existing !== null || comments.some((row) => row.body.includes(marker))) {
+        alreadyIngested += 1;
+        continue;
+      }
+      const feedback = parseTesterFeedback(comment.body);
+      if (feedback.result === "pass") {
+        // eslint-disable-next-line no-await-in-loop
+        await input.port.replyToForumTopic(
+          input.forumTopicId,
+          [
+            marker,
+            `Candidate PASS recorded from @${comment.author} for ${input.manifest.version}.`,
+            `Source: ${comment.url}`,
+            `Authority: ${input.manifest.authority.profileId} revision ${input.manifest.authority.profileRevision}; ${input.manifest.authority.grantRef}.`,
+          ].join("\n\n"),
+          `release-feedback-${comment.id}`,
+        );
+        passesAcknowledged += 1;
+        continue;
+      }
+      const sourceIssue = input.manifest.sourceIssues[0];
+      if (sourceIssue === undefined)
+        throw new Error("Forum feedback intake requires one linked source issue");
+      // eslint-disable-next-line no-await-in-loop
+      const created = await input.port.createIssue({
+        title: feedbackIssueTitle(input.manifest, comment, feedback),
+        body: feedbackIssueBody({
+          manifest: input.manifest,
+          sourceIssue,
+          releaseUrl: input.releaseUrl,
+          comment,
+          feedback,
+        }),
+        labels: labelsFor(feedback),
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await input.port.replyToForumTopic(
+        input.forumTopicId,
+        [
+          marker,
+          `Candidate feedback from @${comment.author} was ingested as #${created.number}: ${created.url}`,
+          "Full Auto may claim the follow-up without a separate owner handoff.",
+        ].join("\n\n"),
+        `release-feedback-${comment.id}`,
+      );
+      followupIssuesCreated += 1;
+    }
+  }
   return { inspected, passesAcknowledged, followupIssuesCreated, alreadyIngested };
 };
 
@@ -212,6 +282,19 @@ type GhComment = Readonly<{
   url?: string;
   createdAt?: string;
   author?: Readonly<{ login?: string }>;
+}>;
+
+type ForumTopicResponse = Readonly<{
+  posts?: ReadonlyArray<
+    Readonly<{
+      postId?: string;
+      bodyText?: string;
+      permalink?: string;
+      createdAt?: string;
+      author?: Readonly<{ slug?: string }>;
+      authorProfile?: Readonly<{ slug?: string }>;
+    }>
+  >;
 }>;
 
 export const createReleaseFeedbackPort = (
@@ -230,6 +313,21 @@ export const createReleaseFeedbackPort = (
       body: comment.body ?? "",
       url: comment.url ?? `https://github.com/${repo}/issues/${issue}`,
       createdAt: comment.createdAt ?? "1970-01-01T00:00:00Z",
+    }));
+  },
+  forumComments: async (topicId) => {
+    const output = execFileSync(
+      process.execPath,
+      ["apps/openagents.com/scripts/forum.mjs", "topic", "--topic", topicId],
+      { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+    );
+    const parsed = JSON.parse(output) as ForumTopicResponse;
+    return (parsed.posts ?? []).map((post, index) => ({
+      id: post.postId ?? `forum-${topicId}-post-${index}`,
+      author: post.author?.slug ?? post.authorProfile?.slug ?? "unknown",
+      body: post.bodyText ?? "",
+      url: post.permalink ?? `https://openagents.com/forum/t/${topicId}`,
+      createdAt: post.createdAt ?? "1970-01-01T00:00:00Z",
     }));
   },
   findIssueByMarker: async (marker) => {
@@ -274,6 +372,22 @@ export const createReleaseFeedbackPort = (
       stdio: ["pipe", "pipe", "pipe"],
     });
   },
+  replyToForumTopic: async (topicId, body, idempotencyKey) => {
+    execFileSync(
+      process.execPath,
+      [
+        "apps/openagents.com/scripts/forum.mjs",
+        "reply",
+        "--topic",
+        topicId,
+        "--body",
+        body,
+        "--idempotency-key",
+        idempotencyKey,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+  },
 });
 
 const argValue = (args: readonly string[], flag: string): string | null => {
@@ -285,9 +399,10 @@ const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
   const manifestPath = argValue(args, "--manifest");
   const releaseUrl = argValue(args, "--release-url");
+  const forumTopicId = argValue(args, "--forum-topic") ?? undefined;
   if (manifestPath === null || releaseUrl === null)
     throw new Error(
-      "usage: pnpm release:feedback -- --manifest <path> --release-url <url> --publish",
+      "usage: pnpm release:feedback -- --manifest <path> --release-url <url> [--forum-topic <id>] --publish",
     );
   const rootDir = resolve(import.meta.dirname, "..");
   const resolvedManifestPath = resolveRepositoryFile(rootDir, manifestPath, "manifest");
@@ -298,13 +413,14 @@ const main = async (): Promise<void> => {
   assertOpenAgentsReleaseUrl(releaseUrl);
   if (!args.includes("--publish")) {
     process.stdout.write(
-      `${JSON.stringify({ dryRun: true, issues: manifest.sourceIssues, testers: manifest.requestedTesters }, null, 2)}\n`,
+      `${JSON.stringify({ dryRun: true, issues: manifest.sourceIssues, testers: manifest.requestedTesters, forumTopicId }, null, 2)}\n`,
     );
     return;
   }
   const result = await ingestReleaseFeedback({
     manifest,
     releaseUrl,
+    ...(forumTopicId === undefined ? {} : { forumTopicId }),
     port: createReleaseFeedbackPort(),
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -161,4 +161,54 @@ describe("release feedback intake", () => {
 
     expect(result.alreadyIngested).toBe(1);
   });
+
+  test("ingests a blocked reply from the release-candidates Forum topic", async () => {
+    const forumCandidate: ReleaseIssueComment = {
+      ...candidateComment,
+      id: "forum-candidate",
+      url: "https://openagents.com/forum/t/fixture#candidate",
+    };
+    const forumFeedback: ReleaseIssueComment = {
+      id: "forum-feedback",
+      author: "lathe-agent-oa",
+      body: "Result: BLOCKED\nSeverity: P1\nObserved: Claude handoff stalled.",
+      url: "https://openagents.com/forum/t/fixture#feedback",
+      createdAt: "2026-07-18T00:15:00Z",
+    };
+    const calls: string[] = [];
+    const port: ReleaseFeedbackPort = {
+      comments: async () => [],
+      forumComments: async () => [forumCandidate, forumFeedback],
+      findIssueByMarker: async () => null,
+      createIssue: async (input) => {
+        calls.push(`create:${input.labels.join(",")}:${input.body.includes(forumFeedback.url)}`);
+        return { number: 9002, url: "https://github.example/issues/9002" };
+      },
+      commentOnIssue: async () => {
+        throw new Error("Forum feedback must be acknowledged on Forum");
+      },
+      replyToForumTopic: async (_topic, body, idempotencyKey) => {
+        calls.push(`reply:${body.includes("#9002")}:${idempotencyKey}`);
+      },
+    };
+
+    const result = await ingestReleaseFeedback({
+      manifest,
+      releaseUrl:
+        "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.99",
+      forumTopicId: "fixture",
+      port,
+    });
+
+    expect(result).toEqual({
+      inspected: 1,
+      passesAcknowledged: 0,
+      followupIssuesCreated: 1,
+      alreadyIngested: 0,
+    });
+    expect(calls).toEqual([
+      "create:area:release,area:desktop,priority:P1-parallel:true",
+      "reply:true:release-feedback-forum-feedback",
+    ]);
+  });
 });

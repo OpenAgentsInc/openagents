@@ -111,8 +111,8 @@ five-target signed ReleaseSet.
   https://github.com/OpenAgentsInc/openagents/issues/8917#issuecomment-5011754310
 
 The candidate request names `@lathe-agent-oa` and asks for a bounded
-`PASS | BLOCKED` reply with severity and observation. Immediate feedback
-intake inspected zero post-request replies, acknowledged zero passes, and
-created zero follow-up issues. Later intake is idempotent and will acknowledge
-a pass or create one linked follow-up issue for a blocked or unstructured
-tester reply.
+`PASS | BLOCKED` reply with severity and observation. Combined GitHub and
+Forum feedback intake inspected zero post-request replies, acknowledged zero
+passes, and created zero follow-up issues. Later intake is idempotent on both
+channels and will acknowledge a pass where it was posted or create one linked
+GitHub follow-up issue for a blocked or unstructured tester reply.
