@@ -10,7 +10,10 @@
 #   OA_MOBILE_PLATFORM=android bash apps/oa-updates/scripts/publish-ota.sh
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# Xcode resolves the app root through its physical path before generating a
+# fingerprint. macOS aliases /tmp to /private/tmp, so retaining a logical path
+# here can produce a different OTA runtime for the exact same source tree.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 cd "$REPO"
 # The only supported publish target is the OpenAgents mobile app. Environment
 # overrides remain available for isolated development builds, not retired apps.
@@ -25,6 +28,12 @@ echo "==> computing build runtime fingerprint"
 RUNTIME="$(cd "$MOBILE" && pnpm exec expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["hash"])')"
 echo "    runtime = $RUNTIME"
+
+EXPECTED_RUNTIME="${OA_MOBILE_EXPECTED_RUNTIME:-}"
+if [[ -n "$EXPECTED_RUNTIME" && "$RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
+  echo "error: computed runtime $RUNTIME does not match expected native runtime $EXPECTED_RUNTIME" >&2
+  exit 1
+fi
 
 echo "==> exporting JS bundle + assets"
 rm -rf "$REPO/apps/oa-updates/dist"

@@ -172,14 +172,20 @@ APK.
 ## Owned OTA publication
 
 OTA is valid only when the exported update's fingerprint exactly matches the
-installed native runtime. Publish iOS by default or set the platform explicitly
-for Android:
+installed native runtime. Read the runtime from the archive and pass it as a
+fail-closed expectation. The publisher canonicalizes its repository path with
+`pwd -P` because Xcode does the same; this prevents macOS's `/tmp` →
+`/private/tmp` alias from creating a different fingerprint for identical
+source. Publish iOS by default or set the platform explicitly for Android:
 
 ```sh
+ARCHIVE_RUNTIME="$(cat /tmp/OpenAgents.xcarchive/Products/Applications/OpenAgents.app/EXUpdates.bundle/fingerprint)"
 CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
+  OA_MOBILE_EXPECTED_RUNTIME="$ARCHIVE_RUNTIME" \
   bash apps/oa-updates/scripts/publish-ota.sh
 
 CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config \
+  OA_MOBILE_EXPECTED_RUNTIME="$ARCHIVE_RUNTIME" \
   OA_MOBILE_PLATFORM=android \
   bash apps/oa-updates/scripts/publish-ota.sh
 ```
