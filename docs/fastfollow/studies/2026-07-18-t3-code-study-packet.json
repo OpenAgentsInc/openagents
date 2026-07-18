@@ -1,0 +1,181 @@
+{
+  "schema": "openagents.fast_follow.study_packet.v0_1",
+  "packet_ref": "study.t3code.2395916f28f524b8",
+  "packet_key_digest": "sha256:2395916f28f524b854c3f87b3827760cbedc1f7e0d0ba05a0144615686046345",
+  "packet_key": {
+    "source_identity": "pingdotgg.t3code",
+    "source_commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "source_tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+    "selected_corpus_digest": "sha256:c57451acbb4ba2fd791d44c60fa9f29adaaf2258114546e456fdc38704ec37fe",
+    "ordered_lesson_ids": [
+      "pingdotgg.t3code#provider_neutral_cqrs",
+      "pingdotgg.t3code#effect_projection_kernel",
+      "pingdotgg.t3code#worktree_parallelism",
+      "pingdotgg.t3code#acp_peer_profiles",
+      "pingdotgg.t3code#dpop_environment_access"
+    ],
+    "study_program_version": "openagents-fast-follow-study-v0.1",
+    "schema_version": "openagents.fast_follow.study_packet.v0_1",
+    "planner": {
+      "provider_lane": "codex-local",
+      "model_identity": "not_exposed_in_mission_packet",
+      "prompt_identity": "openagents.desktop.full_auto_mission.v1",
+      "tool_version": "codex-host-source-study-2026-07-18"
+    },
+    "rubric_evaluator_version": "fast-follow-rubric-0.1",
+    "visibility": "public",
+    "license_policy": "known_permissive-mit"
+  },
+  "manifest": {
+    "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+    "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc"
+  },
+  "source": {
+    "canonical_ref": "https://github.com/pingdotgg/t3code",
+    "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+    "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+    "access": "public_source",
+    "evidence_confidence": "verified_bytes",
+    "license": "MIT",
+    "license_ref": "LICENSE",
+    "freshness": "exact_pin"
+  },
+  "source_map": [
+    {"path":"apps/server/src/provider","role":"provider adapter, instance registry, durable session binding, canonical runtime event, and recovery boundary"},
+    {"path":"packages/effect-acp/src","role":"generated ACP schema and symmetric client/agent peer transport"},
+    {"path":"packages/contracts/src","role":"typed orchestration, worktree, checkpoint, command, event, and projection contracts"},
+    {"path":"packages/client-runtime/src","role":"scoped client projections, resumable streams, keyed command scheduling, and environment authorization"},
+    {"path":"apps/web/src/components","role":"worktree and checkpoint supervision composition"},
+    {"path":"apps/web/src/cloud","role":"browser-held DPoP key and per-request proof creation"},
+    {"path":"packages/shared/src/dpop.ts","role":"strict public-key proof verification"},
+    {"path":"apps/server/src/auth/dpop.ts","role":"request verification and atomic replay-key consumption"}
+  ],
+  "architecture_map": [
+    "provider intent -> schema validation -> provider-instance adapter -> durable thread binding -> canonical runtime event -> independent subscribers",
+    "typed snapshot/cache -> exact sequence cursor -> resumable event stream -> stale-safe pure reducer -> scoped projection -> fail-soft persistence",
+    "thread workspace metadata -> explicit worktree selection -> cwd-keyed command serialization -> terminal/diff/tool routing",
+    "one generated ACP schema -> inverse client/agent RPC groups -> one scoped duplex NDJSON transport -> typed core and extension dispatch",
+    "persistent P-256 browser key -> method/URL/token-bound proof -> strict verification -> atomic thumbprint+jti replay consumption"
+  ],
+  "glossary": [
+    {"term":"provider instance","meaning":"stable enabled runtime identity distinct from a provider driver kind"},
+    {"term":"session binding","meaning":"durable thread-to-provider-instance routing and resume record"},
+    {"term":"projection cursor","meaning":"monotonic sequence represented by a snapshot and used to resume event delivery"},
+    {"term":"peer profile","meaning":"structural ACP role: server for one RPC group and client for the inverse group"},
+    {"term":"DPoP thumbprint","meaning":"digest identity of the public P-256 proof key"}
+  ],
+  "patterns": [
+    {
+      "pattern_id": "t3.provider_neutral_cqrs.v1",
+      "lesson_ref": "pingdotgg.t3code#provider_neutral_cqrs",
+      "mechanism": "A typed provider facade routes by explicit provider-instance identity, persists thread bindings and resume metadata, rejects adapter/event identity mismatches, and republishes canonical runtime events to independent consumers.",
+      "preconditions": ["enabled provider instance and adapter", "canonical adapter/event vocabulary", "durable thread binding", "provider resume cursor where recovery is required"],
+      "source_spans": [
+        {"path":"apps/server/src/provider/Services/ProviderService.ts","start_line":38,"end_line":114,"confidence":"verified_bytes"},
+        {"path":"apps/server/src/provider/Services/ProviderAdapter.ts","start_line":45,"end_line":125,"confidence":"verified_bytes"},
+        {"path":"apps/server/src/provider/Layers/ProviderService.ts","start_line":182,"end_line":353,"confidence":"verified_bytes"},
+        {"path":"apps/server/src/provider/Layers/ProviderService.ts","start_line":522,"end_line":717,"confidence":"verified_bytes"}
+      ],
+      "representative_tests": [
+        {"path":"apps/server/src/provider/Layers/ProviderService.test.ts","start_line":844,"end_line":927,"observed":"inspected_not_executed"},
+        {"path":"apps/server/src/provider/Layers/ProviderService.test.ts","start_line":1122,"end_line":1213,"observed":"inspected_not_executed"}
+      ],
+      "traps": ["driver kind is not sufficient routing identity", "missing binding or resume cursor prevents recovery", "provider-neutrality fails if provider-only facts are erased", "approval and user-input callbacks are not shown as restart-durable by this selected corpus"],
+      "portable_playbook": ["define a typed adapter and capabilities", "persist stable provider-instance bindings", "validate source identity on every event", "separate canonical event consumers", "test at least two heterogeneous adapters plus restart and mismatch rejection"],
+      "confidence": "high_static_medium_runtime"
+    },
+    {
+      "pattern_id": "t3.effect_projection_kernel.v1",
+      "lesson_ref": "pingdotgg.t3code#effect_projection_kernel",
+      "mechanism": "Typed snapshots and events seed scoped Effect state, resume from exact sequence cursors, pass through stale-safe pure reducers, persist the newest projection on bounded fail-soft lanes, and expose environment/thread-keyed views.",
+      "preconditions": ["monotonic authoritative sequence", "exact base snapshot or socket fallback", "stable environment and thread identity", "schema-compatible scoped stream lifetime"],
+      "source_spans": [
+        {"path":"packages/contracts/src/orchestration.ts","start_line":413,"end_line":478,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/shell.ts","start_line":49,"end_line":190,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/threads.ts","start_line":44,"end_line":286,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/runtime.ts","start_line":392,"end_line":519,"confidence":"verified_bytes"}
+      ],
+      "representative_tests": [
+        {"path":"packages/client-runtime/src/state/shell-sync.test.ts","start_line":140,"end_line":202,"observed":"inspected_not_executed"},
+        {"path":"packages/client-runtime/src/state/threads-sync.test.ts","start_line":256,"end_line":450,"observed":"inspected_not_executed"},
+        {"path":"packages/client-runtime/src/state/shellReducer.test.ts","start_line":46,"end_line":182,"observed":"inspected_not_executed"}
+      ],
+      "traps": ["an event before any base snapshot is dropped", "live state can be newer than debounced fail-soft persistence", "unknown events are no-ops and may not advance a cursor", "registry-local scheduling is not a cross-process lock"],
+      "portable_playbook": ["type snapshot/event/resume contracts", "use a pure replay-idempotent reducer", "seed then subscribe after the exact cursor", "scope keyed projections", "test replay, reconnect, deletion, and persistence failure"],
+      "confidence": "high_static_medium_runtime"
+    },
+    {
+      "pattern_id": "t3.worktree_parallelism.v1",
+      "lesson_ref": "pingdotgg.t3code#worktree_parallelism",
+      "mechanism": "Branch and worktree are typed thread metadata; the UI requires an explicit base for new-worktree mode, every work surface resolves the thread worktree before the project root, and VCS mutations serialize per environment and cwd so isolated worktrees may progress independently.",
+      "preconditions": ["Git repository", "explicit base branch", "unique worktree path", "authoritative thread workspace metadata", "cwd propagation to every tool surface"],
+      "source_spans": [
+        {"path":"packages/contracts/src/orchestration.ts","start_line":344,"end_line":411,"confidence":"verified_bytes"},
+        {"path":"apps/web/src/components/ChatView.tsx","start_line":3966,"end_line":4187,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/vcsCommandScheduler.ts","start_line":1,"end_line":13,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/vcs.ts","start_line":179,"end_line":220,"confidence":"verified_bytes"}
+      ],
+      "representative_tests": [
+        {"path":"packages/contracts/src/orchestration.test.ts","start_line":250,"end_line":290,"observed":"inspected_not_executed"},
+        {"path":"apps/web/src/components/BranchToolbar.logic.test.ts","start_line":294,"end_line":361,"observed":"inspected_not_executed"},
+        {"path":"packages/client-runtime/src/state/runtime.test.ts","start_line":346,"end_line":400,"observed":"inspected_not_executed"}
+      ],
+      "traps": ["parallel means isolated cwd lanes, not concurrent mutation in one checkout", "absent base branch fails closed", "stale shell metadata can misroute tools", "selected client corpus does not prove server-side worktree cleanup"],
+      "portable_playbook": ["persist workspace identity on the thread", "require an explicit base", "publish the authoritative path before execution", "route VCS, terminal, diff, and tools by that path", "serialize per workspace key and surface isolation visibly"],
+      "confidence": "high_client_contract_medium_end_to_end"
+    },
+    {
+      "pattern_id": "t3.acp_peer_profiles.v1",
+      "lesson_ref": "pingdotgg.t3code#acp_peer_profiles",
+      "mechanism": "One generated ACP schema forms two inverse RPC groups: the client serves client-side requests while calling agent RPCs, and the agent serves agent RPCs while calling client-side requests, both over one scoped duplex transport with explicit core-method classification and disjoint request-ID spaces.",
+      "preconditions": ["shared generated ACP schema release", "NDJSON framing", "opposite RPC role agreement", "initialize/capability negotiation", "scoped transport lifetime"],
+      "source_spans": [
+        {"path":"packages/effect-acp/src/rpc.ts","start_line":25,"end_line":158,"confidence":"verified_bytes"},
+        {"path":"packages/effect-acp/src/client.ts","start_line":399,"end_line":571,"confidence":"verified_bytes"},
+        {"path":"packages/effect-acp/src/agent.ts","start_line":279,"end_line":524,"confidence":"verified_bytes"},
+        {"path":"packages/effect-acp/src/protocol.ts","start_line":44,"end_line":219,"confidence":"verified_bytes"}
+      ],
+      "representative_tests": [
+        {"path":"packages/effect-acp/src/client.test.ts","start_line":73,"end_line":187,"observed":"inspected_not_executed"},
+        {"path":"packages/effect-acp/src/agent.test.ts","start_line":42,"end_line":180,"observed":"inspected_not_executed"},
+        {"path":"packages/effect-acp/src/protocol.test.ts","start_line":293,"end_line":383,"observed":"inspected_not_executed"}
+      ],
+      "traps": ["wrong core-method classification misroutes requests", "pending extension requests must be drained on interruption and termination", "handler isolation can hide subscriber failure unless separately observed", "raw protocol logging may disclose wire content"],
+      "portable_playbook": ["derive inverse RPC groups from one schema", "reserve disjoint ID spaces", "classify core methods explicitly", "negotiate then enforce capabilities", "fail pending requests on exit and test malformed frames, zero IDs, and extension collision"],
+      "confidence": "high_static_medium_interoperability"
+    },
+    {
+      "pattern_id": "t3.dpop_environment_access.v1",
+      "lesson_ref": "pingdotgg.t3code#dpop_environment_access",
+      "mechanism": "A persistent browser P-256 key signs ES256 proofs bound to method, normalized URL, nonce, time, and optional access-token hash; shared verification checks the public-only JWK and bindings, while the server atomically consumes a thumbprint-plus-jti replay key.",
+      "preconditions": ["WebCrypto P-256 support", "persistent key store where stable identity is required", "trusted request URL reconstruction", "clock agreement", "shared atomic replay storage"],
+      "source_spans": [
+        {"path":"apps/web/src/cloud/dpop.ts","start_line":24,"end_line":184,"confidence":"verified_bytes"},
+        {"path":"packages/shared/src/dpop.ts","start_line":20,"end_line":174,"confidence":"verified_bytes"},
+        {"path":"apps/server/src/auth/dpop.ts","start_line":17,"end_line":87,"confidence":"verified_bytes"},
+        {"path":"packages/client-runtime/src/state/environmentHttpAuth.ts","start_line":14,"end_line":73,"confidence":"verified_bytes"}
+      ],
+      "representative_tests": [
+        {"path":"apps/web/src/cloud/dpop.test.ts","start_line":9,"end_line":34,"observed":"inspected_not_executed"}
+      ],
+      "traps": ["without IndexedDB the browser key is not persistent", "query and fragment are excluded while scheme, host, port, and path remain binding-sensitive", "replay safety is fleet-wide only with shared atomic storage", "the selected corpus does not prove token issuance policy or replay-record retention"],
+      "portable_playbook": ["create one persistent installation key", "bind each proof to method and trusted normalized URL", "include the token hash on protected requests", "strictly validate JWK, time, signature, and bindings", "atomically consume thumbprint plus nonce with explicit retention"],
+      "confidence": "high_crypto_flow_medium_deployment_guarantee"
+    }
+  ],
+  "retained_failures_and_limits": [
+    "No T3 source tests were executed in this study; test files are inspected evidence only.",
+    "Static source evidence does not prove crash consistency, cross-provider semantic equivalence, ACP interoperability with every peer, OS-level concurrency, cryptographic correctness, or deployment-wide replay storage.",
+    "Only paths content-bound by the manifest selected corpus are cited.",
+    "This packet contains no OpenAgents target code, target fit, implementation state, acceptance, release, or public capability verdict."
+  ],
+  "classification": {
+    "visibility": "public",
+    "shareable": true,
+    "target_specific_data": false,
+    "external_instructions": "untrusted_study_data",
+    "grants_target_authority": false,
+    "cache_hit_means": "reusable_evidence_not_adoption"
+  },
+  "packet_content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7"
+}
