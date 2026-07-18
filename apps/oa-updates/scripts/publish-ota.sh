@@ -25,14 +25,29 @@ UPDATES_OWNER="${OA_UPDATES_OWNER:-openagents-mobile}"
 CHANNEL="${OA_UPDATES_CHANNEL:-openagents-production}"
 
 echo "==> computing build runtime fingerprint"
-RUNTIME="$(cd "$MOBILE" && pnpm exec expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["hash"])')"
+FINGERPRINT_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$FINGERPRINT_DIR"' EXIT
+EXPO_UPDATES_PACKAGE_DIR="$(
+  cd "$MOBILE"
+  node -e 'const path = require("node:path"); console.log(path.dirname(require.resolve("expo-updates/package.json")))'
+)"
+# Use the same build utility and non-silent fingerprint options as Expo's
+# Xcode/Gradle build phases. `expo-updates fingerprint:generate` uses a silent
+# mode that omits dependency-directory hashes in Expo 57 and can disagree with
+# the runtime actually embedded in the native archive.
+node "$EXPO_UPDATES_PACKAGE_DIR/utils/build/createUpdatesResources.js" \
+  "$PLATFORM" "$REPO/$MOBILE" "$FINGERPRINT_DIR" only-fingerprint index.ts \
+  >/dev/null
+RUNTIME="$(cat "$FINGERPRINT_DIR/fingerprint")"
 echo "    runtime = $RUNTIME"
 
 EXPECTED_RUNTIME="${OA_MOBILE_EXPECTED_RUNTIME:-}"
 if [[ -n "$EXPECTED_RUNTIME" && "$RUNTIME" != "$EXPECTED_RUNTIME" ]]; then
   echo "error: computed runtime $RUNTIME does not match expected native runtime $EXPECTED_RUNTIME" >&2
   exit 1
+fi
+if [[ "${OA_MOBILE_FINGERPRINT_ONLY:-0}" == "1" ]]; then
+  exit 0
 fi
 
 echo "==> exporting JS bundle + assets"

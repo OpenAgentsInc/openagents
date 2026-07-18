@@ -176,7 +176,10 @@ installed native runtime. Read the runtime from the archive and pass it as a
 fail-closed expectation. The publisher canonicalizes its repository path with
 `pwd -P` because Xcode does the same; this prevents macOS's `/tmp` →
 `/private/tmp` alias from creating a different fingerprint for identical
-source. Publish iOS by default or set the platform explicitly for Android:
+source. It also calls Expo's native build-time fingerprint implementation
+instead of the Expo 57 `fingerprint:generate` silent path, whose omitted
+dependency-directory hashes can disagree with the runtime embedded by Xcode.
+Publish iOS by default or set the platform explicitly for Android:
 
 ```sh
 ARCHIVE_RUNTIME="$(cat /tmp/OpenAgents.xcarchive/Products/Applications/OpenAgents.app/EXUpdates.bundle/fingerprint)"
