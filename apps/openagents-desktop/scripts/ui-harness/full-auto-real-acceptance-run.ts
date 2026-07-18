@@ -157,11 +157,11 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
   // the exact visible native label before sending.
   for (let attempts = 0; attempts < 64; attempts += 1) {
     if ((await button.innerText()).trim().startsWith(label)) return
-    const before = (await button.innerText()).trim()
     await button.click()
-    await page.waitForFunction(previous =>
-      document.querySelector('[data-en-key="shell-provider-select"]')?.textContent?.trim() !== previous,
-    before, { timeout: 5_000 })
+    // Capability hydration can make a cycle click a benign no-op. Retrying is
+    // safe because no turn has been submitted and final admission still
+    // requires the exact visible native label.
+    await page.waitForTimeout(500)
   }
   throw new Error(`could not select ${label}`)
 }
