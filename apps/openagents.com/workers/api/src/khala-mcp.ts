@@ -1,11 +1,11 @@
 import {
+  type OpenAgentsMcpAuthorityClass,
+  type OpenAgentsMcpGrant,
+  type OpenAgentsMcpToolDescriptor,
   filterOpenAgentsMcpDescriptorsByGrantSet,
   openAgentsMcpDescriptorIsGranted,
   openAgentsMcpGrantedAuthoritySet,
   projectOpenAgentsMcpOutput,
-  type OpenAgentsMcpAuthorityClass,
-  type OpenAgentsMcpGrant,
-  type OpenAgentsMcpToolDescriptor,
 } from '@openagentsinc/mcp-contract'
 
 import type {
@@ -21,21 +21,21 @@ import type {
   McpToolCallOutcome,
   McpToolListing,
 } from './crm-mcp-routes'
-import {
-  delegateCodingWorkflow,
-  khalaCodingRequestIdRef,
-  type CodingDelegationInput,
-} from './inference/coding-workflow-delegation'
 import type {
   CodingWorkflowClass,
   CodingWorkflowClassification,
 } from './inference/coding-workflow-classifier'
+import {
+  type CodingDelegationInput,
+  delegateCodingWorkflow,
+  khalaCodingRequestIdRef,
+} from './inference/coding-workflow-delegation'
 import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
 import {
-  pylonCodingServiceCapacityProjection,
   type PylonApiAssignmentRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
+  pylonCodingServiceCapacityProjection,
 } from './pylon-api'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
@@ -86,6 +86,33 @@ export const khalaMcpAgentPrincipal = (
   ),
   subjectRef: `agent:${session.user.id}`,
   tenantRef: `agent:${session.user.id}`,
+})
+
+/** Owner-scoped principal used by Sarah's admitted runtime broker. It carries
+ * only the authenticated owner's OpenAuth link plus the existing own-capacity
+ * fence; it does not synthesize an agent credential or widen MCP authority. */
+export const khalaMcpOwnerPrincipal = (
+  ownerUserId: string,
+  nowIso: string = currentIsoTimestamp(),
+): McpPrincipal => ({
+  grants: KHALA_MCP_AUTHORITY_CLASSES.map(authorityClass => ({
+    authorityClass,
+    decision: 'granted' as const,
+    grantRef: `grant.khala_mcp.principal.sarah.${authorityClass}`,
+    grantedAt: nowIso,
+    scopeRefs: [
+      `openauth_user:${ownerUserId}`,
+      'scope.khala.own_capacity_only',
+    ],
+    sourceRefs: [
+      'AUTHORITY.md_revision_4',
+      'docs/authority/SARAH_AUTHORITY.md_revision_2',
+      SOURCE,
+    ],
+    subjectRef: 'principal.sarah',
+  })),
+  subjectRef: 'principal.sarah',
+  tenantRef: `owner:${ownerUserId}`,
 })
 
 const readTool = (
@@ -164,7 +191,10 @@ export const KHALA_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
 const REQUEST_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   properties: {
-    objective: { description: 'Objective text alias for prompt.', type: 'string' },
+    objective: {
+      description: 'Objective text alias for prompt.',
+      type: 'string',
+    },
     prompt: { description: 'Coding request prompt/objective.', type: 'string' },
     pylonRef: { description: 'Caller-owned target Pylon ref.', type: 'string' },
     targetPylonRef: {
@@ -197,7 +227,10 @@ const SPAWN_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   properties: {
     branch: { description: 'Public repository branch.', type: 'string' },
-    commit: { description: 'Pinned public repository commit SHA.', type: 'string' },
+    commit: {
+      description: 'Pinned public repository commit SHA.',
+      type: 'string',
+    },
     count: {
       description: 'Requested worker count.',
       maximum: 20,
@@ -214,7 +247,10 @@ const SPAWN_SCHEMA: Record<string, unknown> = {
       minimum: 1,
       type: 'integer',
     },
-    objective: { description: 'Spawn objective text alias for prompt.', type: 'string' },
+    objective: {
+      description: 'Spawn objective text alias for prompt.',
+      type: 'string',
+    },
     prompt: { description: 'Spawn objective text.', type: 'string' },
     pylonRef: { description: 'Caller-owned target Pylon ref.', type: 'string' },
     repo: { description: 'Public GitHub owner/repo.', type: 'string' },
@@ -246,15 +282,20 @@ const SPAWN_STATUS_SCHEMA: Record<string, unknown> = {
   type: 'object',
 }
 
-const KHALA_MCP_INPUT_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> =
-  {
-    'khala.capacity': { additionalProperties: false, properties: {}, type: 'object' },
-    'khala.request': REQUEST_SCHEMA,
-    'khala.resume': DURABLE_READ_SCHEMA,
-    'khala.spawn': SPAWN_SCHEMA,
-    'khala.spawnStatus': SPAWN_STATUS_SCHEMA,
-    'khala.status': DURABLE_READ_SCHEMA,
-  }
+const KHALA_MCP_INPUT_SCHEMAS: Readonly<
+  Record<string, Record<string, unknown>>
+> = {
+  'khala.capacity': {
+    additionalProperties: false,
+    properties: {},
+    type: 'object',
+  },
+  'khala.request': REQUEST_SCHEMA,
+  'khala.resume': DURABLE_READ_SCHEMA,
+  'khala.spawn': SPAWN_SCHEMA,
+  'khala.spawnStatus': SPAWN_STATUS_SCHEMA,
+  'khala.status': DURABLE_READ_SCHEMA,
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -290,7 +331,9 @@ const optionalOffset = (
   return optionalString(args, 'offset')
 }
 
-const workflowFromArgs = (args: Record<string, unknown>): Exclude<CodingWorkflowClass, 'none'> => {
+const workflowFromArgs = (
+  args: Record<string, unknown>,
+): Exclude<CodingWorkflowClass, 'none'> => {
   const value = optionalString(args, 'workflow') ?? 'codex_agent_task'
   if (
     value === 'claude_agent_task' ||
@@ -331,18 +374,23 @@ const boundedInteger = (
   }
   const integer = Math.trunc(parsed)
   if (integer < 1 || integer > MAX_SPAWN_COUNT) {
-    throw new KhalaMcpToolError(`${key} must be between 1 and ${MAX_SPAWN_COUNT}`)
+    throw new KhalaMcpToolError(
+      `${key} must be between 1 and ${MAX_SPAWN_COUNT}`,
+    )
   }
   return integer
 }
 
 const spawnObjectiveFromArgs = (args: Record<string, unknown>): string => {
-  const objective = optionalString(args, 'prompt') ?? optionalString(args, 'objective')
+  const objective =
+    optionalString(args, 'prompt') ?? optionalString(args, 'objective')
   if (objective === undefined) {
     throw new KhalaMcpToolError('khala.spawn requires prompt or objective')
   }
   if (objective.length < 3 || objective.length > 8000) {
-    throw new KhalaMcpToolError('khala.spawn objective must be 3-8000 characters')
+    throw new KhalaMcpToolError(
+      'khala.spawn objective must be 3-8000 characters',
+    )
   }
   return objective
 }
@@ -354,7 +402,9 @@ const targetPylonRefFromArgs = (
     optionalString(args, 'targetPylonRef') ?? optionalString(args, 'pylonRef')
   if (pylonRef === undefined) return undefined
   if (!pylonRefPattern.test(pylonRef)) {
-    throw new KhalaMcpToolError('targetPylonRef must be a bounded public Pylon ref')
+    throw new KhalaMcpToolError(
+      'targetPylonRef must be a bounded public Pylon ref',
+    )
   }
   return pylonRef
 }
@@ -392,7 +442,10 @@ const cleanGithubFullName = (value: string): string => {
 
 const cleanCommitSha = (value: string): string => {
   const trimmed = value.trim()
-  if (!gitCommitShaPattern.test(trimmed) || placeholderCommitShaPattern.test(trimmed)) {
+  if (
+    !gitCommitShaPattern.test(trimmed) ||
+    placeholderCommitShaPattern.test(trimmed)
+  ) {
     throw new KhalaMcpToolError(
       'commit must be a real pinned 40-character commit SHA',
     )
@@ -413,10 +466,11 @@ const verificationArgs = (value: string): string[] => {
   if (
     args.length === 0 ||
     args.length > 20 ||
-    args.some(arg =>
-      !verificationCommandArgPattern.test(arg) ||
-      arg.includes('..') ||
-      arg.startsWith('/'),
+    args.some(
+      arg =>
+        !verificationCommandArgPattern.test(arg) ||
+        arg.includes('..') ||
+        arg.startsWith('/'),
     )
   ) {
     throw new KhalaMcpToolError(
@@ -435,7 +489,8 @@ const buildSpawnWorkspace = (
   args: Record<string, unknown>,
 ): Record<string, unknown> | undefined => {
   if (args.fixture === true) return undefined
-  const repo = optionalString(args, 'repo') ?? optionalString(args, 'repository')
+  const repo =
+    optionalString(args, 'repo') ?? optionalString(args, 'repository')
   const commit = optionalString(args, 'commit')
   const verify = optionalString(args, 'verify')
   if (repo === undefined && commit === undefined && verify === undefined) {
@@ -469,15 +524,16 @@ const grantScopeRefs = (principal: McpPrincipal): ReadonlyArray<string> =>
     .filter(grant => grant.decision === 'granted')
     .flatMap(grant => grant.scopeRefs)
 
-const scopedOpenAuthUserIds = (principal: McpPrincipal): ReadonlyArray<string> =>
-  [
-    ...new Set(
-      grantScopeRefs(principal)
-        .filter(ref => ref.startsWith('openauth_user:'))
-        .map(ref => ref.slice('openauth_user:'.length))
-        .filter(ref => ref.trim() !== ''),
-    ),
-  ]
+const scopedOpenAuthUserIds = (
+  principal: McpPrincipal,
+): ReadonlyArray<string> => [
+  ...new Set(
+    grantScopeRefs(principal)
+      .filter(ref => ref.startsWith('openauth_user:'))
+      .map(ref => ref.slice('openauth_user:'.length))
+      .filter(ref => ref.trim() !== ''),
+  ),
+]
 
 const scopedAgentUserIds = (principal: McpPrincipal): ReadonlyArray<string> => {
   const scoped = grantScopeRefs(principal)
@@ -488,10 +544,7 @@ const scopedAgentUserIds = (principal: McpPrincipal): ReadonlyArray<string> => {
     ? principal.subjectRef.slice('agent:'.length)
     : ''
   return [
-    ...new Set([
-      ...scoped,
-      ...(subjectAgent === '' ? [] : [subjectAgent]),
-    ]),
+    ...new Set([...scoped, ...(subjectAgent === '' ? [] : [subjectAgent])]),
   ]
 }
 
@@ -583,7 +636,9 @@ const toolErrorOutcome = (
     true,
   )
 
-const toolListing = (descriptor: OpenAgentsMcpToolDescriptor): McpToolListing => ({
+const toolListing = (
+  descriptor: OpenAgentsMcpToolDescriptor,
+): McpToolListing => ({
   annotations: {
     readOnlyHint: descriptor.receiptBehavior === 'none',
     requiredAuthorities: descriptor.requiredAuthorities,
@@ -626,7 +681,8 @@ const requestPayload = (
   rawBody: Record<string, unknown>
   workflowClass: Exclude<CodingWorkflowClass, 'none'>
 }> => {
-  const prompt = optionalString(args, 'prompt') ?? optionalString(args, 'objective')
+  const prompt =
+    optionalString(args, 'prompt') ?? optionalString(args, 'objective')
   if (prompt === undefined) {
     throw new KhalaMcpToolError('khala.request requires prompt or objective')
   }
@@ -755,8 +811,7 @@ const spawnCapacityProjection = (
   return {
     advertisedAvailableCount: pylons.reduce(
       (sum, pylon) =>
-        sum +
-        ((pylon.codingCapacity as { available: number }).available ?? 0),
+        sum + ((pylon.codingCapacity as { available: number }).available ?? 0),
       0,
     ),
     pylons,
@@ -813,8 +868,10 @@ const spawnStatusAggregate = (
         (assignment.state !== 'accepted' && assignment.state !== 'rejected'
           ? 1
           : 0),
-      artifactRefCount: aggregate.artifactRefCount + assignment.artifactRefs.length,
-      closeoutRefCount: aggregate.closeoutRefCount + assignment.closeoutRefs.length,
+      artifactRefCount:
+        aggregate.artifactRefCount + assignment.artifactRefs.length,
+      closeoutRefCount:
+        aggregate.closeoutRefCount + assignment.closeoutRefs.length,
       proofRefCount: aggregate.proofRefCount + assignment.proofRefs.length,
       rejectedCount:
         aggregate.rejectedCount + (assignment.state === 'rejected' ? 1 : 0),
@@ -833,12 +890,14 @@ const spawnStatusAggregate = (
     },
   )
 
-const spawnStatusProjection = async (input: Readonly<{
-  agentStore: AgentRegistrationStore
-  principal: McpPrincipal
-  pylonStore: PylonApiStore
-  spawnRef: string
-}>): Promise<Record<string, unknown>> => {
+const spawnStatusProjection = async (
+  input: Readonly<{
+    agentStore: AgentRegistrationStore
+    principal: McpPrincipal
+    pylonStore: PylonApiStore
+    spawnRef: string
+  }>,
+): Promise<Record<string, unknown>> => {
   if (!spawnRefPattern.test(input.spawnRef)) {
     throw new KhalaMcpToolError('spawnRef must be a bounded Khala spawn ref')
   }
@@ -846,15 +905,19 @@ const spawnStatusProjection = async (input: Readonly<{
     input.agentStore,
     input.principal,
   )
-  const registrations = await linkedRegistrations(input.pylonStore, linkedAgents)
-  const ownerAgentUserIds = new Set(linkedAgents.map(agent => agent.agentUserId))
+  const registrations = await linkedRegistrations(
+    input.pylonStore,
+    linkedAgents,
+  )
+  const ownerAgentUserIds = new Set(
+    linkedAgents.map(agent => agent.agentUserId),
+  )
   const pylonRefs = new Set(
     registrations.map(registration => registration.pylonRef),
   )
-  const children = (await assignmentsForRegistrations(
-    input.pylonStore,
-    registrations,
-  ))
+  const children = (
+    await assignmentsForRegistrations(input.pylonStore, registrations)
+  )
     .filter(
       assignment =>
         ownerAgentUserIds.has(assignment.ownerAgentUserId) &&
@@ -890,8 +953,13 @@ export const khalaDurableRequestIsLinkedToPrincipal = async (
     input.agentStore,
     input.principal,
   )
-  const registrations = await linkedRegistrations(input.pylonStore, linkedAgents)
-  const ownerAgentUserIds = new Set(linkedAgents.map(agent => agent.agentUserId))
+  const registrations = await linkedRegistrations(
+    input.pylonStore,
+    linkedAgents,
+  )
+  const ownerAgentUserIds = new Set(
+    linkedAgents.map(agent => agent.agentUserId),
+  )
   const pylonRefs = new Set(
     registrations.map(registration => registration.pylonRef),
   )
@@ -923,7 +991,9 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
   deps: KhalaMcpCatalogDeps<Bindings>,
 ): CrmMcpCatalog<Bindings> => ({
   callTool: async (env, request, principal, name, callArgs) => {
-    const grantedAuthorities = openAgentsMcpGrantedAuthoritySet(principal.grants)
+    const grantedAuthorities = openAgentsMcpGrantedAuthoritySet(
+      principal.grants,
+    )
     const descriptor = KHALA_MCP_TOOLS.find(tool => tool.name === name)
     if (
       descriptor === undefined ||
@@ -1026,7 +1096,10 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
           principal,
         )
         const pylonStore = deps.pylonStore(env)
-        const registrations = await linkedRegistrations(pylonStore, linkedAgents)
+        const registrations = await linkedRegistrations(
+          pylonStore,
+          linkedAgents,
+        )
         const targetRegistrations =
           targetPylonRef === undefined
             ? registrations
@@ -1246,8 +1319,10 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
   listResources: () => Promise.resolve([]),
   listTools: (_env, _request, principal) =>
     Promise.resolve(
-      filterOpenAgentsMcpDescriptorsByGrantSet(KHALA_MCP_TOOLS, principal.grants)
-        .map(toolListing),
+      filterOpenAgentsMcpDescriptorsByGrantSet(
+        KHALA_MCP_TOOLS,
+        principal.grants,
+      ).map(toolListing),
     ),
   readResource: () => Promise.reject(new KhalaMcpToolError('unknown_resource')),
 })
@@ -1271,13 +1346,21 @@ export const combineMcpCatalogs = <Bindings>(
     }
     throw new KhalaMcpToolError('unknown_tool')
   },
-  listResources: async (env, request, principal): Promise<ReadonlyArray<McpResourceListing>> =>
+  listResources: async (
+    env,
+    request,
+    principal,
+  ): Promise<ReadonlyArray<McpResourceListing>> =>
     (
       await Promise.all(
         catalogs.map(catalog => catalog.listResources(env, request, principal)),
       )
     ).flat(),
-  listTools: async (env, request, principal): Promise<ReadonlyArray<McpToolListing>> =>
+  listTools: async (
+    env,
+    request,
+    principal,
+  ): Promise<ReadonlyArray<McpToolListing>> =>
     (
       await Promise.all(
         catalogs.map(catalog => catalog.listTools(env, request, principal)),

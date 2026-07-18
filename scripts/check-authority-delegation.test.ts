@@ -108,7 +108,7 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(3);
+    expect(readFrontmatterInteger("authority_revision")).toBe(4);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
     expect(readFrontmatterString("admitted_by")).toBe(
       "current_owner_direction_2026-07-18_sarah_reboot",
@@ -216,6 +216,10 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
         "read_business_context",
         "prioritize_program_work",
         "delegate_repository_work",
+        "inspect_owner_coding_capacity",
+        "dispatch_owner_capacity_coding_workers",
+        "inspect_existing_full_auto_run",
+        "control_existing_full_auto_run",
         "publish_release_candidate",
       ]),
     );
@@ -225,6 +229,17 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
         "condition.capability_broker",
         "condition.citations",
         "condition.existing_runtime_gate",
+      ]),
+    );
+    expect(grant?.resources).toEqual(
+      expect.arrayContaining(["owner_linked_pylon_coding_capacity", "owner_full_auto_runs"]),
+    );
+    expect(grant?.actions).not.toEqual(
+      expect.arrayContaining([
+        "start_full_auto_run",
+        "read_memoharness_private_bank",
+        "promote_harness_candidate",
+        "increase_own_authority",
       ]),
     );
   });

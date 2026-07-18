@@ -298,7 +298,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   secret-handling invariants cannot be waived by profile text.
 - The delegated release operator MAY autonomously publish, communicate,
   promote, or roll back a Desktop **RC** only under `AUTHORITY.md` revision
-  3's retained `grant.autonomous_rc_release_and_communication` scope. Stable
+  4's retained `grant.autonomous_rc_release_and_communication` scope. Stable
   releases still require current explicit owner direction. Every candidate
   and publication records the exact trigger ref, release actor, authority
   revision/grant, source revision, and distribution boundary; GitHub and
@@ -313,6 +313,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   over-the-air lane is unadmitted until a later invariant defines a signed
   compatibility envelope, first-launch health proof, atomic fallback, and
   rollback receipt.
+
+- Under `AUTHORITY.md` revision 4 and Sarah authority revision 2,
+  `principal.sarah` may dispatch only bounded coding workers through the
+  authenticated owner's existing linked Pylon capacity and may dispatch only
+  pause/resume/stop intents for an existing owner Full Auto run. The coding
+  broker pins a real public repository commit and returns actual assignment
+  refs. Full Auto remains Desktop-authoritative: a server intent is `pending`
+  until Desktop applies it. Sarah has no raw shell, local workspace-path,
+  provider credential, MemoHarness private-bank, during-run adaptation,
+  candidate-promotion, assurance-admission, or authority-expansion capability.
 
 - Desktop local Codex usage collection is triple-gated: the review-only
   Desktop control gate, an explicit default-off user preference, and the

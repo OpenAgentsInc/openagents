@@ -6,7 +6,7 @@
 - Owner authority: current owner conversation
 - Base commit: `888574ab00f0cb86611e2178ca057db673caa87b`
 - ProductSpec: [`../../specs/openagents/sarah-owner-orchestrator.product-spec.md`](../../specs/openagents/sarah-owner-orchestrator.product-spec.md)
-- Authority: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 3 and [`../authority/SARAH_AUTHORITY.md`](../authority/SARAH_AUTHORITY.md) revision 1
+- Authority: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 4 and [`../authority/SARAH_AUTHORITY.md`](../authority/SARAH_AUTHORITY.md) revision 2
 
 ## Decision
 
@@ -51,6 +51,11 @@ supported app; it does not supersede the standalone-surface tombstone.
    and force ordinary Sarah turns to `hosted_khala`.
 6. Deploy the Worker/Cloud Run backend, smoke the authenticated principal and
    a real hosted turn, then publish the own OTA channel. Preserve `/sarah` 404.
+7. Revision 2 adds a bounded Gemma 4 function-calling loop over existing
+   brokers: read/dispatch/status for owner-linked Codex workers and
+   read/pause/resume/stop for existing Full Auto runs. Every call emits visible
+   runtime activity plus an authority receipt; pending is never presented as
+   completed. MemoHarness bank, adaptation, and promotion remain unavailable.
 
 ## Capability rollout
 
@@ -72,8 +77,9 @@ incrementally without changing the principal or UI contract.
 - behavior registry coverage for the exact owner statement;
 - Worker and mobile typechecks plus repository `pnpm run check`;
 - production deploy health, `/sarah` tombstone, authenticated principal, and
-  real Sarah hosted-turn receipt;
-- own OTA publication with bumped bundle tag and manifest receipt.
+  real Sarah hosted-turn plus tool receipts. Revision 2 is server-only because
+  the installed mobile client already renders ordered runtime tool events; no
+  manufactured OTA or native release is required.
 
 ## Hot contracts
 
@@ -83,10 +89,26 @@ and the Effect Native home program. These files are one atomic packet; no
 parallel writer may change their contract during this landing without an
 explicit handoff.
 
+## Active implementation claim — Sarah action runtime
+
+```text
+CLAIM
+actor/session: principal.sol.sarah-action-runtime-2026-07-18
+base: 23f0cacf073ff0d6ce8256822f9a10cde346aa6f
+worktree/branch: detached-worktree.sarah-runtime.3whQXX
+scope: Give Sarah receipted tools for owner-capacity Codex worker dispatch and existing Full Auto run supervision, using Gemma 4 function calling and existing typed brokers. MemoHarness learning, private-bank access, candidate promotion, assurance admission, and authority expansion remain unavailable.
+paths: AUTHORITY.md; INVARIANTS.md; docs/authority/SARAH_AUTHORITY.md; docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md; specs/openagents/{authority-delegation,sarah-owner-orchestrator}.{product,assurance}-spec.md; packages/sarah/**; apps/openagents.com/workers/api/src/**; apps/openagents-desktop/src/** only if a typed Full Auto start intent is required
+hot files: AUTHORITY.md; INVARIANTS.md; hosted runtime dispatch; Sarah authority receipts; Full Auto control contracts
+hot contracts: authority revisions; authority receipt schema usage; Gemma tool-call wire mapping; Khala runtime event sequencing; Full Auto control intent schema/migrations
+verification: focused package/Worker/Desktop tests and typechecks, root pnpm run check, production Cloud Run health, and one real owner-scoped Sarah tool receipt
+claimed_at: 2026-07-18T22:05:00Z
+```
+
 ## Definition of done
 
 The owner can open OpenAgents mobile, select Sarah, ask a current business
-question, receive a cited real-system answer on the persistent thread, close
-and reopen the app without losing continuity, and observe that all mutation
-authority remains brokered and auditable. Backend is deployed, OTA is
-published, tests are green, and main is pushed.
+question, receive a cited real-system answer on the persistent thread, ask her
+to inspect or dispatch Codex workers and supervise an existing Full Auto run,
+close and reopen the app without losing continuity, and observe that every
+mutation remains brokered and auditable. Backend is deployed, tests are green,
+and main is pushed.

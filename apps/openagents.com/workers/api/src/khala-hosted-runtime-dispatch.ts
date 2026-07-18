@@ -54,22 +54,21 @@
 //   protects the server side from double-inference; making `hosted_khala`
 //   strictly server-owned (dropping it from the Pylon dispatch set) is the
 //   recommended follow-up.
-
 import {
-  decodeKhalaRuntimeEvent,
-  decodePushRequest,
   type ChatMessageImageAttachment,
   type KhalaRuntimeEvent,
   type KhalaRuntimeFinishReason,
   type MutationResult,
+  decodeKhalaRuntimeEvent,
+  decodePushRequest,
 } from '@openagentsinc/khala-sync'
 import {
+  type MutatorRegistry,
+  type SyncSql,
   executePush as executePushEngine,
   makeMutatorRegistry,
   readChatMessageById as readChatMessageByIdFromPostgres,
   runtimeMutators,
-  type MutatorRegistry,
-  type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 import { sanitizeSarahConversationResponse } from '@openagentsinc/sarah'
 
@@ -77,16 +76,17 @@ import { DEFAULT_GEMMA4_MODEL_ID } from './inference/gemma4-model'
 import { parseJsonUnknown } from './json-boundary'
 import {
   HOSTED_KHALA_PROVIDER,
-  hostedKhalaUsageRef,
   type HostedTurnMeteringInput,
   type HostedTurnMeteringOutcome,
   type HostedTurnUsage,
+  hostedKhalaUsageRef,
 } from './khala-hosted-runtime-metering'
 import {
   currentIsoTimestamp,
   isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
+import type { SarahAgentToolActivity } from './sarah-agent-runtime'
 
 export type { HostedTurnUsage } from './khala-hosted-runtime-metering'
 
@@ -165,6 +165,9 @@ export type HostedRuntimeCompleteFn = (input: {
   readonly system: string
   readonly prompt: string
   readonly images?: ReadonlyArray<ChatMessageImageAttachment>
+  readonly turn: QueuedHostedTurn
+  readonly responsePresentation?: 'owner_conversation' | undefined
+  readonly onToolActivity: (activity: SarahAgentToolActivity) => Promise<void>
 }) => Promise<HostedRuntimeCompletion>
 
 export type HostedRuntimePrepareTurnFn = (
@@ -173,11 +176,13 @@ export type HostedRuntimePrepareTurnFn = (
     system: string
     prompt: string
   }>,
-) => Promise<Readonly<{
-  system: string
-  prompt: string
-  responsePresentation?: 'owner_conversation'
-}>>
+) => Promise<
+  Readonly<{
+    system: string
+    prompt: string
+    responsePresentation?: 'owner_conversation'
+  }>
+>
 
 /** Injectable push-engine seam so tests never need the real engine. */
 export type HostedRuntimeExecutePushFn = typeof executePushEngine
@@ -235,11 +240,15 @@ type ResolvedDeps = Readonly<{
   prepareTurn: HostedRuntimePrepareTurnFn | undefined
 }>
 
-const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => ({
+const resolveDeps = (
+  deps: HostedRuntimeDispatchDependencies,
+): ResolvedDeps => ({
   complete: deps.complete,
   executePush: deps.executePush ?? executePushEngine,
   limit:
-    deps.limit !== undefined && Number.isSafeInteger(deps.limit) && deps.limit > 0
+    deps.limit !== undefined &&
+    Number.isSafeInteger(deps.limit) &&
+    deps.limit > 0
       ? deps.limit
       : DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT,
   staleAfterMs:
@@ -381,7 +390,10 @@ export const resolveHostedTurnMessage = async (
     prompt: body,
     ...(message.attachments === undefined || message.attachments.length === 0
       ? {}
-      : { images: message.attachments as ReadonlyArray<ChatMessageImageAttachment> }),
+      : {
+          images:
+            message.attachments as ReadonlyArray<ChatMessageImageAttachment>,
+        }),
   }
 }
 
@@ -389,16 +401,16 @@ export const resolveHostedTurnMessage = async (
 export const resolveHostedTurnPrompt = async (
   sql: SyncSql,
   turn: QueuedHostedTurn,
-): Promise<string | null> => (await resolveHostedTurnMessage(sql, turn))?.prompt ?? null
+): Promise<string | null> =>
+  (await resolveHostedTurnMessage(sql, turn))?.prompt ?? null
 
-const runtimeSource = (model: string) =>
-  ({
-    adapterKind: 'openagents_native' as const,
-    lane: HOSTED_RUNTIME_LANE,
-    modelRef: model,
-    providerRef: HOSTED_RUNTIME_PROVIDER_REF,
-    surface: 'server' as const,
-  })
+const runtimeSource = (model: string) => ({
+  adapterKind: 'openagents_native' as const,
+  lane: HOSTED_RUNTIME_LANE,
+  modelRef: model,
+  providerRef: HOSTED_RUNTIME_PROVIDER_REF,
+  surface: 'server' as const,
+})
 
 const buildRuntimeEvent = (
   deps: ResolvedDeps,
@@ -420,6 +432,29 @@ const buildRuntimeEvent = (
     ...extra,
   })
 
+const runtimeSafeRef = (prefix: string, value: string): string =>
+  `${prefix}.${value.replaceAll(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120)}`
+
+const sarahToolAuthority = (activity: SarahAgentToolActivity) => ({
+  allowed: activity.authorityAllowed ?? true,
+  authorityRef:
+    activity.authorityReceiptRef ??
+    runtimeSafeRef('authority.sarah.tool.selected', activity.toolCallId),
+  blockerRefs:
+    activity.authorityAllowed === false
+      ? activity.resultRefs
+          .filter(ref => ref.startsWith('blocker.'))
+          .map(ref => runtimeSafeRef('blocker.sarah.tool', ref))
+      : [],
+  decisionRef: runtimeSafeRef('decision.sarah.tool', activity.toolCallId),
+  policyRef: 'policy.sarah.owner_orchestrator.rev2',
+  status:
+    activity.authorityAllowed === false
+      ? ('denied' as const)
+      : ('allowed' as const),
+  toolRef: runtimeSafeRef('tool.sarah', activity.toolName),
+})
+
 const recordHostedRuntimeEvent = (
   resolved: ResolvedDeps,
   turn: QueuedHostedTurn,
@@ -427,33 +462,37 @@ const recordHostedRuntimeEvent = (
   mutationId: number,
   event: KhalaRuntimeEvent,
 ): Promise<MutationResult> => {
-  const clientGroupId = hostedRuntimeDispatchClientGroupIdForOwner(turn.ownerUserId)
-  return resolved.executePush({
-    registry: resolved.registry,
-    request: decodePushRequest({
-      clientGroupId,
-      clientId,
-      mutations: [
-        {
-          argsJson: JSON.stringify(event),
-          mutationId,
-          name: 'runtime.recordEvent',
-        },
-      ],
-      protocolVersion: 1,
-      schemaVersion: 1,
-    }),
-    sql: resolved.sql,
-    userId: turn.ownerUserId,
-  }).then(response => {
-    const result = response.results[0]
-    if (result === undefined) {
-      throw new HostedRuntimeDispatchError(
-        'executePush returned no result for runtime.recordEvent',
-      )
-    }
-    return result
-  })
+  const clientGroupId = hostedRuntimeDispatchClientGroupIdForOwner(
+    turn.ownerUserId,
+  )
+  return resolved
+    .executePush({
+      registry: resolved.registry,
+      request: decodePushRequest({
+        clientGroupId,
+        clientId,
+        mutations: [
+          {
+            argsJson: JSON.stringify(event),
+            mutationId,
+            name: 'runtime.recordEvent',
+          },
+        ],
+        protocolVersion: 1,
+        schemaVersion: 1,
+      }),
+      sql: resolved.sql,
+      userId: turn.ownerUserId,
+    })
+    .then(response => {
+      const result = response.results[0]
+      if (result === undefined) {
+        throw new HostedRuntimeDispatchError(
+          'executePush returned no result for runtime.recordEvent',
+        )
+      }
+      return result
+    })
 }
 
 /**
@@ -533,7 +572,9 @@ export const dispatchHostedRuntimeTurn = async (
 
   // 1. CLAIM: record turn.started. This is the atomic claim — the loser of a
   // race gets an in-band rejection (runtime_event_exists / turn moved).
-  const startEvent = buildRuntimeEvent(resolved, turn, seq, { kind: 'turn.started' })
+  const startEvent = buildRuntimeEvent(resolved, turn, seq, {
+    kind: 'turn.started',
+  })
   const startResult = await record(1, startEvent)
   if (startResult.status !== 'applied') {
     resolved.log('hosted_runtime_dispatch_claim_skipped', {
@@ -543,6 +584,56 @@ export const dispatchHostedRuntimeTurn = async (
     return 'skipped'
   }
   seq += 1
+  let mutationId = 2
+
+  const onToolActivity = async (
+    activity: SarahAgentToolActivity,
+  ): Promise<void> => {
+    const authority = sarahToolAuthority(activity)
+    const extra: Record<string, unknown> =
+      activity.phase === 'started'
+        ? {
+            authority,
+            kind: 'tool.call',
+            toolCallId: runtimeSafeRef('call.sarah', activity.toolCallId),
+            toolName: activity.toolName,
+          }
+        : activity.phase === 'succeeded'
+          ? {
+              authority,
+              kind: 'tool.result',
+              providerExecuted: true,
+              resultRef: runtimeSafeRef(
+                'result.sarah.tool',
+                activity.resultRefs[0] ?? activity.toolCallId,
+              ),
+              toolCallId: runtimeSafeRef('call.sarah', activity.toolCallId),
+              toolName: activity.toolName,
+            }
+          : {
+              authority,
+              errorRef: runtimeSafeRef(
+                'error.sarah.tool',
+                activity.resultRefs[0] ?? activity.toolCallId,
+              ),
+              kind: 'tool.error',
+              messageSafe: activity.summary.slice(0, 500),
+              providerExecuted: true,
+              toolCallId: runtimeSafeRef('call.sarah', activity.toolCallId),
+              toolName: activity.toolName,
+            }
+    const result = await record(
+      mutationId,
+      buildRuntimeEvent(resolved, turn, seq, extra),
+    )
+    if (result.status !== 'applied') {
+      throw new HostedRuntimeDispatchError(
+        `Sarah tool activity write rejected: ${result.errorCode ?? 'unknown'}`,
+      )
+    }
+    mutationId += 1
+    seq += 1
+  }
 
   // 2. Resolve the prompt and drive inference.
   let completion: HostedRuntimeCompletion
@@ -559,11 +650,14 @@ export const dispatchHostedRuntimeTurn = async (
               prompt: message.prompt,
               system: resolved.systemPrompt,
               turn,
-            });
+            })
       responsePresentation = prepared.responsePresentation
       completion = await resolved.complete({
+        onToolActivity,
         prompt: prepared.prompt,
+        responsePresentation,
         system: prepared.system,
+        turn,
         ...(message.images === undefined ? {} : { images: message.images }),
       })
     }
@@ -581,7 +675,7 @@ export const dispatchHostedRuntimeTurn = async (
       turnId: turn.turnId,
     })
     const failedResult = await record(
-      2,
+      mutationId,
       buildRuntimeEvent(resolved, turn, seq, {
         finishReason: 'error' satisfies KhalaRuntimeFinishReason,
         kind: 'turn.finished',
@@ -601,7 +695,6 @@ export const dispatchHostedRuntimeTurn = async (
   // 4. Success: stream the answer as one text.delta + text.completed, then
   // finish the turn.
   const messageId = resolved.uuid()
-  let mutationId = 2
   if (completion.text.length > 0) {
     const deltaResult = await record(
       mutationId,

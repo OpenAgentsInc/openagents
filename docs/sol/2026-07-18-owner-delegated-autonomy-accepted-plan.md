@@ -6,7 +6,7 @@
 - Dispatch: no; `MASTER_ROADMAP.md`, live issues, claims, and bounded packets
   remain the dispatch queue
 - Owner authority: current owner conversation
-- Authority profile: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 3
+- Authority profile: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 4
 - Product intent:
   [`../../specs/openagents/authority-delegation.product-spec.md`](../../specs/openagents/authority-delegation.product-spec.md)
 
@@ -18,7 +18,7 @@ operating agents can use existing repository, local app/provider, device,
 GitHub, and Google Cloud access to finish work, close issues, and ship verified
 outcomes. Only actions explicitly reserved by the profile return to the owner.
 
-Revision 3 adds Sarah as the owner's persistent orchestrator and single point
+Revision 4 retains Sarah as the owner's persistent orchestrator and single point
 of contact. She coordinates this same ordered program through cited
 owner-scoped projections and existing capability brokers; see
 [`2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md`](./2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md).

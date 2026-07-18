@@ -5,9 +5,9 @@ import type { AuthorityRuntimeProfile } from "@openagentsinc/authority";
 export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
 export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 1 as const;
+export const SARAH_AUTHORITY_REVISION = 2 as const;
 export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 3 as const;
+export const ROOT_AUTHORITY_REVISION = 4 as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Summary = S.String.check(S.isMaxLength(4_000));
@@ -52,6 +52,12 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
     access: "read",
   },
   {
+    capabilityRef: "capability.sarah.full_auto_control",
+    label: "Full Auto run control",
+    mode: "brokered",
+    access: "act",
+  },
+  {
     capabilityRef: "capability.sarah.cloud_health",
     label: "OpenAgents Cloud health",
     mode: "live",
@@ -60,6 +66,12 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
   {
     capabilityRef: "capability.sarah.repository_delivery",
     label: "Repository delivery",
+    mode: "brokered",
+    access: "act",
+  },
+  {
+    capabilityRef: "capability.sarah.codex_worker_dispatch",
+    label: "Owner-capacity Codex workers",
     mode: "brokered",
     access: "act",
   },
@@ -187,12 +199,18 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
       roles: ["sarah_orchestrator"],
       actions: [
         "delegate_repository_work",
+        "inspect_owner_coding_capacity",
+        "inspect_existing_full_auto_run",
+        "dispatch_owner_capacity_coding_workers",
+        "control_existing_full_auto_run",
         "operate_google_cloud",
         "publish_release_candidate",
         "communicate_release_status",
       ],
       resources: [
         "OpenAgentsInc/openagents",
+        "owner_linked_pylon_coding_capacity",
+        "owner_full_auto_runs",
         "google_cloud_project_openagentsgemini",
         "openagents_rc_release_channel",
         "openagents_github_and_forum",
@@ -224,8 +242,10 @@ export const buildSarahSystemPrompt = (
   runtimeIdentity: SarahRuntimeIdentity,
 ): string => {
   const evidence = context.sources
-    .map((source, index) =>
-      `- Context ${index + 1} (${source.kind}, ${source.freshness}): ${source.summary}`)
+    .map(
+      (source, index) =>
+        `- Context ${index + 1} (${source.kind}, ${source.freshness}): ${source.summary}`,
+    )
     .join("\n");
   return [
     "You are Sarah, OpenAgents' owner orchestrator and the owner's single point of contact.",
@@ -238,11 +258,14 @@ export const buildSarahSystemPrompt = (
     "Provenance is retained in the private context layer. Never print raw source refs, internal IDs, UUIDs, contract refs, fleet-run refs, or bracketed citations in conversational prose. If the owner asks for evidence, use readable issue numbers, titles, and normal links available in context.",
     "Never invent a source or imply an action ran when it did not.",
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",
+    "You have real tools for reading owner-linked coding capacity, dispatching bounded Codex workers against an exact public OpenAgents commit, reading their status, reading the current Full Auto projection, and dispatching pause/resume/stop intents for an existing Full Auto run. Use those tools when the owner asks you to act or when current state is required; never claim dispatch, application, or completion until the corresponding tool result says it happened.",
+    "A pending Full Auto control intent is queued for Desktop application, not completed. Starting a new Full Auto run, editing its harness modules, reading the private experience bank, adapting during a run, and promoting a harness candidate are not available tools in this revision.",
     "Never request, reveal, or reproduce raw credentials, secrets, mnemonics, private paths, or customer-private payloads.",
     "Financial custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported public claims, and stable releases without current direction remain reserved.",
     "The public /sarah web surface and avatar remain retired. You live inside authenticated OpenAgents surfaces.",
     "When evidence is absent or stale, say exactly that and propose the narrowest next action.",
-    "\nPrivate reference context. Use only what is relevant to the owner's request; do not summarize this block by default:\n" + evidence,
+    "\nPrivate reference context. Use only what is relevant to the owner's request; do not summarize this block by default:\n" +
+      evidence,
   ].join("\n");
 };
 

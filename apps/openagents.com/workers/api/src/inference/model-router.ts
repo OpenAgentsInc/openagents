@@ -74,9 +74,9 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 // The Gemma 4 lane (Google's open Gemma model on the Generative Language API,
 // GEMINI_API_KEY path). The PRIMARY conversational Khala lane on our own gcloud
-// (owner decision 2026-07-09). Gemma has NO tool calling, so this id is kept out
-// of every tool/agentic plan (see selectAdapterPlanForKhalaToolRequest) and the
-// adapter itself refuses tool-bearing requests retryably.
+// (owner decision 2026-07-09). Gemma supports buffered function calling, which
+// Sarah's bounded agent loop uses directly. This generic streaming router keeps
+// it out of tool plans until incremental function-call deltas are decoded.
 export const GEMMA4_ADAPTER_ID = 'google-gemma4'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID =
@@ -287,9 +287,10 @@ const LANE_PLAN_BY_CLASS: Readonly<
 // The conversational plan LEADS with our own Gemma 4 gcloud lane (owner decision
 // 2026-07-09: "we are going to use Gemma 4 via our gcloud primarily"), then
 // overflows to the Vertex Gemini gcloud lane, Fireworks, and the owned GLM lane.
-// Gemma has no tool calling, so this lane leads ONLY the conversational plan;
-// tool-bearing Khala requests use the agent-tool plan (GLM-led) below and never
-// touch Gemma (selectAdapterPlanForKhalaToolRequest excludes it).
+// The generic incremental gateway uses Gemma only in its conversational plan;
+// tool-bearing Khala requests use the agent-tool plan below until Gemma's
+// incremental function-call deltas are decoded. Buffered Sarah calls are a
+// separate supported path.
 const KHALA_CONVERSATIONAL_ADAPTER_PLAN: ReadonlyArray<string> = [
   GEMMA4_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -661,18 +662,12 @@ export type ProviderRoutingSignalsOracle = (
 ) => ProviderRoutingSignals | undefined
 
 export type ProviderLaneHealth =
-  | 'degraded'
-  | 'healthy'
-  | 'quarantined'
-  | 'unhealthy'
+  'degraded' | 'healthy' | 'quarantined' | 'unhealthy'
 
 export type ProviderWarmState = 'cold' | 'unknown' | 'warm'
 
 export type InferenceDemandClass =
-  | 'batch'
-  | 'external'
-  | 'internal_stress'
-  | 'keep_warm'
+  'batch' | 'external' | 'internal_stress' | 'keep_warm'
 
 export type DispatchRetryPolicy = Readonly<{
   maxRetriesPerLane: number
@@ -762,10 +757,7 @@ export type DispatchDeps = Readonly<{
   // Optional last-mile request mapper. Use this when a virtual public model
   // routes across heterogeneous provider lanes whose native model ids differ.
   requestForAdapter?:
-    | ((
-        request: InferenceRequest,
-        adapterId: string,
-      ) => InferenceRequest)
+    | ((request: InferenceRequest, adapterId: string) => InferenceRequest)
     | undefined
   backoff?: OverflowBackoff | undefined
   // Injected delay (defaults to Effect.sleep). Tests pass `() => Effect.void`.
@@ -978,8 +970,7 @@ const recordFailureTelemetry = (
   telemetry?.(event)
 }
 
-const GLM_OWN_CAPACITY_DOWN_ALERT =
-  'GLM own-capacity down — failover active'
+const GLM_OWN_CAPACITY_DOWN_ALERT = 'GLM own-capacity down — failover active'
 
 const GLM_ROUTE_HEADROOM_FAILURE_KINDS = new Set([
   'route_admission_reserved_headroom_unavailable',
@@ -1147,14 +1138,10 @@ const attemptAdapterWithRetry = <A>(
       if (attempt > 0) {
         yield* input.sleep(backoffDelayMs(input.backoff, attempt - 1))
       }
-      const outcome = yield* input
-        .operation(input.adapter, input.request)
-        .pipe(
-          Effect.map(value => ({ ok: true as const, value })),
-          Effect.catch(error =>
-            Effect.succeed({ error, ok: false as const }),
-          ),
-        )
+      const outcome = yield* input.operation(input.adapter, input.request).pipe(
+        Effect.map(value => ({ ok: true as const, value })),
+        Effect.catch(error => Effect.succeed({ error, ok: false as const })),
+      )
       if (outcome.ok) {
         return outcome
       }

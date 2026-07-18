@@ -29,13 +29,18 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "SARAH-AC-07",
       "SARAH-AC-08",
       "SARAH-AC-09",
-      "SARAH-AC-10"
+      "SARAH-AC-10",
+      "SARAH-AC-11",
+      "SARAH-AC-12",
+      "SARAH-AC-13",
+      "SARAH-AC-14",
+      "SARAH-AC-15"
     ],
-    "document_digest": "sha256:4fe225347dd88c6a0420f2b4749c6647f58f5494b92318dfbcb9254a05d016fc",
+    "document_digest": "sha256:a3d84b6b86f2214c2f24151219bab12e4d442b649c01d9ee28d895429bdea287",
     "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 1
+    "spec_revision": 2
   }
 }
 ```
@@ -193,6 +198,61 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:5d8960f426ae9487115bd61b5636e9e47d44b340d37c2bd091b9218870e4c5d5",
     "source_claim_snapshot": "Revocation or supersession stops new actions immediately;\nan in-flight action reaches only its safest bounded checkpoint.",
     "title": "Assure SARAH-AC-10"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-11"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-11-01",
+    "source_claim_digest": "sha256:0fa2aba6cbb0b3f6e419ec66b62c8741b06b444cee3dbf07d0aca0b23d335c8b",
+    "source_claim_snapshot": "Gemma 4 function calls are decoded through the normalized\ninference contract, bounded to six tool rounds, and replay assistant calls\nplus tool results without exposing thought text, raw credentials, or\nunbounded output.",
+    "title": "Assure SARAH-AC-11"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-12"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-12-01",
+    "source_claim_digest": "sha256:2431158e771f83589ece9d993fcf61ea07790a1550bdc1fd8185213b1e45f7e7",
+    "source_claim_snapshot": "Sarah can read owner-linked coding capacity and dispatch at\nmost eight Codex workers through the existing Khala/Pylon broker. Every real\ndispatch pins the exact current public `OpenAgentsInc/openagents` commit and\nreturns actual assignment refs; no linked capacity yields an honest blocker.",
+    "title": "Assure SARAH-AC-12"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-13"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-13-01",
+    "source_claim_digest": "sha256:07f26a6beb37e11d0deeb8f25a66ccd3648e67d02f0426c1c60a58abd016fa8a",
+    "source_claim_snapshot": "Sarah can read the owner's public-safe Full Auto projection\nand dispatch only pause, resume, or stop for an exact existing run. The\nserver result remains `pending` until Desktop applies or rejects it; pending\nis never described as an applied transition.",
+    "title": "Assure SARAH-AC-13"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-14"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-14-01",
+    "source_claim_digest": "sha256:92beca07c8b376aa750d7852bfb22939d373dcaeccbe4e999ee92e048fe22354",
+    "source_claim_snapshot": "Every tool call emits ordered private runtime activity and\nan exact Sarah authority receipt. The final assistant answer follows those\nevents and distinguishes partial, pending, refused, failed, and completed\ntarget outcomes.",
+    "title": "Assure SARAH-AC-14"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-15"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-15-01",
+    "source_claim_digest": "sha256:a95d5bac6c7df52ffea041abc17186146cdf241403fa349ed93a9f070be08fc3",
+    "source_claim_snapshot": "Sarah receives no tool for remote Full Auto start, raw local\nworkspace selection, MemoHarness private-bank retrieval, during-run harness\nadaptation, candidate self-promotion, AssuranceSpec admission, or authority\nexpansion. The new FA-AC-69–76 lifecycle remains governed by its own\nunimplemented admission gates.",
+    "title": "Assure SARAH-AC-15"
   }
 ]
 ```

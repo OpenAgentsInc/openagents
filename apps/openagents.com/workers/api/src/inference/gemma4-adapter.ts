@@ -20,13 +20,12 @@
 //   - `usageMetadata.thoughtsTokenCount` maps to `usage.reasoningTokens` — exact
 //     only: mapped verbatim from the provider field, never invented. Google's
 //     `totalTokenCount` already INCLUDES thoughts, so we trust it as the total.
-//   - NO TOOL CALLING. Gemma exposes only generateContent/countTokens. This
-//     adapter is a NO-TOOLS lane: a tool-bearing request typed-fails RETRYABLY
-//     (`tool_calls_unsupported`) so `dispatchWithOverflow` moves it to a
-//     tool-capable lane (Vertex Gemini / Fireworks / GLM) instead of silently
-//     dropping the tools. The router ALSO keeps this id out of every tool plan
-//     (model-router.ts `selectAdapterPlanForKhalaToolRequest`); the adapter guard
-//     is defense-in-depth so the no-tools guarantee holds on every routing path.
+//   - BUFFERED FUNCTION CALLING. Gemma 4's Generative Language API accepts
+//     `functionDeclarations`, returns `functionCall` parts, and accepts
+//     `functionResponse` replay. `complete` and the buffered `stream` path
+//     preserve that typed loop. Incremental function-call deltas are not yet
+//     decoded from `streamGenerateContent`, so tool-bearing `streamSse` requests
+//     fail retryably instead of silently losing calls.
 //   - TINY OUTPUT BUDGET GUARD: thoughts draw from the same output budget, so a
 //     tiny `max_tokens` (e.g. the canary's 8) is entirely consumed by thoughts
 //     and the model emits ZERO visible text — which dispatch treats as an empty
@@ -50,12 +49,14 @@ import { parseJsonRecord } from '../json-boundary'
 import { DEFAULT_GEMMA4_MODEL_ID } from './gemma4-model'
 import {
   InferenceAdapterError,
+  type InferenceMessage,
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
   type InferenceStreamEvent,
   type InferenceStreamSource,
+  type InferenceToolCall,
   type InferenceUsage,
 } from './provider-adapter'
 
@@ -113,11 +114,13 @@ export type Gemma4AdapterConfig = Readonly<{
 type GemmaPart = {
   text?: string | undefined
   thought?: boolean | undefined
+  functionCall?: unknown
+  thoughtSignature?: unknown
 }
 
-// Whether a request carries tool/function material. Gemma cannot serve it, so the
-// adapter refuses (retryably) and the router keeps such requests off this lane.
-// Mirrors chat-completions-routes `isToolBearingKhalaRequest` so the two agree.
+// Whether a request carries tool/function material. Buffered completion serves
+// it; the true incremental stream still refuses until function-call deltas are
+// decoded from provider fragments.
 const requestCarriesTools = (request: InferenceRequest): boolean => {
   const params = request.passthroughParams
   const declaredTools = params['tools']
@@ -141,6 +144,108 @@ const requestCarriesTools = (request: InferenceRequest): boolean => {
 // else defaults to `user` (a safe, non-throwing default).
 const toGemmaRole = (role: string): 'user' | 'model' =>
   role === 'assistant' || role === 'model' ? 'model' : 'user'
+
+const sanitizeGemmaSchema = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(sanitizeGemmaSchema)
+  if (typeof value !== 'object' || value === null) return value
+  const output: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'additionalProperties' || key === '$schema') continue
+    output[key] = sanitizeGemmaSchema(child)
+  }
+  return output
+}
+
+type OpenAiToolDefinition = Readonly<{
+  type?: unknown
+  function?:
+    | Readonly<{
+        name?: unknown
+        description?: unknown
+        parameters?: unknown
+      }>
+    | undefined
+}>
+
+const buildGemmaTools = (
+  passthrough: Readonly<Record<string, unknown>>,
+):
+  | Readonly<{ tools: ReadonlyArray<unknown>; toolConfig: unknown }>
+  | undefined => {
+  const rawTools = passthrough['tools']
+  if (!Array.isArray(rawTools) || rawTools.length === 0) return undefined
+  const declarations = rawTools
+    .map((tool): Record<string, unknown> | null => {
+      const fn = (tool as OpenAiToolDefinition).function
+      if (typeof fn?.name !== 'string' || fn.name.trim() === '') return null
+      return {
+        name: fn.name,
+        ...(typeof fn.description === 'string'
+          ? { description: fn.description }
+          : {}),
+        ...(typeof fn.parameters === 'object' && fn.parameters !== null
+          ? { parameters: sanitizeGemmaSchema(fn.parameters) }
+          : {}),
+      }
+    })
+    .filter((value): value is Record<string, unknown> => value !== null)
+  if (declarations.length === 0) return undefined
+  const choice = passthrough['tool_choice']
+  const mode =
+    choice === 'none'
+      ? 'NONE'
+      : choice === 'required' || choice === 'any'
+        ? 'ANY'
+        : 'AUTO'
+  return {
+    toolConfig: { functionCallingConfig: { mode } },
+    tools: [{ functionDeclarations: declarations }],
+  }
+}
+
+const gemmaContentForMessage = (
+  message: InferenceMessage,
+): Record<string, unknown> => {
+  if (message.role === 'tool') {
+    return {
+      parts: [
+        {
+          functionResponse: {
+            name: message.name ?? 'tool',
+            response: parseJsonRecord(message.content) ?? {
+              content: message.content,
+            },
+          },
+        },
+      ],
+      role: 'user',
+    }
+  }
+  if (
+    message.role === 'assistant' &&
+    message.toolCalls !== undefined &&
+    message.toolCalls.length > 0
+  ) {
+    const parts: Array<Record<string, unknown>> =
+      message.content === '' ? [] : [{ text: message.content }]
+    for (const toolCall of message.toolCalls) {
+      parts.push({
+        functionCall: {
+          args: parseJsonRecord(toolCall.function.arguments) ?? {},
+          name: toolCall.function.name,
+        },
+        ...(toolCall.thoughtSignature === undefined
+          ? {}
+          : { thoughtSignature: toolCall.thoughtSignature }),
+      })
+    }
+    return { parts, role: 'model' }
+  }
+  return {
+    parts: [{ text: message.content }],
+    role: toGemmaRole(message.role),
+  }
+}
 
 const numberParam = (
   params: Readonly<Record<string, unknown>>,
@@ -194,10 +299,7 @@ const buildGemmaBody = (
       }
       continue
     }
-    contents.push({
-      parts: [{ text: message.content }],
-      role: toGemmaRole(message.role),
-    })
+    contents.push(gemmaContentForMessage(message))
   }
 
   const passthroughSystem = request.passthroughParams['system']
@@ -211,6 +313,11 @@ const buildGemmaBody = (
   }
   if (systemTexts.length > 0) {
     body['systemInstruction'] = { parts: systemTexts.map(text => ({ text })) }
+  }
+  const tooling = buildGemmaTools(request.passthroughParams)
+  if (tooling !== undefined) {
+    body['tools'] = tooling.tools
+    body['toolConfig'] = tooling.toolConfig
   }
   return body
 }
@@ -294,7 +401,9 @@ const parseUsage = (raw: unknown): InferenceUsage => {
   }
 }
 
-const partsOfFirstCandidate = (candidates: unknown): ReadonlyArray<GemmaPart> => {
+const partsOfFirstCandidate = (
+  candidates: unknown,
+): ReadonlyArray<GemmaPart> => {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return []
   }
@@ -332,6 +441,35 @@ const extractThoughtText = (candidates: unknown): string =>
     .map(part => part.text ?? '')
     .join('')
 
+const extractToolCalls = (
+  candidates: unknown,
+): ReadonlyArray<InferenceToolCall> | undefined => {
+  const calls: Array<InferenceToolCall> = []
+  partsOfFirstCandidate(candidates).forEach((part, index) => {
+    if (typeof part.functionCall !== 'object' || part.functionCall === null)
+      return
+    const call = part.functionCall as Record<string, unknown>
+    const name = call['name']
+    if (typeof name !== 'string' || name === '') return
+    calls.push({
+      function: {
+        arguments: JSON.stringify(call['args'] ?? {}),
+        name,
+      },
+      id:
+        typeof call['id'] === 'string' && call['id'] !== ''
+          ? call['id']
+          : `gemma4_call_${index}_${name}`,
+      type: 'function',
+      ...(typeof part.thoughtSignature === 'string' &&
+      part.thoughtSignature !== ''
+        ? { thoughtSignature: part.thoughtSignature }
+        : {}),
+    })
+  })
+  return calls.length === 0 ? undefined : calls
+}
+
 const extractFinishReason = (candidates: unknown): string => {
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return 'stop'
@@ -346,7 +484,10 @@ const extractFinishReason = (candidates: unknown): string => {
   return 'stop'
 }
 
-const servedModelFrom = (raw: Record<string, unknown>, fallback: string): string =>
+const servedModelFrom = (
+  raw: Record<string, unknown>,
+  fallback: string,
+): string =>
   typeof raw['modelVersion'] === 'string' && raw['modelVersion'] !== ''
     ? (raw['modelVersion'] as string)
     : fallback
@@ -382,7 +523,9 @@ const foldGemmaUsage = (
         ? reportedTotal
         : promptTokens + completionTokens + reasoningTokens,
     ...(reasoningTokens > 0 ? { reasoningTokens } : {}),
-    ...(cached === undefined || cached <= 0 ? {} : { cachedPromptTokens: cached }),
+    ...(cached === undefined || cached <= 0
+      ? {}
+      : { cachedPromptTokens: cached }),
   }
 }
 
@@ -544,18 +687,17 @@ export const makeGemma4Adapter = (
       : Effect.succeed(resolved)
   }
 
-  // The NO-TOOLS guard. A tool-bearing request cannot be served by Gemma; fail
-  // RETRYABLY so dispatch overflows to a tool-capable lane rather than dropping
-  // the tools. Defense-in-depth with the router's tool-plan exclusion.
-  const ensureNoTools = (
+  // The buffered path supports function calling. The true incremental stream
+  // does not yet decode functionCall deltas, so reject only that combination.
+  const ensureStreamToolsSupported = (
     request: InferenceRequest,
   ): Effect.Effect<void, InferenceAdapterError> =>
     requestCarriesTools(request)
       ? Effect.fail(
           adapterError({
-            kind: 'tool_calls_unsupported',
+            kind: 'streaming_tool_calls_unsupported',
             reason:
-              'retryable: Gemma 4 has no tool calling — overflowing tool-bearing request to a tool-capable lane',
+              'retryable: Gemma 4 buffered function calling is supported, but incremental function-call streaming is not yet decoded',
             retryable: true,
           }),
         )
@@ -566,7 +708,9 @@ export const makeGemma4Adapter = (
     method: 'generateContent' | 'streamGenerateContent',
   ): Effect.Effect<Response, InferenceAdapterError> =>
     Effect.gen(function* () {
-      yield* ensureNoTools(request)
+      if (method === 'streamGenerateContent') {
+        yield* ensureStreamToolsSupported(request)
+      }
       const apiKey = yield* ensureConfigured()
       const signal = request.abortSignal ?? safeSignal(timeoutMs)
       return yield* Effect.tryPromise({
@@ -636,10 +780,15 @@ export const makeGemma4Adapter = (
         )
       }
       const candidates = raw['candidates']
+      const toolCalls = extractToolCalls(candidates)
       return {
         content: extractVisibleText(candidates),
-        finishReason: extractFinishReason(candidates),
+        finishReason:
+          toolCalls === undefined
+            ? extractFinishReason(candidates)
+            : 'tool_calls',
         servedModel: servedModelFrom(raw, model),
+        ...(toolCalls === undefined ? {} : { toolCalls }),
         usage: parseUsage(raw['usageMetadata']),
       } satisfies InferenceResult
     })
@@ -656,6 +805,20 @@ export const makeGemma4Adapter = (
           const chunks: Array<InferenceStreamChunk> = []
           if (result.content !== '') {
             chunks.push({ contentDelta: result.content })
+          }
+          if (result.toolCalls !== undefined) {
+            chunks.push({
+              contentDelta: '',
+              toolCallDeltas: result.toolCalls.map((toolCall, index) => ({
+                function: {
+                  arguments: toolCall.function.arguments,
+                  name: toolCall.function.name,
+                },
+                id: toolCall.id,
+                index,
+                type: 'function' as const,
+              })),
+            })
           }
           chunks.push({
             contentDelta: '',
@@ -677,7 +840,9 @@ export const makeGemma4Adapter = (
       Effect.gen(function* () {
         const response = yield* postResponse(request, 'streamGenerateContent')
         if (!response.ok) {
-          return yield* Effect.fail(failForStatus(response.status, 'stream request'))
+          return yield* Effect.fail(
+            failForStatus(response.status, 'stream request'),
+          )
         }
         const body = response.body
         if (body === null) {

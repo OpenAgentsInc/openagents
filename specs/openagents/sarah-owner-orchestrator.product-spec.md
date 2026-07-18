@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Sarah Owner Orchestrator"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -18,7 +18,7 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_authority: "AUTHORITY.md revision 3 + docs/authority/SARAH_AUTHORITY.md revision 1"
+  openagents_authority: "AUTHORITY.md revision 4 + docs/authority/SARAH_AUTHORITY.md revision 2"
   openagents_source: "docs/transcripts/24Xsarah.md"
   openagents_assurance_level: "owner-private cross-resource orchestration"
 ---
@@ -52,6 +52,7 @@ in:
   - Sarah pinned inside the existing Effect Native OpenAgents mobile conversation UI
   - hosted Khala inference with Sarah's cited system context
   - brokered repository, Google Cloud, RC release, GitHub, and Forum operations under exact authority
+  - Gemma 4 buffered function calling for bounded owner-linked Codex worker dispatch/status and existing Full Auto run read/pause/resume/stop
 out:
   - a separate Sarah app, public web landing, prospect CRM, transcript database, provider dispatcher, or issue queue
   - avatar, video, ambient voice, GPU rendering, or public sales-persona infrastructure
@@ -62,6 +63,7 @@ cut:
   - destructive production customer-data operations
   - stable publication without current owner direction
   - invariant weakening, unsupported public claims, or self-amplification
+  - remote Full Auto start, raw local workspace selection, MemoHarness private experience-bank reads, during-run adaptation, or harness-candidate promotion
 ```
 
 ## User Experience
@@ -69,8 +71,9 @@ cut:
 After signing into OpenAgents mobile, the owner lands on Sarah unless an
 explicit restored coding session or active Full Auto run takes precedence.
 Sarah is pinned in the existing workspace drawer and uses the ordinary typed
-composer/transcript. The header says `Sarah — Owner orchestrator` with the
-effective authority revision. The owner can ask “what is the latest release?”,
+composer/transcript. The conversation header says only `Sarah`; authority and
+runtime details remain available through receipts and explicit status requests
+instead of consuming the chat header. The owner can ask “what is the latest release?”,
 “what is blocking Full Auto?”, “who is saying what?”, or “what should we do
 next?” Sarah answers from bounded source refs, marks stale/unavailable state,
 and proposes or delegates the narrow next action. She never claims an action
@@ -105,6 +108,27 @@ ran until a target receipt exists.
   state in owner-visible language.
 - **SARAH-AC-10:** Revocation or supersession stops new actions immediately;
   an in-flight action reaches only its safest bounded checkpoint.
+- **SARAH-AC-11:** Gemma 4 function calls are decoded through the normalized
+  inference contract, bounded to six tool rounds, and replay assistant calls
+  plus tool results without exposing thought text, raw credentials, or
+  unbounded output.
+- **SARAH-AC-12:** Sarah can read owner-linked coding capacity and dispatch at
+  most eight Codex workers through the existing Khala/Pylon broker. Every real
+  dispatch pins the exact current public `OpenAgentsInc/openagents` commit and
+  returns actual assignment refs; no linked capacity yields an honest blocker.
+- **SARAH-AC-13:** Sarah can read the owner's public-safe Full Auto projection
+  and dispatch only pause, resume, or stop for an exact existing run. The
+  server result remains `pending` until Desktop applies or rejects it; pending
+  is never described as an applied transition.
+- **SARAH-AC-14:** Every tool call emits ordered private runtime activity and
+  an exact Sarah authority receipt. The final assistant answer follows those
+  events and distinguishes partial, pending, refused, failed, and completed
+  target outcomes.
+- **SARAH-AC-15:** Sarah receives no tool for remote Full Auto start, raw local
+  workspace selection, MemoHarness private-bank retrieval, during-run harness
+  adaptation, candidate self-promotion, AssuranceSpec admission, or authority
+  expansion. The new FA-AC-69–76 lifecycle remains governed by its own
+  unimplemented admission gates.
 
 ## Success Metrics
 
@@ -144,7 +168,9 @@ ran until a target receipt exists.
 
 ## Owner Gates
 
-The current owner direction admits revision 1 and the mobile OTA. Only a
+The current owner direction admits revision 2 and the server runtime deploy.
+The mobile UI already consumes ordered runtime events, so no new mobile OTA is
+required for this server-side tool rollout. Only a
 future expansion into reserved financial, legal/people, destructive-data,
 human-identity, over-budget, or stable-release authority requires another
 owner direction and profile revision.
@@ -156,7 +182,9 @@ owner direction and profile revision.
 - Cited-context source/freshness ledger without raw source secrets.
 - Existing repository, GCP, Full Auto, release, GitHub, and Forum receipts by
   reference rather than duplication.
-- Mobile OTA manifest/digest and production route smoke.
+- Production route, hosted-turn, tool-activity, authority-receipt, and target-
+  broker smoke receipts. No mobile artifact receipt is required when the
+  already-installed client consumes the unchanged runtime-event contract.
 
 ## Promise Links
 

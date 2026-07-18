@@ -1,10 +1,10 @@
-import { decodePushRequest } from "@openagentsinc/khala-sync";
 import { resolveAuthorityDecision } from "@openagentsinc/authority";
+import { decodePushRequest } from "@openagentsinc/khala-sync";
 import {
+  type SyncSql,
   chatMutators,
   executePush,
   makeMutatorRegistry,
-  type SyncSql,
 } from "@openagentsinc/khala-sync-server";
 import {
   ROOT_AUTHORITY_PROFILE_REF,
@@ -31,6 +31,7 @@ import type {
   MakeKhalaSyncPushSqlClient,
 } from "./khala-sync-push-routes";
 import { defaultMakeKhalaSyncSqlClient } from "./khala-sync-push-routes";
+import { currentDate, currentIsoTimestamp } from "./runtime-primitives";
 
 export const SARAH_OWNER_PATH = "/api/mobile/sarah";
 export const SARAH_OWNER_ROUTE_REF = "route.mobile.sarah.principal.v1";
@@ -98,8 +99,116 @@ export const hasSarahThreadAuthority = async (
        AND outcome = 'succeeded'
      LIMIT 1
   `;
-  return rows[0] !== undefined;
+  if (rows[0] !== undefined) return true;
+  const priorRows: Array<{ receipt_ref: string }> = await sql`
+    SELECT receipt_ref
+      FROM sarah_authority_decision_receipts
+     WHERE owner_user_id = ${ownerUserId}
+       AND thread_ref = ${threadRef}
+       AND profile_ref = ${SARAH_AUTHORITY_PROFILE_REF}
+       AND action_ref = 'maintain_owner_contact'
+       AND outcome = 'succeeded'
+     LIMIT 1
+  `;
+  if (priorRows[0] === undefined) return false;
+  await ensureSarahPrincipal(sql, ownerUserId);
+  return true;
 };
+
+export type SarahOperationAuthorityInput = Readonly<{
+  ownerUserId: string;
+  threadRef: string;
+  action: string;
+  resource: string;
+  triggerRef: string;
+  targetEvidenceRefs?: ReadonlyArray<string> | undefined;
+}>;
+
+export type SarahOperationAuthorityOutcome = Readonly<{
+  allowed: boolean;
+  receiptRef: string;
+  refusalReason?: string | undefined;
+}>;
+
+const publicRefSegment = (value: string): string =>
+  value.replaceAll(/[^A-Za-z0-9_.:-]/g, "_").slice(0, 120);
+
+/** Resolve and durably receipt one Sarah tool action before its target broker
+ * runs. The target still owns its own outcome: an allowed authority decision
+ * is never treated as proof that a worker dispatched or a Full Auto transition
+ * applied. */
+export const authorizeSarahOperation = (
+  sql: SyncSql,
+  input: SarahOperationAuthorityInput,
+): Effect.Effect<SarahOperationAuthorityOutcome, SarahOwnerStorageError> =>
+  Effect.gen(function* () {
+    const startedAt = currentDate();
+    const ownerScoped = yield* Effect.tryPromise({
+      try: () => hasSarahThreadAuthority(sql, input.ownerUserId, input.threadRef),
+      catch: (cause) => new SarahOwnerStorageError({ cause }),
+    });
+    const decision = yield* resolveAuthorityDecision(SARAH_RUNTIME_AUTHORITY_PROFILE, {
+      requestRef: `request.sarah.tool.${publicRefSegment(input.triggerRef)}`,
+      actorRef: "principal.sarah",
+      actorRole: "sarah_orchestrator",
+      action: input.action,
+      resource: input.resource,
+      programRef: "program.sarah_company_operations",
+      triggerRef: input.triggerRef,
+      conditionResults: [
+        {
+          conditionRef: "condition.owner_scope",
+          passed: ownerScoped,
+          evidenceRefs: ownerScoped ? [`owner_scope:${input.threadRef}`] : [],
+        },
+        {
+          conditionRef: "condition.redaction",
+          passed: true,
+          evidenceRefs: ["schema:openagents.sarah.tool_result.v1"],
+        },
+        {
+          conditionRef: "condition.existing_runtime_gate",
+          passed: true,
+          evidenceRefs: ["gate:typed_target_broker"],
+        },
+        {
+          conditionRef: "condition.rollback",
+          passed: true,
+          evidenceRefs: ["gate:target_lifecycle_control"],
+        },
+      ],
+      startedAt: startedAt.toISOString(),
+    }).pipe(Effect.mapError((cause) => new SarahOwnerStorageError({ cause })));
+    const receiptRef = [
+      "receipt.authority.sarah.tool",
+      input.threadRef.slice(-24),
+      publicRefSegment(input.action),
+      publicRefSegment(input.triggerRef).slice(-48),
+    ].join(".");
+    const settledAt = currentIsoTimestamp();
+    const allowed = decision._tag === "Allowed";
+    yield* Effect.tryPromise({
+      try: () => sql`
+        INSERT INTO sarah_authority_decision_receipts
+          (receipt_ref, owner_user_id, thread_ref, profile_ref, profile_revision,
+           grant_ref, action_ref, outcome, evidence_refs_json, started_at, settled_at)
+        VALUES
+          (${receiptRef}, ${input.ownerUserId}, ${input.threadRef},
+           ${decision.profileRef}, ${decision.profileRevision},
+           ${allowed ? decision.grantRef : "grant.none"},
+           ${decision.request.action}, ${allowed ? "succeeded" : "refused"},
+           ${JSON.stringify(input.targetEvidenceRefs ?? [])}::text::jsonb,
+           ${startedAt.toISOString()}, ${settledAt})
+        ON CONFLICT (receipt_ref) DO NOTHING
+      `,
+      catch: (cause) => new SarahOwnerStorageError({ cause }),
+    });
+    return {
+      allowed,
+      receiptRef,
+      ...(allowed ? {} : { refusalReason: decision.reason }),
+    };
+  });
 
 export const ensureSarahPrincipal = async (
   sql: SyncSql,
@@ -179,7 +288,7 @@ export const ensureSarahPrincipal = async (
       (receipt_ref, owner_user_id, thread_ref, profile_ref, profile_revision,
        grant_ref, action_ref, outcome, evidence_refs_json, started_at, settled_at)
     VALUES
-      (${`receipt.authority.sarah.bootstrap.${threadRef.slice(-24)}`},
+      (${`receipt.authority.sarah.bootstrap.${threadRef.slice(-24)}.rev${SARAH_AUTHORITY_REVISION}`},
        ${ownerUserId}, ${threadRef}, ${decision.profileRef},
        ${decision.profileRevision}, ${decision.grantRef},
        ${decision.request.action}, 'succeeded',

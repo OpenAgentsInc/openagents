@@ -1,7 +1,7 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 3
+authority_revision: 4
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
 admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
@@ -30,6 +30,16 @@ business context, recommend and prioritize company work, delegate work through
 existing claims, and invoke the already-admitted repository, Google Cloud, RC,
 GitHub, Forum, Full Auto, and mobile capability brokers. This is a named role
 over the same controls, not a credential dump or a second source of authority.
+
+Revision 4 admits the owner's current direction that Sarah operate two exact
+runtime brokers herself: bounded coding-worker dispatch through the owner's
+already-linked Pylon capacity, and pause/resume/stop supervision of an existing
+owner Full Auto run. A coding dispatch is real only when the broker returns
+actual assignment refs pinned to an exact public repository commit. A Full Auto
+control is pending until the owner Desktop applies its durable intent. This
+revision does not admit a remote Full Auto start path, private MemoHarness bank
+access, in-run adaptation, candidate self-promotion, assurance self-admission,
+or generic shell/database/cloud superuser authority.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -102,8 +112,8 @@ higher authority. The format and resolution laws live in
   {
     "id": "grant.sarah_company_orchestration",
     "roles": ["sarah_orchestrator"],
-    "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
-    "resources": ["owner_private_conversation", "owner_business_context", "company_priority_ledger", "OpenAgentsInc/openagents", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
+    "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
+    "resources": ["owner_private_conversation", "owner_business_context", "company_priority_ledger", "OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
     "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.citations", "condition.existing_runtime_gate", "condition.verification", "condition.redaction", "condition.rollback"]
   },
@@ -282,3 +292,9 @@ Her effective authority is always the intersection of this root profile,
 [`docs/authority/SARAH_AUTHORITY.md`](docs/authority/SARAH_AUTHORITY.md), the
 selected program, and the exact capability adapter. She can see redacted
 business state and make broad recommendations; only admitted adapters act.
+
+Revision 4 makes the coding-worker and existing-run-control adapters admitted
+Sarah capabilities under the same intersection. It does not turn tool
+availability into success: assignment refs prove worker dispatch, and an
+applied Desktop outcome proves a Full Auto transition. Pending, refused,
+unavailable, and partial outcomes stay visible as such.

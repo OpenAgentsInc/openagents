@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "510b828ae8e47b222a003fff8c4af431075b05daafac760dd25faed4a62a6033",
+  "sourceTreeSha256": "6e88f99679c6e97a8e0f98a210cb7c7bed73117f6067fb7277fe994218317362",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2144,7 +2144,7 @@
       "owner": "OpenAgents delegated autonomy",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "d3512830b56c2d49bc35011099e2f4a29b73eb3713b66e4b171fbe6bdf2386d5",
+      "sha256": "6ba37f76624e730dc57e4ad66131f5b0a5655ed496f008b88d84b92d5a381eba",
       "status": "active",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
@@ -2166,6 +2166,25 @@
         8979,
         8993
       ]
+    },
+    {
+      "path": "docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md",
+      "class": "authority",
+      "owner": "OpenAgents Sarah owner orchestration",
+      "disposition": "retain-active-authority",
+      "dispatch": false,
+      "sha256": "2516d32701a6fc89117d21de752aa5d65aa9d5dba45f878f844a7aee706edef8",
+      "status": "active",
+      "snapshot": "2026-07-18",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md",
+        "docs/sol/README.md",
+        "docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md"
+      ],
+      "inboundSourceCount": 3,
+      "issueLinks": []
     },
     {
       "path": "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
@@ -2298,6 +2317,7 @@
         "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md",
         "docs/mvp/README.md",
         "docs/qa/README.md",
+        "docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md",
         "docs/sol/2026-07-10-episode-195-followup-analysis.md",
         "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
         "docs/sol/2026-07-10-terra-execution-lane.md",
@@ -2334,7 +2354,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 48,
+      "inboundSourceCount": 49,
       "issueLinks": [
         8547,
         8566,
@@ -2420,7 +2440,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "7841f50fcf7c4b2ad6e5cf54a1bcff1e862bb5382f983bae64a8e3eed2ea54b8",
+      "sha256": "b001d92177c72609c9c18ae54f51be47901dedbcff4f9e616f638bee96ef18c7",
       "status": "current",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2475,7 +2495,7 @@
       "owner": "Sol owner decisions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "e232eaace8f931c88c09dd5925c3b3f160e713fa6e5652ec3277461185b74f81",
+      "sha256": "7a721e2d20413979fa017c0147869b366460c1211222267c799ba4f13149fdd9",
       "status": "current binding decision record",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3688,6 +3708,26 @@
       "inboundLinks": [],
       "inboundSourceCount": 0,
       "issueLinks": []
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-18-desktop-rc21-publication.md",
+      "class": "receipt",
+      "owner": "OpenAgents Desktop RC21 publication",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "a5128fbb9e4b608caec329802375dd4b20c33e52d2f4c883ca9c6d27be9fbbdd",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        8917,
+        8926,
+        8993,
+        8995
+      ]
     },
     {
       "path": "docs/sol/receipts/2026-07-18-full-auto-real-owner-acceptance.md",

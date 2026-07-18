@@ -1,5 +1,3 @@
-import { describe, expect, test } from 'vitest'
-
 import {
   ClientGroupId,
   ClientId,
@@ -17,6 +15,7 @@ import {
   CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
   CHAT_CREATE_THREAD_MUTATOR_NAME,
   CHAT_RENAME_THREAD_MUTATOR_NAME,
+  CHAT_SET_THREAD_STATUS_MUTATOR_NAME,
   RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   RUNTIME_CLOSE_TURN_MUTATOR_NAME,
   RUNTIME_CONTINUE_TURN_MUTATOR_NAME,
@@ -25,14 +24,15 @@ import {
   RUNTIME_RETRY_TURN_MUTATOR_NAME,
   RUNTIME_START_TURN_MUTATOR_NAME,
 } from '@openagentsinc/khala-sync-server'
+import { describe, expect, test } from 'vitest'
 
 import {
-  debugEchoMutator,
-  decodeDebugEchoArgs,
-  makeKhalaSyncWorkerMutatorRegistry,
   SYNC_DEBUG_ECHO_ENTITY_TYPE,
   SYNC_DEBUG_ECHO_MUTATOR_NAME,
   SYNC_DEBUG_ECHO_SCOPE_REJECTION,
+  debugEchoMutator,
+  decodeDebugEchoArgs,
+  makeKhalaSyncWorkerMutatorRegistry,
 } from './khala-sync-mutators'
 
 const makeFakeWriter = () => {
@@ -52,7 +52,10 @@ const makeFakeWriter = () => {
   return { appended, writer }
 }
 
-const makeCtx = (userId: string, writer: SyncTransactionWriter): MutatorContext => ({
+const makeCtx = (
+  userId: string,
+  writer: SyncTransactionWriter,
+): MutatorContext => ({
   clientGroupId: ClientGroupId.make('cg-1'),
   clientId: ClientId.make('c-1'),
   mutationId: MutationId.make(7),
@@ -69,6 +72,7 @@ describe('khala sync worker mutator registry', () => {
       CHAT_CREATE_THREAD_MUTATOR_NAME,
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
+      CHAT_SET_THREAD_STATUS_MUTATOR_NAME,
       CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
       'chat.pinCodexContinuity',
       'coding.publishCatalog',

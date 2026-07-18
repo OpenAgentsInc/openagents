@@ -276,8 +276,8 @@ describe('model classification', () => {
       VERTEX_GEMINI_ADAPTER_ID,
     ])
     expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
-    // NO-TOOLS GUARD: Gemma 4 has no tool calling, so it must never appear in a
-    // tool-bearing plan even though it LEADS the conversational base plan.
+    // The generic gateway is incremental and does not yet decode Gemma function
+    // call deltas. Buffered Sarah function calls use the adapter directly.
     expect(plan).not.toContain(GEMMA4_ADAPTER_ID)
   })
 
@@ -420,7 +420,11 @@ describe('lane plan ordering (cheapest viable first, then overflow)', () => {
       dispatchWithOverflow(
         request('kimi-k2p6'),
         (adapter, req) => adapter.complete(req),
-        { plan: selectAdapterPlan, registry, sleep: () => Effect.void },
+        {
+          plan: selectAdapterPlan,
+          registry,
+          sleep: () => Effect.void,
+        },
       ),
     )
     expect(outcome._tag).toBe('Success')
@@ -744,7 +748,9 @@ describe('dispatchWithOverflow', () => {
       expect(result.success.route.primaryAdapterId).toBe(
         VERTEX_GEMINI_ADAPTER_ID,
       )
-      expect(result.success.route.servedAdapterId).toBe(VERTEX_GEMINI_ADAPTER_ID)
+      expect(result.success.route.servedAdapterId).toBe(
+        VERTEX_GEMINI_ADAPTER_ID,
+      )
     }
     expect(glm.calls()).toBe(0)
     expect(gemini.calls()).toBe(1)
@@ -1199,17 +1205,33 @@ describe('dispatchWithOverflow', () => {
     }
 
     const first = await runResult(
-      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        deps,
+      ),
     )
     const second = await runResult(
-      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        deps,
+      ),
     )
     const third = await runResult(
-      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        deps,
+      ),
     )
     recovered = true
     const fourth = await runResult(
-      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        deps,
+      ),
     )
 
     expect(first._tag).toBe('Success')
@@ -1405,7 +1427,9 @@ describe('dispatchWithOverflow', () => {
         primaryAdapterId: VERTEX_GEMINI_ADAPTER_ID,
         servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
       })
-      expect(result.success.value.value.content).toBe('Gemini warm primary answer')
+      expect(result.success.value.value.content).toBe(
+        'Gemini warm primary answer',
+      )
       expect(result.success.value.value.servedModel).toBe('gemini-3.5-flash')
     }
     expect(glm.calls()).toBe(0)
@@ -1416,9 +1440,7 @@ describe('dispatchWithOverflow', () => {
   })
 
   test('conversational Khala falls through Vertex Gemini and Fireworks before trying GLM', async () => {
-    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
-      undefined,
-    ])
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [undefined])
     const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [
       err(VERTEX_GEMINI_ADAPTER_ID, true, 503),
     ])
@@ -1687,10 +1709,18 @@ describe('multi-lane fan-out (throughput unlock)', () => {
   test('non-Khala models never fan out (default routing unchanged)', () => {
     const base = ['lane-a', 'lane-b', 'lane-c']
     expect(
-      selectAdapterPlanForKhalaMultiLaneBurnRequest('claude-3-5-sonnet', base, 1),
+      selectAdapterPlanForKhalaMultiLaneBurnRequest(
+        'claude-3-5-sonnet',
+        base,
+        1,
+      ),
     ).toEqual(base)
     expect(
-      selectAdapterPlanForKhalaMultiLaneBurnRequest('gemini-3.5-flash', base, 2),
+      selectAdapterPlanForKhalaMultiLaneBurnRequest(
+        'gemini-3.5-flash',
+        base,
+        2,
+      ),
     ).toEqual(base)
   })
 })

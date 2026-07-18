@@ -5,6 +5,7 @@ import {
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
 } from '@openagentsinc/khala-sync-server'
+import { buildSarahSystemPrompt } from '@openagentsinc/sarah'
 import {
   type WorkerBindings,
   badRequest,
@@ -193,12 +194,6 @@ import {
   AUDIO_GRANT_ISSUE_PATH,
   handleAudioGrantIssueRequest,
 } from './audio-grant-routes'
-import {
-  DESKTOP_CODEX_USAGE_ADMISSION_PATH,
-  DESKTOP_CODEX_USAGE_INGEST_PATH,
-  makeDesktopCodexUsageAdmissionRouteHandler,
-  makeDesktopCodexUsageRouteHandler,
-} from './desktop-codex-usage-routes'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -407,6 +402,12 @@ import {
 } from './customer-one-cohort-routes'
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
+import {
+  DESKTOP_CODEX_USAGE_ADMISSION_PATH,
+  DESKTOP_CODEX_USAGE_INGEST_PATH,
+  makeDesktopCodexUsageAdmissionRouteHandler,
+  makeDesktopCodexUsageRouteHandler,
+} from './desktop-codex-usage-routes'
 import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
 import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
@@ -461,6 +462,14 @@ import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
 import {
+  FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
+  makeFullAutoRunControlRoutes,
+} from './full-auto-run-control-routes'
+import {
+  FULL_AUTO_RUNS_PATH,
+  makeFullAutoRunRoutes,
+} from './full-auto-run-routes'
+import {
   GitHubScmAuthBrokerDependencyFailed,
   routeGitHubScmAuthBrokerRequest,
 } from './github-scm-auth-broker-routes'
@@ -510,6 +519,7 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
+import type { ExactRoute } from './http/router'
 import {
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
@@ -972,6 +982,7 @@ import {
 } from './promise-transition-receipt-routes'
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
+import { ProviderAccountStorageFailed } from './provider-account-errors'
 import {
   MOBILE_CLAUDE_ACCOUNTS_PATH,
   MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
@@ -992,7 +1003,6 @@ import {
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
 } from './provider-account-token-custody'
-import { ProviderAccountStorageFailed } from './provider-account-errors'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
   ANTHROPIC_CLAUDE_PROVIDER,
@@ -1097,7 +1107,6 @@ import {
   makeQaSwarmProjectionRoutes,
 } from './qa-swarm-projection-routes'
 import { handleReactLandingPage } from './react-landing-routes'
-import type { ExactRoute } from './http/router'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -1128,26 +1137,19 @@ import {
   epochMillisToIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
-import {
-  FULL_AUTO_RUNS_PATH,
-  makeFullAutoRunRoutes,
-} from './full-auto-run-routes'
-import { buildSarahSystemPrompt } from '@openagentsinc/sarah'
+import { runSarahAgentTurn } from './sarah-agent-runtime'
 import { collectSarahBusinessContext } from './sarah-business-context'
-import {
-  SARAH_OWNER_PATH,
-  hasSarahThreadAuthority,
-  makeSarahOwnerRoutes,
-} from './sarah-owner-routes'
-import {
-  FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
-  makeFullAutoRunControlRoutes,
-} from './full-auto-run-control-routes'
 import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
 } from './sarah-fleet-run-routes'
+import {
+  SARAH_OWNER_PATH,
+  hasSarahThreadAuthority,
+  makeSarahOwnerRoutes,
+} from './sarah-owner-routes'
+import { makeSarahRuntimeTools } from './sarah-runtime-tools'
 import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
@@ -2989,9 +2991,7 @@ const teamAutopilotFileExcerpt = async (
 
       return compactTeamContextText(text, TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS)
     }).pipe(
-      Effect.provide(
-        ThreadFileArtifacts.layer(artifactsBucketForEnv(env)),
-      ),
+      Effect.provide(ThreadFileArtifacts.layer(artifactsBucketForEnv(env))),
       Effect.catchTag('ArtifactOperationError', () =>
         Effect.sync((): undefined => undefined),
       ),
@@ -5232,8 +5232,10 @@ const gcpDispatchConfig = (env: OpenAgentsWorkerEnv) => {
     controlApiBearerToken,
     controlApiUrl,
     dispatchMode:
-      controlApiUrl !== undefined && controlApiUrl !== '' &&
-      controlApiBearerToken !== undefined && controlApiBearerToken !== ''
+      controlApiUrl !== undefined &&
+      controlApiUrl !== '' &&
+      controlApiBearerToken !== undefined &&
+      controlApiBearerToken !== ''
         ? 'live'
         : 'unconfigured',
   }
@@ -6759,42 +6761,6 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   ) {
     return
   }
-  const complete: HostedRuntimeCompleteFn = async ({
-    images,
-    prompt,
-    system,
-  }) => {
-    const result = await artanisMindComplete({
-      apiKey,
-      model: DEFAULT_HOSTED_RUNTIME_MODEL,
-      prompt,
-      system,
-      ...(images === undefined ? {} : { images }),
-    })
-    if ('error' in result) {
-      // Surface the real reason (path/status/detail) instead of an opaque
-      // 'artanis_mind_unavailable' so a broken inference path is diagnosable
-      // from the turn's failure log rather than a mystery.
-      let detail = 'artanis_mind_unavailable'
-      try {
-        detail = `artanis_mind: ${JSON.stringify(result.error).slice(0, 300)}`
-      } catch {
-        /* keep the fallback detail */
-      }
-      logWorkerRouteWarning('hosted_runtime_inference_failed', { detail })
-      return { detail, ok: false }
-    }
-    // Exact usage from Gemini's usageMetadata receipt (null when the provider
-    // reported none => no metering row for this turn; exact-only money path).
-    const usage =
-      result.usage === null
-        ? undefined
-        : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
-    return usage === undefined
-      ? { ok: true, text: result.text }
-      : { ok: true, text: result.text, usage }
-  }
-
   // Exact provider usage recording for the hosted lane. This preserves the
   // historical usage projection without pricing, charging, or settlement.
   const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
@@ -6803,6 +6769,119 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   })
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
+    const sarahKhalaCatalog = makeKhalaMcpCatalog<OpenAgentsWorkerEnv>({
+      agentStore: environment => makeAgentRegistrationStoreForEnv(environment),
+      pylonStore: environment => makePylonApiStoreForEnv(environment),
+      recordTokensServed: environment =>
+        makeKhalaMcpServedTokensRecorder(
+          ledgerDirectInsertDatabaseForEnv(environment),
+          {
+            mirrorRow: row =>
+              mirrorTokenLedgerDirectInsertBestEffort(environment, row),
+            onIngestedEvent: makeTokensServedProjectionObserver(environment),
+          },
+        ),
+    })
+    const gemma4 = makeGemma4Adapter({
+      apiKey: () => Redacted.make(apiKey),
+      model: DEFAULT_HOSTED_RUNTIME_MODEL,
+    })
+    const complete: HostedRuntimeCompleteFn = async ({
+      images,
+      onToolActivity,
+      prompt,
+      responsePresentation,
+      system,
+      turn,
+    }) => {
+      if (responsePresentation === 'owner_conversation') {
+        if (images !== undefined && images.length > 0) {
+          const result = await artanisMindComplete({
+            apiKey,
+            images,
+            model: DEFAULT_HOSTED_RUNTIME_MODEL,
+            prompt,
+            system,
+          })
+          if ('error' in result) {
+            logWorkerRouteWarning('sarah_image_inference_failed', {
+              turnId: turn.turnId,
+            })
+            return { detail: 'sarah_image_inference_failed', ok: false }
+          }
+          const usage =
+            result.usage === null
+              ? undefined
+              : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
+          return usage === undefined
+            ? { ok: true, text: result.text }
+            : { ok: true, text: result.text, usage }
+        }
+        const result = await Effect.runPromise(
+          runSarahAgentTurn({
+            adapter: gemma4,
+            model: DEFAULT_HOSTED_RUNTIME_MODEL,
+            onToolActivity: activity =>
+              Effect.promise(() => onToolActivity(activity)),
+            prompt,
+            system,
+            tools: makeSarahRuntimeTools({
+              env,
+              khalaCatalog: sarahKhalaCatalog,
+              ownerUserId: turn.ownerUserId,
+              sql: client.sql,
+              threadRef: turn.threadId,
+              turnId: turn.turnId,
+            }),
+          }),
+        ).catch(error => {
+          logWorkerRouteWarning('sarah_agent_runtime_failed', {
+            detail: error instanceof Error ? error.message : 'unknown',
+            turnId: turn.turnId,
+          })
+          return null
+        })
+        if (result === null)
+          return { detail: 'sarah_agent_runtime_failed', ok: false }
+        return {
+          ok: true,
+          text: result.text,
+          usage: {
+            cacheReadTokens: result.usage.cachedPromptTokens ?? 0,
+            inputTokens: result.usage.promptTokens,
+            outputTokens: result.usage.completionTokens,
+            reasoningTokens: result.usage.reasoningTokens ?? 0,
+            totalTokens: result.usage.totalTokens,
+          },
+        }
+      }
+
+      const result = await artanisMindComplete({
+        apiKey,
+        model: DEFAULT_HOSTED_RUNTIME_MODEL,
+        prompt,
+        system,
+        ...(images === undefined ? {} : { images }),
+      })
+      if ('error' in result) {
+        let detail = 'artanis_mind_unavailable'
+        try {
+          detail = `artanis_mind: ${JSON.stringify(result.error).slice(0, 300)}`
+        } catch {
+          /* keep the fallback detail */
+        }
+        logWorkerRouteWarning('hosted_runtime_inference_failed', { detail })
+        return { detail, ok: false }
+      }
+      const usage =
+        result.usage === null
+          ? undefined
+          : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
+      return usage === undefined
+        ? { ok: true, text: result.text }
+        : { ok: true, text: result.text, usage }
+    }
+
     const summary = await runHostedRuntimeTurnDispatch({
       complete,
       prepareTurn: async ({ prompt, system, turn }) => {
@@ -6906,7 +6985,9 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           turn.commit,
         )
         if (resolvedCommit === null) {
-          throw new ManagedCloudDispatchError({ message: 'managed_cloud_repository_ref_unresolved' })
+          throw new ManagedCloudDispatchError({
+            message: 'managed_cloud_repository_ref_unresolved',
+          })
         }
         const [accounts, githubConnection] = await Promise.all([
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
@@ -6919,13 +7000,17 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
             candidate.health === 'healthy',
         )
         if (account === undefined) {
-          throw new ManagedCloudDispatchError({ message: 'managed_cloud_owner_codex_grant_unavailable' })
+          throw new ManagedCloudDispatchError({
+            message: 'managed_cloud_owner_codex_grant_unavailable',
+          })
         }
         if (
           githubConnection === undefined ||
           !hasRequiredGitHubWriteScopes(githubConnection.scopes)
         ) {
-          throw new ManagedCloudDispatchError({ message: 'managed_cloud_github_write_authority_unavailable' })
+          throw new ManagedCloudDispatchError({
+            message: 'managed_cloud_github_write_authority_unavailable',
+          })
         }
         const grant = await issueProviderAccountGrant(accountRepository, {
           providerAccountRef: account.providerAccountRef,
@@ -6936,7 +7021,9 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           workroomId: turn.workContextRef,
         })
         if (grant === undefined) {
-          throw new ManagedCloudDispatchError({ message: 'managed_cloud_owner_codex_grant_unavailable' })
+          throw new ManagedCloudDispatchError({
+            message: 'managed_cloud_owner_codex_grant_unavailable',
+          })
         }
         return {
           ...turn,
@@ -7102,17 +7189,18 @@ const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
   requireUserBearerSession,
   userIdFromSession: session => session.user.userId,
 })
-const handleDesktopCodexUsageAdmission = makeDesktopCodexUsageAdmissionRouteHandler({
-  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
-  admissionStore: (env: Env) => authKvStoreForEnv(env),
-  ledger: (env: Env) =>
-    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
-      onIngestedEvent: makeTokensServedProjectionObserver(env),
-      ...tokenLedgerWriteStoreOptionForEnv(env),
-    }),
-  requireUserBearerSession,
-  userIdFromSession: session => session.user.userId,
-})
+const handleDesktopCodexUsageAdmission =
+  makeDesktopCodexUsageAdmissionRouteHandler({
+    ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
+    admissionStore: (env: Env) => authKvStoreForEnv(env),
+    ledger: (env: Env) =>
+      makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+        onIngestedEvent: makeTokensServedProjectionObserver(env),
+        ...tokenLedgerWriteStoreOptionForEnv(env),
+      }),
+    requireUserBearerSession,
+    userIdFromSession: session => session.user.userId,
+  })
 
 const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
@@ -7135,7 +7223,6 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
       reason: 'khala_sync_storage_unconfigured' as const,
     }),
 })
-
 
 const syncDependencyErrorReason = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -7175,7 +7262,8 @@ const providerAccountPylonHandlers =
       if (postgres === undefined) {
         throw new ProviderAccountStorageFailed({
           operation: 'grant_repository_boot',
-          message: 'authoritative_postgres_provider_grant_repository_unavailable',
+          message:
+            'authoritative_postgres_provider_grant_repository_unavailable',
         })
       }
       return makeAuthoritativePostgresProviderGrantRepository(
@@ -7694,7 +7782,6 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
-
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   makeStore: env =>
     makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
@@ -7767,7 +7854,6 @@ const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
     requireAdminApiToken(request, env),
   requireBrowserSession,
 })
-
 
 const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   nowIso: currentIsoTimestamp,
@@ -8854,7 +8940,9 @@ const listManagedFleetCapacityForEnv = async (
   const workerEnv = env as OpenAgentsWorkerEnv
   const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
   if (postgresIdentity === undefined) {
-    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_identity_authority_unavailable' })
+    throw new ManagedFleetAuthorityError({
+      message: 'managed_fleet_identity_authority_unavailable',
+    })
   }
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
     makeProviderAccountRepositoryForEnv(env),
@@ -8909,14 +8997,18 @@ const dispatchManagedFleetUnitForEnv = async (
   const workerEnv = env as OpenAgentsWorkerEnv
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.trim() === '') {
-    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_storage_unavailable' })
+    throw new ManagedFleetAuthorityError({
+      message: 'managed_fleet_storage_unavailable',
+    })
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
     !/^[0-9a-f]{40}$/u.test(input.body.repository.commit) ||
     !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(input.body.workerAccountRef)
   ) {
-    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_invalid' })
+    throw new ManagedFleetAuthorityError({
+      message: 'managed_fleet_tuple_invalid',
+    })
   }
   const expectedFingerprint = await sha256Hex(
     JSON.stringify({
@@ -8933,13 +9025,17 @@ const dispatchManagedFleetUnitForEnv = async (
     }),
   )
   if (expectedFingerprint !== input.body.fingerprint) {
-    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_fingerprint_invalid' })
+    throw new ManagedFleetAuthorityError({
+      message: 'managed_fleet_tuple_fingerprint_invalid',
+    })
   }
   const expectedAssignmentRef = `assignment.pylon.managed_cloud.${(
     await sha256Hex(input.body.fingerprint)
   ).slice(0, 24)}`
   if (input.body.assignmentRef !== expectedAssignmentRef) {
-    throw new ManagedFleetAuthorityError({ message: 'managed_fleet_assignment_invalid' })
+    throw new ManagedFleetAuthorityError({
+      message: 'managed_fleet_assignment_invalid',
+    })
   }
 
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
@@ -8968,14 +9064,19 @@ const dispatchManagedFleetUnitForEnv = async (
     // `claimed_by_pylon`; the first execution batch advances it. Managed-unit
     // dispatch necessarily precedes that batch, so the accepted lease is the
     // authority here, not a circular `running` precondition.
-    if (row === undefined || !authorizesManagedFleetUnitDispatch({
-      acceptedRunLease: row.authorized === true,
-      runStatus: row.status,
-      runRef: input.runRef,
-      workUnitRef: input.body.workUnitRef,
-      unitClaimRef: input.body.claimRef,
-    })) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_authority_invalid' })
+    if (
+      row === undefined ||
+      !authorizesManagedFleetUnitDispatch({
+        acceptedRunLease: row.authorized === true,
+        runStatus: row.status,
+        runRef: input.runRef,
+        workUnitRef: input.body.workUnitRef,
+        unitClaimRef: input.body.claimRef,
+      })
+    ) {
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_authority_invalid',
+      })
     }
     const request = parseJsonUnknown(row.request_json) as {
       repository?: {
@@ -9011,12 +9112,16 @@ const dispatchManagedFleetUnitForEnv = async (
       request.verifier?.kind !== 'command' ||
       request.verifier.command !== input.body.verifierCommand
     ) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_tuple_not_authorized' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_tuple_not_authorized',
+      })
     }
 
     const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
     if (postgresIdentity === undefined) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_identity_authority_unavailable' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_identity_authority_unavailable',
+      })
     }
     const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
       makeProviderAccountRepositoryForEnv(env),
@@ -9045,7 +9150,9 @@ const dispatchManagedFleetUnitForEnv = async (
       githubConnection === undefined ||
       !hasRequiredGitHubWriteScopes(githubConnection.scopes)
     ) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_owner_authority_unavailable' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_owner_authority_unavailable',
+      })
     }
     const sessionId = `ccs.fleet.${input.body.fingerprint.slice(0, 24)}`
     const grant = await issueProviderAccountGrant(accountRepository, {
@@ -9056,7 +9163,10 @@ const dispatchManagedFleetUnitForEnv = async (
       userId: input.ownerUserId,
       workroomId: input.body.workUnitRef,
     })
-    if (grant === undefined) throw new ManagedFleetAuthorityError({ message: 'managed_fleet_grant_unavailable' })
+    if (grant === undefined)
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_grant_unavailable',
+      })
 
     minted = await mintCloudRuntimeExecutionToken(client.sql, {
       ownerUserId: input.ownerUserId,
@@ -9138,7 +9248,9 @@ const dispatchManagedFleetUnitForEnv = async (
       session.lifecycleReceiptRefs.length === 0 ||
       session.resourceUsageReceiptRefs.length === 0
     ) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_terminal_receipts_incomplete' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_terminal_receipts_incomplete',
+      })
     }
     const terminalBindingDigest = (
       await sha256Hex(
@@ -9219,7 +9331,9 @@ const dispatchManagedFleetUnitForEnv = async (
       stored.session_ref !== sessionId ||
       stored.work_unit_ref !== input.body.workUnitRef
     ) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_terminal_receipt_readback_failed' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_terminal_receipt_readback_failed',
+      })
     }
     const resolvedRefs: Array<{
       kind: string
@@ -9240,7 +9354,9 @@ const dispatchManagedFleetUnitForEnv = async (
       resolvedRefs.some(row => row.receipt_ref !== terminalReceiptRef) ||
       new Set(resolvedRefs.map(row => row.kind)).size !== 3
     ) {
-      throw new ManagedFleetAuthorityError({ message: 'managed_fleet_advertised_ref_readback_failed' })
+      throw new ManagedFleetAuthorityError({
+        message: 'managed_fleet_advertised_ref_readback_failed',
+      })
     }
     return {
       schema: 'openagents.pylon.managed_cloud_fleet_dispatch.result.v1',
@@ -10219,9 +10335,10 @@ inferenceProviderRegistry.register(
 // captured) — the SAME key sarah's google-inference service uses (#8594); we
 // reuse it, never mint a parallel one. INERT until the secret is present: with no
 // key the adapter returns a typed non-retryable error, and the route stays
-// flag-gated off via INFERENCE_GATEWAY_ENABLED regardless. Gemma has no tool
-// calling, so this lane leads ONLY the conversational plan; the router keeps it
-// out of every tool plan and the adapter refuses tool-bearing requests retryably.
+// flag-gated off via INFERENCE_GATEWAY_ENABLED regardless. The adapter supports
+// buffered Gemma function calls. The generic incremental gateway still keeps it
+// out of tool plans because `streamGenerateContent` function-call deltas are not
+// decoded; Sarah's bounded buffered runtime uses the supported path directly.
 inferenceProviderRegistry.register(
   makeGemma4Adapter({
     apiKey: () => {
@@ -10293,13 +10410,13 @@ const fullAutoRunRoutes = makeFullAutoRunRoutes<Env>({
 
 const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx);
+    const actor = await authenticateRequestActor(request, env, ctx)
     if (
       actor === undefined ||
-      actor.kind !== "human" ||
+      actor.kind !== 'human' ||
       !isOpenAgentsAdminEmail(actor.user.email)
     ) {
-      return undefined;
+      return undefined
     }
     return {
       userId: actor.user.userId,
@@ -10307,12 +10424,12 @@ const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!);
+              appendSessionCookies(headers, actor.tokens!)
             },
           }),
-    };
+    }
   },
-});
+})
 
 // MOB-FA-02 (#8994): the sibling Pause/Resume/Stop control-intent route --
 // same "is this a signed-in owner" authentication as the projection route
@@ -11470,7 +11587,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: SARAH_OWNER_PATH,
     handler: (request, env, ctx) =>
-      sarahOwnerRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
+      sarahOwnerRoutes
+        .handle(request, env, ctx)
+        .pipe(Effect.map(materializeHttpResult)),
   },
   // MOB-FA-02 (#8994): mobile dispatches (POST) and polls (GET) typed
   // Pause/Resume/Stop control intents here; Desktop pulls pending intents
@@ -13370,7 +13489,6 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
-
 ]
 
 const exactRouteRegistry = makeExactRouteRegistry(

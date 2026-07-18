@@ -1,11 +1,13 @@
-import { describe, expect, test } from 'vitest'
-
 import type { PushResponse } from '@openagentsinc/khala-sync'
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
+import { describe, expect, test } from 'vitest'
 
 import {
   DEFAULT_HOSTED_RUNTIME_SYSTEM_PROMPT,
   HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
+  type HostedRuntimeCompleteFn,
+  type HostedTurnUsage,
+  type QueuedHostedTurn,
   dispatchHostedRuntimeTurn,
   hostedRuntimeDispatchClientGroupIdForOwner,
   readQueuedHostedTurns,
@@ -13,9 +15,6 @@ import {
   recoverStaleRunningHostedTurns,
   resolveHostedTurnPrompt,
   runHostedRuntimeTurnDispatch,
-  type HostedRuntimeCompleteFn,
-  type HostedTurnUsage,
-  type QueuedHostedTurn,
 } from './khala-hosted-runtime-dispatch'
 
 // Regression for the "client group is bound to a different user" bug that
@@ -26,10 +25,14 @@ describe('hostedRuntimeDispatchClientGroupIdForOwner', () => {
   test('scopes the client group per owner and stays under the base prefix', () => {
     const a = hostedRuntimeDispatchClientGroupIdForOwner('github:300914913')
     const b = hostedRuntimeDispatchClientGroupIdForOwner('user_b02c2298')
-    expect(a).toBe(`${HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.github:300914913`)
+    expect(a).toBe(
+      `${HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.github:300914913`,
+    )
     expect(a).not.toBe(b)
     expect(a.startsWith(HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID)).toBe(true)
-    expect(hostedRuntimeDispatchClientGroupIdForOwner('github:300914913')).toBe(a)
+    expect(hostedRuntimeDispatchClientGroupIdForOwner('github:300914913')).toBe(
+      a,
+    )
   })
 })
 
@@ -51,19 +54,26 @@ type FakeTables = {
   /** turnId -> intent_json (or absent). */
   startIntents: Record<string, unknown>
   /** messageId -> body/attachments (or absent). */
-  chatMessages: Record<string, string | Readonly<{
-    body: string
-    attachments: ReadonlyArray<Record<string, unknown>>
-  }>>
+  chatMessages: Record<
+    string,
+    | string
+    | Readonly<{
+        body: string
+        attachments: ReadonlyArray<Record<string, unknown>>
+      }>
+  >
 }
 
 const makeFakeSql = (tables: FakeTables): SyncSql => {
   const sql = (strings: TemplateStringsArray, ...values: Array<unknown>) => {
     const text = strings.join(' ')
-    if (text.includes('FROM khala_sync_runtime_turns') && text.includes('status')) {
+    if (
+      text.includes('FROM khala_sync_runtime_turns') &&
+      text.includes('status')
+    ) {
       return Promise.resolve([
         ...(text.includes("status = 'running'")
-          ? tables.runningTurns ?? []
+          ? (tables.runningTurns ?? [])
           : tables.queuedTurns),
       ])
     }
@@ -82,7 +92,8 @@ const makeFakeSql = (tables: FakeTables): SyncSql => {
           ? []
           : [
               {
-                attachments_json: typeof value === 'string' ? [] : value.attachments,
+                attachments_json:
+                  typeof value === 'string' ? [] : value.attachments,
                 author_user_id: 'github:1',
                 body: typeof value === 'string' ? value : value.body,
                 created_at: '2026-07-06T00:00:00.000Z',
@@ -108,6 +119,9 @@ type RecordedEvent = {
   usage: Record<string, unknown> | undefined
   source: Record<string, unknown>
   clientId: string
+  toolName?: string | undefined
+  resultRef?: string | undefined
+  messageSafe?: string | undefined
 }
 
 const makeRecordingExecutePush = (
@@ -118,7 +132,10 @@ const makeRecordingExecutePush = (
     readonly userId: string
     readonly request: {
       readonly clientId: string
-      readonly mutations: ReadonlyArray<{ mutationId: number; argsJson: string }>
+      readonly mutations: ReadonlyArray<{
+        mutationId: number
+        argsJson: string
+      }>
     }
   }): Promise<PushResponse> => {
     const envelope = input.request.mutations[0]!
@@ -128,6 +145,9 @@ const makeRecordingExecutePush = (
       finishReason?: string
       usage?: Record<string, unknown>
       source: Record<string, unknown>
+      toolName?: string
+      resultRef?: string
+      messageSafe?: string
     }
     const rec: RecordedEvent = {
       clientId: input.request.clientId,
@@ -137,6 +157,9 @@ const makeRecordingExecutePush = (
       mutationId: envelope.mutationId,
       source: event.source,
       text: event.text,
+      toolName: event.toolName,
+      resultRef: event.resultRef,
+      messageSafe: event.messageSafe,
       userId: input.userId,
     }
     recorded.push(rec)
@@ -150,8 +173,10 @@ const makeRecordingExecutePush = (
   return { executePush: executePush as never, recorded }
 }
 
-const okComplete = (text: string): HostedRuntimeCompleteFn => () =>
-  Promise.resolve({ ok: true, text })
+const okComplete =
+  (text: string): HostedRuntimeCompleteFn =>
+  () =>
+    Promise.resolve({ ok: true, text })
 
 let uuidCounter = 0
 const deterministicUuid = () => `uuid-${(uuidCounter += 1)}`
@@ -208,12 +233,14 @@ describe('restart reconciliation', () => {
       '2026-07-06T00:00:00.000Z',
       8,
     )
-    expect(turns).toEqual([{
-      eventCount: 2,
-      ownerUserId: 'github:14167547',
-      threadId: 'thread.t1',
-      turnId: 'turn.running',
-    }])
+    expect(turns).toEqual([
+      {
+        eventCount: 2,
+        ownerUserId: 'github:14167547',
+        threadId: 'thread.t1',
+        turnId: 'turn.running',
+      },
+    ])
   })
 
   test('settles an abandoned worker generation as one interrupted event without inference', async () => {
@@ -222,12 +249,14 @@ describe('restart reconciliation', () => {
     const tables: FakeTables = {
       chatMessages: {},
       queuedTurns: [],
-      runningTurns: [{
-        event_count: 3,
-        owner_user_id: 'github:14167547',
-        thread_id: 'thread.t1',
-        turn_id: 'turn.running',
-      }],
+      runningTurns: [
+        {
+          event_count: 3,
+          owner_user_id: 'github:14167547',
+          thread_id: 'thread.t1',
+          turn_id: 'turn.running',
+        },
+      ],
       startIntents: {},
     }
     const deps = {
@@ -274,7 +303,10 @@ describe('resolveHostedTurnPrompt', () => {
   }
 
   test('resolves the prompt via bodyRef -> chat_message body', async () => {
-    const prompt = await resolveHostedTurnPrompt(makeFakeSql(oneQueuedTurn), turn)
+    const prompt = await resolveHostedTurnPrompt(
+      makeFakeSql(oneQueuedTurn),
+      turn,
+    )
     expect(prompt).toBe('Explain this codebase')
   })
 
@@ -320,10 +352,14 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(push.recorded.map(r => r.mutationId)).toEqual([1, 2, 3, 4])
     // every event recorded AS THE TURN OWNER.
     expect(push.recorded.every(r => r.userId === 'github:14167547')).toBe(true)
-    expect(push.recorded.every(r =>
-      r.source.modelRef === 'gemma-4-31b-it' &&
-      r.source.providerRef === 'google-ai-studio' &&
-      r.source.lane === 'hosted_khala')).toBe(true)
+    expect(
+      push.recorded.every(
+        r =>
+          r.source.modelRef === 'gemma-4-31b-it' &&
+          r.source.providerRef === 'google-ai-studio' &&
+          r.source.lane === 'hosted_khala',
+      ),
+    ).toBe(true)
     // one stable clientId per dispatch attempt, in the server group.
     const clientIds = new Set(push.recorded.map(r => r.clientId))
     expect(clientIds.size).toBe(1)
@@ -359,6 +395,48 @@ describe('dispatchHostedRuntimeTurn', () => {
     })
   })
 
+  test('records Sarah tool activity in causal order before the conversational answer', async () => {
+    const push = makeRecordingExecutePush()
+    const complete: HostedRuntimeCompleteFn = async input => {
+      await input.onToolActivity({
+        phase: 'started',
+        resultRefs: [],
+        summary: 'Checking owner-linked Codex capacity.',
+        toolCallId: 'call.fixture.capacity',
+        toolName: 'codex_workers_capacity',
+      })
+      await input.onToolActivity({
+        authorityReceiptRef: 'receipt.authority.sarah.fixture',
+        phase: 'succeeded',
+        resultRefs: ['capacity.owner_linked_pylon.codex'],
+        summary: 'One Pylon is reporting capacity.',
+        toolCallId: 'call.fixture.capacity',
+        toolName: 'codex_workers_capacity',
+      })
+      return { ok: true, text: 'One Pylon is ready.' }
+    }
+    const outcome = await dispatchHostedRuntimeTurn(
+      baseDeps(oneQueuedTurn, push, complete),
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(push.recorded.map(record => record.kind)).toEqual([
+      'turn.started',
+      'tool.call',
+      'tool.result',
+      'text.delta',
+      'text.completed',
+      'turn.finished',
+    ])
+    expect(push.recorded.map(record => record.mutationId)).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ])
+    expect(push.recorded[1]?.toolName).toBe('codex_workers_capacity')
+    expect(push.recorded[2]?.resultRef).toContain(
+      'capacity.owner_linked_pylon.codex',
+    )
+  })
+
   test('keeps raw provenance refs out of owner conversation output', async () => {
     const push = makeRecordingExecutePush()
     const outcome = await dispatchHostedRuntimeTurn(
@@ -366,7 +444,9 @@ describe('dispatchHostedRuntimeTurn', () => {
         ...baseDeps(
           oneQueuedTurn,
           push,
-          okComplete('Hello [source.sarah.message.fixture]. Ready [source.github.issue.9003].'),
+          okComplete(
+            'Hello [source.sarah.message.fixture]. Ready [source.github.issue.9003].',
+          ),
         ),
         prepareTurn: async input => ({
           prompt: input.prompt,
@@ -378,8 +458,9 @@ describe('dispatchHostedRuntimeTurn', () => {
     )
 
     expect(outcome).toBe('answered')
-    expect(push.recorded.find(record => record.kind === 'text.delta')?.text)
-      .toBe('Hello. Ready.')
+    expect(
+      push.recorded.find(record => record.kind === 'text.delta')?.text,
+    ).toBe('Hello. Ready.')
   })
 
   test('passes authoritative image bytes to hosted inference', async () => {
@@ -397,12 +478,16 @@ describe('dispatchHostedRuntimeTurn', () => {
       return Promise.resolve({ ok: true, text: 'red' })
     }
     const outcome = await dispatchHostedRuntimeTurn(
-      baseDeps({
-        ...oneQueuedTurn,
-        chatMessages: {
-          'msg.1': { attachments: [image], body: 'What color is the image?' },
+      baseDeps(
+        {
+          ...oneQueuedTurn,
+          chatMessages: {
+            'msg.1': { attachments: [image], body: 'What color is the image?' },
+          },
         },
-      }, push, complete),
+        push,
+        complete,
+      ),
       turn,
     )
     expect(outcome).toBe('answered')
@@ -418,7 +503,10 @@ describe('dispatchHostedRuntimeTurn', () => {
       turn,
     )
     expect(outcome).toBe('failed')
-    expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'turn.finished',
+    ])
     expect(push.recorded[1]?.finishReason).toBe('error')
   })
 
@@ -435,7 +523,10 @@ describe('dispatchHostedRuntimeTurn', () => {
     )
     expect(outcome).toBe('failed')
     expect(completeCalls).toBe(0)
-    expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'turn.finished',
+    ])
     expect(push.recorded[1]?.finishReason).toBe('error')
   })
 
@@ -465,7 +556,10 @@ describe('dispatchHostedRuntimeTurn', () => {
       turn,
     )
     expect(outcome).toBe('answered')
-    expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'turn.finished',
+    ])
     expect(push.recorded[1]?.finishReason).toBe('stop')
   })
 
@@ -479,10 +573,10 @@ describe('dispatchHostedRuntimeTurn', () => {
     totalTokens: 5000,
   }
 
-  const okCompleteWithUsage = (
-    text: string,
-    usage: HostedTurnUsage,
-  ): HostedRuntimeCompleteFn => () => Promise.resolve({ ok: true, text, usage })
+  const okCompleteWithUsage =
+    (text: string, usage: HostedTurnUsage): HostedRuntimeCompleteFn =>
+    () =>
+      Promise.resolve({ ok: true, text, usage })
 
   test('a turn with exact usage records usage AND emits usage.recorded', async () => {
     const push = makeRecordingExecutePush()
@@ -498,7 +592,8 @@ describe('dispatchHostedRuntimeTurn', () => {
         chargeUsdCents: 1,
         insertedTokenUsage: true,
         metered: true,
-        tokenUsageEventRef: 'event.inference.served-tokens.khala-hosted.turn.t1',
+        tokenUsageEventRef:
+          'event.inference.served-tokens.khala-hosted.turn.t1',
         tokensServed: 5000,
         usageRef: 'usage.khala-hosted.turn.t1',
         zeroCharge: false,
@@ -507,7 +602,11 @@ describe('dispatchHostedRuntimeTurn', () => {
 
     const outcome = await dispatchHostedRuntimeTurn(
       {
-        ...baseDeps(oneQueuedTurn, push, okCompleteWithUsage('answer', exactUsage)),
+        ...baseDeps(
+          oneQueuedTurn,
+          push,
+          okCompleteWithUsage('answer', exactUsage),
+        ),
         recordUsage: recordUsage as never,
       },
       turn,
@@ -535,9 +634,11 @@ describe('dispatchHostedRuntimeTurn', () => {
     })
     // turn.finished also carries the exact usage.
     const finished = push.recorded.find(r => r.kind === 'turn.finished')
-    expect(finished?.usage).toMatchObject({ inputTokens: 4000, totalTokens: 5000 })
+    expect(finished?.usage).toMatchObject({
+      inputTokens: 4000,
+      totalTokens: 5000,
+    })
   })
-
 })
 
 describe('runHostedRuntimeTurnDispatch', () => {

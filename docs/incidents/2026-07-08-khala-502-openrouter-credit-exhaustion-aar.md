@@ -54,8 +54,8 @@ The Tassadar prune (`e1fbd1c185`, 2026-07-08 ~21:43Z) deleted
 `packages/tassadar-executor/` and removed the
 `"@openagentsinc/tassadar-executor": "workspace:*"` dependency from
 `apps/openagents.com/workers/api/package.json`, but left **13 runtime source
-files** in `workers/api/src` importing the package (artanis-*, tassadar-*,
-kernel-optimization-*). The prune added ambient type shims
+files** in `workers/api/src` importing the package (artanis-_, tassadar-_,
+kernel-optimization-\*). The prune added ambient type shims
 (`archived-tassadar-modules.d.ts`) so `tsc` passed, but
 `bun build src/cloudrun/server.ts` failed with
 `Could not resolve: "@openagentsinc/tassadar-executor"` — meaning **no
@@ -166,7 +166,8 @@ primarily" now = Gemma 4, with the Vertex Gemini lane as the next overflow.
   `totalTokenCount` already includes thoughts, so it is trusted as the total (a
   breakdown dimension, not an addend). Other lanes leave `reasoningTokens`
   undefined -> `0`, unchanged.
-- **NO-TOOLS guard (airtight, two layers).** Gemma has no tool calling. (1) The
+- **Historical NO-TOOLS guard (superseded 2026-07-18).** At incident closeout,
+  Gemma was treated as having no tool calling. (1) The
   router keeps `google-gemma4` out of every tool plan:
   `selectAdapterPlanForKhalaToolRequest` now filters it from the base plan, so a
   tool-bearing Khala request uses the GLM-led agent-tool plan and never lists
@@ -175,6 +176,14 @@ primarily" now = Gemma 4, with the Vertex Gemini lane as the next overflow.
   `tool_calls_unsupported` error, so even a mis-routed tool request overflows to a
   tool-capable lane (Vertex Gemini / Fireworks / GLM) instead of silently dropping
   the tools. The conversational plan is the only plan Gemma leads.
+
+  A 2026-07-18 live Generative Language API probe subsequently confirmed Gemma
+  4 buffered function calling. The adapter now maps declarations, function
+  calls, thought signatures, and function responses for buffered execution.
+  The generic incremental gateway still excludes Gemma from tool plans until
+  streamed function-call deltas are decoded; Sarah's bounded Effect loop uses
+  the buffered path directly.
+
 - **Tiny-budget guard (the AAR caveat above).** The "min-output-token floor for the
   Khala Vertex lane" minor follow-up is implemented for Gemma: thoughts draw from
   the output budget, so a tiny `max_tokens` (the canary's 8) would be entirely
@@ -254,7 +263,7 @@ independent of this label.
 - **Separate fault — FIXED (see "Connection-pool fix" below):**
   `openagents-monolith` logged a continuous flood of
   `Exceeded maximum of 100 connections per instance
-  "openagentsgemini:us-central1:khala-sync-pg"` (Cloud SQL connector
+"openagentsgemini:us-central1:khala-sync-pg"` (Cloud SQL connector
   per-instance cap) since at least 2026-07-07T15:32Z (correlates with the
   GCP/Cloud SQL migration cutover, epic #8515), with intermittent 500/503s on
   DB-heavy routes (pylon heartbeat, forum, khala-sync runtime-intents). Every

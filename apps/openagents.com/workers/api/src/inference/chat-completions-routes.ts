@@ -19,11 +19,11 @@
 import { Effect, Redacted } from 'effect'
 
 import type { AgentRegistrationStore } from '../agent-registration'
+import type { FineTunedModelResolver } from '../cloud/fine-tuning-service-routes'
 import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
-import type { PylonApiStore } from '../pylon-api'
 import { requireProviderApiKeyShape } from '../provider-account-api-key'
-import type { FineTunedModelResolver } from '../cloud/fine-tuning-service-routes'
+import type { PylonApiStore } from '../pylon-api'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -121,10 +121,7 @@ import {
   NOT_MEASURED,
   buildKhalaTelemetryBlock,
 } from './khala-telemetry'
-import {
-  type MeteringHook,
-  type MeteringOutcome,
-} from './metering-hook'
+import { type MeteringHook, type MeteringOutcome } from './metering-hook'
 import {
   type DispatchDeps,
   type DispatchHedgingPolicy,
@@ -297,7 +294,9 @@ const applyByokResponseHeader = (
   byok: KhalaByokState,
   routed: boolean,
 ): void => {
-  for (const [key, value] of Object.entries(byokResponseHeaders(byok, routed))) {
+  for (const [key, value] of Object.entries(
+    byokResponseHeaders(byok, routed),
+  )) {
     response.headers.set(key, value)
   }
 }
@@ -426,9 +425,7 @@ export type InferenceAuth = (
   request: Request,
 ) => Promise<Readonly<{ accountRef: string }> | undefined>
 
-export type KhalaAccountByokResolver = (
-  accountRef: string,
-) => Promise<
+export type KhalaAccountByokResolver = (accountRef: string) => Promise<
   | Readonly<{
       apiKey: Redacted.Redacted<string>
       provider: 'openrouter'
@@ -472,7 +469,8 @@ export const isToolBearingKhalaRequest = (
   }>,
 ): boolean => {
   // Khala-ROUTED: the public khala alias and the persona-neutral internal lane
-  // share the tool-plan split (Gemma has no tool calling on either).
+  // share the incremental tool-plan split (buffered Sarah/Gemma tool calls use
+  // their own bounded runtime rather than this generic streaming route).
   if (!isKhalaRoutedModel(input.requestedModel)) {
     return false
   }
@@ -788,8 +786,7 @@ export type ChatCompletionsDeps = Readonly<{
     // false (do not capture). Only consulted when `captureDefaultEnabled` is on.
     // Absent => captureDefault is always false (no auto-capture).
     resolveCaptureDefault?:
-      | ((accountRef: string, model: string) => Promise<boolean>)
-      | undefined
+      ((accountRef: string, model: string) => Promise<boolean>) | undefined
     // Persist a completed Khala chat session as an ATIF trace. The Worker wires
     // this to `emitKhalaChatTrace` against the shared trace store + the resolved
     // owner. Absent => no-op. Returns only public-safe result metadata; the call
@@ -815,8 +812,7 @@ export type ChatCompletionsDeps = Readonly<{
     // REDACTION METRICS (#6297): optional public-safe sink for redaction-rate
     // and residual leak counters. Receives counts only, never trace content.
     recordRedactionMetrics?:
-      | ((event: TraceRedactionMetricEvent) => Promise<void> | void)
-      | undefined
+      ((event: TraceRedactionMetricEvent) => Promise<void> | void) | undefined
   }>
 }>
 
@@ -1131,8 +1127,7 @@ const toInferenceRequest = (
 }
 
 type ToolRequirementState =
-  | Readonly<{ _tag: 'tool_optional' }>
-  | Readonly<{ _tag: 'tool_required' }>
+  Readonly<{ _tag: 'tool_optional' }> | Readonly<{ _tag: 'tool_required' }>
 
 type AssistantCompletionState =
   | Readonly<{ _tag: 'assistant_content' }>
@@ -1353,9 +1348,7 @@ type OpenAgentsReceipt = Readonly<{
     | Readonly<{
         mode: 'receipt_backed' | 'no_debit' | 'zero_charge'
         reason?:
-          | 'caller_provider_key'
-          | 'operator_exempt_or_unmetered'
-          | undefined
+          'caller_provider_key' | 'operator_exempt_or_unmetered' | undefined
         receipt_required: boolean
       }>
     | undefined
@@ -1363,9 +1356,7 @@ type OpenAgentsReceipt = Readonly<{
   workers?: ReadonlyArray<string> | undefined
   verification_receipt?: string | undefined
   verification_command?: string | undefined
-  verification_integrity?:
-    | KhalaCodeVerificationVerdict['integrity']
-    | undefined
+  verification_integrity?: KhalaCodeVerificationVerdict['integrity'] | undefined
   scalar_reward?: number | undefined
   reward_handoff?: string | undefined
   rubric?:
@@ -3524,26 +3515,27 @@ export const handleChatCompletions = (
       const reinforcementPrompt =
         getKhalaSignature(firstViolation?.signature ?? 'identity')
           ?.reinforcementPrompt ?? KHALA_IDENTITY_REINFORCEMENT_PROMPT
-      const reaskedContent = firstViolation !== undefined
-        ? yield* dispatchWithOverflow(
-            {
-              ...inferenceRequest,
-              messages: [
-                {
-                  content: reinforcementPrompt,
-                  role: 'system',
-                },
-                ...inferenceRequest.messages,
-              ],
-            },
-            (adapter, request) => adapter.complete(request),
-            dispatchDeps,
-            validateRawChatCompletionResult,
-          ).pipe(
-            Effect.map(value => value.content as string | undefined),
-            Effect.orElseSucceed(() => undefined),
-          )
-        : undefined
+      const reaskedContent =
+        firstViolation !== undefined
+          ? yield* dispatchWithOverflow(
+              {
+                ...inferenceRequest,
+                messages: [
+                  {
+                    content: reinforcementPrompt,
+                    role: 'system',
+                  },
+                  ...inferenceRequest.messages,
+                ],
+              },
+              (adapter, request) => adapter.complete(request),
+              dispatchDeps,
+              validateRawChatCompletionResult,
+            ).pipe(
+              Effect.map(value => value.content as string | undefined),
+              Effect.orElseSucceed(() => undefined),
+            )
+          : undefined
       const guard = yield* Effect.promise(() =>
         guardKhalaCompletion({
           completion: servedValue.content,

@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Owner-Delegated Autonomous Delivery"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -19,8 +19,8 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_design: "docs/authority/AUTHORITY_DELEGATION_SPEC.md"
-  openagents_profile: "AUTHORITY.md revision 3"
-  openagents_sarah_profile: "docs/authority/SARAH_AUTHORITY.md revision 1"
+  openagents_profile: "AUTHORITY.md revision 4"
+  openagents_sarah_profile: "docs/authority/SARAH_AUTHORITY.md revision 2"
   openagents_accepted_plan: "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md"
   openagents_assurance_level: "cross-resource-action-authority"
 ---
@@ -190,6 +190,18 @@ never changes the visible evidence tier.
 - **AD-AC-23:** The Sarah profile retains every mandatory reserved category,
   cannot self-amplify, cannot self-verify assurance or release from its own
   evidence, and stops new actions on revocation or supersession.
+- **AD-AC-24:** Revision 4 permits Sarah to dispatch at most eight coding
+  workers only through authenticated owner-linked Pylon capacity and an exact
+  public repository commit. Actual assignment refs, not model prose, prove a
+  dispatch; absent capacity is a blocker, not implicit cloud or foreign-user
+  substitution.
+- **AD-AC-25:** Revision 4 permits Sarah to dispatch pause/resume/stop intents
+  for an exact existing owner Full Auto run. Desktop remains transition
+  authority, and only its applied outcome proves the transition; a server-side
+  pending intent is not success.
+- **AD-AC-26:** Revision 4 grants no remote Full Auto start, raw workspace,
+  private MemoHarness bank, during-run adaptation, candidate promotion,
+  assurance self-admission, stable-release, or authority-expansion action.
 
 ## Success Metrics
 
@@ -238,7 +250,7 @@ never changes the visible evidence tier.
 
 ## Owner Gates
 
-- **RESOLVED FOR REVISION 3 BY CURRENT OWNER DIRECTION.** The owner explicitly
+- **RESOLVED FOR REVISION 4 BY CURRENT OWNER DIRECTION.** The owner explicitly
   directed OpenAgents to formalize broad delegated authority, stop waiting on
   ordinary owner/device blockers, use existing Google Cloud access, rapidly
   close issues, prioritize Full Auto, complete root specs and all Fast Follow,
@@ -249,8 +261,11 @@ never changes the visible evidence tier.
   actor/authority attribution on `/changelog`. On 2026-07-18 the owner also
   explicitly rebooted Sarah as the persistent mobile point of contact, main
   company decision maker, and orchestrator with business-wide access through
-  OpenAgents primitives. `AUTHORITY.md` revision 3 and the narrower Sarah
-  profile are the admitted intersection for those directions.
+  OpenAgents primitives. `AUTHORITY.md` revision 4 and the narrower Sarah
+  profile are the admitted intersection for those directions. The owner's
+  later direction to get Sarah using the current Full Auto/MemoHarness specs,
+  deploy Codex subagents, and manage Full Auto processes admits revision 4's
+  two exact brokers while preserving the spec's learning/promotion gates.
 - Any increase to the numeric spend caps, permission for paid outreach or new
   subscriptions, financial movement, legal commitments, destructive customer
   data action, raw secret access, or weakening of a mandatory invariant needs

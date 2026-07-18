@@ -13,6 +13,7 @@ import { describe, expect, test } from "vitest";
 import { materializeHttpResult } from "./http/responses";
 import {
   SARAH_OWNER_PATH,
+  authorizeSarahOperation,
   ensureSarahPrincipal,
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
@@ -70,10 +71,17 @@ describe(`contract ${contractId}`, () => {
     const first = await harness.run();
     const second = await harness.run("GET");
     const body = (await first.json()) as {
-      principal: { threadRef: string; memory: string; rootAuthorityRevision: number };
+      principal: {
+        threadRef: string;
+        memory: string;
+        rootAuthorityRevision: number;
+      };
     };
     expect(first.status).toBe(200);
-    expect(body.principal).toMatchObject({ memory: "durable_cited", rootAuthorityRevision: 3 });
+    expect(body.principal).toMatchObject({
+      memory: "durable_cited",
+      rootAuthorityRevision: 4,
+    });
     expect(body.principal.threadRef).toMatch(/^thread\.sarah\.[0-9a-f]{24}$/);
     expect(JSON.stringify(await second.json())).toContain(body.principal.threadRef);
     expect(harness.ended()).toBe(2);
@@ -113,5 +121,62 @@ describe(`contract ${contractId}`, () => {
       statement.includes("INSERT INTO sarah_authority_decision_receipts"),
     );
     expect(receiptInsert).toContain("::text::jsonb");
+  });
+
+  test("upgrades a previously admitted Sarah thread to the current authority revision", async () => {
+    const ownerUserId = "owner.fixture.123";
+    const threadRef = await sarahThreadRefForOwner(ownerUserId);
+    const insertedValues: Array<ReadonlyArray<unknown>> = [];
+    const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
+      const statement = strings.join("?");
+      if (statement.includes("profile_revision") && statement.includes("SELECT receipt_ref")) {
+        return [];
+      }
+      if (statement.includes("SELECT receipt_ref")) {
+        return [{ receipt_ref: "receipt.authority.sarah.bootstrap.prior" }];
+      }
+      if (statement.includes("FROM khala_sync_chat_threads")) {
+        return [{ thread_id: threadRef }];
+      }
+      if (statement.includes("INSERT INTO sarah_authority_decision_receipts")) {
+        insertedValues.push(values);
+      }
+      return [];
+    }) as unknown as SyncSql;
+
+    expect(await hasSarahThreadAuthority(sql, ownerUserId, threadRef)).toBe(true);
+    expect(insertedValues.flat()).toContain(SARAH_AUTHORITY_REVISION);
+    expect(insertedValues.flat()).toContain(
+      `receipt.authority.sarah.bootstrap.${threadRef.slice(-24)}.rev${SARAH_AUTHORITY_REVISION}`,
+    );
+  });
+
+  test("receipts an exact admitted Sarah operation before the target broker runs", async () => {
+    const ownerUserId = "owner.fixture.123";
+    const threadRef = await sarahThreadRefForOwner(ownerUserId);
+    const insertedValues: Array<ReadonlyArray<unknown>> = [];
+    const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
+      const statement = strings.join("?");
+      if (statement.includes("SELECT receipt_ref")) {
+        return [{ receipt_ref: "receipt.authority.sarah.current" }];
+      }
+      if (statement.includes("INSERT INTO sarah_authority_decision_receipts")) {
+        insertedValues.push(values);
+      }
+      return [];
+    }) as unknown as SyncSql;
+
+    const result = await Effect.runPromise(
+      authorizeSarahOperation(sql, {
+        action: "dispatch_owner_capacity_coding_workers",
+        ownerUserId,
+        resource: "owner_linked_pylon_coding_capacity",
+        threadRef,
+        triggerRef: "turn.fixture.tool.call.fixture",
+      }),
+    );
+    expect(result).toMatchObject({ allowed: true });
+    expect(insertedValues.flat()).toContain("dispatch_owner_capacity_coding_workers");
+    expect(insertedValues.flat()).toContain(SARAH_AUTHORITY_REVISION);
   });
 });

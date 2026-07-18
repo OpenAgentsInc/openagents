@@ -8,17 +8,22 @@ import { externalRuntimeSpecifiers } from './assert-self-contained-bundle.mjs'
 describe('Cloud Run Vite Plus bundle contract', () => {
   test.each(['env-production.yaml', 'env-staging.yaml'])(
     '%s has unique top-level keys and exactly one enabled Desktop usage gate',
-    (fileName) => {
+    fileName => {
       const contents = readFileSync(
         fileURLToPath(new URL(fileName, import.meta.url)),
         'utf8',
       )
       const entries = contents
         .split(/\r?\n/u)
-        .filter((line) => line.trim().length > 0 && !line.trimStart().startsWith('#'))
-        .map((line) => {
+        .filter(
+          line => line.trim().length > 0 && !line.trimStart().startsWith('#'),
+        )
+        .map(line => {
           const match = /^([A-Z][A-Z0-9_]*):\s*(.*)$/u.exec(line)
-          expect(match, `expected a flat top-level YAML mapping entry: ${line}`).not.toBeNull()
+          expect(
+            match,
+            `expected a flat top-level YAML mapping entry: ${line}`,
+          ).not.toBeNull()
           return { key: match![1], value: match![2] }
         })
 
@@ -29,10 +34,10 @@ describe('Cloud Run Vite Plus bundle contract', () => {
         'duplicate YAML keys are ambiguous and must fail closed',
       ).toEqual([])
       expect(
-        entries.filter(({ key }) => key === 'DESKTOP_CODEX_USAGE_INGEST_ENABLED'),
-      ).toEqual([
-        { key: 'DESKTOP_CODEX_USAGE_INGEST_ENABLED', value: '"1"' },
-      ])
+        entries.filter(
+          ({ key }) => key === 'DESKTOP_CODEX_USAGE_INGEST_ENABLED',
+        ),
+      ).toEqual([{ key: 'DESKTOP_CODEX_USAGE_INGEST_ENABLED', value: '"1"' }])
     },
   )
 
@@ -48,14 +53,16 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).toContain('OPENAGENTS_SKIP_START_BUILD')
     expect(deployScript).toContain('apps/start/dist/cloudrun/server.mjs')
     expect(deployScript).not.toContain('build:astro')
-    expect(deployScript).toContain('pnpm install --frozen-lockfile --ignore-scripts')
+    expect(deployScript).toContain(
+      'pnpm install --frozen-lockfile --ignore-scripts',
+    )
     expect(deployScript.match(/--config\.ignore-scripts=true/g)).toHaveLength(2)
     expect(deployScript).not.toContain('astro-ui')
     expect(deployScript).toContain('! -f dist-cloudrun/server.mjs')
     expect(deployScript).not.toContain('preload.mjs')
     expect(deployScript).not.toContain('cloudflare-workers-stub')
     expect(deployScript).toContain('assert-self-contained-bundle.mjs')
-    expect(deployScript).toContain('pnpm --config.node-linker=hoisted')
+    expect(deployScript.match(/--config\.node-linker=hoisted/g)).toHaveLength(2)
     expect(deployScript).toContain('--filter @openagentsinc/api-worker deploy')
     expect(deployScript).toContain('pnpm install --frozen-lockfile')
     expect(deployScript).toContain('cd "$REPO_ROOT"')

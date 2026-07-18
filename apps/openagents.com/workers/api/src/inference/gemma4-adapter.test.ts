@@ -158,7 +158,9 @@ describe('gemma4 adapter — request mapping', () => {
     const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
 
     await run(
-      adapter.complete(baseRequest({ passthroughParams: { max_tokens: 4096 } })),
+      adapter.complete(
+        baseRequest({ passthroughParams: { max_tokens: 4096 } }),
+      ),
     )
 
     const body = JSON.parse(calls[0]!.init.body as string) as Record<
@@ -213,52 +215,161 @@ describe('gemma4 adapter — thought filtering + exact token mapping', () => {
   })
 })
 
-describe('gemma4 adapter — NO-TOOLS guard', () => {
+describe('gemma4 adapter — buffered function calling', () => {
   const tools = [
     {
-      function: { name: 'read_file', parameters: { type: 'object' } },
+      function: {
+        description: 'Read a bounded file.',
+        name: 'read_file',
+        parameters: {
+          additionalProperties: false,
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+          type: 'object',
+        },
+      },
       type: 'function',
     },
   ]
 
-  test('refuses a request with declared tools RETRYABLY (so dispatch overflows to a tool-capable lane) without calling out', async () => {
-    const { calls, fetchImpl } = recordingFetch(okJson(gemmaThinkingResponse))
+  test('maps declared tools and parses a functionCall response', async () => {
+    const { calls, fetchImpl } = recordingFetch(
+      okJson({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    args: { path: 'README.md' },
+                    name: 'read_file',
+                  },
+                  thoughtSignature: 'signature.fixture',
+                },
+              ],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        modelVersion: DEFAULT_GEMMA4_MODEL_ID,
+        usageMetadata: {
+          candidatesTokenCount: 3,
+          promptTokenCount: 9,
+          totalTokenCount: 12,
+        },
+      }),
+    )
     const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
 
-    const outcome = await runToResult(
+    const result = await run(
       adapter.complete(baseRequest({ passthroughParams: { tools } })),
     )
-    expect(outcome.ok).toBe(false)
-    if (!outcome.ok) {
-      expect(outcome.error.retryable).toBe(true)
-      expect(outcome.error.kind).toBe('tool_calls_unsupported')
-    }
-    // The upstream Gemma endpoint was NEVER called for a tool-bearing request.
-    expect(calls).toHaveLength(0)
+    expect(calls).toHaveLength(1)
+    const body = JSON.parse(calls[0]!.init.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body['tools']).toEqual([
+      {
+        functionDeclarations: [
+          {
+            description: 'Read a bounded file.',
+            name: 'read_file',
+            parameters: {
+              properties: { path: { type: 'string' } },
+              required: ['path'],
+              type: 'object',
+            },
+          },
+        ],
+      },
+    ])
+    expect(body['toolConfig']).toEqual({
+      functionCallingConfig: { mode: 'AUTO' },
+    })
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.toolCalls).toEqual([
+      {
+        function: { arguments: '{"path":"README.md"}', name: 'read_file' },
+        id: 'gemma4_call_0_read_file',
+        thoughtSignature: 'signature.fixture',
+        type: 'function',
+      },
+    ])
   })
 
-  test('refuses a request carrying prior tool-call / tool-result messages retryably', async () => {
+  test('replays prior assistant calls and tool results as function parts', async () => {
     const { calls, fetchImpl } = recordingFetch(okJson(gemmaThinkingResponse))
     const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
 
-    const outcome = await runToResult(
+    await run(
       adapter.complete(
         baseRequest({
           messages: [
             { content: 'read', role: 'user' },
             {
-              content: 'done',
+              content: '',
+              role: 'assistant',
+              toolCalls: [
+                {
+                  function: {
+                    arguments: '{"path":"README.md"}',
+                    name: 'read_file',
+                  },
+                  id: 'call_1',
+                  thoughtSignature: 'signature.fixture',
+                  type: 'function',
+                },
+              ],
+            },
+            {
+              content: 'file contents',
               name: 'read_file',
               role: 'tool',
               toolCallId: 'call_1',
             },
           ],
+          passthroughParams: { tools },
         }),
+      ),
+    )
+    const body = JSON.parse(calls[0]!.init.body as string) as {
+      contents: Array<Record<string, unknown>>
+    }
+    expect(body.contents[1]).toEqual({
+      parts: [
+        {
+          functionCall: { args: { path: 'README.md' }, name: 'read_file' },
+          thoughtSignature: 'signature.fixture',
+        },
+      ],
+      role: 'model',
+    })
+    expect(body.contents[2]).toEqual({
+      parts: [
+        {
+          functionResponse: {
+            name: 'read_file',
+            response: { content: 'file contents' },
+          },
+        },
+      ],
+      role: 'user',
+    })
+  })
+
+  test('refuses only true incremental streaming for tool-bearing requests', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(gemmaThinkingResponse))
+    const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
+    const outcome = await runToResult(
+      adapter.streamSse!(
+        baseRequest({ passthroughParams: { tools }, stream: true }),
       ),
     )
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) {
       expect(outcome.error.retryable).toBe(true)
+      expect(outcome.error.kind).toBe('streaming_tool_calls_unsupported')
     }
     expect(calls).toHaveLength(0)
   })
@@ -349,7 +460,9 @@ const sseStreamResponse = (fragments: ReadonlyArray<unknown>): Response => {
       }
       const fragment = fragments[index]
       index += 1
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(fragment)}\n\n`))
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(fragment)}\n\n`),
+      )
     },
   })
   return new Response(stream, {
@@ -372,7 +485,11 @@ describe('gemma4 adapter — streamSse incremental pass-through', () => {
   test('parses multi-fragment SSE into per-fragment events, routing thoughts to reasoningDelta', async () => {
     const { calls, fetchImpl } = recordingFetch(
       sseStreamResponse([
-        { candidates: [{ content: { parts: [{ text: 'think', thought: true }] } }] },
+        {
+          candidates: [
+            { content: { parts: [{ text: 'think', thought: true }] } },
+          ],
+        },
         { candidates: [{ content: { parts: [{ text: 'Hello' }] } }] },
         {
           candidates: [
@@ -406,7 +523,9 @@ describe('gemma4 adapter — streamSse incremental pass-through', () => {
     expect(reasoning).toEqual(['think'])
 
     // Endpoint + receipt-first terminal state.
-    expect(calls[0]?.url).toContain(':streamGenerateContent?key=test-gemini-key')
+    expect(calls[0]?.url).toContain(
+      ':streamGenerateContent?key=test-gemini-key',
+    )
     expect(calls[0]?.url).toContain('&alt=sse')
     const terminal = source.terminal()
     expect(terminal.finishReason).toBe('STOP')
@@ -420,7 +539,9 @@ describe('gemma4 adapter — streamSse incremental pass-through', () => {
   })
 
   test('a non-2xx stream open surfaces a typed retryable adapter error before any frame', async () => {
-    const { fetchImpl } = recordingFetch(new Response('overloaded', { status: 503 }))
+    const { fetchImpl } = recordingFetch(
+      new Response('overloaded', { status: 503 }),
+    )
     const adapter = makeGemma4Adapter(armedConfig(fetchImpl))
 
     const outcome = await runToResult(
