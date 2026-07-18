@@ -20,6 +20,7 @@ import {
   Select,
   Spacer,
   Stack,
+  StaticPayload,
   Text,
   TextField,
   defineIntent,
@@ -39,15 +40,24 @@ import {
 
 export const FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP = 20
 export const FULL_AUTO_LAUNCHER_DEFAULT_LANE = "codex-local"
+/** FA-WIRE-01 (#8996): mirrors FULL_AUTO_ROUTING_POLICY_LIMIT in
+ * full-auto-registry.ts (renderer-boundary duplicate; see the note in
+ * full-auto-run-ipc-contract.ts for why the value is copied, not imported). */
+export const FULL_AUTO_LAUNCHER_ROUTING_POLICY_LIMIT = 8
 
 /** Fixed lane option set for v1 (mirrors the composer's admitted lanes).
  * Start still re-validates real L2 eligibility server-side -- an option
- * appearing here is not a promise of admission. */
+ * appearing here is not a promise of admission. This is the SAME admitted
+ * Full-Auto-eligible lane projection the launcher's single-lane picker
+ * already uses; the FA-WIRE-01 ordered fallback picker sources from it too. */
 export const fullAutoLauncherLaneOptions: ReadonlyArray<Readonly<{ value: string; label: string }>> = [
   { value: "codex-local", label: "Codex" },
   { value: "acp:grok-cli", label: "Grok CLI" },
   { value: "acp:cursor-agent", label: "Cursor Agent" },
 ]
+
+export const fullAutoLauncherLaneLabel = (laneRef: string): string =>
+  fullAutoLauncherLaneOptions.find(option => option.value === laneRef)?.label ?? laneRef
 
 export type FullAutoLauncherDraft = Readonly<{
   title: string
@@ -55,7 +65,14 @@ export type FullAutoLauncherDraft = Readonly<{
   doneCondition: string
   workspaceRef: string
   lane: string
+  /** FA-WIRE-01 (#8996): ordered fallback lanes AFTER the primary `lane`.
+   * Non-empty means Start submits an ordered routingPolicy; empty keeps the
+   * exact single-lane default behavior. */
+  fallbackLanes: ReadonlyArray<string>
   turnCapText: string
+  /** FA-WIRE-01 (#8996): optional wall-clock guardrail, in minutes (converted
+   * to maxWallClockMs on submit). Blank = no wall-clock guardrail. */
+  maxWallClockMinutesText: string
   submitting: boolean
   error: string | null
 }>
@@ -68,7 +85,9 @@ export const emptyFullAutoLauncherDraft = (
   doneCondition: "",
   workspaceRef: defaults?.workspaceRef ?? "",
   lane: FULL_AUTO_LAUNCHER_DEFAULT_LANE,
+  fallbackLanes: [],
   turnCapText: String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP),
+  maxWallClockMinutesText: "",
   submitting: false,
   error: null,
 })
@@ -121,6 +140,10 @@ export const DesktopFullAutoLauncherObjectiveChanged = defineIntent("DesktopFull
 export const DesktopFullAutoLauncherDoneConditionChanged = defineIntent("DesktopFullAutoLauncherDoneConditionChanged", Schema.String)
 export const DesktopFullAutoLauncherWorkspaceRefChanged = defineIntent("DesktopFullAutoLauncherWorkspaceRefChanged", Schema.String)
 export const DesktopFullAutoLauncherLaneChanged = defineIntent("DesktopFullAutoLauncherLaneChanged", Schema.String)
+// FA-WIRE-01 (#8996): ordered fallback-lane picker + wall-clock guardrail.
+export const DesktopFullAutoLauncherFallbackLaneAdded = defineIntent("DesktopFullAutoLauncherFallbackLaneAdded", Schema.String)
+export const DesktopFullAutoLauncherFallbackLaneRemoved = defineIntent("DesktopFullAutoLauncherFallbackLaneRemoved", Schema.String)
+export const DesktopFullAutoLauncherMaxWallClockChanged = defineIntent("DesktopFullAutoLauncherMaxWallClockChanged", Schema.String)
 export const DesktopFullAutoLauncherTurnCapChanged = defineIntent("DesktopFullAutoLauncherTurnCapChanged", Schema.String)
 export const DesktopFullAutoLauncherCancelled = defineIntent("DesktopFullAutoLauncherCancelled", Schema.Null)
 export const DesktopFullAutoLauncherStartRequested = defineIntent("DesktopFullAutoLauncherStartRequested", Schema.Null)
@@ -139,6 +162,9 @@ export const fullAutoWorkspaceIntents = [
   DesktopFullAutoLauncherDoneConditionChanged,
   DesktopFullAutoLauncherWorkspaceRefChanged,
   DesktopFullAutoLauncherLaneChanged,
+  DesktopFullAutoLauncherFallbackLaneAdded,
+  DesktopFullAutoLauncherFallbackLaneRemoved,
+  DesktopFullAutoLauncherMaxWallClockChanged,
   DesktopFullAutoLauncherTurnCapChanged,
   DesktopFullAutoLauncherCancelled,
   DesktopFullAutoLauncherStartRequested,
@@ -167,32 +193,95 @@ const upsertRun = (runs: ReadonlyArray<FullAutoRunProjection>, run: FullAutoRunP
     ? runs.map(existing => existing.runRef === run.runRef ? run : existing)
     : [...runs, run]
 
+export type FullAutoLauncherValidation = Readonly<
+  | {
+      ok: true
+      turnCap: number | undefined
+      /** FA-WIRE-01 (#8996): the ordered policy Start submits (primary lane
+       * first), or undefined for the exact single-lane default. */
+      routingPolicy: ReadonlyArray<{ lane: string }> | undefined
+      /** FA-WIRE-01 (#8996): the owner guardrails Start submits. The turn cap
+       * doubles as guardrails.maxTurns so the thread-level cap follows the
+       * owner's chosen cap instead of the built-in 20. */
+      guardrails: Readonly<{ maxTurns?: number; maxWallClockMs?: number }> | undefined
+    }
+  | { ok: false; error: string }
+>
+
 /** Validates the draft against exactly the fields `full-auto-run-actions.ts`'
  * `startFullAutoRunAction` requires -- title/objective/doneCondition
- * non-empty, workspaceRef non-empty, turnCap a 1-1000 integer when present.
- * Mirrors FA-AC-54's "Start is enabled only once the mission contract is
- * complete". */
+ * non-empty, workspaceRef non-empty, turnCap a 1-1000 integer when present --
+ * plus the FA-WIRE-01 ordered-policy/guardrail fields (distinct bounded
+ * fallback lanes, positive wall-clock minutes). Mirrors FA-AC-54's "Start is
+ * enabled only once the mission contract is complete"; refusals are the exact
+ * typed reasons the run setup view renders. */
 export const validateFullAutoLauncherDraft = (
   draft: FullAutoLauncherDraft,
-): Readonly<{ ok: true; turnCap: number | undefined } | { ok: false; error: string }> => {
+): FullAutoLauncherValidation => {
   if (draft.title.trim() === "") return { ok: false, error: "Give this run a title." }
   if (draft.objective.trim() === "") return { ok: false, error: "Describe the objective." }
   if (draft.doneCondition.trim() === "") return { ok: false, error: "State an explicit done condition." }
   if (draft.workspaceRef.trim() === "") return { ok: false, error: "Choose a workspace." }
   const trimmedCap = draft.turnCapText.trim()
-  if (trimmedCap === "") return { ok: true, turnCap: undefined }
-  const parsed = Number(trimmedCap)
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1000) {
-    return { ok: false, error: "Turn cap must be a whole number between 1 and 1000." }
+  let turnCap: number | undefined
+  if (trimmedCap !== "") {
+    const parsed = Number(trimmedCap)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1000) {
+      return { ok: false, error: "Turn cap must be a whole number between 1 and 1000." }
+    }
+    turnCap = parsed
   }
-  return { ok: true, turnCap: parsed }
+  // FA-WIRE-01: ordered fallback lanes -- duplicates refused (a silently
+  // deduplicated policy would rotate differently than the one reviewed).
+  const orderedLanes = [draft.lane, ...draft.fallbackLanes]
+  if (new Set(orderedLanes).size !== orderedLanes.length) {
+    return { ok: false, error: "Each lane can appear only once in the rotation order." }
+  }
+  if (orderedLanes.length > FULL_AUTO_LAUNCHER_ROUTING_POLICY_LIMIT) {
+    return { ok: false, error: `At most ${FULL_AUTO_LAUNCHER_ROUTING_POLICY_LIMIT} lanes can be in the rotation order.` }
+  }
+  const trimmedWallClock = draft.maxWallClockMinutesText.trim()
+  let maxWallClockMs: number | undefined
+  if (trimmedWallClock !== "") {
+    const minutes = Number(trimmedWallClock)
+    if (!Number.isInteger(minutes) || minutes < 1) {
+      return { ok: false, error: "Max wall clock must be a whole number of minutes (1 or more)." }
+    }
+    maxWallClockMs = minutes * 60_000
+  }
+  const guardrails = {
+    ...(turnCap === undefined ? {} : { maxTurns: turnCap }),
+    ...(maxWallClockMs === undefined ? {} : { maxWallClockMs }),
+  }
+  return {
+    ok: true,
+    turnCap,
+    routingPolicy: draft.fallbackLanes.length === 0
+      ? undefined
+      : orderedLanes.map(lane => ({ lane })),
+    guardrails: Object.keys(guardrails).length === 0 ? undefined : guardrails,
+  }
 }
 
 export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   host: FullAutoRunRendererHost = unavailableFullAutoRunRendererHost,
   selectWorkspace: (workspace: string) => Effect.Effect<void> = () => Effect.void,
+  /**
+   * FA-UX-02 (#8997): select the run's bound thread through the SAME
+   * canonical thread-selection path ordinary chats use (the shell passes its
+   * own commitLocalSession), so `state.notes` carries the bound thread's real
+   * conversation and the run view can mount the canonical timeline component
+   * -- never a parallel mini-renderer. The shell's selection sets the chat
+   * workspace, so callers re-assert "full-auto" AFTER this settles.
+   */
+  selectThread: (threadRef: string) => Effect.Effect<void> = () => Effect.void,
 ) => {
+  const selectRunThread = (runRef: string) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const threadRef = current.fullAuto.runs.find(run => run.runRef === runRef)?.threadRef ?? null
+    if (threadRef !== null) yield* selectThread(threadRef)
+  })
   const refreshList = () => Effect.gen(function* () {
     const raw = yield* Effect.promise(() => host.list().catch(() => null))
     const decoded = decodeFullAutoRunListResult(raw)
@@ -250,6 +339,9 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         // refuse with active_run_conflict.
         yield* SubscriptionRef.update(state, next => withFullAuto(next, { mode: "run", activeRunRef: active.runRef }))
         yield* refreshActiveRun()
+        // FA-UX-02 (#8997): hydrate the bound thread through the canonical
+        // selection path so the run view's timeline shows the conversation.
+        yield* selectRunThread(active.runRef)
         yield* selectWorkspace("full-auto")
         return
       }
@@ -271,7 +363,37 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
     DesktopFullAutoLauncherWorkspaceRefChanged: (value: string) =>
       SubscriptionRef.update(state, current => withFullAuto(current, { launcher: { ...current.fullAuto.launcher, workspaceRef: value, error: null } })),
     DesktopFullAutoLauncherLaneChanged: (value: string) =>
-      SubscriptionRef.update(state, current => withFullAuto(current, { launcher: { ...current.fullAuto.launcher, lane: value, error: null } })),
+      SubscriptionRef.update(state, current => withFullAuto(current, {
+        launcher: {
+          ...current.fullAuto.launcher,
+          lane: value,
+          // The primary lane can never also be a fallback -- keep the ordered
+          // list coherent when the primary changes.
+          fallbackLanes: current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value),
+          error: null,
+        },
+      })),
+    // FA-WIRE-01 (#8996): append one fallback lane (order = priority).
+    // Duplicates and the primary lane are no-ops here; validation renders the
+    // typed reason if a duplicate ever reaches the draft another way.
+    DesktopFullAutoLauncherFallbackLaneAdded: (value: string) =>
+      SubscriptionRef.update(state, current => {
+        const launcher = current.fullAuto.launcher
+        if (value === "" || value === launcher.lane || launcher.fallbackLanes.includes(value)) return current
+        return withFullAuto(current, {
+          launcher: { ...launcher, fallbackLanes: [...launcher.fallbackLanes, value], error: null },
+        })
+      }),
+    DesktopFullAutoLauncherFallbackLaneRemoved: (value: string) =>
+      SubscriptionRef.update(state, current => withFullAuto(current, {
+        launcher: {
+          ...current.fullAuto.launcher,
+          fallbackLanes: current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value),
+          error: null,
+        },
+      })),
+    DesktopFullAutoLauncherMaxWallClockChanged: (value: string) =>
+      SubscriptionRef.update(state, current => withFullAuto(current, { launcher: { ...current.fullAuto.launcher, maxWallClockMinutesText: value, error: null } })),
     DesktopFullAutoLauncherTurnCapChanged: (value: string) =>
       SubscriptionRef.update(state, current => withFullAuto(current, { launcher: { ...current.fullAuto.launcher, turnCapText: value, error: null } })),
     DesktopFullAutoLauncherCancelled: () => Effect.gen(function* () {
@@ -295,6 +417,10 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         doneCondition: draft.doneCondition.trim(),
         lane: draft.lane,
         ...(validation.turnCap === undefined ? {} : { turnCap: validation.turnCap }),
+        // FA-WIRE-01 (#8996): the ordered policy + owner guardrails, validated
+        // above and re-validated fail-closed main-side.
+        ...(validation.routingPolicy === undefined ? {} : { routingPolicy: validation.routingPolicy }),
+        ...(validation.guardrails === undefined ? {} : { guardrails: validation.guardrails }),
       }).catch(() => null))
       const outcome = decodeFullAutoRunOutcome(raw)
       if (outcome === null) {
@@ -317,11 +443,19 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         actionError: null,
       }))
       yield* refreshActiveRun()
+      // FA-UX-02 (#8997): hydrate the freshly minted bound thread through the
+      // canonical selection path, then keep the full-auto surface in front.
+      yield* selectRunThread(outcome.value.runRef)
+      yield* selectWorkspace("full-auto")
     }),
     DesktopFullAutoRunOpened: (runRef: string) => Effect.gen(function* () {
       yield* SubscriptionRef.update(state, current => withFullAuto(current, { mode: "run", activeRunRef: runRef, actionError: null }))
-      yield* selectWorkspace("full-auto")
       yield* refreshActiveRun()
+      // FA-UX-02 (#8997): the canonical thread selection MUST settle before
+      // the workspace re-asserts full-auto (the shell's selection path lands
+      // in the chat workspace).
+      yield* selectRunThread(runRef)
+      yield* selectWorkspace("full-auto")
     }),
     DesktopFullAutoRunRefreshed: () => refreshActiveRun(),
     DesktopFullAutoRunsListRefreshed: () => refreshList(),
@@ -365,6 +499,45 @@ const RUN_STATE_TONE: Readonly<Record<FullAutoRunProjection["state"], "neutral" 
 /** Sidebar-facing status label -- the accessible text FA-AC-57 requires
  * alongside (never in place of) the restrained state indicator. */
 export const fullAutoRunStatusLabel = (run: FullAutoRunProjection): string => RUN_STATE_LABEL[run.state]
+
+// ---------------------------------------------------------------------------
+// FA-UX-02 (#8997): turn-row time formatting -- provider chip + disposition +
+// relative time + duration ("completed · 5m 12s ago · 5m 7s"), never raw ISO
+// concatenation. Pure and exported so both the Effect Native projection and
+// the React surface share one formatter (and the oracle test can pin it).
+// ---------------------------------------------------------------------------
+
+export const formatFullAutoDuration = (ms: number): string => {
+  if (!Number.isFinite(ms) || ms < 0) return ""
+  const totalSeconds = Math.round(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+  if (minutes > 0) return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+  return `${seconds}s`
+}
+
+export const formatFullAutoRelativeTime = (iso: string, now: Date = new Date()): string => {
+  const timestamp = Date.parse(iso)
+  if (!Number.isFinite(timestamp)) return iso
+  const elapsed = now.getTime() - timestamp
+  if (elapsed < 1000) return "just now"
+  return `${formatFullAutoDuration(elapsed)} ago`
+}
+
+/** "5m 12s ago · 5m 7s" -- relative end time plus the turn's own duration. */
+export const fullAutoTurnTimingLabel = (
+  turn: Readonly<{ createdAt: string; updatedAt: string }>,
+  now: Date = new Date(),
+): string => {
+  const started = Date.parse(turn.createdAt)
+  const ended = Date.parse(turn.updatedAt)
+  const relative = formatFullAutoRelativeTime(turn.updatedAt, now)
+  if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) return relative
+  const duration = formatFullAutoDuration(ended - started)
+  return duration === "" ? relative : `${relative} · ${duration}`
+}
 
 export const fullAutoLauncherView = (fullAuto: FullAutoWorkspaceState): View => {
   const draft = fullAuto.launcher
@@ -448,6 +621,68 @@ export const fullAutoLauncherView = (fullAuto: FullAutoWorkspaceState): View => 
           variant: "caption",
           color: "textMuted",
         }),
+      ]),
+      // FA-WIRE-01 (#8996): the ordered fallback-lane picker over the same
+      // admitted Full-Auto-eligible lane options as the primary picker, plus
+      // the optional wall-clock guardrail. Order = rotation priority.
+      Stack({ key: "full-auto-launcher-routing-row", direction: "row", gap: "2", align: "center" }, [
+        Select({
+          key: "full-auto-launcher-fallback-add",
+          value: "",
+          options: [
+            { value: "", label: "Add fallback lane…" },
+            ...fullAutoLauncherLaneOptions
+              .filter(option => option.value !== draft.lane && !draft.fallbackLanes.includes(option.value))
+              .map(option => ({ value: option.value, label: option.label })),
+          ],
+          disabled: draft.submitting,
+          a11y: { label: "Add a fallback provider lane (order is rotation priority)" },
+          onChange: IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", ComponentValueBinding()),
+        }),
+        TextField({
+          key: "full-auto-launcher-max-wall-clock-field",
+          value: draft.maxWallClockMinutesText,
+          placeholder: "no limit",
+          disabled: draft.submitting,
+          a11y: { label: "Max wall clock in minutes (optional guardrail)" },
+          onChange: IntentRef("DesktopFullAutoLauncherMaxWallClockChanged", ComponentValueBinding()),
+          style: { width: "3xs" },
+        }),
+        Text({
+          key: "full-auto-launcher-max-wall-clock-caption",
+          content: "Max wall clock (minutes, optional)",
+          variant: "caption",
+          color: "textMuted",
+        }),
+      ]),
+      ...(draft.fallbackLanes.length === 0 ? [] : [
+        Stack({ key: "full-auto-launcher-fallback-list", direction: "column", gap: "1" }, [
+          Text({
+            key: "full-auto-launcher-fallback-caption",
+            content: "Rotation order on account exhaustion / rate limit / provider error:",
+            variant: "caption",
+            color: "textMuted",
+          }),
+          ...[draft.lane, ...draft.fallbackLanes].map((lane, index) =>
+            Stack({ key: `full-auto-launcher-fallback-${lane}`, direction: "row", gap: "2", align: "center" }, [
+              Text({
+                key: `full-auto-launcher-fallback-${lane}-label`,
+                content: `${index + 1}. ${fullAutoLauncherLaneLabel(lane)}`,
+                variant: "body",
+                color: "textPrimary",
+              }),
+              ...(index === 0
+                ? [Text({ key: `full-auto-launcher-fallback-${lane}-primary`, content: "primary", variant: "caption", color: "textMuted" })]
+                : [Button({
+                    key: `full-auto-launcher-fallback-${lane}-remove`,
+                    label: "Remove",
+                    variant: "ghost",
+                    disabled: draft.submitting,
+                    onPress: IntentRef("DesktopFullAutoLauncherFallbackLaneRemoved", StaticPayload(lane)),
+                    a11y: { label: `Remove fallback lane ${fullAutoLauncherLaneLabel(lane)}` },
+                  })]),
+            ])),
+        ]),
       ]),
       ...(draft.error !== null
         ? [Text({ key: "full-auto-launcher-error", content: draft.error, variant: "caption", color: "danger" })]
@@ -568,7 +803,9 @@ export const fullAutoRunView = (fullAuto: FullAutoWorkspaceState): View => {
                 Spacer({ key: `full-auto-run-turn-${index}-fill`, flex: true }),
                 Text({
                   key: `full-auto-run-turn-${index}-time`,
-                  content: `${turn.createdAt} → ${turn.updatedAt}`,
+                  // FA-UX-02 (#8997): relative time + duration, never raw ISO
+                  // concatenation.
+                  content: fullAutoTurnTimingLabel(turn),
                   variant: "caption",
                   color: "textMuted",
                 }),

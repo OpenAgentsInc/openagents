@@ -292,6 +292,36 @@ export const fullAutoControlOpenApiDocument = {
         },
       },
     },
+    "/v1/full-auto/{threadRef}/resume": {
+      post: {
+        operationId: "resumeFullAutoThread",
+        summary: "Resume a low-confidence-paused Full Auto record (FA-GD-01/FA-WIRE-01).",
+        description:
+          "The explicit resume command for a record the FA-GD-01 confidence gate durably paused " +
+          "(pausedReason set). Clears the pause, stamps lastResumedAt/resumedBy, records a typed " +
+          "continue decision, and schedules the exact same serialized reconciliation pass every " +
+          "other Full Auto trigger uses. Refuses with 409 not_paused when the record exists but is " +
+          "not currently paused -- resume can never re-enable a disabled record or touch a healthy one.",
+        parameters: [threadRefParameter],
+        responses: {
+          "200": {
+            description: "The pause was cleared and the shared reconcile pass was scheduled.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/FullAutoControlMutationResponse" },
+              },
+            },
+          },
+          "400": invalidRequestResponse,
+          "401": unauthorizedResponse,
+          "404": notFoundResponse,
+          "409": {
+            description: "The record exists but is not currently paused; nothing changed.",
+            content: { "application/json": { schema: errorResponseSchema } },
+          },
+        },
+      },
+    },
     "/v1/full-auto/{threadRef}/continue-now": {
       post: {
         operationId: "continueFullAutoNow",
@@ -628,17 +658,106 @@ export const fullAutoControlOpenApiDocument = {
           blockedReason: { type: ["string", "null"], minLength: 1, maxLength: 300 },
           disabledBy: {
             type: ["string", "null"],
+            // FA-WIRE-01 (#8996): this enum lagged FullAutoDisabledBySchema by
+            // the FA-GD-01 "guardrail" attribution; it now mirrors the
+            // registry vocabulary exactly.
             enum: [
               "ui_toggle",
               "control_api",
               "workspace_guard",
               "continuation_cap",
               "dispatch_failure_limit",
+              "guardrail",
               null,
             ],
           },
           disabledAt: { type: ["string", "null"] },
           live: { $ref: "#/components/schemas/FullAutoControlLive" },
+          rotationHistory: {
+            type: "array",
+            maxItems: 20,
+            items: { $ref: "#/components/schemas/FullAutoRotationRecord" },
+          },
+          decisionHistory: {
+            type: "array",
+            maxItems: 40,
+            items: { $ref: "#/components/schemas/FullAutoContinuationDecision" },
+          },
+          guardrails: {
+            oneOf: [{ $ref: "#/components/schemas/FullAutoGuardrails" }, { type: "null" }],
+          },
+          routingPolicy: {
+            oneOf: [
+              {
+                type: "array",
+                minItems: 1,
+                maxItems: 8,
+                items: { $ref: "#/components/schemas/FullAutoRoutingCandidate" },
+              },
+              { type: "null" },
+            ],
+          },
+          pausedReason: { type: ["string", "null"], minLength: 1, maxLength: 300 },
+          pausedAt: { type: ["string", "null"] },
+        },
+      },
+      FullAutoRotationRecord: {
+        type: "object",
+        required: ["fromLane", "toLane", "reason", "at"],
+        additionalProperties: false,
+        description:
+          "FA-RT-01 (#8987): one durable, public-safe rotation fact -- lane refs, a typed reason, " +
+          "and an ISO timestamp only.",
+        properties: {
+          fromLane: { type: "string", minLength: 1, maxLength: 80 },
+          toLane: { type: "string", minLength: 1, maxLength: 80 },
+          reason: { type: "string", enum: ["account_exhausted", "rate_limited", "provider_error"] },
+          at: { type: "string" },
+        },
+      },
+      FullAutoContinuationDecision: {
+        type: "object",
+        required: ["at", "decision", "reason"],
+        additionalProperties: false,
+        description:
+          "FA-GD-01 (#8991): one typed per-continuation decision fact (continue/rotate/" +
+          "pause_low_confidence/stop_guardrail) with the remaining turn budget when meaningful.",
+        properties: {
+          at: { type: "string" },
+          decision: {
+            type: "string",
+            enum: ["continue", "rotate", "pause_low_confidence", "stop_guardrail"],
+          },
+          reason: { type: "string", minLength: 1, maxLength: 300 },
+          budgetRemaining: { type: "integer", minimum: 0 },
+          goalRef: { type: "string", minLength: 1, maxLength: 180 },
+        },
+      },
+      FullAutoRoutingCandidate: {
+        type: "object",
+        required: ["lane"],
+        additionalProperties: false,
+        description:
+          "FA-RT-01/FA-WIRE-01: one ordered routing candidate -- an admitted Full-Auto-eligible " +
+          "ProviderLane ref plus an optional account ref on that lane. Order = rotation priority.",
+        properties: {
+          lane: { type: "string", minLength: 1, maxLength: 80 },
+          accountRef: { type: "string", minLength: 1, maxLength: 80 },
+        },
+      },
+      FullAutoGuardrails: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "FA-GD-01 (#8991): the COMPLETE owner-configurable guardrail surface. Absent fields keep " +
+          "the built-in defaults (20-turn cap, 5-consecutive-failure disable). The non-overridable " +
+          "core guardrails (workspace binding, own-capacity-only dispatch, no rate-limit-reset " +
+          "triggering) deliberately have no field here.",
+        properties: {
+          maxWallClockMs: { type: "integer", minimum: 1 },
+          maxTurns: { type: "integer", minimum: 1 },
+          maxPerTurnFailures: { type: "integer", minimum: 1 },
+          tokenBudgetRef: { type: "string", minLength: 1, maxLength: 180 },
         },
       },
       FullAutoControlListResponse: {
@@ -677,7 +796,23 @@ export const fullAutoControlOpenApiDocument = {
             minLength: 1,
             maxLength: 80,
             default: "codex-local",
-            description: "Optional admitted ProviderLane ref; defaults to codex-local.",
+            description:
+              "Optional admitted ProviderLane ref; defaults to the routing policy's first " +
+              "candidate when one is submitted, else codex-local.",
+          },
+          routingPolicy: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: { $ref: "#/components/schemas/FullAutoRoutingCandidate" },
+            description:
+              "FA-WIRE-01 (#8996): optional ordered multi-lane routing policy (order = rotation " +
+              "priority). Validated fail-closed via validateFullAutoRoutingPolicy; a refusal is " +
+              "409 routing_policy_refused with nothing written.",
+          },
+          guardrails: {
+            $ref: "#/components/schemas/FullAutoGuardrails",
+            description: "FA-WIRE-01 (#8996): optional owner-configured guardrails, bound on enable.",
           },
         },
       },
@@ -704,6 +839,19 @@ export const fullAutoControlOpenApiDocument = {
             minLength: 1,
             maxLength: 80,
             description: "Optional owner-visible title for the minted thread.",
+          },
+          routingPolicy: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: { $ref: "#/components/schemas/FullAutoRoutingCandidate" },
+            description:
+              "FA-WIRE-01 (#8996): optional ordered multi-lane routing policy; on refusal NO " +
+              "thread is minted.",
+          },
+          guardrails: {
+            $ref: "#/components/schemas/FullAutoGuardrails",
+            description: "FA-WIRE-01 (#8996): optional owner-configured guardrails, bound at start.",
           },
         },
       },
@@ -792,6 +940,8 @@ export const fullAutoControlOpenApiDocument = {
               "active_run_conflict",
               "illegal_transition",
               "not_recoverable",
+              "routing_policy_refused",
+              "not_paused",
             ],
           },
           message: { type: "string", minLength: 1, maxLength: 600 },
@@ -802,6 +952,18 @@ export const fullAutoControlOpenApiDocument = {
           toState: { $ref: "#/components/schemas/FullAutoRunState" },
           handoffRefusalReason: { $ref: "#/components/schemas/ProviderHandoffRefusalReason" },
           stallCause: { $ref: "#/components/schemas/FullAutoStallCause" },
+          routingPolicyRefusalReason: {
+            type: "string",
+            enum: [
+              "policy_empty",
+              "policy_too_long",
+              "duplicate_candidate",
+              "lane_unknown",
+              "lane_not_admitted",
+              "lane_not_full_auto_eligible",
+            ],
+          },
+          lane: { type: "string", minLength: 1, maxLength: 80 },
         },
       },
       ProviderHandoffRefusalReason: {
@@ -984,6 +1146,19 @@ export const fullAutoControlOpenApiDocument = {
             description: "Optional admitted ProviderLane ref; defaults to codex-local.",
           },
           turnCap: { type: "integer", minimum: 1, maximum: 1000, default: 20 },
+          routingPolicy: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: { $ref: "#/components/schemas/FullAutoRoutingCandidate" },
+            description:
+              "FA-WIRE-01 (#8996): optional ordered multi-lane routing policy, validated " +
+              "fail-closed BEFORE anything is minted and bound onto the run's thread record.",
+          },
+          guardrails: {
+            $ref: "#/components/schemas/FullAutoGuardrails",
+            description: "FA-WIRE-01 (#8996): optional owner-configured guardrails.",
+          },
         },
       },
       FullAutoRunReportTurnEntry: {
@@ -1085,12 +1260,15 @@ export const fullAutoControlOpenApiDocument = {
           blockedReason: { type: ["string", "null"], minLength: 1, maxLength: 300 },
           disabledBy: {
             type: ["string", "null"],
+            // FA-WIRE-01 (#8996): mirrored to FullAutoDisabledBySchema
+            // (previously lagged by the FA-GD-01 "guardrail" attribution).
             enum: [
               "ui_toggle",
               "control_api",
               "workspace_guard",
               "continuation_cap",
               "dispatch_failure_limit",
+              "guardrail",
               null,
             ],
           },

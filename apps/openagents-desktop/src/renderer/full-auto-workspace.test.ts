@@ -21,6 +21,9 @@ import {
   fullAutoLauncherView,
   fullAutoRunStatusLabel,
   fullAutoRunView,
+  fullAutoTurnTimingLabel,
+  formatFullAutoDuration,
+  formatFullAutoRelativeTime,
   fullAutoWorkspaceIntents,
   fullAutoWorkspaceView,
   makeFullAutoWorkspaceHandlers,
@@ -107,8 +110,55 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
 
   test("accepts a complete draft and derives the turn cap; blank turn cap text omits it", () => {
     const draft = { ...emptyFullAutoLauncherDraft(), title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws" }
-    expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "5" })).toEqual({ ok: true, turnCap: 5 })
-    expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "" })).toEqual({ ok: true, turnCap: undefined })
+    // FA-WIRE-01: the turn cap doubles as guardrails.maxTurns so the
+    // thread-level cap follows the owner's chosen cap.
+    expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "5" })).toEqual({
+      ok: true, turnCap: 5, routingPolicy: undefined, guardrails: { maxTurns: 5 },
+    })
+    expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "" })).toEqual({
+      ok: true, turnCap: undefined, routingPolicy: undefined, guardrails: undefined,
+    })
+  })
+
+  test("FA-WIRE-01: ordered fallback lanes build the routing policy (primary first); duplicates refuse typed", () => {
+    const draft = { ...emptyFullAutoLauncherDraft(), title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws", turnCapText: "" }
+    const withFallback = validateFullAutoLauncherDraft({ ...draft, fallbackLanes: ["acp:grok-cli", "acp:cursor-agent"] })
+    expect(withFallback).toEqual({
+      ok: true,
+      turnCap: undefined,
+      routingPolicy: [{ lane: "codex-local" }, { lane: "acp:grok-cli" }, { lane: "acp:cursor-agent" }],
+      guardrails: undefined,
+    })
+    const duplicate = validateFullAutoLauncherDraft({ ...draft, fallbackLanes: ["codex-local"] })
+    expect(duplicate).toEqual({ ok: false, error: "Each lane can appear only once in the rotation order." })
+    const overLong = validateFullAutoLauncherDraft({ ...draft, fallbackLanes: ["a", "b", "c", "d", "e", "f", "g", "h"] })
+    expect(overLong.ok).toBe(false)
+  })
+
+  test("FA-WIRE-01: max wall clock minutes converts to maxWallClockMs; invalid values refuse typed", () => {
+    const draft = { ...emptyFullAutoLauncherDraft(), title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws", turnCapText: "" }
+    expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "90" })).toEqual({
+      ok: true, turnCap: undefined, routingPolicy: undefined, guardrails: { maxWallClockMs: 90 * 60_000 },
+    })
+    expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "0" }).ok).toBe(false)
+    expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "ten" }).ok).toBe(false)
+  })
+})
+
+describe("FA-UX-02 (#8997): turn-row time formatting", () => {
+  test("renders relative time + duration, never raw ISO concatenation", () => {
+    const now = new Date("2026-07-18T02:29:11.000Z")
+    expect(formatFullAutoDuration(5 * 60_000 + 7000)).toBe("5m 7s")
+    expect(formatFullAutoDuration(2 * 3600_000 + 3 * 60_000)).toBe("2h 3m")
+    expect(formatFullAutoRelativeTime("2026-07-18T02:23:59.000Z", now)).toBe("5m 12s ago")
+    const label = fullAutoTurnTimingLabel(
+      { createdAt: "2026-07-18T02:18:52.000Z", updatedAt: "2026-07-18T02:23:59.000Z" },
+      now,
+    )
+    expect(label).toBe("5m 12s ago · 5m 7s")
+    expect(label).not.toContain("2026-07-18T")
+    // Unparseable timestamps degrade honestly instead of throwing.
+    expect(fullAutoTurnTimingLabel({ createdAt: "nope", updatedAt: "also nope" })).toBe("also nope")
   })
 })
 
@@ -209,14 +259,22 @@ describe("fullAutoLauncherView (FA-AC-54)", () => {
 
 type Harness = FullAutoCapableState
 
-const makeHarness = (hostOverrides: Partial<FullAutoRunRendererHost> = {}, initial: Partial<Harness> = {}) => {
+const makeHarness = (
+  hostOverrides: Partial<FullAutoRunRendererHost> = {},
+  initial: Partial<Harness> = {},
+  selectedThreads: Array<string> = [],
+) => {
   const host: FullAutoRunRendererHost = { ...unavailableFullAutoRunRendererHost, ...hostOverrides }
   return Effect.gen(function* () {
     const state = yield* SubscriptionRef.make<Harness>({ workspace: "chat", fullAuto: emptyFullAutoWorkspaceState(), ...initial })
     const registry = yield* makeIntentRegistry(
       fullAutoWorkspaceIntents,
-      makeFullAutoWorkspaceHandlers(state, host, () =>
-        SubscriptionRef.update(state, current => ({ ...current, workspace: "full-auto" }))),
+      makeFullAutoWorkspaceHandlers(
+        state,
+        host,
+        workspace => SubscriptionRef.update(state, current => ({ ...current, workspace })),
+        threadRef => Effect.sync(() => { selectedThreads.push(threadRef) }),
+      ),
     )
     return { state, registry }
   })
@@ -331,6 +389,59 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
       expect(calls).toEqual(["pause:run-1", "resume:run-1", "stop:run-1", "retryNow:run-1"])
       const next = yield* SubscriptionRef.get(state)
       expect(next.fullAuto.actionError).toBeNull()
+    }))
+  })
+
+  test("FA-WIRE-01: fallback add/remove/wall-clock intents update the draft; Start submits the ordered policy + guardrails", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const startRequests: Array<Record<string, unknown>> = []
+      const started = baseRun({ runRef: "run-policy", state: "running" })
+      const { state, registry } = yield* makeHarness({
+        start: async request => {
+          startRequests.push(request as unknown as Record<string, unknown>)
+          return { ok: true, value: started }
+        },
+        get: async () => ({ ok: true, value: started }),
+        report: async () => ({ ok: true, value: { turns: [], providerTransitions: [] } }),
+      }, {
+        fullAuto: {
+          ...emptyFullAutoWorkspaceState(),
+          launcher: { ...emptyFullAutoWorkspaceState().launcher, title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws", turnCapText: "5" },
+        },
+      })
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("acp:grok-cli"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("acp:cursor-agent"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneRemoved", StaticPayload("acp:cursor-agent"))))
+      // Duplicates and the primary lane are no-ops.
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("acp:grok-cli"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("codex-local"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherMaxWallClockChanged", StaticPayload("120"))))
+      const draft = (yield* SubscriptionRef.get(state)).fullAuto.launcher
+      expect(draft.fallbackLanes).toEqual(["acp:grok-cli"])
+      expect(draft.maxWallClockMinutesText).toBe("120")
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherStartRequested", StaticPayload(null))))
+      expect(startRequests).toHaveLength(1)
+      expect(startRequests[0]).toMatchObject({
+        routingPolicy: [{ lane: "codex-local" }, { lane: "acp:grok-cli" }],
+        guardrails: { maxTurns: 5, maxWallClockMs: 120 * 60_000 },
+        turnCap: 5,
+      })
+    }))
+  })
+
+  test("FA-UX-02 (#8997): opening a run selects its bound thread through the injected canonical selection path, then re-asserts the full-auto workspace", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const run = baseRun({ runRef: "run-1", threadRef: "thread-1", state: "running" })
+      const selectedThreads: Array<string> = []
+      const { state, registry } = yield* makeHarness({
+        get: async () => ({ ok: true, value: run }),
+        report: async () => ({ ok: true, value: { turns: [], providerTransitions: [] } }),
+      }, { fullAuto: { ...emptyFullAutoWorkspaceState(), runs: [run] } }, selectedThreads)
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoRunOpened", StaticPayload("run-1"))))
+      expect(selectedThreads).toEqual(["thread-1"])
+      const next = yield* SubscriptionRef.get(state)
+      expect(next.workspace).toBe("full-auto")
+      expect(next.fullAuto.mode).toBe("run")
     }))
   })
 

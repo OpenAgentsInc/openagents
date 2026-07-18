@@ -3412,3 +3412,199 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding-left: 0;
   font-size: 9px;
 }
+
+/*
+ * FA-UX-02 (#8997): the Full Auto workspace surface. The launcher form and
+ * the read-only run view previously rendered with no styling at all (raw
+ * concatenated text); these rules give the surface the same host physics as
+ * the other workspace surfaces -- layout, spacing, and scroll containment
+ * only, sourced from EN semantic variables.
+ */
+.oa-react-full-auto-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden auto;
+  padding: var(--en-spacing-4) var(--en-spacing-5);
+}
+
+.oa-react-full-auto-launcher,
+.oa-react-full-auto-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--en-spacing-3);
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  min-height: 0;
+}
+
+.oa-react-full-auto-run {
+  max-width: 1080px;
+  flex: 1;
+}
+
+.oa-react-full-auto-launcher header p,
+.oa-react-full-auto-run-header p {
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-full-auto-field {
+  display: grid;
+  gap: var(--en-spacing-1);
+}
+
+.oa-react-full-auto-field label {
+  font-size: 12px;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-full-auto-row {
+  display: flex;
+  gap: var(--en-spacing-3);
+}
+
+.oa-react-full-auto-row > .oa-react-full-auto-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.oa-react-full-auto-select {
+  height: 32px;
+  padding: 0 var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-full-auto-rotation-order ol {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: 0;
+  padding-left: var(--en-spacing-4);
+}
+
+.oa-react-full-auto-rotation-order li {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-full-auto-rotation-caption {
+  margin: 0 0 var(--en-spacing-1);
+  font-size: 12px;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-full-auto-actions {
+  display: flex;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-full-auto-error {
+  margin: 0;
+  color: var(--en-color-danger);
+  font-size: 13px;
+}
+
+.oa-react-full-auto-run-header {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surface);
+}
+
+.oa-react-full-auto-run-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-full-auto-run-heading h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.oa-react-full-auto-run-header p {
+  margin: 0;
+}
+
+.oa-react-full-auto-run-meta,
+.oa-react-full-auto-run-done-condition {
+  font-size: 12px;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-full-auto-run-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  flex-wrap: wrap;
+}
+
+.oa-react-full-auto-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 240px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  overflow: hidden;
+}
+
+.oa-react-full-auto-conversation > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.oa-react-full-auto-conversation-empty {
+  margin: 0;
+  padding: var(--en-spacing-4);
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-full-auto-transcript {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-lg);
+  background: var(--en-color-surface);
+}
+
+.oa-react-full-auto-transcript h2,
+.oa-react-full-auto-transcript h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.oa-react-full-auto-turn-list,
+.oa-react-full-auto-transition-list {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: 0;
+  padding-left: var(--en-spacing-4);
+}
+
+.oa-react-full-auto-turn {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-full-auto-turn-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-full-auto-turn-time {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--en-color-textMuted);
+}

@@ -301,6 +301,122 @@ describe("ReactFullAutoSurface: read-only run view (FA-AC-55, FA-AC-56)", () => 
     expect(received).toContainEqual({ name: "DesktopFullAutoRunRetryNowRequested", payload: null });
   });
 
+  // FA-UX-02 (#8997) oracle -- behavior contract
+  // openagents_desktop.full_auto_run_view_canonical_timeline.v1: the run view
+  // composes the SAME canonical ConversationTimeline component ordinary chats
+  // render (proven by the message-scroller element it alone mounts), fed by
+  // the bound thread's notes, with no composer.
+  test("FA-UX-02: the run view mounts the canonical thread timeline for the bound thread's conversation", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    const run = baseRun({ state: "running", threadRef: "thread-1" });
+    await render(root, <ReactFullAutoSurface state={fixtureState({
+      fullAuto: { ...emptyFullAutoWorkspaceState(), mode: "run", activeRunRef: run.runRef, runs: [run] },
+      activeThreadId: "thread-1",
+      notes: [
+        { key: "n1", role: "user", text: "Continue Full Auto: do the next thing.", timestamp: "02:18" },
+        { key: "n2", role: "assistant", text: "Shipped the next packet.", timestamp: "02:23" },
+      ],
+    })} report={report} />);
+    // The canonical timeline component (not a parallel mini-renderer).
+    expect(container.querySelector('[data-slot="message-scroller"]')).not.toBeNull();
+    expect(container.textContent).toContain("Shipped the next packet.");
+    // Read-only: still no composer (CUT-DSK-06).
+    expect(container.querySelector('form[data-chat-composer-form="true"]')).toBeNull();
+  });
+
+  test("FA-UX-02: with no conversation yet, the run view says so instead of mounting an empty-chat CTA", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactFullAutoSurface state={runState(baseRun({ state: "running" }))} report={report} />);
+    expect(container.textContent).toContain("No conversation yet.");
+    expect(container.querySelector('[data-slot="message-scroller"]')).toBeNull();
+  });
+
+  test("FA-UX-02: turn rows render provider chip + disposition + relative time/duration, never raw ISO concatenation", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    const run = baseRun({ state: "running" });
+    await render(root, <ReactFullAutoSurface state={fixtureState({
+      fullAuto: {
+        ...emptyFullAutoWorkspaceState(),
+        mode: "run",
+        activeRunRef: run.runRef,
+        runs: [run],
+        activeReport: {
+          turns: [{
+            turnRef: "turn.full-auto.1",
+            lane: "codex-local",
+            outcomeSummary: "turn completed",
+            createdAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+            updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+          }],
+          providerTransitions: [],
+        },
+      },
+    })} report={report} />);
+    const row = container.querySelector(".oa-react-full-auto-turn");
+    expect(row).not.toBeNull();
+    expect(row!.querySelector('[data-slot="badge"]')?.textContent ?? row!.textContent).toContain("codex-local");
+    expect(row!.textContent).toContain("turn completed");
+    const time = row!.querySelector(".oa-react-full-auto-turn-time");
+    expect(time?.textContent).toContain("ago");
+    expect(time?.textContent).not.toContain("T");
+    expect(row!.textContent).not.toContain("→");
+  });
+});
+
+describe("ReactFullAutoSurface: FA-WIRE-01 (#8996) ordered fallback lanes + guardrails in the launcher", () => {
+  test("adding a fallback lane dispatches the intent; the rotation order list renders with a working Remove", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactFullAutoSurface state={fixtureState()} report={report} />);
+    const select = container.querySelector('[data-en-key="full-auto-launcher-fallback-add"]') as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    await interact(() => {
+      select.value = "acp:grok-cli";
+      select.dispatchEvent(new (globalThis as unknown as { Event: typeof Event }).Event("change", { bubbles: true }));
+    });
+    expect(received).toContainEqual({ name: "DesktopFullAutoLauncherFallbackLaneAdded", payload: "acp:grok-cli" });
+
+    await render(root, <ReactFullAutoSurface state={fixtureState({
+      fullAuto: {
+        ...emptyFullAutoWorkspaceState(),
+        launcher: { ...emptyFullAutoWorkspaceState().launcher, fallbackLanes: ["acp:grok-cli"] },
+      },
+    })} report={report} />);
+    const order = container.querySelector('[data-en-key="full-auto-launcher-rotation-order"]');
+    expect(order).not.toBeNull();
+    expect(order!.textContent).toContain("Codex");
+    expect(order!.textContent).toContain("Grok CLI");
+    const remove = container.querySelector('[data-en-key="full-auto-launcher-fallback-remove-acp:grok-cli"]') as HTMLButtonElement;
+    expect(remove).not.toBeNull();
+    await interact(() => remove.click());
+    expect(received).toContainEqual({ name: "DesktopFullAutoLauncherFallbackLaneRemoved", payload: "acp:grok-cli" });
+  });
+
+  test("the max wall clock field renders the draft value", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { report } = recorder();
+    const root = createTestRoot(container);
+    await render(root, <ReactFullAutoSurface state={fixtureState({
+      fullAuto: {
+        ...emptyFullAutoWorkspaceState(),
+        launcher: { ...emptyFullAutoWorkspaceState().launcher, maxWallClockMinutesText: "120" },
+      },
+    })} report={report} />);
+    expect((container.querySelector("#full-auto-launcher-max-wall-clock") as HTMLInputElement).value).toBe("120");
+  });
+
   test("an action error is surfaced without hiding the pinned mission contract", async () => {
     const { container } = installDom();
     const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");

@@ -25,7 +25,19 @@ import {
   type FullAutoControlTurn,
 } from "./full-auto-control-contract.ts"
 import { fullAutoControlOpenApiDocument } from "./full-auto-control-openapi.ts"
-import type { FullAutoRecord, FullAutoRegistry } from "./full-auto-registry.ts"
+import {
+  projectFullAutoDecisionHistory,
+  projectFullAutoRotationHistory,
+  type FullAutoGuardrails,
+  type FullAutoRecord,
+  type FullAutoRegistry,
+  type FullAutoRoutingCandidate,
+} from "./full-auto-registry.ts"
+import { resumeFullAuto } from "./full-auto-reconcile.ts"
+import {
+  validateFullAutoRoutingPolicy,
+  type FullAutoRoutingLaneGate,
+} from "./full-auto-routing.ts"
 import type { LocalTurnRecord } from "./local-turn-journal.ts"
 import { FULL_AUTO_DEFAULT_LANE } from "./full-auto-lane.ts"
 import { type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
@@ -136,7 +148,13 @@ export const verifyFullAutoControlToken = (
  * capability maps 1:1 onto something the IPC handlers already do.
  */
 export type FullAutoControlCapabilities = Readonly<{
-  registry: Pick<FullAutoRegistry, "list" | "record" | "set">
+  /** FA-WIRE-01 (#8996) widened the Pick: resume/recordDecision back the new
+   * resume route (via the exported resumeFullAuto), and bindRoutingPolicy/
+   * bindGuardrails back post-mint binding on the run-level start path. */
+  registry: Pick<
+    FullAutoRegistry,
+    "list" | "record" | "set" | "resume" | "recordDecision" | "bindRoutingPolicy" | "bindGuardrails"
+  >
   /** FA-H2: the SAME workspace resolution codex-local turns execute against. */
   resolveWorkspaceRef: () => string
   /** FA-H3: the SAME serialized reconciliation trigger every other Full Auto
@@ -153,6 +171,15 @@ export type FullAutoControlCapabilities = Readonly<{
   createThread: (title: string | null, laneRef: string) => string
   /** L6: capability-gated ProviderLane selection. */
   isLaneEligible?: (laneRef: string) => boolean
+  /**
+   * FA-WIRE-01 (#8996): the live lane-admission gate
+   * validateFullAutoRoutingPolicy composes with (main passes
+   * makeFullAutoRoutingLaneGate over the same capability source dispatch
+   * uses). Absent, a coarse fallback gate is derived from isLaneEligible --
+   * still fail-closed (an ineligible lane refuses as lane_unknown), just
+   * without the unknown/unadmitted distinction.
+   */
+  routingLaneGate?: FullAutoRoutingLaneGate
   /** L8: public-safe lane registry. Includes unavailable/unadmitted lanes. */
   listLanes?: () => Promise<ReadonlyArray<ProviderLaneRegistryEntry>>
   /** FA-RUN-01 (#8969): the durable FullAutoRun objective/lifecycle store.
@@ -230,7 +257,52 @@ const projectRecord = (
   disabledBy: record.disabledBy ?? null,
   disabledAt: record.disabledAt ?? null,
   live: live ?? { state: "idle", turnRef: null },
+  // FA-WIRE-01 (#8996): rotation/decision history through the exported
+  // public-safe projection helpers (bounded, explicit field-by-field), plus
+  // the bound guardrails/routing policy and the durable low-confidence pause.
+  rotationHistory: projectFullAutoRotationHistory(record),
+  decisionHistory: projectFullAutoDecisionHistory(record),
+  guardrails: record.guardrails ?? null,
+  routingPolicy: record.routingPolicy === undefined || record.routingPolicy.length === 0
+    ? null
+    : record.routingPolicy.map(candidate => ({
+        lane: candidate.lane,
+        ...(candidate.accountRef === undefined ? {} : { accountRef: candidate.accountRef }),
+      })),
+  pausedReason: record.pausedReason ?? null,
+  pausedAt: record.pausedAt ?? null,
 })
+
+/**
+ * FA-WIRE-01 (#8996): shared fail-closed routing-policy admission used by the
+ * thread-level start/enable routes, the run-level runs/start route, and
+ * main's own launcher IPC handler. Returns the validated policy, `null` when
+ * no policy was submitted, or the exact typed control error to serve.
+ */
+export const evaluateFullAutoControlRoutingPolicy = (
+  capabilities: Pick<FullAutoControlCapabilities, "isLaneEligible" | "routingLaneGate">,
+  policy: ReadonlyArray<FullAutoRoutingCandidate> | undefined,
+):
+  | Readonly<{ ok: true; policy: ReadonlyArray<FullAutoRoutingCandidate> | null }>
+  | Readonly<{ ok: false; status: number; error: FullAutoControlError }> => {
+  if (policy === undefined) return { ok: true, policy: null }
+  const gate: FullAutoRoutingLaneGate = capabilities.routingLaneGate ??
+    (laneRef => capabilities.isLaneEligible?.(laneRef) === true
+      ? { admitted: true, fullAuto: true }
+      : null)
+  const validation = validateFullAutoRoutingPolicy(policy, gate)
+  if (validation.ok) return { ok: true, policy: validation.policy }
+  return {
+    ok: false,
+    status: 409,
+    error: {
+      error: "routing_policy_refused",
+      message: `The routing policy was refused (${validation.reason}${validation.lane === undefined ? "" : `: ${validation.lane}`}); nothing was written.`,
+      routingPolicyRefusalReason: validation.reason,
+      ...(validation.lane === undefined ? {} : { lane: validation.lane }),
+    },
+  }
+}
 
 const projectTurns = (records: ReadonlyArray<LocalTurnRecord>): ReadonlyArray<FullAutoControlTurn> =>
   [...records]
@@ -408,12 +480,24 @@ export const startFullAutoControlServer = (
         })
         return
       }
-      const lane = body.lane ?? FULL_AUTO_DEFAULT_LANE
+      // FA-WIRE-01 (#8996): the primary lane defaults to the routing policy's
+      // FIRST candidate when a policy is submitted without an explicit lane,
+      // so the reconciler's rotation cycle starts exactly where the owner's
+      // ordered list starts.
+      const lane = body.lane ?? body.routingPolicy?.[0]?.lane ?? FULL_AUTO_DEFAULT_LANE
       if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
         sendError(response, 409, {
           error: "lane_not_eligible",
           message: `Provider lane ${lane} is not admitted for Full Auto background turns.`,
         })
+        return
+      }
+      // FA-WIRE-01 (#8996): fail-closed policy admission BEFORE anything is
+      // minted -- a refusal leaves no thread and no registry write behind.
+      const startPolicy = evaluateFullAutoControlRoutingPolicy(capabilities, body.routingPolicy)
+      if (!startPolicy.ok) {
+        auditLog("start", "-", `refused ${startPolicy.error.error}`)
+        sendError(response, startPolicy.status, startPolicy.error)
         return
       }
       // Bootstrap: main mints the thread, the same registry.set path as the
@@ -422,7 +506,14 @@ export const startFullAutoControlServer = (
       const startedThreadRef = capabilities.createThread(body.title ?? null, lane)
       const record = capabilities.registry.set(startedThreadRef, true, {
         workspaceRef: resolvedWorkspaceRef,
-        profile: { lane },
+        profile: {
+          lane,
+          ...(startPolicy.policy?.[0]?.lane === lane && startPolicy.policy[0]?.accountRef !== undefined
+            ? { accountRef: startPolicy.policy[0].accountRef }
+            : {}),
+        },
+        ...(startPolicy.policy === null ? {} : { routingPolicy: startPolicy.policy }),
+        ...(body.guardrails === undefined ? {} : { guardrails: body.guardrails }),
       })
       capabilities.appendSystemNote(
         startedThreadRef,
@@ -479,11 +570,37 @@ export const startFullAutoControlServer = (
         })
         return
       }
-      const outcome = startFullAutoRunAction(actionContext, body)
+      // FA-WIRE-01 (#8996): fail-closed routing-policy admission BEFORE the
+      // action mints anything; a refusal leaves no run/thread behind.
+      const runPolicy = evaluateFullAutoControlRoutingPolicy(capabilities, body.routingPolicy)
+      if (!runPolicy.ok) {
+        auditLog("runs/start", "-", `refused ${runPolicy.error.error}`)
+        sendError(response, runPolicy.status, runPolicy.error)
+        return
+      }
+      const outcome = startFullAutoRunAction(actionContext, {
+        ...body,
+        // The primary lane defaults to the policy's first candidate so the
+        // rotation cycle starts where the owner's ordered list starts.
+        ...(body.lane === undefined && runPolicy.policy !== null
+          ? { lane: runPolicy.policy[0]!.lane }
+          : {}),
+      })
       if (!outcome.ok) {
         auditLog("runs/start", "-", `refused ${outcome.error.error}`)
         sendError(response, outcome.status, outcome.error)
         return
+      }
+      // Post-mint binding of the pre-validated policy/guardrails onto the
+      // run's thread-level record -- the same additive pattern main's own
+      // launcher IPC handler uses (never a second validation vocabulary).
+      if (outcome.value.threadRef !== null) {
+        if (runPolicy.policy !== null) {
+          capabilities.registry.bindRoutingPolicy(outcome.value.threadRef, runPolicy.policy)
+        }
+        if (body.guardrails !== undefined) {
+          capabilities.registry.bindGuardrails(outcome.value.threadRef, body.guardrails)
+        }
       }
       auditLog("runs/start", outcome.value.threadRef ?? "-", `ok runRef=${outcome.value.runRef}`)
       sendJson(response, 200, { schema: FULL_AUTO_CONTROL_SCHEMA, ok: true, run: outcome.value })
@@ -623,7 +740,7 @@ export const startFullAutoControlServer = (
       return
     }
 
-    const match = /^\/v1\/full-auto\/([^/]+)(?:\/(enable|disable|continue-now|turns))?$/.exec(
+    const match = /^\/v1\/full-auto\/([^/]+)(?:\/(enable|disable|continue-now|resume|turns))?$/.exec(
       url.pathname,
     )
     if (match === null) {
@@ -700,7 +817,7 @@ export const startFullAutoControlServer = (
         })
         return
       }
-      const lane = body.lane ?? FULL_AUTO_DEFAULT_LANE
+      const lane = body.lane ?? body.routingPolicy?.[0]?.lane ?? FULL_AUTO_DEFAULT_LANE
       if (!(capabilities.isLaneEligible?.(lane) ?? lane === FULL_AUTO_DEFAULT_LANE)) {
         sendError(response, 409, {
           error: "lane_not_eligible",
@@ -708,11 +825,26 @@ export const startFullAutoControlServer = (
         })
         return
       }
+      // FA-WIRE-01 (#8996): fail-closed routing-policy admission before the
+      // registry is touched.
+      const enablePolicy = evaluateFullAutoControlRoutingPolicy(capabilities, body.routingPolicy)
+      if (!enablePolicy.ok) {
+        auditLog("enable", threadRef, `refused ${enablePolicy.error.error}`)
+        sendError(response, enablePolicy.status, enablePolicy.error)
+        return
+      }
       // Same path as the CodexLocalFullAutoSetChannel handler: bind the
       // resolved workspace onto the durable record and enable.
       const record = capabilities.registry.set(threadRef, true, {
         workspaceRef: resolvedWorkspaceRef,
-        profile: { lane },
+        profile: {
+          lane,
+          ...(enablePolicy.policy?.[0]?.lane === lane && enablePolicy.policy[0]?.accountRef !== undefined
+            ? { accountRef: enablePolicy.policy[0].accountRef }
+            : {}),
+        },
+        ...(enablePolicy.policy === null ? {} : { routingPolicy: enablePolicy.policy }),
+        ...(body.guardrails === undefined ? {} : { guardrails: body.guardrails }),
       })
       capabilities.appendSystemNote(
         threadRef,
@@ -723,6 +855,48 @@ export const startFullAutoControlServer = (
         schema: FULL_AUTO_CONTROL_SCHEMA,
         ok: true,
         record: projectRecord(record, capabilities.liveState(threadRef)),
+      })
+      return
+    }
+
+    if (action === "resume") {
+      // FA-WIRE-01 (#8996): the explicit resume command for a FA-GD-01
+      // low-confidence pause, wired through the exported resumeFullAuto --
+      // clears the pause, records the typed decision, and schedules the SAME
+      // serialized reconciliation pass every other trigger uses. A missing
+      // record is 404; a record that is not paused is a typed 409 refusal
+      // (resume never re-enables a disabled record or touches a healthy one).
+      const existing = capabilities.registry.record(threadRef)
+      if (existing === null) {
+        sendError(response, 404, {
+          error: "not_found",
+          message: "No Full Auto record exists for that threadRef.",
+        })
+        return
+      }
+      const resumed = resumeFullAuto({
+        registry: capabilities.registry,
+        threadRef,
+        actor: "control_api",
+        scheduleReconciliation: () => { void capabilities.triggerReconciliation().catch(() => {}) },
+      })
+      if (resumed === null) {
+        auditLog("resume", threadRef, "refused not_paused")
+        sendError(response, 409, {
+          error: "not_paused",
+          message: "This Full Auto record is not paused; resume only clears a low-confidence pause and never re-enables a disabled record.",
+        })
+        return
+      }
+      capabilities.appendSystemNote(
+        threadRef,
+        `Full Auto resumed programmatically via the local control API (caller: ${FULL_AUTO_CONTROL_CALLER}).`,
+      )
+      auditLog("resume", threadRef, "ok")
+      sendJson(response, 200, {
+        schema: FULL_AUTO_CONTROL_SCHEMA,
+        ok: true,
+        record: projectRecord(resumed, capabilities.liveState(threadRef)),
       })
       return
     }

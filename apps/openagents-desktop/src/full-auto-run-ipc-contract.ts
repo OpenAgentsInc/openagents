@@ -53,6 +53,33 @@ export const decodeFullAutoRunRefRequest = (value: unknown): FullAutoRunRefReque
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
 
+/**
+ * FA-WIRE-01 (#8996): SELF-CONTAINED duplicates of the durable routing
+ * candidate / guardrail shapes (full-auto-registry.ts) -- see the
+ * RENDERER-BOUNDARY NOTE above for why these are copied, never imported.
+ */
+export const FullAutoRunRoutingCandidateSchema = Schema.Struct({
+  lane: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  accountRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+})
+export type FullAutoRunRoutingCandidate = typeof FullAutoRunRoutingCandidateSchema.Type
+/** Mirrors FULL_AUTO_ROUTING_POLICY_LIMIT in full-auto-registry.ts. */
+export const FULL_AUTO_RUN_ROUTING_POLICY_LIMIT = 8
+export const FullAutoRunRoutingPolicySchema = Schema.Array(FullAutoRunRoutingCandidateSchema).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(FULL_AUTO_RUN_ROUTING_POLICY_LIMIT),
+)
+
+const PositiveGuardrailCount = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))
+/** Mirrors FullAutoGuardrailsSchema in full-auto-registry.ts. */
+export const FullAutoRunGuardrailsSchema = Schema.Struct({
+  maxWallClockMs: Schema.optional(PositiveGuardrailCount),
+  maxTurns: Schema.optional(PositiveGuardrailCount),
+  maxPerTurnFailures: Schema.optional(PositiveGuardrailCount),
+  tokenBudgetRef: Schema.optional(Ref),
+})
+export type FullAutoRunGuardrails = typeof FullAutoRunGuardrailsSchema.Type
+
 /** Mirrors full-auto-control-contract.ts's FullAutoControlRunStartRequestSchema. */
 export const FullAutoRunStartRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
@@ -61,6 +88,10 @@ export const FullAutoRunStartRequestSchema = Schema.Struct({
   doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
   lane: Schema.optional(LaneRef),
   turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
+  /** FA-WIRE-01 (#8996): optional ordered routing policy (order = rotation
+   * priority) and owner guardrails, validated fail-closed main-side. */
+  routingPolicy: Schema.optional(FullAutoRunRoutingPolicySchema),
+  guardrails: Schema.optional(FullAutoRunGuardrailsSchema),
 })
 export type FullAutoRunStartRequest = typeof FullAutoRunStartRequestSchema.Type
 export const decodeFullAutoRunStartRequest = (value: unknown): FullAutoRunStartRequest | null => {

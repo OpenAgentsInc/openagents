@@ -25,11 +25,15 @@ import {
   type FullAutoControlServer,
 } from "./full-auto-control-server.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
+import { reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
 import { readFileSync } from "node:fs"
 import {
+  buildFullAutoPolicyOptions,
+  controlOperations,
+  parseFullAutoLaneOption,
   readControlConnection,
   verifyControlProcessIdentity,
 } from "../scripts/full-auto-control-client.ts"
@@ -576,5 +580,219 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
     } finally {
       await harness.dispose()
     }
+  })
+})
+
+describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the control surface", () => {
+  test("enable binds a validated ordered routing policy + guardrails, and the projection serves them", async () => {
+    const harness = await startHarness()
+    try {
+      const result = await harness.request("POST", "/v1/full-auto/thread.policy/enable", {
+        body: {
+          workspaceRef: GRANTED_WORKSPACE,
+          routingPolicy: [{ lane: "codex-local", accountRef: "acct.a" }, { lane: "fable-local" }],
+          guardrails: { maxTurns: 5, maxWallClockMs: 60_000 },
+        },
+      })
+      expect(result.status).toBe(200)
+      const decoded = Schema.decodeUnknownSync(FullAutoControlMutationResponseSchema)(result.body)
+      expect(decoded.record.enabled).toBe(true)
+      // Lane defaults to the policy's FIRST candidate (incl. its accountRef).
+      expect(decoded.record.lane).toBe("codex-local")
+      expect(decoded.record.accountRef).toBe("acct.a")
+      expect(decoded.record.routingPolicy).toEqual([
+        { lane: "codex-local", accountRef: "acct.a" },
+        { lane: "fable-local" },
+      ])
+      expect(decoded.record.guardrails).toEqual({ maxTurns: 5, maxWallClockMs: 60_000 })
+      expect(decoded.record.rotationHistory).toEqual([])
+      expect(decoded.record.decisionHistory).toEqual([])
+      expect(decoded.record.pausedReason).toBeNull()
+      const record = harness.registry.record("thread.policy")
+      expect(record?.routingPolicy).toEqual([
+        { lane: "codex-local", accountRef: "acct.a" },
+        { lane: "fable-local" },
+      ])
+      expect(record?.guardrails).toEqual({ maxTurns: 5, maxWallClockMs: 60_000 })
+    } finally { await harness.dispose() }
+  })
+
+  test("an inadmissible routing policy is a typed 409 refusal with the registry untouched (start AND enable)", async () => {
+    const harness = await startHarness()
+    try {
+      for (const pathname of ["/v1/full-auto/start", "/v1/full-auto/thread.refused/enable"]) {
+        const result = await harness.request("POST", pathname, {
+          body: {
+            workspaceRef: GRANTED_WORKSPACE,
+            lane: "codex-local",
+            routingPolicy: [{ lane: "codex-local" }, { lane: "lane.unknown" }],
+          },
+        })
+        expect(result.status).toBe(409)
+        expect(result.body.error).toBe("routing_policy_refused")
+        expect(result.body.routingPolicyRefusalReason).toBe("lane_unknown")
+        expect(result.body.lane).toBe("lane.unknown")
+      }
+      // Duplicate candidates refuse with their own typed reason.
+      const duplicate = await harness.request("POST", "/v1/full-auto/thread.refused/enable", {
+        body: {
+          workspaceRef: GRANTED_WORKSPACE,
+          routingPolicy: [{ lane: "codex-local" }, { lane: "codex-local" }],
+        },
+      })
+      expect(duplicate.status).toBe(409)
+      expect(duplicate.body.routingPolicyRefusalReason).toBe("duplicate_candidate")
+      expect(harness.registry.list()).toHaveLength(0)
+      expect(harness.createdThreads).toHaveLength(0)
+      expect(harness.notes).toHaveLength(0)
+    } finally { await harness.dispose() }
+  })
+
+  test("an invalid guardrail shape fails the request decode closed (400, nothing written)", async () => {
+    const harness = await startHarness()
+    try {
+      const result = await harness.request("POST", "/v1/full-auto/thread.bad/enable", {
+        body: { workspaceRef: GRANTED_WORKSPACE, guardrails: { maxTurns: 0 } },
+      })
+      expect(result.status).toBe(400)
+      expect(result.body.error).toBe("invalid_request")
+      expect(harness.registry.list()).toHaveLength(0)
+    } finally { await harness.dispose() }
+  })
+
+  test("resume clears a low-confidence pause, notes it, schedules reconcile; not-paused and unknown are typed", async () => {
+    const harness = await startHarness()
+    try {
+      harness.registry.set("thread.paused", true, { workspaceRef: GRANTED_WORKSPACE })
+      harness.registry.pause("thread.paused", "no_progress:3_consecutive_unproductive_turns")
+      const resumed = await harness.request("POST", "/v1/full-auto/thread.paused/resume")
+      expect(resumed.status).toBe(200)
+      const decoded = Schema.decodeUnknownSync(FullAutoControlMutationResponseSchema)(resumed.body)
+      expect(decoded.record.pausedReason).toBeNull()
+      const record = harness.registry.record("thread.paused")
+      expect(record?.pausedReason).toBeUndefined()
+      expect(record?.resumedBy).toBe("control_api")
+      // resumeFullAuto records the typed continue decision durably.
+      expect(record?.decisionHistory?.at(-1)).toMatchObject({ decision: "continue", reason: "resumed_by_control_api" })
+      expect(harness.notes.at(-1)!.text).toContain("resumed programmatically")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(harness.reconcileCalls()).toBe(1)
+
+      const notPaused = await harness.request("POST", "/v1/full-auto/thread.paused/resume")
+      expect(notPaused.status).toBe(409)
+      expect(notPaused.body.error).toBe("not_paused")
+
+      const unknown = await harness.request("POST", "/v1/full-auto/thread.unknown/resume")
+      expect(unknown.status).toBe(404)
+      expect(unknown.body.error).toBe("not_found")
+    } finally { await harness.dispose() }
+  })
+
+  test("thin-client pass-through: controlOperations start/enable carry policy options and resume hits the resume route", async () => {
+    const harness = await startHarness()
+    try {
+      const operations = controlOperations({ url: harness.server.url, token: harness.server.credential.token })
+      const enabled = await operations.enable("thread.client", GRANTED_WORKSPACE, undefined, {
+        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        guardrails: { maxTurns: 3 },
+      })
+      expect(enabled.status).toBe(200)
+      expect(harness.registry.record("thread.client")?.routingPolicy).toEqual([
+        { lane: "codex-local" },
+        { lane: "fable-local" },
+      ])
+      harness.registry.pause("thread.client", "no_progress:test")
+      const resumed = await operations.resume("thread.client")
+      expect(resumed.status).toBe(200)
+      expect(harness.registry.record("thread.client")?.pausedReason).toBeUndefined()
+    } finally { await harness.dispose() }
+  })
+
+  test("CLI lane parsing: laneRef[:accountRef] respects acp:* lane refs and repeat order becomes priority", () => {
+    expect(parseFullAutoLaneOption("codex-local")).toEqual({ lane: "codex-local" })
+    expect(parseFullAutoLaneOption("codex-local:acct.work")).toEqual({ lane: "codex-local", accountRef: "acct.work" })
+    expect(parseFullAutoLaneOption("acp:grok-cli")).toEqual({ lane: "acp:grok-cli" })
+    expect(parseFullAutoLaneOption("acp:grok-cli:acct.work")).toEqual({ lane: "acp:grok-cli", accountRef: "acct.work" })
+    // One bare lane keeps the legacy single-lane shape (no routingPolicy).
+    expect(buildFullAutoPolicyOptions({ lanes: ["codex-local"] })).toEqual({ lane: "codex-local", options: {} })
+    // Two lanes (or one pinned account) become the ordered policy.
+    expect(buildFullAutoPolicyOptions({ lanes: ["codex-local", "fable-local"], maxTurns: 5, maxWallClockMs: 1000 })).toEqual({
+      lane: "codex-local",
+      options: {
+        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        guardrails: { maxTurns: 5, maxWallClockMs: 1000 },
+      },
+    })
+    expect(buildFullAutoPolicyOptions({ lanes: ["codex-local:acct.a"] })).toEqual({
+      lane: "codex-local",
+      options: { routingPolicy: [{ lane: "codex-local", accountRef: "acct.a" }] },
+    })
+  })
+
+  test("end-to-end: an owner-bound two-lane policy set THROUGH the control API rotates on injected account exhaustion, visible in projectRecord and the run report", async () => {
+    const harness = await startHarness()
+    try {
+      // 1. The owner binds the ordered policy through the control API's
+      //    run-level start (the launcher/CLI path) -- nothing hand-written.
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: {
+          workspaceRef: GRANTED_WORKSPACE,
+          title: "AFK window",
+          objective: "Keep shipping the roadmap unattended.",
+          doneCondition: "The owner returns.",
+          routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+          guardrails: { maxTurns: 10 },
+        },
+      })
+      expect(started.status).toBe(200)
+      const runRef = started.body.run.runRef as string
+      const threadRef = started.body.run.threadRef as string
+      expect(started.body.run.lane).toBe("codex-local")
+      const bound = harness.registry.record(threadRef)
+      expect(bound?.routingPolicy).toEqual([{ lane: "codex-local" }, { lane: "fable-local" }])
+      expect(bound?.guardrails).toEqual({ maxTurns: 10 })
+
+      // 2. Reconciliation (the real reconciler, the real registry) hits an
+      //    injected account_exhausted on the primary lane and rotates to the
+      //    next admitted candidate in the SAME pass.
+      const dispatchedLanes: Array<string> = []
+      const dispatched = await reconcileFullAutoThreads({
+        registry: harness.registry,
+        nonterminalThreadRefs: () => new Set(),
+        resolveWorkspaceRef: () => GRANTED_WORKSPACE,
+        journalHasNonterminalTurn: () => false,
+        dispatch: async ({ profile }) => {
+          dispatchedLanes.push(profile?.lane ?? "?")
+          return profile?.lane === "codex-local"
+            ? { ok: false, reason: "account_exhausted", failureClass: "account_exhausted" as const }
+            : { ok: true }
+        },
+      })
+      expect(dispatchedLanes).toEqual(["codex-local", "fable-local"])
+      expect(dispatched).toEqual([threadRef])
+
+      // 3. The rotation is visible in the control API's record projection...
+      const status = await harness.request("GET", `/v1/full-auto/${encodeURIComponent(threadRef)}`)
+      expect(status.status).toBe(200)
+      const record = Schema.decodeUnknownSync(FullAutoControlStatusResponseSchema)(status.body).record
+      expect(record.rotationHistory).toHaveLength(1)
+      expect(record.rotationHistory![0]).toMatchObject({
+        fromLane: "codex-local",
+        toLane: "fable-local",
+        reason: "account_exhausted",
+      })
+      expect(record.lane).toBe("fable-local")
+      expect(record.decisionHistory!.map(decision => decision.decision)).toEqual(["rotate", "continue"])
+
+      // 4. ...and in the run report's rotation passthrough.
+      const report = await harness.request("GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}/report`)
+      expect(report.status).toBe(200)
+      expect(report.body.report.rotationHistory).toHaveLength(1)
+      expect(report.body.report.rotationHistory[0]).toMatchObject({
+        fromLane: "codex-local",
+        toLane: "fable-local",
+        reason: "account_exhausted",
+      })
+    } finally { await harness.dispose() }
   })
 })

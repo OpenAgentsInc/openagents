@@ -9,6 +9,14 @@
  *   node --import tsx scripts/full-auto-cli.ts enable <threadRef> --workspace <path>
  *   node --import tsx scripts/full-auto-cli.ts disable <threadRef>
  *   node --import tsx scripts/full-auto-cli.ts continue-now <threadRef>
+ *   node --import tsx scripts/full-auto-cli.ts resume <threadRef>
+ *
+ * FA-WIRE-01 (#8996): start/enable/run-start accept a repeatable
+ * `--lane <laneRef[:accountRef]>` (order = rotation priority) plus
+ * `--max-turns` / `--max-wall-clock-ms` guardrail flags; `resume` clears a
+ * FA-GD-01 low-confidence pause. Status/turns output renders rotation and
+ * pause state because the server projection now carries rotationHistory,
+ * decisionHistory, guardrails, routingPolicy, and pausedReason.
  *   node --import tsx scripts/full-auto-cli.ts turns <threadRef>
  *   node --import tsx scripts/full-auto-cli.ts openapi
  *
@@ -28,6 +36,7 @@
  * runs against a non-default userData directory.
  */
 import {
+  buildFullAutoPolicyOptions,
   ControlUnavailableError,
   controlOperations,
   readControlConnection,
@@ -39,20 +48,28 @@ commands:
   lanes
   list
   status <threadRef>
-  start --workspace <path> [--title <title>] [--lane <provider-lane>]
-  enable <threadRef> --workspace <path> [--lane <provider-lane>]
+  start --workspace <path> [--title <title>] [--lane <laneRef[:accountRef]>]... [--max-turns <n>] [--max-wall-clock-ms <n>]
+  enable <threadRef> --workspace <path> [--lane <laneRef[:accountRef]>]... [--max-turns <n>] [--max-wall-clock-ms <n>]
   disable <threadRef>
   continue-now <threadRef>
+  resume <threadRef>
   turns <threadRef>
   openapi
   runs
   run-status <runRef>
-  run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>]
+  run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <laneRef[:accountRef]>]... [--turn-cap <n>] [--max-turns <n>] [--max-wall-clock-ms <n>]
   run-pause <runRef>
   run-resume <runRef>
   run-stop <runRef>
   report <runRef>
-  receipt <runRef>`
+  receipt <runRef>
+
+FA-WIRE-01 (#8996): --lane is repeatable; the order given is the rotation
+priority. A trailing :accountRef pins the candidate to one account (the last
+colon splits lane from account; a bare "acp:<agent>" lane ref with exactly one
+colon is kept whole, so pin an acp lane as "acp:<agent>:<accountRef>").
+--max-turns / --max-wall-clock-ms bind owner guardrails; resume clears a
+low-confidence pause.`
 
 const main = async (): Promise<void> => {
   const argv = [...process.argv.slice(2)]
@@ -63,14 +80,38 @@ const main = async (): Promise<void> => {
     argv.splice(index, 2)
     return value
   }
+  /** FA-WIRE-01 (#8996): --lane is repeatable; the order given is priority. */
+  const takeRepeatedOption = (name: string): Array<string> => {
+    const values: Array<string> = []
+    for (let value = takeOption(name); value !== undefined; value = takeOption(name)) {
+      values.push(value)
+    }
+    return values
+  }
   const userData = takeOption("--user-data")
   const workspace = takeOption("--workspace")
   const title = takeOption("--title")
-  const lane = takeOption("--lane")
+  const lanes = takeRepeatedOption("--lane")
   const objective = takeOption("--objective")
   const doneCondition = takeOption("--done")
   const turnCapRaw = takeOption("--turn-cap")
+  const maxTurnsRaw = takeOption("--max-turns")
+  const maxWallClockMsRaw = takeOption("--max-wall-clock-ms")
   const [command, threadRef] = argv
+  const parsePositiveInt = (name: string, raw: string | undefined): number | undefined => {
+    if (raw === undefined) return undefined
+    const parsed = Number.parseInt(raw, 10)
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      console.error(`${command}: --${name} must be a positive integer\n${USAGE}`)
+      process.exit(2)
+    }
+    return parsed
+  }
+  const policy = buildFullAutoPolicyOptions({
+    lanes,
+    maxTurns: parsePositiveInt("max-turns", maxTurnsRaw),
+    maxWallClockMs: parsePositiveInt("max-wall-clock-ms", maxWallClockMsRaw),
+  })
 
   const connection = readControlConnection(resolveUserDataDir(userData))
   const operations = controlOperations(connection)
@@ -111,7 +152,7 @@ const main = async (): Promise<void> => {
           console.error(`start: --workspace <path> is required (start must NAME the workspace it expects)\n${USAGE}`)
           process.exit(2)
         }
-        return operations.start(workspace, title, lane)
+        return operations.start(workspace, title, policy.lane, policy.options)
       })()
     : command === "enable"
     ? await (async () => {
@@ -120,12 +161,14 @@ const main = async (): Promise<void> => {
           console.error(`enable: --workspace <path> is required (enable must NAME the workspace it expects)\n${USAGE}`)
           process.exit(2)
         }
-        return operations.enable(ref, workspace, lane)
+        return operations.enable(ref, workspace, policy.lane, policy.options)
       })()
     : command === "disable"
     ? await operations.disable(requireThreadRef())
     : command === "continue-now"
     ? await operations.continueNow(requireThreadRef())
+    : command === "resume"
+    ? await operations.resume(requireThreadRef())
     : command === "turns"
     ? await operations.turns(requireThreadRef())
     : command === "runs"
@@ -138,8 +181,10 @@ const main = async (): Promise<void> => {
         title: requireOption("title", title),
         objective: requireOption("objective", objective),
         doneCondition: requireOption("done", doneCondition),
-        ...(lane === undefined ? {} : { lane }),
+        ...(policy.lane === undefined ? {} : { lane: policy.lane }),
         ...(turnCapRaw === undefined ? {} : { turnCap: Number.parseInt(turnCapRaw, 10) }),
+        ...(policy.options.routingPolicy === undefined ? {} : { routingPolicy: policy.options.routingPolicy }),
+        ...(policy.options.guardrails === undefined ? {} : { guardrails: policy.options.guardrails }),
       })
     : command === "run-pause"
     ? await operations.runPause(requireRunRef())

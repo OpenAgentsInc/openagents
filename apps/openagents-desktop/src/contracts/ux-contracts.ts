@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.1",
+    version: "2026-07-17.2",
     contracts: [
       {
         contractId: "openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1",
@@ -4764,6 +4764,46 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "FA-RUN-01 (#8969) landed the durable FullAutoRun lifecycle state machine and its control-API Pause/Resume/Stop routes. FA-UX-01 (#8974) landed wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop/Retry-now controls through a dedicated renderer IPC bridge sharing the same action functions as the control API.",
+      },
+      {
+        contractId: "openagents_desktop.full_auto_run_view_canonical_timeline.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Desktop Full Auto run view",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-17" },
+        statement:
+          "this looks like shit. why the fuck doesnt this use normal thread component view",
+        authorityBoundary:
+          "The Full Auto run view renders the bound thread's conversation with the SAME canonical ConversationTimeline component every ordinary chat uses, hydrated through the shell's canonical local-session selection path -- never a parallel mini-renderer -- and stays read-only (no composer, per the read-only run view contract). Run chrome is a proper header: a styled state badge, objective and done-condition, workspace/provider/cap metadata rows, and real button components for Pause/Resume/Retry/Stop/Refresh. Turn history rows are formatted (provider chip, disposition summary, relative time plus duration), never raw ISO concatenation. This binds presentation composition only; run lifecycle legality and dispatch authority remain with the existing lifecycle and reconcile contracts.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/react-full-auto-surface.tsx",
+          "apps/openagents-desktop/src/renderer/full-auto-workspace.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "github:OpenAgentsInc/openagents#8997",
+        ],
+        oracles: [
+          {
+            id: "openagents_desktop.full_auto_run_view_canonical_timeline.dom",
+            kind: "bun-test",
+            mode: "dom",
+            ref: "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+            description:
+              "Real-DOM oracles prove the run view composes the canonical ConversationTimeline (the message-scroller element ordinary chats render) for the bound thread's notes, renders the styled state badge and real Pause/Resume/Retry/Stop/Refresh buttons, and formats turn rows as provider chip + disposition + relative time/duration with no raw ISO concatenation.",
+          },
+          {
+            id: "openagents_desktop.full_auto_run_view_canonical_timeline.selection_wiring",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/full-auto-workspace.test.ts",
+            description:
+              "Opening a Full Auto run selects its bound thread through the injected canonical thread-selection path (the shell wires commitLocalSession) before re-asserting the full-auto workspace, so state.notes carries the run's real conversation for the canonical timeline.",
+          },
+        ],
+        verification:
+          "Desktop renderer full-auto workspace/surface suites, behavior-contract validation, and Desktop typecheck in the normal test sweep.",
       },
     ],
   };

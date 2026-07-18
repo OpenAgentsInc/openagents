@@ -71,6 +71,62 @@ export const readControlConnection = (userDataDir: string): ControlConnection =>
 
 export type ControlResult = Readonly<{ status: number; body: unknown }>
 
+/** FA-WIRE-01 (#8996): pass-through shapes for the ordered routing policy and
+ * owner guardrails -- the server-side schemas are the source of truth. */
+export type ControlRoutingCandidate = Readonly<{ lane: string; accountRef?: string }>
+export type ControlGuardrails = Readonly<{
+  maxWallClockMs?: number
+  maxTurns?: number
+  maxPerTurnFailures?: number
+  tokenBudgetRef?: string
+}>
+export type ControlPolicyOptions = Readonly<{
+  routingPolicy?: ReadonlyArray<ControlRoutingCandidate>
+  guardrails?: ControlGuardrails
+}>
+
+/**
+ * FA-WIRE-01 (#8996): parse one repeatable CLI `--lane <laneRef[:accountRef]>`
+ * value into an ordered routing candidate. Lane refs may themselves contain a
+ * colon (acp:grok-cli), so the account separator is the LAST colon, and a
+ * single-colon value with the "acp:" prefix is treated as a bare lane ref
+ * (pin an acp lane's account as "acp:<agent>:<accountRef>").
+ */
+export const parseFullAutoLaneOption = (value: string): ControlRoutingCandidate => {
+  const lastColon = value.lastIndexOf(":")
+  if (lastColon === -1) return { lane: value }
+  const colonCount = value.split(":").length - 1
+  if (colonCount === 1 && value.startsWith("acp:")) return { lane: value }
+  const lane = value.slice(0, lastColon)
+  const accountRef = value.slice(lastColon + 1)
+  return accountRef.length === 0 ? { lane } : { lane, accountRef }
+}
+
+/** FA-WIRE-01 (#8996): fold the CLI's repeatable lanes + guardrail flags into
+ * the request options. One bare lane keeps the legacy single-lane shape (no
+ * routingPolicy); an accountRef or a second lane creates the ordered policy. */
+export const buildFullAutoPolicyOptions = (input: Readonly<{
+  lanes: ReadonlyArray<string>
+  maxTurns?: number
+  maxWallClockMs?: number
+}>): Readonly<{ lane?: string; options: ControlPolicyOptions }> => {
+  const candidates = input.lanes.map(parseFullAutoLaneOption)
+  const guardrails: ControlGuardrails = {
+    ...(input.maxTurns === undefined ? {} : { maxTurns: input.maxTurns }),
+    ...(input.maxWallClockMs === undefined ? {} : { maxWallClockMs: input.maxWallClockMs }),
+  }
+  const hasGuardrails = Object.keys(guardrails).length > 0
+  const usePolicy = candidates.length > 1 ||
+    (candidates.length === 1 && candidates[0]!.accountRef !== undefined)
+  return {
+    ...(candidates.length === 0 ? {} : { lane: candidates[0]!.lane }),
+    options: {
+      ...(usePolicy ? { routingPolicy: candidates } : {}),
+      ...(hasGuardrails ? { guardrails } : {}),
+    },
+  }
+}
+
 const call = async (
   connection: ControlConnection,
   method: "GET" | "POST",
@@ -94,21 +150,29 @@ export const controlOperations = (connection: ControlConnection) => ({
   list: () => call(connection, "GET", "/v1/full-auto"),
   status: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}`),
-  start: (workspaceRef: string, title?: string, lane?: string) =>
+  start: (workspaceRef: string, title?: string, lane?: string, options?: ControlPolicyOptions) =>
     call(connection, "POST", "/v1/full-auto/start", {
       workspaceRef,
       ...(title === undefined ? {} : { title }),
       ...(lane === undefined ? {} : { lane }),
+      ...(options?.routingPolicy === undefined ? {} : { routingPolicy: options.routingPolicy }),
+      ...(options?.guardrails === undefined ? {} : { guardrails: options.guardrails }),
     }),
-  enable: (threadRef: string, workspaceRef: string, lane?: string) =>
+  enable: (threadRef: string, workspaceRef: string, lane?: string, options?: ControlPolicyOptions) =>
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/enable`, {
       workspaceRef,
       ...(lane === undefined ? {} : { lane }),
+      ...(options?.routingPolicy === undefined ? {} : { routingPolicy: options.routingPolicy }),
+      ...(options?.guardrails === undefined ? {} : { guardrails: options.guardrails }),
     }),
   disable: (threadRef: string) =>
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/disable`),
   continueNow: (threadRef: string) =>
     call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/continue-now`),
+  // FA-WIRE-01 (#8996): the explicit resume for a FA-GD-01 low-confidence
+  // pause -- a thin pass-through like everything else here.
+  resume: (threadRef: string) =>
+    call(connection, "POST", `/v1/full-auto/${encodeURIComponent(threadRef)}/resume`),
   turns: (threadRef: string) =>
     call(connection, "GET", `/v1/full-auto/${encodeURIComponent(threadRef)}/turns`),
   // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface.
@@ -120,6 +184,8 @@ export const controlOperations = (connection: ControlConnection) => ({
     doneCondition: string
     lane?: string
     turnCap?: number
+    routingPolicy?: ReadonlyArray<ControlRoutingCandidate>
+    guardrails?: ControlGuardrails
   }>) => call(connection, "POST", "/v1/full-auto/runs/start", input),
   runStatus: (runRef: string) =>
     call(connection, "GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}`),

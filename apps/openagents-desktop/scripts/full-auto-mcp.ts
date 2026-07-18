@@ -34,6 +34,41 @@ const threadRefProperty = {
 const runRefProperty = {
   runRef: { type: "string", minLength: 1, maxLength: 180, description: "FullAutoRun ref (FA-RUN-01)." },
 } as const
+// FA-WIRE-01 (#8996): ordered routing policy + owner guardrails, passed
+// through verbatim to the control API (which validates them fail-closed).
+const routingPolicyProperty = {
+  routingPolicy: {
+    type: "array",
+    minItems: 1,
+    maxItems: 8,
+    description:
+      "Optional ordered multi-lane routing policy; order = rotation priority. Each candidate names " +
+      "an admitted Full-Auto-eligible ProviderLane ref plus an optional accountRef on that lane.",
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["lane"],
+      properties: {
+        lane: { type: "string", minLength: 1, maxLength: 80 },
+        accountRef: { type: "string", minLength: 1, maxLength: 80 },
+      },
+    },
+  },
+} as const
+const guardrailsProperty = {
+  guardrails: {
+    type: "object",
+    additionalProperties: false,
+    description:
+      "Optional owner-configured guardrails (FA-GD-01). Absent fields keep the built-in defaults.",
+    properties: {
+      maxWallClockMs: { type: "integer", minimum: 1 },
+      maxTurns: { type: "integer", minimum: 1 },
+      maxPerTurnFailures: { type: "integer", minimum: 1 },
+      tokenBudgetRef: { type: "string", minLength: 1, maxLength: 180 },
+    },
+  },
+} as const
 
 const TOOLS = [
   {
@@ -66,6 +101,8 @@ const TOOLS = [
         workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
         title: { type: "string", minLength: 1, maxLength: 80, description: "Optional owner-visible thread title." },
         lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
+        ...routingPolicyProperty,
+        ...guardrailsProperty,
       },
     },
   },
@@ -83,8 +120,18 @@ const TOOLS = [
         ...threadRefProperty,
         workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
         lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
+        ...routingPolicyProperty,
+        ...guardrailsProperty,
       },
     },
+  },
+  {
+    name: "full_auto_resume",
+    description:
+      "Resume a Full Auto record the FA-GD-01 confidence gate durably paused (pausedReason set). " +
+      "Clears the pause and schedules the shared reconciliation pass; refused with 409 not_paused " +
+      "when the record is not currently paused -- resume never re-enables a disabled record.",
+    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
   },
   {
     name: "full_auto_disable",
@@ -131,6 +178,8 @@ const TOOLS = [
         doneCondition: { type: "string", minLength: 1, maxLength: 2000, description: "How to know the run is done." },
         lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
         turnCap: { type: "integer", minimum: 1, maximum: 1000, description: "Optional turn cap; defaults to 20." },
+        ...routingPolicyProperty,
+        ...guardrailsProperty,
       },
     },
   },
@@ -201,6 +250,23 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
   const threadRef = typeof args.threadRef === "string" ? args.threadRef : ""
   const workspaceRef = typeof args.workspaceRef === "string" ? args.workspaceRef : ""
   const runRef = typeof args.runRef === "string" ? args.runRef : ""
+  // FA-WIRE-01 (#8996): pass-through only -- the control API validates the
+  // policy/guardrail shapes fail-closed; this client never re-implements them.
+  const policyOptions = {
+    ...(Array.isArray(args.routingPolicy)
+      ? { routingPolicy: args.routingPolicy as ReadonlyArray<{ lane: string; accountRef?: string }> }
+      : {}),
+    ...(typeof args.guardrails === "object" && args.guardrails !== null
+      ? {
+          guardrails: args.guardrails as {
+            maxWallClockMs?: number
+            maxTurns?: number
+            maxPerTurnFailures?: number
+            tokenBudgetRef?: string
+          },
+        }
+      : {}),
+  }
   const result = name === "provider_lanes_list"
     ? await operations.lanes()
     : name === "full_auto_list"
@@ -212,9 +278,17 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
         workspaceRef,
         typeof args.title === "string" ? args.title : undefined,
         typeof args.lane === "string" ? args.lane : undefined,
+        policyOptions,
       )
     : name === "full_auto_enable"
-    ? await operations.enable(threadRef, workspaceRef, typeof args.lane === "string" ? args.lane : undefined)
+    ? await operations.enable(
+        threadRef,
+        workspaceRef,
+        typeof args.lane === "string" ? args.lane : undefined,
+        policyOptions,
+      )
+    : name === "full_auto_resume"
+    ? await operations.resume(threadRef)
     : name === "full_auto_disable"
     ? await operations.disable(threadRef)
     : name === "full_auto_continue_now"
@@ -233,6 +307,7 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
         doneCondition: typeof args.doneCondition === "string" ? args.doneCondition : "",
         ...(typeof args.lane === "string" ? { lane: args.lane } : {}),
         ...(typeof args.turnCap === "number" ? { turnCap: args.turnCap } : {}),
+        ...policyOptions,
       })
     : name === "full_auto_run_pause"
     ? await operations.runPause(runRef)

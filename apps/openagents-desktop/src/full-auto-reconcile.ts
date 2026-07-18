@@ -139,7 +139,12 @@ export const detectFullAutoNoProgress = (input: Readonly<{
  * serialized reconciliation path every other trigger uses.
  */
 export const resumeFullAuto = (input: Readonly<{
-  registry: FullAutoRegistry
+  /** FA-WIRE-01 (#8996): narrowed to exactly the two registry methods this
+   * command uses so capability-scoped callers (the control server's widened
+   * registry Pick) can wire it without holding the whole registry. Purely a
+   * type-level narrowing -- every existing full-registry caller still
+   * satisfies it and runtime behavior is unchanged. */
+  registry: Pick<FullAutoRegistry, "resume" | "recordDecision">
   threadRef: string
   actor: FullAutoResumeActor
   scheduleReconciliation: () => void

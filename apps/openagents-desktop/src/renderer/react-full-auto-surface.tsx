@@ -19,12 +19,15 @@ import { Input } from "#components/ui/input"
 import { Textarea } from "#components/ui/textarea"
 import type { DesktopShellState } from "./shell.ts"
 import {
+  fullAutoLauncherLaneLabel,
   fullAutoLauncherLaneOptions,
   fullAutoRunStatusLabel,
+  fullAutoTurnTimingLabel,
   validateFullAutoLauncherDraft,
   FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP,
   type FullAutoWorkspaceState,
 } from "./full-auto-workspace.ts"
+import { ConversationTimeline } from "./react-timeline.tsx"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload) as Effect.Effect<void, IntentError>).catch(() => undefined)
@@ -125,6 +128,60 @@ const FullAutoLauncher = ({ state, report }: {
         />
       </div>
     </div>
+    {/* FA-WIRE-01 (#8996): ordered fallback lanes (rotation priority) + the
+        optional wall-clock guardrail. */}
+    <div className="oa-react-full-auto-row">
+      <div className="oa-react-full-auto-field">
+        <label htmlFor="full-auto-launcher-fallback-add">Fallback lanes</label>
+        <select
+          id="full-auto-launcher-fallback-add"
+          data-en-key="full-auto-launcher-fallback-add"
+          className="oa-react-full-auto-select"
+          value=""
+          disabled={draft.submitting}
+          aria-label="Add a fallback provider lane (order is rotation priority)"
+          onChange={event => dispatch(report, "DesktopFullAutoLauncherFallbackLaneAdded", event.currentTarget.value)}
+        >
+          <option value="">Add fallback lane…</option>
+          {fullAutoLauncherLaneOptions
+            .filter(option => option.value !== draft.lane && !draft.fallbackLanes.includes(option.value))
+            .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </div>
+      <div className="oa-react-full-auto-field">
+        <label htmlFor="full-auto-launcher-max-wall-clock">Max wall clock (minutes, optional)</label>
+        <Input
+          id="full-auto-launcher-max-wall-clock"
+          data-en-key="full-auto-launcher-max-wall-clock-field"
+          inputMode="numeric"
+          placeholder="no limit"
+          value={draft.maxWallClockMinutesText}
+          disabled={draft.submitting}
+          onChange={event => dispatch(report, "DesktopFullAutoLauncherMaxWallClockChanged", event.currentTarget.value)}
+        />
+      </div>
+    </div>
+    {draft.fallbackLanes.length === 0 ? null : <div className="oa-react-full-auto-rotation-order" data-en-key="full-auto-launcher-rotation-order">
+      <p className="oa-react-full-auto-rotation-caption">Rotation order on account exhaustion / rate limit / provider error:</p>
+      <ol>
+        {[draft.lane, ...draft.fallbackLanes].map((lane, index) => <li key={lane} data-rotation-lane={lane}>
+          <span>{fullAutoLauncherLaneLabel(lane)}</span>
+          {index === 0
+            ? <Badge variant="outline">primary</Badge>
+            : <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-en-key={`full-auto-launcher-fallback-remove-${lane}`}
+                disabled={draft.submitting}
+                aria-label={`Remove fallback lane ${fullAutoLauncherLaneLabel(lane)}`}
+                onClick={() => dispatch(report, "DesktopFullAutoLauncherFallbackLaneRemoved", lane)}
+              >
+                Remove
+              </Button>}
+        </li>)}
+      </ol>
+    </div>}
     {draft.error === null ? null : <p role="alert" className="oa-react-full-auto-error">{draft.error}</p>}
     <div className="oa-react-full-auto-actions">
       <Button
@@ -146,6 +203,41 @@ const FullAutoLauncher = ({ state, report }: {
   </section>
 }
 
+/**
+ * FA-UX-02 (#8997): the run view's conversation IS the bound thread's real
+ * conversation, rendered by the SAME canonical `ConversationTimeline`
+ * component every ordinary chat uses (read-only -- no composer per
+ * CUT-DSK-06), never a parallel mini-renderer. The bound thread is selected
+ * through the shell's canonical thread-selection path when the run view
+ * opens (full-auto-workspace.ts `selectThread` wiring), so `state.notes`
+ * carries its transcript and live updates flow through the normal channels.
+ */
+const FullAutoRunConversation = ({ state, run, report }: {
+  readonly state: DesktopShellState
+  readonly run: FullAutoWorkspaceState["runs"][number]
+  readonly report: IntentReporter
+}): ReactElement => {
+  const boundThreadSelected = run.threadRef !== null && state.activeThreadId === run.threadRef
+  if (!boundThreadSelected || state.notes.length === 0) {
+    return <section className="oa-react-full-auto-conversation" aria-label="Run conversation">
+      <p className="oa-react-full-auto-conversation-empty">No conversation yet. The first Full Auto turn will appear here.</p>
+    </section>
+  }
+  const working = run.threadRef !== null &&
+    state.fullAutoLiveByThread[run.threadRef]?.state === "turn_running"
+  return <section className="oa-react-full-auto-conversation" aria-label="Run conversation">
+    <ConversationTimeline
+      page={null}
+      notes={state.notes}
+      loadingEdge={null}
+      working={working}
+      workingDirectory={state.workingDirectory}
+      agentName={run.lane ?? "Codex"}
+      report={report}
+    />
+  </section>
+}
+
 const FullAutoRunTranscript = ({ fullAuto }: { readonly fullAuto: FullAutoWorkspaceState }): ReactElement => {
   const turns = fullAuto.activeReport?.turns ?? []
   return <section className="oa-react-full-auto-transcript" aria-labelledby="react-full-auto-transcript-title">
@@ -156,7 +248,8 @@ const FullAutoRunTranscript = ({ fullAuto }: { readonly fullAuto: FullAutoWorksp
           {turns.map(turn => <li key={turn.turnRef} className="oa-react-full-auto-turn" data-turn-lane={turn.lane}>
             <Badge variant="outline">{turn.lane}</Badge>
             <span className="oa-react-full-auto-turn-summary">{turn.outcomeSummary}</span>
-            <span className="oa-react-full-auto-turn-time">{turn.createdAt} → {turn.updatedAt}</span>
+            {/* FA-UX-02 (#8997): relative time + duration, never raw ISO. */}
+            <span className="oa-react-full-auto-turn-time">{fullAutoTurnTimingLabel(turn)}</span>
           </li>)}
         </ol>}
     {(fullAuto.activeReport?.providerTransitions.length ?? 0) === 0 ? null : <>
@@ -227,6 +320,9 @@ const FullAutoRunView = ({ state, report }: {
         <Button data-en-key="full-auto-run-refresh" variant="ghost" onClick={() => dispatch(report, "DesktopFullAutoRunRefreshed")}>Refresh</Button>
       </div>
     </header>
+    {/* FA-UX-02 (#8997): the canonical thread timeline first (the real
+        conversation), then the compact per-turn outcome history. */}
+    <FullAutoRunConversation state={state} run={run} report={report} />
     <FullAutoRunTranscript fullAuto={fullAuto} />
   </section>
 }

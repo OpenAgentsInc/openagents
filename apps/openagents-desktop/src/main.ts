@@ -315,10 +315,12 @@ import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./fu
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
 import {
+  evaluateFullAutoControlRoutingPolicy,
   isFullAutoControlEnabled,
   startFullAutoControlServer,
   type FullAutoControlCapabilities,
 } from "./full-auto-control-server.ts"
+import { makeFullAutoRoutingLaneGate } from "./full-auto-routing.ts"
 import {
   FULL_AUTO_RUN_TERMINAL_STATES,
   migrateLegacyFullAutoRegistry,
@@ -3970,6 +3972,15 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
     journalHasNonterminalTurn: turnRef =>
       localTurnJournal.nonterminal().some(record => record.turnRef === turnRef),
+    // FA-GD-01 (#8991) via FA-WIRE-01 (#8996): settled-turn evidence for the
+    // no-progress confidence gate, projected from the local turn journal's
+    // Full Auto rows -- disposition + updatedAt ONLY, never transcript text.
+    // Both trigger points (turn completion and startup) flow through this one
+    // input, so the gate is live everywhere reconciliation runs.
+    turnEvidence: threadRef =>
+      localTurnJournal.list()
+        .filter(record => record.threadRef === threadRef && record.turnRef.startsWith("turn.full-auto."))
+        .map(record => ({ disposition: record.disposition, updatedAt: record.updatedAt })),
     // FA-H3: only the startup pass may clear a stale (crashed mid-dispatch)
     // lease; a mid-session pass treats a held lease as in-flight and skips.
     ...(options?.startup === true ? { clearStaleLeases: true } : {}),
@@ -4073,6 +4084,24 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       appendFullAutoSystemNote(
         capThreadRef,
         `Full Auto stopped after ${FULL_AUTO_MAX_CONTINUATIONS} turns in a row. Turn it back on to continue.`,
+      )
+    },
+    // FA-GD-01 via FA-WIRE-01 (#8996): an owner-configured guardrail stop is
+    // an owner-visible fact on the thread, exactly like the built-in cap.
+    onGuardrailStopped: (stoppedThreadRef, violation) => {
+      setFullAutoLiveState(stoppedThreadRef, "blocked", null, violation.reason)
+      appendFullAutoSystemNote(
+        stoppedThreadRef,
+        `Full Auto stopped by the ${violation.guardrail.replace(/_/g, " ")} guardrail (limit ${violation.limit}, observed ${violation.observed}). Turn it back on to continue.`,
+      )
+    },
+    // FA-GD-01 via FA-WIRE-01 (#8996): the confidence gate paused the loop
+    // durably; resuming is an explicit owner command (UI/API/CLI/MCP resume).
+    onPausedLowConfidence: (pausedThreadRef, pause) => {
+      setFullAutoLiveState(pausedThreadRef, "blocked", null, pause.reason)
+      appendFullAutoSystemNote(
+        pausedThreadRef,
+        `Full Auto paused itself after ${pause.consecutiveNoProgressTurns} consecutive unproductive turns. Review the thread, then Resume to continue.`,
       )
     },
     // FA-H2 (#8875): a continuation whose granted workspace no longer matches
@@ -4308,6 +4337,10 @@ const fullAutoRunActionCapabilities: FullAutoControlCapabilities = {
     const projection = projectProviderLaneCapabilities(report)
     return projection.admission === "admitted" && projection.fullAuto === true
   },
+  // FA-WIRE-01 (#8996): the routing-policy admission gate is built over the
+  // SAME capability source per-dispatch eligibility uses, so validation-time
+  // truth and dispatch-time truth cannot drift (FA-RT-01 rationale).
+  routingLaneGate: makeFullAutoRoutingLaneGate(providerLaneCapabilityByRef),
   // FA-HO-01 (#8975): the SAME admission/auth/capability re-check the
   // existing interactive manual-switch IPC handler already uses.
   providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
@@ -4342,7 +4375,32 @@ ipcMain.handle(FullAutoRunStartChannel, async (_event, value: unknown) => {
   if (request === null) {
     return { ok: false, status: 400, error: { error: "invalid_request", message: "Invalid Full Auto run start request." } }
   }
-  return startFullAutoRunAction(fullAutoRunActionContext, request)
+  // FA-WIRE-01 (#8996): fail-closed routing-policy admission BEFORE the
+  // action mints anything (same shared evaluator the control server's
+  // start/enable/runs-start routes use). Guardrail shape validity is already
+  // guaranteed by the decode above.
+  const { routingPolicy, guardrails, ...base } = request
+  const policyOutcome = evaluateFullAutoControlRoutingPolicy(fullAutoRunActionCapabilities, routingPolicy)
+  if (!policyOutcome.ok) {
+    return { ok: false, status: policyOutcome.status, error: policyOutcome.error }
+  }
+  const outcome = startFullAutoRunAction(fullAutoRunActionContext, {
+    ...base,
+    // The primary lane defaults to the policy's first candidate so the
+    // rotation cycle starts where the owner's ordered list starts.
+    ...(base.lane === undefined && policyOutcome.policy !== null
+      ? { lane: policyOutcome.policy[0]!.lane }
+      : {}),
+  })
+  if (outcome.ok && outcome.value.threadRef !== null) {
+    if (policyOutcome.policy !== null) {
+      fullAutoRegistry.bindRoutingPolicy(outcome.value.threadRef, policyOutcome.policy)
+    }
+    if (guardrails !== undefined) {
+      fullAutoRegistry.bindGuardrails(outcome.value.threadRef, guardrails)
+    }
+  }
+  return outcome
 })
 ipcMain.handle(FullAutoRunGetChannel, async (_event, value: unknown) => {
   const request = decodeFullAutoRunRefRequest(value)

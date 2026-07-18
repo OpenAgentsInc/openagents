@@ -2856,6 +2856,11 @@ export const makeDesktopShellHandlers = (
     state,
     fullAutoRunHost,
     workspace => SubscriptionRef.update(state, current => withWorkspace(current, workspace as DesktopWorkspaceName)),
+    // FA-UX-02 (#8997): the run view hydrates its bound thread through the
+    // EXACT canonical local-session selection path ordinary chats use, so
+    // the canonical ConversationTimeline renders the run's real conversation
+    // (the workspace handler re-asserts "full-auto" after this settles).
+    threadRef => Effect.asVoid(commitLocalSession(threadRef)),
   ),
   ...makeTerminalWorkspaceHandlers(state, terminalBridge, session =>
     SubscriptionRef.update(state, current => ({

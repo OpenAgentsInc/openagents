@@ -6,9 +6,14 @@ import {
 } from "./codex-local-contract.ts"
 import {
   FULL_AUTO_BLOCKED_REASON_LIMIT,
+  FULL_AUTO_DECISION_HISTORY_LIMIT,
   FULL_AUTO_ROTATION_HISTORY_LIMIT,
+  FULL_AUTO_ROUTING_POLICY_LIMIT,
+  FullAutoContinuationDecisionSchema,
   FullAutoDisabledBySchema,
+  FullAutoGuardrailsSchema,
   FullAutoRotationRecordSchema,
+  FullAutoRoutingCandidateSchema,
 } from "./full-auto-registry.ts"
 import {
   FullAutoRecoveryActionSchema,
@@ -70,11 +75,30 @@ export const decodeFullAutoControlThreadRef = (value: unknown): string | null =>
   return Exit.isSuccess(decoded) ? decoded.value : null
 }
 
+/**
+ * FA-WIRE-01 (#8996): the optional ordered routing policy + guardrails a
+ * start/enable caller may bind in the same request. The candidate/guardrail
+ * shapes are the EXACT durable registry schemas (full-auto-registry.ts), so
+ * the HTTP surface can never smuggle a wider value into the durable store;
+ * lane admission is separately validated fail-closed via
+ * validateFullAutoRoutingPolicy before anything is written.
+ */
+export const FullAutoControlRoutingPolicySchema = Schema.Array(FullAutoRoutingCandidateSchema).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(FULL_AUTO_ROUTING_POLICY_LIMIT),
+)
+
 /** POST /v1/full-auto/{threadRef}/enable -- the caller MUST name the workspace
  * it expects; the server refuses (409) when the current resolution differs. */
 export const FullAutoControlEnableRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
   lane: Schema.optional(LaneRef),
+  /** FA-WIRE-01 (#8996): optional ordered multi-lane routing policy (order =
+   * rotation priority). Validated fail-closed before binding. */
+  routingPolicy: Schema.optional(FullAutoControlRoutingPolicySchema),
+  /** FA-WIRE-01 (#8996): optional owner-configured guardrails. Invalid
+   * shapes (non-positive limits) fail decode -> 400 invalid_request. */
+  guardrails: Schema.optional(FullAutoGuardrailsSchema),
 })
 export type FullAutoControlEnableRequest = typeof FullAutoControlEnableRequestSchema.Type
 export const decodeFullAutoControlEnableRequest = (
@@ -92,6 +116,9 @@ export const FullAutoControlStartRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
   title: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
   lane: Schema.optional(LaneRef),
+  /** FA-WIRE-01 (#8996): see FullAutoControlEnableRequestSchema. */
+  routingPolicy: Schema.optional(FullAutoControlRoutingPolicySchema),
+  guardrails: Schema.optional(FullAutoGuardrailsSchema),
 })
 export type FullAutoControlStartRequest = typeof FullAutoControlStartRequestSchema.Type
 export const decodeFullAutoControlStartRequest = (
@@ -121,6 +148,11 @@ export const FullAutoControlRunStartRequestSchema = Schema.Struct({
   doneCondition: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FULL_AUTO_RUN_DONE_CONDITION_LIMIT)),
   lane: Schema.optional(LaneRef),
   turnCap: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000))),
+  /** FA-WIRE-01 (#8996): optional ordered routing policy + guardrails, bound
+   * onto the run's thread-level record after the run mints (validated
+   * fail-closed BEFORE anything is minted). */
+  routingPolicy: Schema.optional(FullAutoControlRoutingPolicySchema),
+  guardrails: Schema.optional(FullAutoGuardrailsSchema),
 })
 export type FullAutoControlRunStartRequest = typeof FullAutoControlRunStartRequestSchema.Type
 export const decodeFullAutoControlRunStartRequest = (
@@ -296,6 +328,26 @@ export const FullAutoControlRecordSchema = Schema.Struct({
   rotationHistory: Schema.optional(Schema.Array(FullAutoRotationRecordSchema).check(
     Schema.isMaxLength(FULL_AUTO_ROTATION_HISTORY_LIMIT),
   )),
+  /**
+   * FA-WIRE-01 (#8996): bounded continuation-decision history, most recent
+   * last, projected via projectFullAutoDecisionHistory. OPTIONAL and additive
+   * like rotationHistory; the server projection always populates it.
+   */
+  decisionHistory: Schema.optional(Schema.Array(FullAutoContinuationDecisionSchema).check(
+    Schema.isMaxLength(FULL_AUTO_DECISION_HISTORY_LIMIT),
+  )),
+  /** FA-WIRE-01 (#8996): the record's bound owner-configured guardrails, or
+   * null when none are bound. */
+  guardrails: Schema.optional(Schema.NullOr(FullAutoGuardrailsSchema)),
+  /** FA-WIRE-01 (#8996): the ordered bound routing policy, or null. */
+  routingPolicy: Schema.optional(Schema.NullOr(FullAutoControlRoutingPolicySchema)),
+  /** FA-GD-01/FA-WIRE-01: non-null exactly when the record is durably paused
+   * by the low-confidence gate; cleared only by an explicit resume. */
+  pausedReason: Schema.optional(Schema.NullOr(Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(FULL_AUTO_BLOCKED_REASON_LIMIT),
+  ))),
+  pausedAt: Schema.optional(Schema.NullOr(Schema.String)),
 })
 export type FullAutoControlRecord = typeof FullAutoControlRecordSchema.Type
 
@@ -348,6 +400,29 @@ export const FullAutoControlTurnsResponseSchema = Schema.Struct({
 })
 export type FullAutoControlTurnsResponse = typeof FullAutoControlTurnsResponseSchema.Type
 
+/**
+ * FA-WIRE-01 (#8996): the typed routing-policy refusal vocabulary, mirrored
+ * from full-auto-routing.ts (type-only import keeps that module's
+ * capability-registry dependencies out of this contract). The two compile-time
+ * parity assertions below fail the build if either side drifts.
+ */
+export const FullAutoControlRoutingPolicyRefusalReasonSchema = Schema.Literals([
+  "policy_empty",
+  "policy_too_long",
+  "duplicate_candidate",
+  "lane_unknown",
+  "lane_not_admitted",
+  "lane_not_full_auto_eligible",
+])
+type _RoutingRefusalCovers =
+  typeof FullAutoControlRoutingPolicyRefusalReasonSchema.Type extends
+    import("./full-auto-routing.ts").FullAutoRoutingPolicyRefusalReason ? true : never
+type _RoutingRefusalComplete =
+  import("./full-auto-routing.ts").FullAutoRoutingPolicyRefusalReason extends
+    typeof FullAutoControlRoutingPolicyRefusalReasonSchema.Type ? true : never
+const _routingRefusalParity: readonly [_RoutingRefusalCovers, _RoutingRefusalComplete] = [true, true]
+void _routingRefusalParity
+
 /** Machine-readable error tags every non-2xx response carries. */
 export const FullAutoControlErrorTagSchema = Schema.Literals([
   "unauthorized",
@@ -372,6 +447,13 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
    * states fail closed and present one safe action"). `stallCause` on the
    * error body names the cause; the safe action is always Stop. */
   "not_recoverable",
+  /** FA-WIRE-01 (#8996): a submitted routingPolicy failed
+   * validateFullAutoRoutingPolicy -- nothing was written or minted. See
+   * `routingPolicyRefusalReason`/`lane` on the error body. */
+  "routing_policy_refused",
+  /** FA-WIRE-01 (#8996): resume was requested for a record that exists but
+   * is not currently paused -- resume never re-enables a disabled record. */
+  "not_paused",
 ])
 export type FullAutoControlErrorTag = typeof FullAutoControlErrorTagSchema.Type
 
@@ -392,6 +474,11 @@ export const FullAutoControlErrorSchema = Schema.Struct({
   handoffRefusalReason: Schema.optional(ProviderHandoffRefusalReasonSchema),
   /** not_recoverable only: the classified cause that failed closed. */
   stallCause: Schema.optional(FullAutoStallCauseSchema),
+  /** routing_policy_refused only: the exact typed refusal reason from
+   * validateFullAutoRoutingPolicy, plus the first offending lane when the
+   * refusal is lane-scoped. */
+  routingPolicyRefusalReason: Schema.optional(FullAutoControlRoutingPolicyRefusalReasonSchema),
+  lane: Schema.optional(LaneRef),
 })
 export type FullAutoControlError = typeof FullAutoControlErrorSchema.Type
 
@@ -410,6 +497,10 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "post", path: "/v1/full-auto/{threadRef}/enable", operationId: "enableFullAuto" },
   { method: "post", path: "/v1/full-auto/{threadRef}/disable", operationId: "disableFullAuto" },
   { method: "post", path: "/v1/full-auto/{threadRef}/continue-now", operationId: "continueFullAutoNow" },
+  // FA-WIRE-01 (#8996): the explicit resume command for a low-confidence
+  // pause (FA-GD-01) -- wires the exported resumeFullAuto, never a new
+  // dispatch mechanism.
+  { method: "post", path: "/v1/full-auto/{threadRef}/resume", operationId: "resumeFullAutoThread" },
   { method: "get", path: "/v1/full-auto/{threadRef}/turns", operationId: "listFullAutoTurns" },
   // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface. Distinct
   // from the thread-level routes above (kept unchanged) -- these operate on
