@@ -9,7 +9,7 @@
     "prebuild": "expo prebuild",
     "prebuild:ios": "expo prebuild --platform ios",
     "prebuild:android": "expo prebuild --platform android",
-    "test": "vp test --run",
+    "test": "vp test --run --root ../.. apps/openagents-mobile",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh"
   },
