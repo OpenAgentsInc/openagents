@@ -2487,6 +2487,16 @@ const withConfirmedThread = (
   }
 }
 
+/** Opening an owner-private conversation is an explicit navigation event.
+ * Bind that event to the newest confirmed row once; later pin changes remain
+ * owned by the transcript scroll handler. */
+const khalaPinnedToLatest = (khala: KhalaState): KhalaState => ({
+  ...khala,
+  transcriptPinned: true,
+  transcriptUnreadCount: 0,
+  transcriptScrollToKey: khala.entries.at(-1)?.key ?? null,
+})
+
 const failedConversationState = (
   state: HomeState,
   error: string,
@@ -2774,9 +2784,15 @@ const makeSyncedConversationHandlers = (
             : current))
       },
     ))
-    yield* SubscriptionRef.update(state, current => thread === null
-      ? failedConversationState(current, "Conversation is still pending reconciliation.")
-      : withConfirmedThread(current, thread))
+    yield* SubscriptionRef.update(state, current => {
+      if (thread === null) {
+        return failedConversationState(current, "Conversation is still pending reconciliation.")
+      }
+      const confirmed = withConfirmedThread(current, thread)
+      return selectingSarah
+        ? { ...confirmed, khala: khalaPinnedToLatest(confirmed.khala) }
+        : confirmed
+    })
   }),
   ConversationThreadRenameStarted: (payload: { readonly threadRef: string }) =>
     SubscriptionRef.update(state, current => {
@@ -4881,7 +4897,9 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         codingExecutionTargetCatalogRequired:
           options.coding?.executionTargets !== undefined,
         khala: activeComposer === null
-          ? baseInitialState.khala
+          ? sarahIsInitialThread
+            ? khalaPinnedToLatest(baseInitialState.khala)
+            : baseInitialState.khala
           : {
               ...baseInitialState.khala,
               draft: mobileCodingComposerText(activeComposer.draft),

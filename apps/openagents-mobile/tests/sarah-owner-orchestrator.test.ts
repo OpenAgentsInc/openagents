@@ -33,6 +33,26 @@ const thread: MobileConversationThread = {
   version: 1,
   messages: [],
 };
+const recentThread: MobileConversationThread = {
+  ...thread,
+  messageCount: 2,
+  lastMessageAt: now,
+  messages: [{
+    messageRef: "message.sarah.1",
+    threadRef: thread.threadRef,
+    body: "Earlier message",
+    createdAt: "2026-07-18T14:58:00.000Z",
+    updatedAt: "2026-07-18T14:58:00.000Z",
+    version: 1,
+  }, {
+    messageRef: "message.sarah.2",
+    threadRef: thread.threadRef,
+    body: "Most recent message",
+    createdAt: now,
+    updatedAt: now,
+    version: 2,
+  }],
+};
 const principal: SarahPrincipalProjection = {
   schema: "openagents.sarah.principal.v1",
   principalRef: "principal.sarah",
@@ -100,6 +120,30 @@ describe(`contract ${contractId}`, () => {
     expect(drawer).not.toContain("workspace-status-filter");
     expect(drawer).not.toContain("workspace-fleet-summary");
     expect(drawer).not.toContain("drawer-bundle");
+  });
+
+  test("positions an initially selected Sarah conversation at its newest message", () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [recentThread],
+      newThread: async () => ({ ok: true, thread: recentThread }),
+      openThread: async () => recentThread,
+      sendMessage: async () => ({ ok: true, thread: recentThread }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [recentThread],
+        archivedThreads: [],
+        activeThread: recentThread,
+      },
+    });
+
+    expect(program.initialState.khala.transcriptPinned).toBe(true);
+    expect(program.initialState.khala.transcriptScrollToKey).toBe("message.sarah.2");
+    expect(JSON.stringify(renderContentView(program.initialState)))
+      .toContain('"scrollToKey":"message.sarah.2"');
   });
 
   test("forces ordinary Sarah messages through the hosted Khala lane", async () => {
@@ -204,12 +248,12 @@ describe(`contract ${contractId}`, () => {
     let cleared = 0;
     let runtimeTarget: unknown;
     const host: MobileConversationHost = {
-      listThreads: async () => [oldThread, thread],
+      listThreads: async () => [oldThread, recentThread],
       newThread: async () => ({ ok: true, thread: oldThread }),
-      openThread: async (threadRef) => threadRef === thread.threadRef ? thread : oldThread,
+      openThread: async (threadRef) => threadRef === recentThread.threadRef ? recentThread : oldThread,
       sendMessage: async (input) => {
         runtimeTarget = input.runtimeTarget;
-        return { ok: true, thread };
+        return { ok: true, thread: recentThread };
       },
     };
     const composerState = emptyComposerState();
@@ -276,6 +320,8 @@ describe(`contract ${contractId}`, () => {
     expect(cleared).toBe(1);
     expect(selected.activeThreadRef).toBe(thread.threadRef);
     expect(selected.codingComposer).toBeNull();
+    expect(selected.khala.transcriptPinned).toBe(true);
+    expect(selected.khala.transcriptScrollToKey).toBe("message.sarah.2");
 
     await Effect.runPromise(program.report(
       IntentRef("KhalaTurnSubmitted", ComponentValueBinding()),
