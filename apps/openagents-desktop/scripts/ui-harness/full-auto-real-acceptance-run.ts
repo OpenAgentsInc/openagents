@@ -632,6 +632,13 @@ const executeSixRows = async (): Promise<void> => {
   const page = desktop.page
   await page.waitForSelector('text=Start a conversation with Codex', { timeout: 60_000 })
   await stopExistingStaleTestRun(page)
+  // Stale-run cleanup deliberately leaves the shell on the Full Auto
+  // surface, which has no provider picker. Open a disposable setup chat so
+  // the source-lane preference can be normalized before TEST 01's retained
+  // row is minted.
+  await page.locator('[data-sidebar-destination-id="workspace-new-chat"]').click()
+  await page.locator('[data-en-key="shell-provider-select"]')
+    .waitFor({ state: "visible", timeout: 30_000 })
 
   await runInteractiveHandoff({
     page,
