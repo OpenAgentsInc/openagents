@@ -244,7 +244,7 @@ const sendAndWait = async (page: Page, prompt: string): Promise<string> => {
 const newSession = async (page: Page): Promise<string> => {
   const previous = await page.locator('[data-session-row][aria-current="page"]').first()
     .getAttribute("data-en-key").catch(() => null)
-  await page.getByRole("button", { name: "New session" }).click()
+  await page.locator('[data-sidebar-destination-id="workspace-new-chat"]').click()
   await page.locator('[data-en-key="shell-input"] [contenteditable="true"]')
     .waitFor({ state: "visible", timeout: 30_000 })
   await page.waitForFunction(previousKey => {
@@ -684,7 +684,7 @@ const executeSixRows = async (): Promise<void> => {
     turnCap: 3,
   })
   for (let index = 0; index < 6; index += 1) {
-    await relaunchedPage.getByRole("button", { name: "New session" }).click()
+    await relaunchedPage.locator('[data-sidebar-destination-id="workspace-new-chat"]').click()
     await relaunchedPage.waitForTimeout(250)
   }
   await relaunchedPage.locator('[data-sidebar-destination-id="workspace-full-auto"]').click()
