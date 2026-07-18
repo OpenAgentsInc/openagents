@@ -96,6 +96,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md`](./2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md)
+  — point-in-time technical and product audit of stripping the active
+  OpenAgents Desktop app to its hardened Electron/release shell and replacing
+  its runtime and renderer with the bounded Vercel AI SDK Codex-Claude Full
+  Auto experiment; it records the required contract retirements and does not
+  authorize the reset.
 - [`../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
   — detailed AC-by-AC Desktop/mobile/web audit and seven-track proposal;
   MASTER_ROADMAP owns its reconciled sequence and current truth.
