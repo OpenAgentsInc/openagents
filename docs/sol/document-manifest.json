@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "944b2c201b988bf5f35ce0fbc9581aaeedc6d9ec6abe2368708f58f4a6e7c034",
+  "sourceTreeSha256": "3de7a581c26319b876a7a9b661718638a71f4e831758adbb14ebd90a8b252673",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -1776,7 +1776,7 @@
       "owner": "Sol Fast Follow expansion",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "587d94e59f767a25f812fa0945aaf251e9857c3f6d0ac03d98d4f85a87abbf80",
+      "sha256": "6b9c501b64442a5b755d66f6fd0ab7484485be9de9d572494d72bb9bd27c5d51",
       "status": "active — FULL HARVEST",
       "snapshot": "`f2c5591e3b5a2c160f436fb62633a6367272c70d`",
       "reviewedAt": "2026-07-12",
@@ -1824,10 +1824,11 @@
         "docs/fastfollow/receipts/2026-07-18-ff-d1-37-desktop-canonical-export-search-catalog-ingestion-receipt.md",
         "docs/fastfollow/receipts/2026-07-18-ff-d1-38-desktop-canonical-event-search-bridge-contract-receipt.md",
         "docs/fastfollow/receipts/2026-07-18-ff-d1-39-desktop-canonical-event-search-preload-receipt.md",
+        "docs/fastfollow/receipts/2026-07-18-ff-d1-40-desktop-canonical-event-search-main-handler-receipt.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 44,
+      "inboundSourceCount": 45,
       "issueLinks": []
     },
     {
