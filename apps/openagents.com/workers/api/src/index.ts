@@ -1131,6 +1131,13 @@ import {
   FULL_AUTO_RUNS_PATH,
   makeFullAutoRunRoutes,
 } from './full-auto-run-routes'
+import { buildSarahSystemPrompt } from '@openagentsinc/sarah'
+import { collectSarahBusinessContext } from './sarah-business-context'
+import {
+  SARAH_OWNER_PATH,
+  hasSarahThreadAuthority,
+  makeSarahOwnerRoutes,
+} from './sarah-owner-routes'
 import {
   FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
   makeFullAutoRunControlRoutes,
@@ -6797,6 +6804,23 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   try {
     const summary = await runHostedRuntimeTurnDispatch({
       complete,
+      prepareTurn: async ({ prompt, system, turn }) => {
+        if (
+          !(await hasSarahThreadAuthority(
+            client.sql,
+            turn.ownerUserId,
+            turn.threadId,
+          ))
+        ) {
+          return { prompt, system }
+        }
+        const context = await collectSarahBusinessContext({
+          ownerUserId: turn.ownerUserId,
+          sql: client.sql,
+          threadRef: turn.threadId,
+        })
+        return { prompt, system: buildSarahSystemPrompt(context) }
+      },
       recordUsage: input =>
         recordHostedTurnUsage(
           {
@@ -10257,6 +10281,29 @@ const fullAutoRunRoutes = makeFullAutoRunRoutes<Env>({
   },
 })
 
+const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (
+      actor === undefined ||
+      actor.kind !== "human" ||
+      !isOpenAgentsAdminEmail(actor.user.email)
+    ) {
+      return undefined;
+    }
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!);
+            },
+          }),
+    };
+  },
+});
+
 // MOB-FA-02 (#8994): the sibling Pause/Resume/Stop control-intent route --
 // same "is this a signed-in owner" authentication as the projection route
 // above; every query stays scoped to the authenticated owner's own userId.
@@ -11409,6 +11456,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       fullAutoRunRoutes
         .handle(request, env, ctx)
         .pipe(Effect.map(materializeHttpResult)),
+  },
+  {
+    path: SARAH_OWNER_PATH,
+    handler: (request, env, ctx) =>
+      sarahOwnerRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   // MOB-FA-02 (#8994): mobile dispatches (POST) and polls (GET) typed
   // Pause/Resume/Stop control intents here; Desktop pulls pending intents

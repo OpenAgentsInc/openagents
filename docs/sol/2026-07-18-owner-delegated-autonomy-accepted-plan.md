@@ -6,7 +6,7 @@
 - Dispatch: no; `MASTER_ROADMAP.md`, live issues, claims, and bounded packets
   remain the dispatch queue
 - Owner authority: current owner conversation
-- Authority profile: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 1
+- Authority profile: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 3
 - Product intent:
   [`../../specs/openagents/authority-delegation.product-spec.md`](../../specs/openagents/authority-delegation.product-spec.md)
 
@@ -17,6 +17,11 @@ parking state. The owner has delegated the exact actions in `AUTHORITY.md` so
 operating agents can use existing repository, local app/provider, device,
 GitHub, and Google Cloud access to finish work, close issues, and ship verified
 outcomes. Only actions explicitly reserved by the profile return to the owner.
+
+Revision 3 adds Sarah as the owner's persistent orchestrator and single point
+of contact. She coordinates this same ordered program through cited
+owner-scoped projections and existing capability brokers; see
+[`2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md`](./2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md).
 
 The immediate company program is:
 
@@ -156,8 +161,9 @@ pricing research do not.
 
 1. Validate the authored root profile in the normal repository test sweep.
 2. Add authority profile/program/grant refs to Full Auto work and turn records.
-3. Implement an Effect-native `AuthorityService` that resolves grants and
-   emits `openagents.authority_decision_receipt.v1`.
+3. Extend the landed Effect-native `AuthorityService` from Sarah's
+   owner-contact bootstrap into every mutation adapter, preserving exact grant
+   resolution and `openagents.authority_decision_receipt.v1` receipts.
 4. Enforce it at GitHub/SCM, GCP, local-device/provider, release, and
    product-promise adapters.
 5. Add cumulative budgets, revocation, stale-claim liveness, independent-review

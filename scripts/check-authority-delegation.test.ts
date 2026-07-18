@@ -108,10 +108,10 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(2);
+    expect(readFrontmatterInteger("authority_revision")).toBe(3);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
     expect(readFrontmatterString("admitted_by")).toBe(
-      "current_owner_direction_2026-07-18_release_autonomy",
+      "current_owner_direction_2026-07-18_sarah_reboot",
     );
     expect(order).toMatchObject({
       authority_may_amplify: false,
@@ -203,6 +203,28 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
         "condition.release_impact",
         "condition.release_communication",
         "condition.release_attribution",
+      ]),
+    );
+  });
+
+  test("designates Sarah as a brokered, citation-bound, non-amplifying orchestrator", () => {
+    const grant = grants.find(({ id }) => id === "grant.sarah_company_orchestration");
+    expect(grant?.roles).toEqual(["sarah_orchestrator"]);
+    expect(grant?.actions).toEqual(
+      expect.arrayContaining([
+        "maintain_owner_contact",
+        "read_business_context",
+        "prioritize_program_work",
+        "delegate_repository_work",
+        "publish_release_candidate",
+      ]),
+    );
+    expect(grant?.condition_refs).toEqual(
+      expect.arrayContaining([
+        "condition.owner_scope",
+        "condition.capability_broker",
+        "condition.citations",
+        "condition.existing_runtime_gate",
       ]),
     );
   });

@@ -224,6 +224,9 @@ repository validation. The implementation sequence is:
    adapters; and
 6. add revocation, budget, liveness, and independence model checking.
 
-Until the Effect service lands, current instructions, repository policy,
-claims, runtime gates, and this validated root profile are jointly enforced.
-The absence of a compiler is never permission to exceed the authored profile.
+The initial Effect-native resolver now lives in `packages/authority/` and is
+used by Sarah's owner-contact bootstrap. Current instructions, repository
+policy, claims, runtime gates, the validated root profile, and every adapter's
+local checks remain jointly enforced while the other adapter migrations land.
+An adapter that has not adopted the resolver never gains broader authority by
+omission.

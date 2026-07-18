@@ -2449,7 +2449,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 
 ## Sarah FleetRun Intake Authority
 
-- **Amendment (owner direction 2026-07-10, epic #8610):** the Sarah client
+- **Amendment (owner direction 2026-07-18):** the old standalone Sarah client
   surface is removed — `openagents.com/sarah`, every `/sarah/api/*` route
   (including `/sarah/api/eve/tool-call`), and the whole `apps/sarah` package
   are deleted, and `/sarah/*` returns an explicit 404 tombstone from the
@@ -2461,7 +2461,11 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   (route-level tests in `sarah-fleet-run-routes.test.ts` remain). A future
   fleet-command client must re-establish an end-to-end acceptance seam
   before claiming C1-level proof. Sarah-specific client invariants in this
-  section are historical where they name `apps/sarah` internals.
+  section is historical where it names `apps/sarah` internals. The rebooted
+  `principal.sarah` enters through authenticated `/api/mobile/sarah` and the
+  supported OpenAgents mobile conversation system. It reuses this FleetRun
+  authority by typed capability; it does not restore the old client or turn
+  Sarah identity into FleetRun mutation authority.
 - Sarah-created coding runs use the Cloud SQL Postgres authority in
   `@openagentsinc/khala-sync-server` (`fleet-run-authority.ts` and migration
   `0052_sarah_fleet_run_authority.sql`). A Sarah process-local JSON file, an

@@ -164,6 +164,14 @@ export type HostedRuntimeCompleteFn = (input: {
   readonly images?: ReadonlyArray<ChatMessageImageAttachment>
 }) => Promise<HostedRuntimeCompletion>
 
+export type HostedRuntimePrepareTurnFn = (
+  input: Readonly<{
+    turn: QueuedHostedTurn
+    system: string
+    prompt: string
+  }>,
+) => Promise<Readonly<{ system: string; prompt: string }>>
+
 /** Injectable push-engine seam so tests never need the real engine. */
 export type HostedRuntimeExecutePushFn = typeof executePushEngine
 
@@ -172,6 +180,8 @@ export type HostedRuntimeDispatchDependencies = Readonly<{
   sql: SyncSql
   /** Drives the assistant answer for one prompt. */
   complete: HostedRuntimeCompleteFn
+  /** Optional owner/persona context projection before inference. */
+  prepareTurn?: HostedRuntimePrepareTurnFn | undefined
   /** Per-tick turn budget. Default {@link DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT}. */
   limit?: number | undefined
   /** Restart-reconciliation age bound. Default: five minutes. */
@@ -215,6 +225,7 @@ type ResolvedDeps = Readonly<{
   uuid: () => string
   log: (line: string, fields?: Record<string, unknown>) => void
   recordUsage: HostedRuntimeRecordUsageFn | undefined
+  prepareTurn: HostedRuntimePrepareTurnFn | undefined
 }>
 
 const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => ({
@@ -233,6 +244,7 @@ const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => (
   log: deps.log ?? (() => undefined),
   model: deps.model ?? DEFAULT_HOSTED_RUNTIME_MODEL,
   now: deps.now ?? currentIsoTimestamp,
+  prepareTurn: deps.prepareTurn,
   recordUsage: deps.recordUsage,
   registry: deps.registry ?? makeMutatorRegistry([...runtimeMutators]),
   sql: deps.sql,
@@ -532,9 +544,17 @@ export const dispatchHostedRuntimeTurn = async (
     if (message === null) {
       completion = { detail: 'prompt_unresolved', ok: false }
     } else {
+      const prepared =
+        resolved.prepareTurn === undefined
+          ? { prompt: message.prompt, system: resolved.systemPrompt }
+          : await resolved.prepareTurn({
+              prompt: message.prompt,
+              system: resolved.systemPrompt,
+              turn,
+            });
       completion = await resolved.complete({
-        prompt: message.prompt,
-        system: resolved.systemPrompt,
+        prompt: prepared.prompt,
+        system: prepared.system,
         ...(message.images === undefined ? {} : { images: message.images }),
       })
     }

@@ -22,6 +22,8 @@ import {
   createAuthenticatedMobileRepositoryEnvironment,
   type MobileRepositoryEnvironmentPort,
 } from "../coding/mobile-repository-environment-client"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import { fetchSarahPrincipal } from "../sarah/sarah-client"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
 export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
@@ -42,6 +44,8 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
   repositoryEnvironment: () => Promise<MobileRepositoryEnvironmentPort | null>
+  /** Stable owner-private Sarah identity. Token custody remains host-only. */
+  sarah: () => Promise<SarahPrincipalProjection | null>
 }>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
@@ -70,6 +74,14 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
   })
   return {
     ...host,
+    sarah: async () => {
+      const credential = await loadNativeSessionCredential();
+      if (credential === null || host.conversation() === null) return null;
+      return fetchSarahPrincipal({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: credential.accessToken,
+      });
+    },
     fleetRuns: async () => {
       const credential = await loadNativeSessionCredential()
       if (credential === null || host.conversation() === null) {

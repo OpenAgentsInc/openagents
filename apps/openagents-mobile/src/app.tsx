@@ -77,6 +77,7 @@ import {
 } from "./full-auto/full-auto-run-projection"
 import type { FullAutoRunControlDispatchOutcome } from "./full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
@@ -152,6 +153,7 @@ const selectAuthenticatedMobileExperience = async (
   conversation: MobileConversationSelection
   coding?: MobileCodingHomeBinding
   fullAutoRun: FullAutoRunProjectionResult
+  sarah: SarahPrincipalProjection | null
 }>> => {
   const coding = syncHost.coding()
   const draftStore = syncHost.drafts()
@@ -161,7 +163,8 @@ const selectAuthenticatedMobileExperience = async (
   const attachmentPicker = openExpoMobileCodingAttachmentPicker()
   const attachmentDelivery = openExpoMobileCodingAttachmentDelivery()
   const restored = await coding.restore()
-  const preferredThreadRef = restored?.state === "ready"
+  const sarah = await syncHost.sarah()
+  const restoredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
     : undefined
   // Fetched before thread selection so an active, fresh Full Auto run's
@@ -178,6 +181,7 @@ const selectAuthenticatedMobileExperience = async (
       isFullAutoRunProjectionActive(fullAutoRunResult.projection)
     ? fullAutoRunResult.projection.threadRef
     : undefined
+  const preferredThreadRef = restoredThreadRef ?? activeFullAutoThreadRef ?? sarah?.threadRef
   const conversation = await selectMobileConversation({
     conversation: () => syncHost.conversation(),
     timeline: () => syncHost.timeline(),
@@ -189,7 +193,7 @@ const selectAuthenticatedMobileExperience = async (
     adapter: { randomId: randomUUID },
   })
   const directory = await coding.directory()
-  if (conversation.mode !== "sync") return { conversation, fullAutoRun: fullAutoRunResult }
+  if (conversation.mode !== "sync") return { conversation, fullAutoRun: fullAutoRunResult, sarah }
   const executionTargetCatalog = await syncHost.executionTargets()
   const fleetRunResult = await syncHost.fleetRuns()
   const repositoryEnvironment = await syncHost.repositoryEnvironment()
@@ -251,6 +255,7 @@ const selectAuthenticatedMobileExperience = async (
   return {
     conversation,
     fullAutoRun: fullAutoRunResult,
+    sarah,
     coding: {
       directory,
       portableSnapshot,
@@ -395,6 +400,7 @@ export const App = () => {
   const [incomingShare, setIncomingShare] = useState<MobileShareIntake | null>(null)
   const [conversationRevision, setConversationRevision] = useState(0)
   const [fullAutoRun, setFullAutoRun] = useState<FullAutoRunProjectionResult | null>(null)
+  const [sarah, setSarah] = useState<SarahPrincipalProjection | null>(null)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
@@ -494,6 +500,7 @@ export const App = () => {
         const experience = await selectAuthenticatedMobileExperience(syncHostRef.current!, applyActiveThread)
         setConversationSelection(experience.conversation)
         setFullAutoRun(experience.fullAutoRun)
+        setSarah(experience.sarah)
         publishCodingBinding(experience.coding)
         setConversationRevision(current => current + 1)
         setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
@@ -513,6 +520,7 @@ export const App = () => {
       pendingAttentionTargetRef.current = null
       setPendingAttentionTarget(null)
       setFullAutoRun(null)
+      setSarah(null)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -555,6 +563,7 @@ export const App = () => {
           conversationSelectionRef.current = experience.conversation
           setConversationSelection(experience.conversation)
           setFullAutoRun(experience.fullAutoRun)
+          setSarah(experience.sarah)
           publishCodingBinding(experience.coding)
           setConversationRevision(current => current + 1)
           setSyncPhase("live")
@@ -656,6 +665,7 @@ export const App = () => {
               if (stopped) return
               setConversationSelection(experience.conversation)
               setFullAutoRun(experience.fullAutoRun)
+              setSarah(experience.sarah)
               publishCodingBinding(experience.coding)
               setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
             }
@@ -760,6 +770,7 @@ export const App = () => {
           onAttentionTargetConsumed={consumeAttentionTarget}
           fullAutoRun={fullAutoRun}
           fullAutoControl={fullAutoControl}
+          sarah={sarah}
           notificationSettings={notificationSettings}
           incomingShare={incomingShare}
           onShareConsumed={consumeIncomingShare}

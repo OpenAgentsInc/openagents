@@ -178,6 +178,7 @@ import {
   type KhalaTurnClient,
   type MobileAccessibilityProfile,
 } from "./khala-core"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 import { mobileAttachmentRef } from "./mobile-transcript-attachment"
 import {
   initialMobileTranscriptVisibleCount,
@@ -201,11 +202,10 @@ export {
 } from "./khala-core"
 
 /**
- * Persona-neutral mobile home. Sol roadmap rev-24 explicitly pauses named
- * assistants as a product front door: mobile owns truthful supervision and continuity, not
- * relationship state or presentation demos. The existing conversation surface
- * is driven by confirmed personal Sync when live and the public Khala client
- * when startup selects the explicit local fallback.
+ * Conversation-first mobile home. Sarah re-enters only as the authenticated
+ * owner's durable orchestrator projection inside this existing shell; there is
+ * no standalone persona app, presentation demo, or public front door. Confirmed
+ * personal Sync remains the authority for hosted conversation state.
  */
 export type SurfaceMode = "openagents" | "khala"
 
@@ -238,6 +238,7 @@ export interface HomeState {
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly archivedConversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
+  readonly sarah: SarahPrincipalProjection | null
   readonly workspaceSearch: string
   readonly workspaceStatusFilter: MobileWorkspaceStatusFilter
   readonly workspaceProjectFilter: string | null
@@ -412,6 +413,7 @@ export const initialHomeState: HomeState = {
   conversationThreads: [],
   archivedConversationThreads: [],
   activeThreadRef: null,
+  sarah: null,
   workspaceSearch: "",
   workspaceStatusFilter: "all",
   workspaceProjectFilter: null,
@@ -448,8 +450,8 @@ export const initialHomeState: HomeState = {
   khala: initialKhalaState,
 }
 
-/** Visible embedded-binary tag; build 116 removes the named-persona front door. */
-export const BUNDLE_TAG = "2026-07-12.cut-09-runtime-selector-atomic"
+/** Visible OTA tag for the authenticated owner-orchestrator reboot. */
+export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-01"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -925,6 +927,13 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
     return { title: "OpenAgents", subtitle: syncStatusCopy(state.syncPhase).title }
   }
 
+  if (state.sarah !== null && state.activeThreadRef === state.sarah.threadRef) {
+    return {
+      title: state.sarah.displayName,
+      subtitle: `${state.sarah.role} · Authority v${state.sarah.rootAuthorityRevision}`,
+    }
+  }
+
   const selectedTitle = state.khala.threadHistory?.title ??
     state.conversationThreads.find(thread => thread.threadRef === state.activeThreadRef)?.title
   const composer = state.codingComposer
@@ -1014,7 +1023,9 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
   pillLabel: state.conversationAuthority === "sync" && state.surfaceMode === "khala"
     ? "OpenAgents"
     : surfaceModeOptions.find((option) => option.id === state.surfaceMode)?.label ?? "OpenAgents",
-  composerPlaceholder: state.conversationAuthority === "sync" ? "Continue conversation" : "Message Khala",
+  composerPlaceholder: state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
+    ? "Message Sarah"
+    : state.conversationAuthority === "sync" ? "Continue conversation" : "Message Khala",
   chromeVisible: !state.drawerOpen,
   glassComposerVisible: !state.drawerOpen && state.surfaceMode === "khala",
   surfaceMode: state.surfaceMode,
@@ -1994,6 +2005,14 @@ export const renderDrawerView = (state: HomeState): View =>
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
+      ...(state.sarah === null
+        ? []
+        : [drawerRow({
+            key: "drawer-sarah",
+            label: "Sarah · Owner orchestrator",
+            onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: state.sarah.threadRef })),
+            selected: state.activeThreadRef === state.sarah.threadRef,
+          }, state.accessibility)]),
       drawerRow({
         key: "drawer-current-surface",
         label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala",
@@ -2037,6 +2056,7 @@ export interface HomeProgramOptions {
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly accessibility?: MobileAccessibilityProfile
+  readonly sarah?: SarahPrincipalProjection
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
@@ -2999,7 +3019,9 @@ const makeSyncedConversationHandlers = (
       body: prepared.body,
       ...(prepared.attachments === undefined ? {} : { attachments: prepared.attachments }),
       ...(selectedExecutionTarget === undefined
-        ? {}
+        ? before.sarah !== null && threadRef === before.sarah.threadRef
+          ? { runtimeTarget: { lane: "hosted_khala" as const } }
+          : {}
         : { runtimeTarget: selectedExecutionTarget.runtimeTarget }),
       onUpdate: thread => {
         Effect.runFork(SubscriptionRef.update(state, current => {
@@ -3040,7 +3062,7 @@ const makeSyncedConversationHandlers = (
           },
         })
   }),
-  })
+})
 }
 
 export const makeHomeHandlers = (
@@ -4729,6 +4751,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       const activeComposer = options.coding?.activeComposer() ?? null
       const programInitialState: HomeState = {
         ...baseInitialState,
+        sarah: options.sarah ?? null,
         workspaceLayoutMode: mobileWorkspaceLayoutMode(options.workspaceWidth ?? 390),
         codingDirectory: options.coding?.directory ?? null,
         portableSnapshot: options.coding?.portableSnapshot ?? null,

@@ -328,6 +328,30 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(finished?.finishReason).toBe('stop')
   })
 
+  test('prepares a principal-specific system prompt before hosted inference', async () => {
+    const push = makeRecordingExecutePush()
+    let seen: Readonly<{ prompt: string; system: string }> | undefined
+    const complete: HostedRuntimeCompleteFn = input => {
+      seen = { prompt: input.prompt, system: input.system }
+      return Promise.resolve({ ok: true, text: 'Owner update.' })
+    }
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, complete),
+        prepareTurn: async input => ({
+          prompt: input.prompt,
+          system: `Sarah cited context for ${input.turn.threadId}`,
+        }),
+      },
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(seen).toEqual({
+      prompt: 'Explain this codebase',
+      system: 'Sarah cited context for thread.t1',
+    })
+  })
+
   test('passes authoritative image bytes to hosted inference', async () => {
     const push = makeRecordingExecutePush()
     const image = {

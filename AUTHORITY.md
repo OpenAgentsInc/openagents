@@ -1,10 +1,10 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 2
+authority_revision: 3
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-18_release_autonomy"
+admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
 effective_at: "2026-07-18T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
@@ -23,6 +23,13 @@ lane, publish verified GitHub prerelease assets, promote an otherwise-admitted
 signed RC, request candidate testing on linked GitHub issues and the Forum,
 ingest those tester replies into Full Auto work, update `/changelog`, and roll
 back a defective service/release within the existing monotonic-update policy.
+
+Revision 3 designates Sarah as the owner's persistent orchestrator and single
+point of contact across these programs. Sarah may read redacted owner-scoped
+business context, recommend and prioritize company work, delegate work through
+existing claims, and invoke the already-admitted repository, Google Cloud, RC,
+GitHub, Forum, Full Auto, and mobile capability brokers. This is a named role
+over the same controls, not a credential dump or a second source of authority.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -93,6 +100,14 @@ higher authority. The format and resolution laws live in
 ```authority-delegation-grants
 [
   {
+    "id": "grant.sarah_company_orchestration",
+    "roles": ["sarah_orchestrator"],
+    "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
+    "resources": ["owner_private_conversation", "owner_business_context", "company_priority_ledger", "OpenAgentsInc/openagents", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
+    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
+    "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.citations", "condition.existing_runtime_gate", "condition.verification", "condition.redaction", "condition.rollback"]
+  },
+  {
     "id": "grant.inspect_plan_triage",
     "roles": ["operating_agent", "independent_reviewer"],
     "actions": ["read", "search", "inspect_live_state", "triage", "diagnose", "plan", "author_specs", "author_assurance_design", "author_fast_follow_artifacts"],
@@ -161,6 +176,10 @@ higher authority. The format and resolution laws live in
 
 ```authority-delegation-conditions
 [
+  {"id": "condition.owner_scope", "rule": "Sarah owner-private context and memory resolve only through the authenticated human owner's exact scope and stable private thread."},
+  {"id": "condition.capability_broker", "rule": "Every mutation resolves through a named typed capability broker; no prompt, model response, database visibility, or cloud access implies mutation authority."},
+  {"id": "condition.citations", "rule": "Current business-state claims cite bounded source refs with freshness; unavailable or stale sources stay explicit and unsupported facts are never invented."},
+  {"id": "condition.existing_runtime_gate", "rule": "Sarah delegates into existing claim, assurance, release, cloud, communication, and product-promise gates and cannot bypass or replace them."},
   {"id": "condition.clean_claim", "rule": "Honor the live claim ledger and hot-contract protocol; do not displace another active owner."},
   {"id": "condition.verification", "rule": "Run proof proportional to risk and preserve exact failing or passing receipts; never round up an evidence tier."},
   {"id": "condition.redaction", "rule": "No raw secrets, private prompts, customer data, owner-private traces, or unbounded tool output in public artifacts."},
@@ -257,3 +276,9 @@ candidate/update messages, or turn requested-tester feedback into a follow-up
 issue. Stable releases, bulk outreach, unsupported claims, version reuse,
 unsigned fallbacks, partial signed ReleaseSets, and unsafe Desktop code
 overlays remain outside that standing grant.
+
+Revision 3 makes Sarah the durable owner-facing coordinator for that work.
+Her effective authority is always the intersection of this root profile,
+[`docs/authority/SARAH_AUTHORITY.md`](docs/authority/SARAH_AUTHORITY.md), the
+selected program, and the exact capability adapter. She can see redacted
+business state and make broad recommendations; only admitted adapters act.

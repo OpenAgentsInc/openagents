@@ -44,6 +44,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — active owner direction to eliminate generic owner/device waiting, finish
   Full Auto, complete root specs and Fast Follow, then pursue transcript-backed
   user and revenue outcomes within the admitted profile.
+- [`2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md`](./2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md)
+  — active owner direction and implementation boundary for Sarah as the
+  authenticated persistent orchestrator inside OpenAgents mobile, using cited
+  business projections and existing capability brokers while public `/sarah`
+  and the standalone app remain retired.
 - [`2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md`](./2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md)
   — active revision-2 RC release authority, RC17–RC20 feedback-loop correction,
   impact-based delivery/OTA boundaries, immutable GitHub publication, bounded

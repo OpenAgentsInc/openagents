@@ -1,5 +1,12 @@
 # Decision record — greenfield clients and Sarah removal
 
+> **2026-07-18 supersession note:** current owner direction reboots Sarah as
+> an authenticated owner-orchestrator capability inside supported OpenAgents
+> apps. The greenfield app decision and removal of standalone `apps/sarah`,
+> public `/sarah`, prospect/CRM duplication, avatar infrastructure, and a
+> separate client state model remain binding. See
+> [`../2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md`](../2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md).
+
 - Class: decision
 - Decision dates: 2026-07-09 through 2026-07-10
 - Consolidated: 2026-07-12
@@ -13,10 +20,10 @@
 
 OpenAgents mobile and Desktop are greenfield successor products:
 
-| Product | Destination | Application grammar | Host |
-| --- | --- | --- | --- |
-| OpenAgents mobile | `apps/openagents-mobile` | Effect Native | React Native/Expo |
-| OpenAgents Desktop | `apps/openagents-desktop` | Effect Native | Electron |
+| Product            | Destination               | Application grammar | Host              |
+| ------------------ | ------------------------- | ------------------- | ----------------- |
+| OpenAgents mobile  | `apps/openagents-mobile`  | Effect Native       | React Native/Expo |
+| OpenAgents Desktop | `apps/openagents-desktop` | Effect Native       | Electron          |
 
 Both products are named `OpenAgents`. Mobile retains the owner-designated
 `com.openagents.app` identifier and exact designated icon bytes. The signed

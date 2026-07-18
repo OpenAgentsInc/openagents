@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Owner-Delegated Autonomous Delivery"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -19,7 +19,8 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_design: "docs/authority/AUTHORITY_DELEGATION_SPEC.md"
-  openagents_profile: "AUTHORITY.md revision 2"
+  openagents_profile: "AUTHORITY.md revision 3"
+  openagents_sarah_profile: "docs/authority/SARAH_AUTHORITY.md revision 1"
   openagents_accepted_plan: "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md"
   openagents_assurance_level: "cross-resource-action-authority"
 ---
@@ -62,6 +63,7 @@ in:
   - typed authority-decision receipts that reference private evidence without exposing it
   - current-profile validation and later Effect service, runtime adapter, revocation, budget, and model-checking enforcement
   - autonomous RC impact selection, signed-candidate GitHub publication, linked issue and Forum communication, tester-feedback intake, changelog attribution, and bounded rollback
+  - Sarah as a persistent owner-facing orchestrator with cited business context and brokered access to already-admitted capabilities
 out:
   - AuthorityDelegationSpec deciding product intent, evidence sufficiency, learning relevance, issue priority, or public truth by itself
   - possession of a credential, cloud role, device, provider session, model output, test result, or upstream source implying additional authority
@@ -178,6 +180,16 @@ never changes the visible evidence tier.
   actor, release actor, source feedback, release URL, authority profile
   revision, program, and grant. Historical releases identify their historical
   owner direction and never borrow revision-2 authority retroactively.
+- **AD-AC-21:** Revision 3 designates `principal.sarah` as the owner-facing
+  `sarah_orchestrator` role across the four ordered programs. Her effective
+  authority is the intersection of root profile, Sarah profile, target policy,
+  and exact capability; no prompt or visibility grants mutation authority.
+- **AD-AC-22:** Sarah business context is authenticated-owner scoped, bounded,
+  freshness-labelled, cited, and secret-free. Current-state claims without an
+  available source are refused or marked unavailable, never invented.
+- **AD-AC-23:** The Sarah profile retains every mandatory reserved category,
+  cannot self-amplify, cannot self-verify assurance or release from its own
+  evidence, and stops new actions on revocation or supersession.
 
 ## Success Metrics
 
@@ -226,7 +238,7 @@ never changes the visible evidence tier.
 
 ## Owner Gates
 
-- **RESOLVED FOR REVISION 2 BY CURRENT OWNER DIRECTION.** The owner explicitly
+- **RESOLVED FOR REVISION 3 BY CURRENT OWNER DIRECTION.** The owner explicitly
   directed OpenAgents to formalize broad delegated authority, stop waiting on
   ordinary owner/device blockers, use existing Google Cloud access, rapidly
   close issues, prioritize Full Auto, complete root specs and all Fast Follow,
@@ -234,8 +246,11 @@ never changes the visible evidence tier.
   explicitly directed agents to publish release builds, automate the
   RC17–RC20 tester/issue/update loop, avoid unnecessary Windows builds, use
   OTA where safely admitted, communicate through GitHub and Forum, and expose
-  actor/authority attribution on `/changelog`. `AUTHORITY.md` revision 2 is
-  the admitted profile for those directions.
+  actor/authority attribution on `/changelog`. On 2026-07-18 the owner also
+  explicitly rebooted Sarah as the persistent mobile point of contact, main
+  company decision maker, and orchestrator with business-wide access through
+  OpenAgents primitives. `AUTHORITY.md` revision 3 and the narrower Sarah
+  profile are the admitted intersection for those directions.
 - Any increase to the numeric spend caps, permission for paid outreach or new
   subscriptions, financial movement, legal commitments, destructive customer
   data action, raw secret access, or weakening of a mandatory invariant needs

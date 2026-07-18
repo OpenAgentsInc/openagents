@@ -142,7 +142,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(33)
+    expect(decoded.contracts).toHaveLength(34)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
@@ -292,16 +292,21 @@ describe("behavior contract registry", () => {
     expect(mineralsSheet?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/home-shell-core.test.ts",
     )
-    // GL-3 (#8649): Sarah text-first conversation surface, enforced in the
-    // mobile test sweep.
+    // The old GL-3 prospect/SSE surface remains retired; the authenticated
+    // owner-orchestrator reboot is a distinct contract.
     const sarahSurface = decoded.contracts.find(
       contract => contract.contractId === "openagents_mobile.sarah_text_surface.v1",
     )
-    expect(sarahSurface?.state).toBe("enforced")
+    expect(sarahSurface?.state).toBe("retired")
     expect(sarahSurface?.enforcementTier).toBe("test-sweep")
-    expect(sarahSurface?.oracles[0]?.ref).toBe(
-      "apps/openagents-mobile/tests/sarah-surface.test.ts",
+    const sarahOrchestrator = decoded.contracts.find(
+      contract => contract.contractId === "openagents_mobile.sarah_owner_orchestrator.v1",
     )
+    expect(sarahOrchestrator?.state).toBe("enforced")
+    expect(sarahOrchestrator?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents.com/workers/api/src/sarah-owner-routes.test.ts",
+      "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+    ])
     // PORTAL-1 (#8652): client portal owner scoping + decision receipts,
     // enforced in the workers/api + apps/start test sweeps.
     const portalScoping = decoded.contracts.find(

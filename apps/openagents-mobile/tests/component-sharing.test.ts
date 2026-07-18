@@ -16,14 +16,17 @@ const sourceFiles = (directory: string): ReadonlyArray<string> =>
       : /\.(?:ts|tsx)$/.test(entry) ? [path] : []
   })
 
-describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
-  test("the pure program stays host-agnostic and contains only Khala conversation state", () => {
+describe("contract openagents_mobile.owner_orchestrator_catalog.v1", () => {
+  test("the pure program stays host-agnostic while Sarah reuses the conversation shell", () => {
     for (const module of ["src/screens/home-core.ts", "src/screens/khala-core.ts"]) {
       const source = readFileSync(join(appRoot, module), "utf8")
       expect(source).not.toContain('from "react"')
       expect(source).not.toContain('from "react-native"')
-      expect(source).not.toContain("Sarah")
     }
+    expect(readFileSync(join(appRoot, "src/screens/home-core.ts"), "utf8"))
+      .toContain("SarahPrincipalProjection")
+    expect(readFileSync(join(appRoot, "src/screens/khala-core.ts"), "utf8"))
+      .not.toContain("Sarah")
     expect(JSON.stringify(renderContentView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
     expect(JSON.stringify(renderDrawerView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
     expect(JSON.stringify(renderHomeView(initialHomeState))).toContain(`"catalogVersion":"${CatalogVersion}"`)
@@ -50,9 +53,10 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     }
   })
 
-  test("the mobile package no longer carries Sarah source, tests, or demo media", () => {
+  test("Sarah has an owner-private client but no standalone screen or demo-media surface", () => {
     expect(existsSync(join(appRoot, "src/screens/sarah-core.ts"))).toBe(false)
-    expect(existsSync(join(appRoot, "src/sarah/sarah-client.ts"))).toBe(false)
+    expect(existsSync(join(appRoot, "src/sarah/sarah-client.ts"))).toBe(true)
+    expect(existsSync(join(appRoot, "tests/sarah-owner-orchestrator.test.ts"))).toBe(true)
     expect(existsSync(join(appRoot, "tests/sarah-surface.test.ts"))).toBe(false)
     expect(existsSync(join(appRoot, "assets/videos/sarah-demo.mp4"))).toBe(false)
     expect(existsSync(join(appRoot, "assets/videos/ask-anything.mp4"))).toBe(false)

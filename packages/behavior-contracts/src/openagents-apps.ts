@@ -1,8 +1,5 @@
-import {
-  BehaviorContractSchemaVersion,
-  type BehaviorContractRegistryDocument,
-} from "./contract"
-import { audioBehaviorContracts } from "./audio"
+import { BehaviorContractSchemaVersion, type BehaviorContractRegistryDocument } from "./contract";
+import { audioBehaviorContracts } from "./audio";
 
 /**
  * Pending owner contracts for the greenfield OpenAgents mobile/desktop apps.
@@ -143,7 +140,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "pending",
       statement:
-        "the mobile app -- which should be also built from scratch -- must use the existing app identifier \"com.openagents.app\" (it's called \"OpenAgents\") and that should use the same app icon Khala Code mobile now does.",
+        'the mobile app -- which should be also built from scratch -- must use the existing app identifier "com.openagents.app" (it\'s called "OpenAgents") and that should use the same app icon Khala Code mobile now does.',
       surface: "openagents-mobile",
       verification:
         "Pending #8597: assert display name OpenAgents, iOS bundle identifier and Android application ID com.openagents.app, and copied icon SHA-256 0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce.",
@@ -164,8 +161,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       ],
       oracles: [
         {
-          description:
-            "Planned capability-disposition and cross-device Sarah/FleetRun oracle.",
+          description: "Planned capability-disposition and cross-device Sarah/FleetRun oracle.",
           id: "openagents_apps.sarah_khala_folding.planned",
           kind: "planned",
           mode: "e2e",
@@ -179,8 +175,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedOn: "2026-07-09",
       },
       state: "retired",
-      statement:
-        "All Khala Code ideas are to be folded into the Sarah-first OpenAgents app.",
+      statement: "All Khala Code ideas are to be folded into the Sarah-first OpenAgents app.",
       surface: "openagents-mobile-and-desktop",
       verification:
         "Retired by the 2026-07-10 owner decision that removed Sarah as a product surface. The preserved capability-disposition requirement continues under openagents_apps.desktop_runtime_and_early_mobile_sync.v1 and MASTER_ROADMAP R0–R7.",
@@ -188,10 +183,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     {
       authorityBoundary:
         "This fixes Desktop process/data boundaries and makes early mobile continuation part of the first real conversation exit. It does not authorize renderer-held credentials, mobile local-filesystem or shell authority, a second Pylon/run universe, optimistic completion claims, or release before R7.",
-      blockerRefs: [
-        "github:OpenAgentsInc/openagents#8574",
-        "github:OpenAgentsInc/openagents#8597",
-      ],
+      blockerRefs: ["github:OpenAgentsInc/openagents#8574", "github:OpenAgentsInc/openagents#8597"],
       contractId: "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
       enforcementTier: "unenforced",
       evidenceRefs: [
@@ -340,8 +332,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedOn: "2026-07-11",
       },
       state: "pending",
-      statement:
-        "Remote sessions on my own cloud (my homelab) OR a managed cloud (e.g. Daytona)",
+      statement: "Remote sessions on my own cloud (my homelab) OR a managed cloud (e.g. Daytona)",
       surface: "openagents-mobile-desktop-cloud",
       verification:
         "Pending #8547/#8636 plus bounded target-adapter leaves: prove a real owner-managed node, the accepted Agent Computer path, and one audited managed-provider adapter through the provider-neutral contract with explicit fallback history and no silent isolation downgrade.",
@@ -717,12 +708,57 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-09",
       },
-      state: "enforced",
+      state: "retired",
       statement:
         "The owner wants Sarah consumable in OpenAgents mobile with the native glass shell as soon as possible. V1 is the text availability floor over the same /sarah contracts as web: prospect/authenticated session, bounded SSE transcript, composer turns, and typed cards inside the GL-2 shell.",
       surface: "openagents-mobile",
       verification:
-        "pnpm exec vp test apps/openagents-mobile/tests/sarah-surface.test.ts proves the view-program contract; the #8649 receipt carries the production pixel proof (real prospect session + live Sarah reply in the shell) and the restart-persistence + reconnect evidence.",
+        "Retired by the 2026-07-10 surface-removal decision. The 2026-07-18 reboot is a different authenticated owner-orchestrator contract: it preserves neither the public /sarah endpoint nor the prospect/SSE/avatar state model.",
+    },
+    {
+      authorityBoundary:
+        "Sarah is an owner-authenticated principal projected into the existing mobile conversation system. Read access is owner-scoped and redacted; mutations require an exact admitted capability, root and Sarah authority grants, runtime gates, and receipts. Raw secrets, custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported claims, and stable releases without current direction remain reserved.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.sarah_owner_orchestrator.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/sarah/src/index.ts",
+        "packages/authority/src/index.ts",
+        "apps/openagents.com/workers/api/src/sarah-owner-routes.ts",
+        "apps/openagents.com/workers/api/src/sarah-business-context.ts",
+        "apps/openagents-mobile/src/screens/home-core.ts",
+        "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves the authenticated route returns one opaque stable owner thread with durable cited memory and the admitted authority revision.",
+          id: "openagents_mobile.sarah_owner_orchestrator.route",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/sarah-owner-routes.test.ts",
+        },
+        {
+          description:
+            "Drives the existing Effect Native conversation program, proving Sarah is pinned in the drawer, identified as owner orchestrator, and her ordinary messages are forced through hosted Khala without a second persona state model.",
+          id: "openagents_mobile.sarah_owner_orchestrator.view_program",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+        },
+      ],
+      productArea: "owner orchestration and business continuity",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-18",
+      },
+      state: "enforced",
+      statement:
+        "Create an authority delegation to Sarah. Bring her back so I have a single point of contact with full persistent memory, tie her into the OpenAgents mobile app, and let me ask for release status, who is saying what, and the state of the business. Sarah is the main decision maker and orchestrator under delegated authority.",
+      surface: "openagents-mobile",
+      verification:
+        "The Worker route and mobile Effect Native tests prove the stable owner-private thread, authority projection, conversation-first UI, and hosted runtime lane. Package tests prove fail-closed authority resolution and citation-bound business context.",
     },
     {
       authorityBoundary:
@@ -994,7 +1030,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "FA-UX-01 (#8974) landed: the read-only run view's Pause/Resume/Stop/Retry-now controls are wired to `full-auto-run-actions.ts` -- the SAME shared action functions the opt-in HTTP control server uses (actor:\"owner_ui\" vs actor:\"control_api\") -- via a dedicated renderer IPC bridge (full-auto-run-ipc-contract.ts, main.ts). Per-state control visibility (Pause only while Running, Resume only while Paused, Retry now only while Stalled with a recoverable cause, Stop present on every non-terminal state and absent once terminal) and click-to-intent wiring are proven end to end through the real Effect intent registry and a rendered DOM.",
+            'FA-UX-01 (#8974) landed: the read-only run view\'s Pause/Resume/Stop/Retry-now controls are wired to `full-auto-run-actions.ts` -- the SAME shared action functions the opt-in HTTP control server uses (actor:"owner_ui" vs actor:"control_api") -- via a dedicated renderer IPC bridge (full-auto-run-ipc-contract.ts, main.ts). Per-state control visibility (Pause only while Running, Resume only while Paused, Retry now only while Stalled with a recoverable cause, Stop present on every non-terminal state and absent once terminal) and click-to-intent wiring are proven end to end through the real Effect intent registry and a rendered DOM.',
           id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.ui_wiring",
           kind: "bun-test",
           mode: "dom",
@@ -1017,4 +1053,4 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
   ],
   schemaVersion: BehaviorContractSchemaVersion,
   version: "2026-07-18.1",
-}
+};

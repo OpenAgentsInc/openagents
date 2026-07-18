@@ -42,6 +42,7 @@ import type { MobileConversationThread } from "../conversation/mobile-conversati
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   enableMobileLayoutAnimation,
@@ -72,6 +73,7 @@ export const HomeScreen = ({
   onAttentionTargetConsumed,
   fullAutoRun,
   fullAutoControl,
+  sarah,
   notificationSettings,
   incomingShare,
   onShareConsumed,
@@ -92,6 +94,7 @@ export const HomeScreen = ({
     runRef: string
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
+  readonly sarah?: SarahPrincipalProjection | null
   readonly notificationSettings?: MobileNotificationSettingsPort
   readonly incomingShare?: MobileShareIntake | null
   readonly onShareConsumed?: () => void
@@ -163,6 +166,7 @@ export const HomeScreen = ({
       },
       ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
       ...(fullAutoControl === undefined ? {} : { fullAutoControl }),
+      ...(sarah === null || sarah === undefined ? {} : { sarah }),
     }),
     // fullAutoRun deliberately excluded: its initial value seeds the program
     // once at mount; later changes flow through `program.fullAuto.setProjection`
@@ -171,7 +175,7 @@ export const HomeScreen = ({
     // fullAutoControl is stable across the component's lifetime (a plain
     // capability closure over the sync host, not per-render state) the same
     // way `sessionActions` and `coding` are already treated below.
-    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl],
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, sarah],
   )
   const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
     prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)

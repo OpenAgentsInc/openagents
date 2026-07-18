@@ -256,6 +256,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   and target-local contracts. An explicit deny wins. No delegate may grant
   itself new roles, actions, resources, budgets, credentials, environments, or
   exceptions, and possession of access or evidence never implies authority.
+- `principal.sarah` is the authenticated owner's named orchestrator, not a
+  superuser identity. Effective authority is the intersection of root
+  `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, the active program,
+  target-local policy, and an exact capability broker. Sarah may recommend and
+  prioritize broadly; current-state claims cite bounded source refs, and model
+  output alone can neither mutate a target nor report success.
+- Sarah has one deterministic opaque owner-private Khala Sync thread. That
+  thread and its confirmed history are durable memory; fresh business context
+  is projected from bounded owner-scoped/public-safe adapters. Raw credentials,
+  mnemonics, private paths, customer-private payloads, and unbounded database or
+  tool output never enter the prompt, Sync post-images, logs, or receipts.
 - Every delegated mutation resolves exact actor, action, resource, program,
   conditions, claim/lease, and reserved-action exclusions before execution and
   again before production deploy, release, spend, destructive action, or
@@ -283,7 +294,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   secret-handling invariants cannot be waived by profile text.
 - The delegated release operator MAY autonomously publish, communicate,
   promote, or roll back a Desktop **RC** only under `AUTHORITY.md` revision
-  2's exact `grant.autonomous_rc_release_and_communication` scope. Stable
+  3's retained `grant.autonomous_rc_release_and_communication` scope. Stable
   releases still require current explicit owner direction. Every candidate
   and publication records the exact trigger ref, release actor, authority
   revision/grant, source revision, and distribution boundary; GitHub and
@@ -2083,6 +2094,12 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   create/append uses stable mobile refs, waits for the exact ref to become
   confirmed, labels drafts pending, and clears account-linked projections on
   denial or sign-out.
+- After authenticated Sync becomes live, mobile may bootstrap and prefer the
+  owner's stable Sarah thread when no explicitly restored coding session or
+  active Full Auto thread takes precedence. Sarah remains a projection inside
+  the ordinary conversation state machine: the drawer pins her identity, her
+  messages force the server-owned `hosted_khala` lane, credentials remain in
+  the native host, and the public `/sarah` tombstone stays 404.
 - Effect Native React Native stacks are structural layout containers, never
   aggregate accessibility controls. A stack may retain a catalog region/group
   label for diagnostics, but the native View is explicitly excluded from the

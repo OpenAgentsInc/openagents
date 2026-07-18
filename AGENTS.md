@@ -816,12 +816,14 @@ and deterministic Effect tests. Do not skip it merely because
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- **Product shape (owner decision, 2026-07-09; amended 2026-07-10):** there
+- **Product shape (owner decision, 2026-07-09; amended 2026-07-18):** there
   are three product apps: the OpenAgents web app (`/`, `/forum`, and
   `/promises`), the **OpenAgents** mobile app, and **OpenAgents Desktop**.
-  The Sarah surface was removed at owner direction 2026-07-10 ("all sarah
-  shit must die", epic #8610): `/sarah` and every `/sarah/api/*` route are
-  404 tombstones and `apps/sarah` is deleted. Khala Code, Autopilot,
+  The standalone Sarah surface remains removed: `/sarah` and every
+  `/sarah/api/*` route are 404 tombstones and `apps/sarah` is deleted. The
+  2026-07-18 reboot makes `principal.sarah` an authenticated owner-orchestrator
+  capability inside the supported apps, beginning with OpenAgents mobile; it
+  does not create a fourth app. Khala Code, Autopilot,
   Pylon cockpit, Sites, and other prior product ideas are capabilities,
   engine-room services, or migration sources—not additional product apps. P0
   is Sarah-managed parallel coding across Codex, Claude, and Grok accounts on
@@ -1054,12 +1056,24 @@ and is included in the ProductSpec test sweep; do not create a mirror under
 - `tool_metadata` is stripped on public export; no secrets, customer data, or
   private pricing in this tree (private engagement specs live in private repos).
 
-## Sarah — REMOVED (owner direction 2026-07-10, epic #8610)
+## Sarah — owner orchestrator reboot (owner direction 2026-07-18)
 
-- The Sarah surface is dead: the `openagents.com/sarah` web page, every
+- The old Sarah surface remains dead: the `openagents.com/sarah` web page, every
   `/sarah/api/*` route, and the whole `apps/sarah` package were deleted at
-  owner direction 2026-07-10 ("all sarah shit must die"). Git history is the
-  archive; do not resurrect the mount, the routes, or the package.
+  owner direction 2026-07-10. Git history is the archive; do not resurrect
+  that mount, those routes, or that package.
+- Current Sarah is `principal.sarah`: the authenticated human owner's
+  persistent orchestrator on one stable owner-private Khala Sync thread inside
+  supported OpenAgents clients. The normative ProductSpec is
+  `specs/openagents/sarah-owner-orchestrator.product-spec.md`; authority is the
+  intersection of `AUTHORITY.md` and `docs/authority/SARAH_AUTHORITY.md`.
+- Reuse the existing mobile conversation, hosted Khala runtime, Full Auto,
+  FleetRun, claims, repository/GitHub, Forum, Google Cloud, release, and
+  product-promise primitives. Do not add a Sarah-specific CRM, transcript
+  store, issue queue, provider router, raw credential path, or authority model.
+- Business context is bounded, owner-scoped, redacted, freshness-labelled, and
+  cited. Visibility is never mutation authority; actions must pass exact typed
+  capability brokers and emit authority plus target receipts.
 - `GET /sarah` and `/sarah/*` return an explicit 404 tombstone from the
   Cloud Run monolith entrypoint (`src/cloudrun/server.ts`).
 - The behavior contracts that bound the surface are preserved verbatim as
