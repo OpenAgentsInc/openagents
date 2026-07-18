@@ -52,6 +52,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md)
   — owner admission and bounded packet ledger for the complete T3 mobile
   workbench adaptation through physical-device/distribution closure.
+- [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
+  — owner-directed, owner-local experimental roadmap for a bounded Codex-first
+  Full Auto loop that alternates with Claude Code through typed handoffs in one
+  shared Vercel AI SDK Harness workspace; it is not production Full Auto
+  authority.
 - [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
   — Full Auto rev-10 mission, lifecycle, liveness, evidence, UX, and handoff
   intent for epic #8967; live child issues own implementation sequence.
