@@ -1,10 +1,17 @@
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
+import { runMigrations } from '@openagentsinc/khala-sync-server/migrate'
+import {
+  type LocalPostgres,
+  hasLocalPostgres,
+  startLocalPostgres,
+} from '@openagentsinc/khala-sync-server/test/local-postgres'
 import {
   DEFAULT_SARAH_HARNESS_POLICY,
   SarahHarnessPolicySchema,
 } from '@openagentsinc/sarah'
 import { Effect, Schema as S } from 'effect'
-import { describe, expect, test } from 'vitest'
+import postgresClient from 'postgres'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import {
   bindSarahHarnessForTurn,
@@ -151,3 +158,43 @@ describe('Sarah terminal-history harness policy', () => {
     })
   })
 })
+
+describe.skipIf(!hasLocalPostgres())(
+  'Sarah harness Postgres representation',
+  () => {
+    let localPostgres: LocalPostgres
+
+    beforeAll(async () => {
+      localPostgres = await startLocalPostgres()
+      await runMigrations({ databaseUrl: localPostgres.url })
+    })
+
+    afterAll(async () => {
+      await localPostgres?.stop()
+    })
+
+    test('stores and decodes a policy as a jsonb object before binding', async () => {
+      const sql = postgresClient(localPostgres.url, { max: 1 })
+      try {
+        const binding = await Effect.runPromise(
+          bindSarahHarnessForTurn({
+            ownerUserId: 'owner.postgres.fixture',
+            sql: sql as unknown as SyncSql,
+            threadId: 'thread.sarah.postgres-fixture',
+            turnId: 'turn.sarah.postgres-fixture',
+          }),
+        )
+        const rows: Array<{ policy_type: string }> = await sql`
+          SELECT jsonb_typeof(policy_json) AS policy_type
+            FROM sarah_harness_bundles
+           WHERE owner_user_id = 'owner.postgres.fixture'
+             AND bundle_ref = ${binding.bundleRef}
+        `
+        expect(binding.policy).toEqual(DEFAULT_SARAH_HARNESS_POLICY)
+        expect(rows).toEqual([{ policy_type: 'object' }])
+      } finally {
+        await sql.end()
+      }
+    })
+  },
+)

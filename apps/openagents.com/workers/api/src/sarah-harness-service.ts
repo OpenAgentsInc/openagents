@@ -108,6 +108,14 @@ export type SarahHarnessReviewOutcome = SarahHarnessStatus &
     summary: string
   }>
 
+export type SarahHarnessReviewStage =
+  | 'loading_active_bundle'
+  | 'loading_history'
+  | 'compiling_experiences'
+  | 'optimizing'
+  | 'evaluating'
+  | 'releasing'
+
 const parseModelObject = (value: string, reason: string): unknown => {
   const trimmed = value
     .trim()
@@ -210,12 +218,15 @@ const ensureBaseline = async (
         evaluated_at, released_at
       ) VALUES (
         ${ownerUserId}, ${baseline.bundleRef}, ${baseline.bundleDigest},
-        'released', ${null}, ${JSON.stringify(baseline.policy)},
-        ${JSON.stringify({ kind: 'baseline' })},
+        'released', ${null}, ${JSON.stringify(baseline.policy)}::text::jsonb,
+        ${JSON.stringify({ kind: 'baseline' })}::text::jsonb,
         'system:sarah_harness_baseline.v1',
         'system:blueprint_baseline_admission.v1', ${now}, ${now}, ${now}
       )
-      ON CONFLICT (owner_user_id, bundle_ref) DO NOTHING
+      ON CONFLICT (owner_user_id, bundle_ref) DO UPDATE SET
+        policy_json = EXCLUDED.policy_json,
+        lineage_json = EXCLUDED.lineage_json
+      WHERE jsonb_typeof(sarah_harness_bundles.policy_json) <> 'object'
     `
     await tx`
       INSERT INTO sarah_harness_active_bundles (
@@ -375,16 +386,24 @@ export const reviewSarahHarnessHistory = (
     threadId: string
     complete: SarahHarnessModelComplete
     now?: (() => string) | undefined
+    onProgress?: ((stage: SarahHarnessReviewStage) => void) | undefined
   }>,
-): Effect.Effect<SarahHarnessReviewOutcome, SarahHarnessError> =>
-  Effect.tryPromise({
+): Effect.Effect<SarahHarnessReviewOutcome, SarahHarnessError> => {
+  let stage: SarahHarnessReviewStage = 'loading_active_bundle'
+  const progress = (next: SarahHarnessReviewStage): void => {
+    stage = next
+    input.onProgress?.(next)
+  }
+  return Effect.tryPromise({
     try: async () => {
+      progress('loading_active_bundle')
       const now = input.now?.() ?? currentIsoTimestamp()
       const base = await readSarahHarnessStatusPromise({
         now: () => now,
         ownerUserId: input.ownerUserId,
         sql: input.sql,
       })
+      progress('loading_history')
       const history = await readTerminalHistory(
         input.sql,
         input.ownerUserId,
@@ -394,6 +413,7 @@ export const reviewSarahHarnessHistory = (
         throw new SarahHarnessError({ reason: 'insufficient_terminal_history' })
       }
 
+      progress('compiling_experiences')
       const experiences = history.map(turn => {
         const sourceDigest = sha256(
           canonicalJson({
@@ -424,13 +444,13 @@ export const reviewSarahHarnessHistory = (
           ) VALUES (
             ${input.ownerUserId}, ${experience.experienceRef}, ${input.threadId},
             ${experience.turn.turnId}, ${experience.sourceDigest},
-            ${JSON.stringify(experience.sourceRefs)},
+            ${JSON.stringify(experience.sourceRefs)}::text::jsonb,
             ${JSON.stringify({
               outcome: experience.turn.status,
               ownerWords: experience.turn.prompt.trim().split(/\s+/u).length,
               responseWords: experience.turn.response.trim().split(/\s+/u)
                 .length,
-            })},
+            })}::text::jsonb,
             'owner_private', true, false, ${experience.turn.terminalAt}, ${now}
           )
           ON CONFLICT (owner_user_id, turn_id) DO NOTHING
@@ -449,6 +469,7 @@ export const reviewSarahHarnessHistory = (
         ),
       )
 
+      progress('optimizing')
       const optimizerRaw = await input.complete({
         phase: 'optimizer',
         system: [
@@ -476,6 +497,7 @@ export const reviewSarahHarnessHistory = (
       const candidateDigest = digestSarahHarnessPolicy(candidatePolicy)
       const candidateRef = sarahHarnessBundleRef(candidatePolicy)
 
+      progress('evaluating')
       const evaluatorRaw = await input.complete({
         phase: 'evaluator',
         system: [
@@ -529,6 +551,7 @@ export const reviewSarahHarnessHistory = (
         sha256(`${input.ownerUserId}:${candidateDigest}:${reviewRef}`),
       )
 
+      progress('releasing')
       await input.sql.begin(async tx => {
         await tx`
           INSERT INTO sarah_harness_bundles (
@@ -537,8 +560,8 @@ export const reviewSarahHarnessHistory = (
             evaluated_by, created_at, evaluated_at, released_at
           ) VALUES (
             ${input.ownerUserId}, ${candidateRef}, ${candidateDigest}, ${state},
-            ${base.bundleRef}, ${JSON.stringify(candidatePolicy)},
-            ${JSON.stringify({ snapshotDigest, reviewRef })},
+            ${base.bundleRef}, ${JSON.stringify(candidatePolicy)}::text::jsonb,
+            ${JSON.stringify({ snapshotDigest, reviewRef })}::text::jsonb,
             ${SARAH_HARNESS_OPTIMIZER_REF}, ${SARAH_HARNESS_EVALUATOR_REF},
             ${now}, ${now}, ${released ? now : null}
           )
@@ -554,11 +577,11 @@ export const reviewSarahHarnessHistory = (
           ) VALUES (
             ${input.ownerUserId}, ${reviewRef}, ${input.threadId},
             ${base.bundleRef}, ${candidateRef}, ${snapshotDigest},
-            ${JSON.stringify(training.map(item => item.experienceRef))},
-            ${JSON.stringify(heldOut.map(item => item.experienceRef))},
+            ${JSON.stringify(training.map(item => item.experienceRef))}::text::jsonb,
+            ${JSON.stringify(heldOut.map(item => item.experienceRef))}::text::jsonb,
             ${SARAH_HARNESS_OPTIMIZER_REF}, ${SARAH_HARNESS_EVALUATOR_REF},
             ${SARAH_HARNESS_RELEASE_GATE_REF}, ${state},
-            ${JSON.stringify(evaluation)}, ${now}, ${now},
+            ${JSON.stringify(evaluation)}::text::jsonb, ${now}, ${now},
             ${released ? now : null}
           )
           ON CONFLICT (owner_user_id, review_ref) DO NOTHING
@@ -605,5 +628,8 @@ export const reviewSarahHarnessHistory = (
     catch: error =>
       error instanceof SarahHarnessError
         ? error
-        : new SarahHarnessError({ reason: 'sarah_harness_review_failed' }),
+        : new SarahHarnessError({
+            reason: `sarah_harness_review_${stage}_failed`,
+          }),
   })
+}
