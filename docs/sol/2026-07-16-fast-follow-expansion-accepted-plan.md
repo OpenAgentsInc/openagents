@@ -3151,6 +3151,66 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - released_at: `2026-07-18T02:17:48Z`
 - residual: historical-session backfill, main-process handler and host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-40 — Desktop canonical accepted-event search main-process handler seam
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-39. Sandboxed
+preload can invoke the bounded search contract, but Desktop has no trusted-
+sender main-process registration seam for that fixed channel. Active work still
+owns Desktop `main.ts`, renderer, installed-runtime, Full Auto, mobile, T3, and
+teardown surfaces. This packet therefore adds only two new handler/test files;
+actual Electron registration, acquisition composition, UI, and pixels remain
+unchanged.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-event-search-main-handler.ts`
+- `apps/openagents-desktop/src/thread-event-search-main-handler.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-40-desktop-canonical-event-search-main-handler-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-38 exact search request/result boundary and FF-D1-39
+sandboxed preload exposure. No receipt, artifact byte, path, event body,
+Electron registration, host composition, renderer, Sync, provider, or release
+authority is added.
+
+Required behavior:
+
+- register exactly FF-D1-38's fixed search channel and remove it once on close;
+- reject closed, untrusted, throwing-trust, malformed, or broader requests
+  before search execution;
+- pass only FF-D1-38's decoded normalized query and optional bounded limit to
+  the search dependency;
+- decode only exact bounded results and require an available projection's query
+  to match the normalized request; and
+- preserve bounded unavailable results while collapsing thrown, malformed,
+  query-mismatched, or detail-leaking outcomes to `transport_unavailable`.
+
+Proof: focused handler, bridge/preload, acquisition, and accepted-event
+projection tests; Desktop and shared-package typechecks; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only the trusted-sender main-process handler
+seam. Historical-session backfill, Electron registration and acquisition host
+composition, Desktop `main.ts`/UI consumption and pixels, authoritative
+supersession/reversion producers, named-group authority/publication,
+installed/runtime-rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-40-20260718`
+- base: `75b116befe78dda9bdcf1a4d378da7896f8cf793`
+- worktree/branch: `openagents-ff-d1-40` / detached `origin/main`
+- scope: add the trusted-sender main-process registration seam for FF-D1-38's fixed canonical accepted-event search channel
+- paths: the FF-D1-40 owned implementation paths above
+- hot files: two new Desktop handler/test files, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: fixed-channel registration, trusted sender, exact normalized request/result decoding, request-bound projection query, and no receipt/artifact/event-body projection
+- dependencies: FF-D1-38 and FF-D1-39 released; no relevant open bug issue or competing claim; active `main.ts`/UI, Full Auto, mobile, T3, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T02:31:34Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
