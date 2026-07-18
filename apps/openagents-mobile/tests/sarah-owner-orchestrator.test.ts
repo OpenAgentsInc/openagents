@@ -48,6 +48,22 @@ const lastState = (program: ReturnType<typeof buildHomeProgram>) =>
   });
 
 describe(`contract ${contractId}`, () => {
+  test("keeps Sarah visible and starts owner authentication when access is locked", async () => {
+    const calls: Array<string> = [];
+    const program = buildHomeProgram({
+      sessionActions: {
+        signIn: async () => { calls.push("sign-in"); },
+        signOut: async () => { calls.push("sign-out"); },
+      },
+    });
+    const drawer = JSON.stringify(renderDrawerView(program.initialState));
+    expect(drawer).toContain("Sarah · Sign in as owner");
+    expect(drawer).toContain("OpenAgentsSignInPressed");
+    program.session.signIn();
+    await Effect.runPromise(Effect.yieldNow);
+    expect(calls).toEqual(["sign-in"]);
+  });
+
   test("pins Sarah in the existing drawer and identifies the authority-bound thread", () => {
     const host: MobileConversationHost = {
       listThreads: async () => [thread],

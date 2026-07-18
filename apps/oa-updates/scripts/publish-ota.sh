@@ -105,7 +105,7 @@ gcloud run services update-traffic oa-updates \
   --region us-central1 \
   --set-tags "$CANDIDATE_TAG=$REVISION" >/dev/null
 SERVICE_URL="$(gcloud run services describe oa-updates --region us-central1 --format='value(status.url)')"
-CANDIDATE_URL="${SERVICE_URL/https:\/\//https:\/\/$CANDIDATE_TAG---}"
+CANDIDATE_URL="https://${CANDIDATE_TAG}---${SERVICE_URL#https://}"
 MANIFEST_FILE="$(mktemp)"
 trap 'rm -f "$MANIFEST_FILE"' EXIT
 curl -fsS "$CANDIDATE_URL/openagents-mobile/manifest" \

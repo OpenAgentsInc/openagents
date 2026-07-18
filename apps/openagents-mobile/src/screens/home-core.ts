@@ -451,7 +451,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-01"
+export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-02"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -2005,14 +2005,16 @@ export const renderDrawerView = (state: HomeState): View =>
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
-      ...(state.sarah === null
-        ? []
-        : [drawerRow({
-            key: "drawer-sarah",
-            label: "Sarah · Owner orchestrator",
-            onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: state.sarah.threadRef })),
-            selected: state.activeThreadRef === state.sarah.threadRef,
-          }, state.accessibility)]),
+      drawerRow({
+        key: "drawer-sarah",
+        label: state.sarah === null
+          ? "Sarah · Sign in as owner"
+          : "Sarah · Owner orchestrator",
+        onPress: state.sarah === null
+          ? IntentRef("OpenAgentsSignInPressed", StaticPayload({}))
+          : IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: state.sarah.threadRef })),
+        selected: state.sarah !== null && state.activeThreadRef === state.sarah.threadRef,
+      }, state.accessibility),
       drawerRow({
         key: "drawer-current-surface",
         label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala",

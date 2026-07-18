@@ -24,4 +24,11 @@ describe("mobile OTA publication contract", () => {
     expect(script).toContain("does not match expected native runtime");
     expect(script).toContain("OA_MOBILE_FINGERPRINT_ONLY");
   });
+
+  test("builds a valid Cloud Run candidate tag URL", () => {
+    expect(script).toContain(
+      'CANDIDATE_URL="https://${CANDIDATE_TAG}---${SERVICE_URL#https://}"',
+    );
+    expect(script).not.toContain("SERVICE_URL/https:");
+  });
 });

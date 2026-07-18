@@ -152,13 +152,14 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(state.khala.entries).toEqual([])
   })
 
-  test("drawer contains only the real current surface and no local Sarah recents", () => {
+  test("drawer keeps the owner-only Sarah entry visible without inventing local recents", () => {
     const serialized = JSON.stringify(renderDrawerView(initialHomeState))
     expect(serialized).toContain('"label":"New chat"')
     expect(serialized).toContain('"label":"Khala"')
+    expect(serialized).toContain('"label":"Sarah · Sign in as owner"')
+    expect(serialized).toContain("OpenAgentsSignInPressed")
     expect(serialized).toContain(`Bundle ${BUNDLE_TAG}`)
     expect(serialized).not.toContain("Recents")
-    expect(serialized).not.toContain("Sarah")
   })
 
   test("drawer summarizes authenticated FleetRun activity without exposing raw refs", () => {
