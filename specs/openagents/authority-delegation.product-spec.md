@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Owner-Delegated Autonomous Delivery"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -19,8 +19,8 @@ custom_sections:
     after: "custom-receipts"
 tool_metadata:
   openagents_design: "docs/authority/AUTHORITY_DELEGATION_SPEC.md"
-  openagents_profile: "AUTHORITY.md revision 4"
-  openagents_sarah_profile: "docs/authority/SARAH_AUTHORITY.md revision 2"
+  openagents_profile: "AUTHORITY.md revision 5"
+  openagents_sarah_profile: "docs/authority/SARAH_AUTHORITY.md revision 3"
   openagents_accepted_plan: "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md"
   openagents_assurance_level: "cross-resource-action-authority"
 ---
@@ -64,6 +64,7 @@ in:
   - current-profile validation and later Effect service, runtime adapter, revocation, budget, and model-checking enforcement
   - autonomous RC impact selection, signed-candidate GitHub publication, linked issue and Forum communication, tester-feedback intake, changelog attribution, and bounded rollback
   - Sarah as a persistent owner-facing orchestrator with cited business context and brokered access to already-admitted capabilities
+  - Sarah-requested review of her exact owner-private terminal conversation history through an immutable experience compiler, bounded conversational candidate schema, separate evaluator, and independent release gate
 out:
   - AuthorityDelegationSpec deciding product intent, evidence sufficiency, learning relevance, issue priority, or public truth by itself
   - possession of a credential, cloud role, device, provider session, model output, test result, or upstream source implying additional authority
@@ -199,9 +200,16 @@ never changes the visible evidence tier.
   for an exact existing owner Full Auto run. Desktop remains transition
   authority, and only its applied outcome proves the transition; a server-side
   pending intent is not success.
-- **AD-AC-26:** Revision 4 grants no remote Full Auto start, raw workspace,
-  private MemoHarness bank, during-run adaptation, candidate promotion,
+- **AD-AC-26:** Revision 4 grants no remote Full Auto start, raw workspace, the
+  general Full Auto private MemoHarness bank, during-run adaptation, candidate promotion,
   assurance self-admission, stable-release, or authority-expansion action.
+- **AD-AC-27:** Revision 5 permits Sarah to inspect her released conversational
+  harness and request review of terminal turns from her exact authenticated
+  owner-private thread. Sarah cannot read or export the resulting private
+  experience bank, change authority-bearing dimensions, evaluate, release, or
+  activate a candidate. A separate optimizer/evaluator/gate may activate only
+  a bounded conversational policy for a subsequent turn; the current turn's
+  content-addressed binding is immutable.
 
 ## Success Metrics
 
@@ -250,7 +258,7 @@ never changes the visible evidence tier.
 
 ## Owner Gates
 
-- **RESOLVED FOR REVISION 4 BY CURRENT OWNER DIRECTION.** The owner explicitly
+- **RESOLVED FOR REVISION 5 BY CURRENT OWNER DIRECTION.** The owner explicitly
   directed OpenAgents to formalize broad delegated authority, stop waiting on
   ordinary owner/device blockers, use existing Google Cloud access, rapidly
   close issues, prioritize Full Auto, complete root specs and all Fast Follow,
@@ -261,11 +269,15 @@ never changes the visible evidence tier.
   actor/authority attribution on `/changelog`. On 2026-07-18 the owner also
   explicitly rebooted Sarah as the persistent mobile point of contact, main
   company decision maker, and orchestrator with business-wide access through
-  OpenAgents primitives. `AUTHORITY.md` revision 4 and the narrower Sarah
+  OpenAgents primitives. `AUTHORITY.md` revision 5 and the narrower Sarah
   profile are the admitted intersection for those directions. The owner's
   later direction to get Sarah using the current Full Auto/MemoHarness specs,
   deploy Codex subagents, and manage Full Auto processes admits revision 4's
-  two exact brokers while preserving the spec's learning/promotion gates.
+  two exact brokers while preserving the spec's learning/promotion gates. The
+  owner's subsequent direction to let Sarah review her own thread history and
+  improve her harness admits revision 5's exact terminal-history review broker;
+  it does not grant Sarah self-evaluation, self-release, current-turn mutation,
+  general Full Auto MemoHarness access, or authority expansion.
 - Any increase to the numeric spend caps, permission for paid outreach or new
   subscriptions, financial movement, legal commitments, destructive customer
   data action, raw secret access, or weakening of a mandatory invariant needs

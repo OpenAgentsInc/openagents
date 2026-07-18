@@ -16,6 +16,10 @@ import {
   SarahAgentToolError,
   type SarahAgentToolResult,
 } from './sarah-agent-runtime'
+import type {
+  SarahHarnessReviewOutcome,
+  SarahHarnessStatus,
+} from './sarah-harness-service'
 import {
   type SarahOperationAuthorityInput,
   type SarahOperationAuthorityOutcome,
@@ -66,6 +70,9 @@ export type SarahRuntimeToolDependencies<Bindings> = Readonly<{
   fullAutoControl?: FullAutoRunControlAuthorityRepositoryShape | undefined
   resolveRepositoryCommit?: (() => Promise<string | null>) | undefined
   nowIso?: (() => string) | undefined
+  harnessStatus?: (() => Effect.Effect<SarahHarnessStatus, unknown>) | undefined
+  reviewHarness?:
+    (() => Effect.Effect<SarahHarnessReviewOutcome, unknown>) | undefined
 }>
 
 const toolFailure = (reason: string): SarahAgentToolError =>
@@ -574,5 +581,112 @@ export const makeSarahRuntimeTools = <Bindings>(
       ),
   }
 
-  return [capacity, startWorkers, workerStatus, fullAutoStatus, fullAutoControl]
+  const harnessStatus: SarahAgentTool | undefined =
+    deps.harnessStatus === undefined
+      ? undefined
+      : {
+          definition: {
+            description:
+              'Read the immutable conversational harness bundle bound for Sarah turns and the latest independent review state.',
+            name: 'sarah_harness_status',
+            parameters: {
+              additionalProperties: false,
+              properties: {},
+              type: 'object',
+            },
+          },
+          execute: (_raw, toolCall) =>
+            Effect.gen(function* () {
+              const authority = yield* authorizeCall(
+                'inspect_own_harness',
+                'owner_private_sarah_harness',
+                toolCall.id,
+              )
+              if (!authority.allowed) return refused(authority)
+              const status = yield* deps.harnessStatus!().pipe(
+                Effect.mapError(error =>
+                  toolFailureFrom(error, 'harness_status_failed'),
+                ),
+              )
+              return {
+                authorityReceiptRef: authority.receiptRef,
+                content: json({
+                  bundleDigest: status.bundleDigest,
+                  bundleRef: status.bundleRef,
+                  latestReviewRef: status.latestReviewRef,
+                  latestReviewState: status.latestReviewState,
+                  maxReplyWords: status.policy.maxReplyWords,
+                  ok: true,
+                }),
+                resultRefs: [
+                  status.bundleRef,
+                  ...(status.latestReviewRef === undefined
+                    ? []
+                    : [status.latestReviewRef]),
+                ],
+                summary:
+                  'Loaded Sarah’s currently released conversational harness.',
+              }
+            }),
+        }
+
+  const harnessReview: SarahAgentTool | undefined =
+    deps.reviewHarness === undefined
+      ? undefined
+      : {
+          definition: {
+            description:
+              'Review Sarah’s completed owner-thread history, compile private terminal experiences, and submit a bounded conversational harness candidate to an independent evaluator and release gate.',
+            name: 'sarah_harness_review_history',
+            parameters: {
+              additionalProperties: false,
+              properties: {},
+              type: 'object',
+            },
+          },
+          execute: (_raw, toolCall) =>
+            Effect.gen(function* () {
+              const authority = yield* authorizeCall(
+                'review_own_terminal_history_and_propose_harness',
+                'owner_private_sarah_harness',
+                toolCall.id,
+              )
+              if (!authority.allowed) return refused(authority)
+              const reviewed = yield* deps.reviewHarness!().pipe(
+                Effect.mapError(error =>
+                  toolFailureFrom(error, 'harness_review_failed'),
+                ),
+              )
+              return {
+                authorityReceiptRef: authority.receiptRef,
+                content: json({
+                  bundleDigest: reviewed.bundleDigest,
+                  bundleRef: reviewed.bundleRef,
+                  evaluation: reviewed.evaluation,
+                  experienceCount: reviewed.experienceCount,
+                  heldOutExperienceCount: reviewed.heldOutExperienceCount,
+                  ok: true,
+                  reviewRef: reviewed.reviewRef,
+                  state: reviewed.state,
+                  summary: reviewed.summary,
+                  trainingExperienceCount: reviewed.trainingExperienceCount,
+                }),
+                resultRefs: [reviewed.reviewRef, reviewed.bundleRef],
+                summary:
+                  reviewed.state === 'released'
+                    ? 'The independent gate released an improved harness for Sarah’s next turn.'
+                    : 'The independent gate rejected the harness candidate; the current harness remains active.',
+              }
+            }),
+        }
+
+  return [
+    capacity,
+    startWorkers,
+    workerStatus,
+    fullAutoStatus,
+    fullAutoControl,
+    ...(harnessStatus === undefined ? [] : [harnessStatus]),
+    ...(harnessReview === undefined ? [] : [harnessReview]),
+  ]
 }

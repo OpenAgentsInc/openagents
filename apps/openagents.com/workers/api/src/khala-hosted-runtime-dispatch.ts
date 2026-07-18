@@ -447,7 +447,7 @@ const sarahToolAuthority = (activity: SarahAgentToolActivity) => ({
           .map(ref => runtimeSafeRef('blocker.sarah.tool', ref))
       : [],
   decisionRef: runtimeSafeRef('decision.sarah.tool', activity.toolCallId),
-  policyRef: 'policy.sarah.owner_orchestrator.rev2',
+  policyRef: 'policy.sarah.owner_orchestrator.rev3',
   status:
     activity.authorityAllowed === false
       ? ('denied' as const)

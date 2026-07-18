@@ -777,6 +777,7 @@ import {
   DEFAULT_HOSTED_RUNTIME_MODEL,
   HOSTED_RUNTIME_LANE,
   type HostedRuntimeCompleteFn,
+  type QueuedHostedTurn,
   runHostedRuntimeTurnDispatch,
 } from './khala-hosted-runtime-dispatch'
 import {
@@ -1144,6 +1145,12 @@ import {
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
 } from './sarah-fleet-run-routes'
+import {
+  SarahHarnessError,
+  bindSarahHarnessForTurnPromise,
+  readSarahHarnessStatus,
+  reviewSarahHarnessHistory,
+} from './sarah-harness-service'
 import {
   SARAH_OWNER_PATH,
   hasSarahThreadAuthority,
@@ -6786,6 +6793,60 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       apiKey: () => Redacted.make(apiKey),
       model: DEFAULT_HOSTED_RUNTIME_MODEL,
     })
+    const completeHarnessReview = async (
+      turn: QueuedHostedTurn,
+      review: {
+        phase: 'optimizer' | 'evaluator'
+        system: string
+        prompt: string
+      },
+    ): Promise<string> => {
+      const result = await artanisMindComplete({
+        apiKey,
+        maxOutputTokens: 2_048,
+        model: DEFAULT_HOSTED_RUNTIME_MODEL,
+        prompt: review.prompt,
+        system: review.system,
+      })
+      if ('error' in result) {
+        return Promise.reject(
+          new SarahHarnessError({ reason: 'sarah_harness_model_unavailable' }),
+        )
+      }
+      const content = result.text.trim()
+      if (content === '')
+        return Promise.reject(
+          new SarahHarnessError({ reason: 'sarah_harness_model_empty' }),
+        )
+      const usage =
+        result.usage === null
+          ? null
+          : hostedTurnUsageFromArtanisMind(result.usage)
+      try {
+        if (usage !== null) {
+          await recordHostedTurnUsage(
+            {
+              ledger,
+              log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+            },
+            {
+              observedAt: currentIsoTimestamp(),
+              ownerUserId: turn.ownerUserId,
+              threadId: turn.threadId,
+              turnId: `${turn.turnId}.harness.${review.phase}`,
+              usage,
+            },
+          )
+        }
+      } catch (error) {
+        logWorkerRouteWarning('sarah_harness_metering_failed', {
+          detail: error instanceof Error ? error.message : 'unknown',
+          phase: review.phase,
+          turnId: turn.turnId,
+        })
+      }
+      return content
+    }
     const complete: HostedRuntimeCompleteFn = async ({
       images,
       onToolActivity,
@@ -6832,6 +6893,18 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               sql: client.sql,
               threadRef: turn.threadId,
               turnId: turn.turnId,
+              harnessStatus: () =>
+                readSarahHarnessStatus({
+                  ownerUserId: turn.ownerUserId,
+                  sql: client.sql,
+                }),
+              reviewHarness: () =>
+                reviewSarahHarnessHistory({
+                  complete: review => completeHarnessReview(turn, review),
+                  ownerUserId: turn.ownerUserId,
+                  sql: client.sql,
+                  threadId: turn.threadId,
+                }),
             }),
           }),
         ).catch(error => {
@@ -6899,15 +6972,25 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           sql: client.sql,
           threadRef: turn.threadId,
         })
+        const harness = await bindSarahHarnessForTurnPromise({
+          ownerUserId: turn.ownerUserId,
+          sql: client.sql,
+          threadId: turn.threadId,
+          turnId: turn.turnId,
+        })
         return {
           prompt,
           responsePresentation: 'owner_conversation' as const,
-          system: buildSarahSystemPrompt(context, {
-            laneRef: HOSTED_RUNTIME_LANE,
-            modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
-            providerLabel: 'Google AI Studio',
-            runtimeLabel: 'OpenAgents hosted runtime',
-          }),
+          system: buildSarahSystemPrompt(
+            context,
+            {
+              laneRef: HOSTED_RUNTIME_LANE,
+              modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
+              providerLabel: 'Google AI Studio',
+              runtimeLabel: 'OpenAgents hosted runtime',
+            },
+            harness.policy,
+          ),
         }
       },
       recordUsage: input =>

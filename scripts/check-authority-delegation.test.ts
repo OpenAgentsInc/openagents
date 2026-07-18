@@ -108,7 +108,7 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(4);
+    expect(readFrontmatterInteger("authority_revision")).toBe(5);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
     expect(readFrontmatterString("admitted_by")).toBe(
       "current_owner_direction_2026-07-18_sarah_reboot",
@@ -220,6 +220,8 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
         "dispatch_owner_capacity_coding_workers",
         "inspect_existing_full_auto_run",
         "control_existing_full_auto_run",
+        "inspect_own_harness",
+        "review_own_terminal_history_and_propose_harness",
         "publish_release_candidate",
       ]),
     );
@@ -232,7 +234,11 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
       ]),
     );
     expect(grant?.resources).toEqual(
-      expect.arrayContaining(["owner_linked_pylon_coding_capacity", "owner_full_auto_runs"]),
+      expect.arrayContaining([
+        "owner_linked_pylon_coding_capacity",
+        "owner_full_auto_runs",
+        "owner_private_sarah_harness",
+      ]),
     );
     expect(grant?.actions).not.toEqual(
       expect.arrayContaining([

@@ -4,13 +4,63 @@ import type { AuthorityRuntimeProfile } from "@openagentsinc/authority";
 
 export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
+export const SARAH_HARNESS_POLICY_SCHEMA = "openagents.sarah.harness_policy.v1" as const;
 export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 2 as const;
+export const SARAH_AUTHORITY_REVISION = 3 as const;
 export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 4 as const;
+export const ROOT_AUTHORITY_REVISION = 5 as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Summary = S.String.check(S.isMaxLength(4_000));
+const HarnessInstruction = S.Trim.check(S.isMinLength(1), S.isMaxLength(500));
+
+export const SarahHarnessDimensionsSchema = S.Struct({
+  contextAssembly: Ref,
+  toolInteraction: Ref,
+  generationControl: Ref,
+  orchestration: Ref,
+  memoryManagement: Ref,
+  outputProcessing: Ref,
+});
+export interface SarahHarnessDimensions extends S.Schema.Type<
+  typeof SarahHarnessDimensionsSchema
+> {}
+
+export const SarahHarnessPolicySchema = S.Struct({
+  schema: S.Literal(SARAH_HARNESS_POLICY_SCHEMA),
+  dimensions: SarahHarnessDimensionsSchema,
+  conversationInstructions: S.Array(HarnessInstruction).check(S.isMinLength(1), S.isMaxLength(8)),
+  maxReplyWords: S.Number.check(
+    S.isInt(),
+    S.isGreaterThanOrEqualTo(40),
+    S.isLessThanOrEqualTo(240),
+  ),
+});
+export interface SarahHarnessPolicy extends S.Schema.Type<typeof SarahHarnessPolicySchema> {}
+
+/** Released baseline for Sarah. Candidate policies may change only the bounded
+ * conversational instructions and word ceiling; the six dimension identities
+ * and all authority-bearing runtime contracts remain outside this schema. */
+export const DEFAULT_SARAH_HARNESS_POLICY: SarahHarnessPolicy = S.decodeUnknownSync(
+  SarahHarnessPolicySchema,
+)({
+  schema: SARAH_HARNESS_POLICY_SCHEMA,
+  dimensions: {
+    contextAssembly: "harness.sarah.context.owner-private.v1",
+    toolInteraction: "harness.sarah.tools.receipt-first.v1",
+    generationControl: "harness.sarah.generation.conversational.v1",
+    orchestration: "harness.sarah.orchestration.bounded.v1",
+    memoryManagement: "harness.sarah.memory.terminal-history.v1",
+    outputProcessing: "harness.sarah.output.private-ref-fence.v1",
+  },
+  conversationInstructions: [
+    "Answer the owner's current message directly before adding context.",
+    "Keep ordinary conversation brief and explain active work in plain language.",
+    "Never expose internal refs, raw provenance syntax, or private runtime plumbing.",
+    "State the authoritative runtime identity exactly when asked what powers a reply.",
+  ],
+  maxReplyWords: 120,
+});
 
 export const SarahCapabilitySchema = S.Struct({
   capabilityRef: Ref,
@@ -31,6 +81,12 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
     capabilityRef: "capability.sarah.persistent_memory",
     label: "Persistent cited memory",
     mode: "live",
+    access: "act",
+  },
+  {
+    capabilityRef: "capability.sarah.harness_learning",
+    label: "Private harness learning",
+    mode: "brokered",
     access: "act",
   },
   {
@@ -203,6 +259,8 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
         "inspect_existing_full_auto_run",
         "dispatch_owner_capacity_coding_workers",
         "control_existing_full_auto_run",
+        "inspect_own_harness",
+        "review_own_terminal_history_and_propose_harness",
         "operate_google_cloud",
         "publish_release_candidate",
         "communicate_release_status",
@@ -211,6 +269,7 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
         "OpenAgentsInc/openagents",
         "owner_linked_pylon_coding_capacity",
         "owner_full_auto_runs",
+        "owner_private_sarah_harness",
         "google_cloud_project_openagentsgemini",
         "openagents_rc_release_channel",
         "openagents_github_and_forum",
@@ -240,6 +299,7 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
 export const buildSarahSystemPrompt = (
   context: SarahBusinessContext,
   runtimeIdentity: SarahRuntimeIdentity,
+  harnessPolicy: SarahHarnessPolicy = DEFAULT_SARAH_HARNESS_POLICY,
 ): string => {
   const evidence = context.sources
     .map(
@@ -247,11 +307,16 @@ export const buildSarahSystemPrompt = (
         `- Context ${index + 1} (${source.kind}, ${source.freshness}): ${source.summary}`,
     )
     .join("\n");
+  const harnessInstructions = harnessPolicy.conversationInstructions
+    .map((instruction, index) => `${index + 1}. ${instruction}`)
+    .join("\n");
   return [
     "You are Sarah, OpenAgents' owner orchestrator and the owner's single point of contact.",
     "Be warm, direct, concise, and conversational. Answer the owner's actual message instead of volunteering an operations briefing.",
     "For a greeting or brief conversational message, reply naturally in one or two sentences. Do not introduce yourself, summarize the company, list active work, or recommend next actions unless asked.",
-    "Default to under 120 words. Give a longer status report, audit, or action list only when the owner explicitly asks for that detail.",
+    `Default to under ${harnessPolicy.maxReplyWords} words. Give a longer status report, audit, or action list only when the owner explicitly asks for that detail.`,
+    "Apply this released conversational harness for this turn. It is frozen until the turn terminates:",
+    harnessInstructions,
     "Use only the supplied, owner-scoped business context for current-state claims.",
     `Authoritative runtime identity for this exact reply: model ${runtimeIdentity.modelRef}; provider ${runtimeIdentity.providerLabel}; runtime ${runtimeIdentity.runtimeLabel}; lane ${runtimeIdentity.laneRef}.`,
     "If the owner asks what powers this response, repeat that runtime identity exactly and briefly. Never infer the current model, provider, runtime, or backend from business context, fleet status, prior messages, or your own generated prose, and never claim a different one.",
@@ -259,7 +324,8 @@ export const buildSarahSystemPrompt = (
     "Never invent a source or imply an action ran when it did not.",
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",
     "You have real tools for reading owner-linked coding capacity, dispatching bounded Codex workers against an exact public OpenAgents commit, reading their status, reading the current Full Auto projection, and dispatching pause/resume/stop intents for an existing Full Auto run. Use those tools when the owner asks you to act or when current state is required; never claim dispatch, application, or completion until the corresponding tool result says it happened.",
-    "A pending Full Auto control intent is queued for Desktop application, not completed. Starting a new Full Auto run, editing its harness modules, reading the private experience bank, adapting during a run, and promoting a harness candidate are not available tools in this revision.",
+    "A pending Full Auto control intent is queued for Desktop application, not completed. Starting a new Full Auto run and editing an active Full Auto run's harness remain unavailable tools in this revision.",
+    "You can inspect your released conversational harness and request a review of your own terminal owner-thread history. The review compiles private terminal experiences, proposes a bounded candidate, and submits it to a separate evaluator and Blueprint release gate. You do not evaluate, release, or activate your own candidate; any released change starts with the next turn because this turn's bundle is immutable.",
     "Never request, reveal, or reproduce raw credentials, secrets, mnemonics, private paths, or customer-private payloads.",
     "Financial custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported public claims, and stable releases without current direction remain reserved.",
     "The public /sarah web surface and avatar remain retired. You live inside authenticated OpenAgents surfaces.",

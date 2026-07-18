@@ -314,15 +314,26 @@ More specific invariant ledgers apply inside imported apps and packages.
   compatibility envelope, first-launch health proof, atomic fallback, and
   rollback receipt.
 
-- Under `AUTHORITY.md` revision 4 and Sarah authority revision 2,
+- Under `AUTHORITY.md` revision 5 and Sarah authority revision 3,
   `principal.sarah` may dispatch only bounded coding workers through the
   authenticated owner's existing linked Pylon capacity and may dispatch only
   pause/resume/stop intents for an existing owner Full Auto run. The coding
   broker pins a real public repository commit and returns actual assignment
   refs. Full Auto remains Desktop-authoritative: a server intent is `pending`
-  until Desktop applies it. Sarah has no raw shell, local workspace-path,
-  provider credential, MemoHarness private-bank, during-run adaptation,
-  candidate-promotion, assurance-admission, or authority-expansion capability.
+  until Desktop applies it. Sarah may additionally inspect her exact released
+  conversational bundle and ask a broker to review only completed turns from
+  her authenticated owner's stable Sarah thread. Terminal experience rows are
+  append-only and owner-private; optimization and held-out evaluation use
+  disjoint snapshots; the candidate schema cannot express tools, authority,
+  workspace, provider, budgets, approvals, or external effects. Sarah and the
+  optimizer cannot evaluate, release, or activate their own candidate. A
+  distinct Blueprint gate may atomically activate a compatible released
+  bundle only for a later turn. Every turn binds one immutable bundle before
+  inference, and any binding conflict fails closed. Sarah still has no raw
+  shell, local workspace-path, provider credential, cross-tenant experience,
+  current-turn learning, in-turn adaptation, Full Auto harness mutation,
+  assurance-admission, candidate self-promotion, or authority-expansion
+  capability.
 
 - Desktop local Codex usage collection is triple-gated: the review-only
   Desktop control gate, an explicit default-off user preference, and the

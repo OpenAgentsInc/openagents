@@ -1,7 +1,7 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.sarah-owner-orchestrator"
-authority_revision: 2
+authority_revision: 3
 title: "Sarah Owner Orchestrator"
 lifecycle_state: "admitted"
 admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
@@ -13,7 +13,7 @@ expires_when: "revoked_or_superseded_by_current_owner_direction"
 
 This profile binds `principal.sarah` to the owner-facing orchestrator role. It
 composes by intersection with [`../../AUTHORITY.md`](../../AUTHORITY.md)
-revision 4. Sarah can recommend and prioritize broadly, maintain one durable
+revision 5. Sarah can recommend and prioritize broadly, maintain one durable
 owner conversation, read bounded owner-scoped business projections, and
 delegate admitted work through existing capability brokers. The model never
 receives raw credentials and cannot turn visibility into mutation authority.
@@ -25,7 +25,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
   "composition": "intersection",
   "precedence": [
     "system_and_current_owner_instruction",
-    "AUTHORITY.md_revision_4",
+    "AUTHORITY.md_revision_5",
     "repository_agents_and_invariants",
     "resource_specific_policy_and_runtime_gates",
     "this_sarah_profile",
@@ -61,8 +61,8 @@ receives raw credentials and cannot turn visibility into mutation authority.
   {
     "id": "grant.sarah.delegated_operations",
     "roles": ["sarah_orchestrator"],
-    "actions": ["delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
-    "resources": ["OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "google_cloud_project_openagentsgemini", "openagents_rc_release_channel", "openagents_github_and_forum"],
+    "actions": ["delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_own_harness", "review_own_terminal_history_and_propose_harness", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
+    "resources": ["OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "owner_private_sarah_harness", "google_cloud_project_openagentsgemini", "openagents_rc_release_channel", "openagents_github_and_forum"],
     "program_refs": ["program.sarah_company_operations"],
     "condition_refs": ["condition.owner_scope", "condition.redaction", "condition.existing_runtime_gate", "condition.rollback"]
   }
@@ -139,12 +139,15 @@ history, GitHub release/open-issue state, Full Auto projection, FleetRun state,
 and public contract context. Repository delivery, GCP mutation, RC publication,
 and GitHub/Forum communication are brokered actions: Sarah decides and
 delegates, while the existing target adapter owns execution and its receipt.
-Revision 2 adds only two exact brokered actions: dispatch bounded coding workers
+Revision 2 added two exact brokered actions: dispatch bounded coding workers
 through the authenticated owner's linked Pylon capacity, and dispatch
 pause/resume/stop intents for an existing owner Full Auto run. The coding broker
 must pin real public repository bytes and return actual assignment refs; the
-Full Auto broker returns a pending intent until Desktop applies it. Neither
-action grants raw shell, workspace-path, credential, MemoHarness bank,
-adaptation, candidate-promotion, assurance-admission, stable-release, or
-authority-expansion access. Finance/custody and legal/employment authority
-remain reserved.
+Full Auto broker returns a pending intent until Desktop applies it. Revision 3
+adds a bounded Sarah-only terminal-history harness broker: Sarah may inspect
+the active bundle and request a candidate from completed owner-thread turns,
+but a distinct evaluator and Blueprint gate own held-out review, release, and
+next-turn activation. It grants no raw shell, workspace-path, credential,
+cross-tenant/current-turn experience, Full Auto harness mutation, candidate
+self-promotion, assurance-admission, stable-release, or authority-expansion
+access. Finance/custody and legal/employment authority remain reserved.

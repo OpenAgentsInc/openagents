@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Sarah Owner Orchestrator"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
-updated_at: "2026-07-18T00:00:00Z"
+updated_at: "2026-07-18T21:55:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -18,7 +18,7 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_authority: "AUTHORITY.md revision 4 + docs/authority/SARAH_AUTHORITY.md revision 2"
+  openagents_authority: "AUTHORITY.md revision 5 + Sarah runtime authority revision 3"
   openagents_source: "docs/transcripts/24Xsarah.md"
   openagents_assurance_level: "owner-private cross-resource orchestration"
 ---
@@ -53,6 +53,8 @@ in:
   - hosted Khala inference with Sarah's cited system context
   - brokered repository, Google Cloud, RC release, GitHub, and Forum operations under exact authority
   - Gemma 4 buffered function calling for bounded owner-linked Codex worker dispatch/status and existing Full Auto run read/pause/resume/stop
+  - one released content-addressed six-dimension Sarah conversational harness bound immutably before each provider turn
+  - owner-private terminal-thread experience compilation, bounded candidate production, held-out evaluation, and an independent Blueprint release gate for next-turn activation
 out:
   - a separate Sarah app, public web landing, prospect CRM, transcript database, provider dispatcher, or issue queue
   - avatar, video, ambient voice, GPU rendering, or public sales-persona infrastructure
@@ -63,7 +65,7 @@ cut:
   - destructive production customer-data operations
   - stable publication without current owner direction
   - invariant weakening, unsupported public claims, or self-amplification
-  - remote Full Auto start, raw local workspace selection, MemoHarness private experience-bank reads, during-run adaptation, or harness-candidate promotion
+  - remote Full Auto start, raw local workspace selection, Full Auto MemoHarness private-bank access or mutation, current-turn learning, during-turn adaptation, Sarah/optimizer candidate self-promotion, or assurance self-admission
 ```
 
 ## User Experience
@@ -125,10 +127,34 @@ ran until a target receipt exists.
   events and distinguishes partial, pending, refused, failed, and completed
   target outcomes.
 - **SARAH-AC-15:** Sarah receives no tool for remote Full Auto start, raw local
-  workspace selection, MemoHarness private-bank retrieval, during-run harness
-  adaptation, candidate self-promotion, AssuranceSpec admission, or authority
-  expansion. The new FA-AC-69–76 lifecycle remains governed by its own
-  unimplemented admission gates.
+  workspace selection, Full Auto harness mutation, current-turn learning,
+  candidate self-promotion, AssuranceSpec admission, or authority expansion.
+  The broader FA-AC-69–76 Full Auto lifecycle remains governed by its own
+  admission gates.
+- **SARAH-AC-16:** Before provider inference, every Sarah turn resolves exactly
+  one released content-addressed policy and durably binds its digest and six
+  dimension refs. A review or activation during the turn cannot change that
+  binding; a conflict fails closed.
+- **SARAH-AC-17:** Sarah can request a review of only terminal turns from the
+  authenticated owner's exact Sarah thread. The separate Effect compiler
+  creates append-only owner-private experiences with source refs/digests and
+  bounded outcome facts; the running turn, deleted rows, and other owners are
+  ineligible.
+- **SARAH-AC-18:** Harness optimization and evaluation are separate Gemma 4
+  invocations over disjoint training and held-out experience snapshots. The
+  candidate schema can alter only 1–8 bounded conversational instructions and
+  a 40–240 word default ceiling; six dimension identities and every authority-
+  bearing field remain immutable and unexpressible.
+- **SARAH-AC-19:** Sarah and the optimizer cannot evaluate, release, or activate
+  their candidate. A separate Blueprint gate requires held-out quality and
+  regression scores of at least 0.75, privacy and safety scores of at least
+  0.90, exact dimension compatibility, and deterministic secret/provenance
+  fencing before compare-and-swap activation; a concurrent base change fails
+  closed.
+- **SARAH-AC-20:** Harness bank rows, optimizer/evaluator prompts, raw thread
+  content, and private scores have no public or mobile projection. A released
+  improvement affects only subsequent ordinary Sarah replies and exposes only
+  bounded private activity/receipt refs when the owner explicitly asks.
 
 ## Success Metrics
 
@@ -165,12 +191,17 @@ ran until a target receipt exists.
 - Broad company decision authority can collapse separation of duties. Sarah
   may decide and delegate, but cannot self-verify assurance or self-release
   from her own evidence.
+- Self-improvement can become evaluation leakage or authority amplification.
+  Terminal-only snapshots, disjoint held-out turns, a non-authority candidate
+  schema, a distinct evaluator, and a compare-and-swap release gate keep the
+  producer out of verification and activation.
 
 ## Owner Gates
 
-The current owner direction admits revision 2 and the server runtime deploy.
-The mobile UI already consumes ordered runtime events, so no new mobile OTA is
-required for this server-side tool rollout. Only a
+The current owner direction admits revision 3, TestFlight build 119, and the
+server runtime deploy. Sarah may request her own bounded terminal-history
+review, but the independent evaluator and Blueprint gate own release and
+activation. Only a
 future expansion into reserved financial, legal/people, destructive-data,
 human-identity, over-budget, or stable-release authority requires another
 owner direction and profile revision.
@@ -183,8 +214,11 @@ owner direction and profile revision.
 - Existing repository, GCP, Full Auto, release, GitHub, and Forum receipts by
   reference rather than duplication.
 - Production route, hosted-turn, tool-activity, authority-receipt, and target-
-  broker smoke receipts. No mobile artifact receipt is required when the
-  already-installed client consumes the unchanged runtime-event contract.
+  broker smoke receipts.
+- TestFlight build 119 Apple processing receipt plus source, archive,
+  fingerprint, and IPA digest evidence.
+- Sarah harness bundle, terminal-experience snapshot, held-out evaluation,
+  Blueprint release, activation, and next-turn binding receipts.
 
 ## Promise Links
 

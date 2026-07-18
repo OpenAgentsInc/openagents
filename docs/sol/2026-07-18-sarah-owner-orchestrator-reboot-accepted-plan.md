@@ -6,7 +6,7 @@
 - Owner authority: current owner conversation
 - Base commit: `888574ab00f0cb86611e2178ca057db673caa87b`
 - ProductSpec: [`../../specs/openagents/sarah-owner-orchestrator.product-spec.md`](../../specs/openagents/sarah-owner-orchestrator.product-spec.md)
-- Authority: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 4 and [`../authority/SARAH_AUTHORITY.md`](../authority/SARAH_AUTHORITY.md) revision 2
+- Authority: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 5 and [`../authority/SARAH_AUTHORITY.md`](../authority/SARAH_AUTHORITY.md) revision 3
 
 ## Decision
 

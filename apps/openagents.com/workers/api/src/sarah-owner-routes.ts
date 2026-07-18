@@ -197,7 +197,10 @@ export const authorizeSarahOperation = (
            ${decision.profileRef}, ${decision.profileRevision},
            ${allowed ? decision.grantRef : "grant.none"},
            ${decision.request.action}, ${allowed ? "succeeded" : "refused"},
-           ${JSON.stringify(input.targetEvidenceRefs ?? [])}::text::jsonb,
+           ${JSON.stringify([
+             `resource:${input.resource}`,
+             ...(input.targetEvidenceRefs ?? []),
+           ])}::text::jsonb,
            ${startedAt.toISOString()}, ${settledAt})
         ON CONFLICT (receipt_ref) DO NOTHING
       `,

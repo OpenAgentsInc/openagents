@@ -1,7 +1,7 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 4
+authority_revision: 5
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
 admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
@@ -40,6 +40,19 @@ control is pending until the owner Desktop applies its durable intent. This
 revision does not admit a remote Full Auto start path, private MemoHarness bank
 access, in-run adaptation, candidate self-promotion, assurance self-admission,
 or generic shell/database/cloud superuser authority.
+
+Revision 5 admits owner-private, terminal-only learning for Sarah's own
+conversational harness. Sarah may inspect the released bundle, review only her
+authenticated owner's completed Sarah-thread turns, compile immutable private
+experience refs, and propose a bounded conversational-policy candidate. The
+candidate producer cannot evaluate, release, or activate its own output. A
+separate evaluator and Blueprint release gate must reproduce held-out quality,
+regression, privacy, safety, compatibility, and authority-preservation checks;
+only that gate may atomically activate a released bundle for the next turn.
+The current turn binds one immutable bundle before inference. This revision
+does not grant raw cross-tenant history, current-turn learning, in-turn policy
+changes, tool/authority mutation, Full Auto harness mutation, AssuranceSpec
+self-admission, or candidate self-promotion.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -112,8 +125,8 @@ higher authority. The format and resolution laws live in
   {
     "id": "grant.sarah_company_orchestration",
     "roles": ["sarah_orchestrator"],
-    "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
-    "resources": ["owner_private_conversation", "owner_business_context", "company_priority_ledger", "OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
+    "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_own_harness", "review_own_terminal_history_and_propose_harness", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
+    "resources": ["owner_private_conversation", "owner_business_context", "owner_private_sarah_harness", "company_priority_ledger", "OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
     "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.citations", "condition.existing_runtime_gate", "condition.verification", "condition.redaction", "condition.rollback"]
   },

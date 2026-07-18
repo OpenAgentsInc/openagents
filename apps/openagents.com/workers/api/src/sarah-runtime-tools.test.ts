@@ -259,4 +259,63 @@ describe('Sarah runtime tools', () => {
     )
     expect(calls.filter(entry => entry.name === 'khala.spawn')).toHaveLength(1)
   })
+
+  test('submits terminal history to the independent harness gate and reports the released next-turn bundle', async () => {
+    const tools = makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: catalog([]),
+      ownerUserId: 'owner.fixture',
+      reviewHarness: () =>
+        Effect.succeed({
+          bundleDigest: `sha256:${'b'.repeat(64)}`,
+          bundleRef: `harness.bundle.sarah.${'b'.repeat(24)}`,
+          evaluation: {
+            approved: true,
+            privacyScore: 1,
+            qualityScore: 0.9,
+            rationale: 'Held-out owner feedback is better served.',
+            regressionScore: 0.9,
+            safetyScore: 1,
+          },
+          experienceCount: 12,
+          heldOutExperienceCount: 3,
+          latestReviewRef: `review.sarah.harness.${'c'.repeat(24)}`,
+          latestReviewState: 'released',
+          policy: {
+            conversationInstructions: ['Be direct.'],
+            dimensions: {
+              contextAssembly: 'context',
+              generationControl: 'generation',
+              memoryManagement: 'memory',
+              orchestration: 'orchestration',
+              outputProcessing: 'output',
+              toolInteraction: 'tools',
+            },
+            maxReplyWords: 80,
+            schema: 'openagents.sarah.harness_policy.v1',
+          },
+          reviewRef: `review.sarah.harness.${'c'.repeat(24)}`,
+          state: 'released',
+          summary: 'More conversational and transparent.',
+          trainingExperienceCount: 9,
+        }),
+      sql,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    })
+    const tool = tools.find(
+      item => item.definition.name === 'sarah_harness_review_history',
+    )
+    const result = await Effect.runPromise(
+      tool!.execute({}, call('sarah_harness_review_history')),
+    )
+    expect(result.summary).toContain('independent gate released')
+    expect(result.resultRefs).toEqual([
+      `review.sarah.harness.${'c'.repeat(24)}`,
+      `harness.bundle.sarah.${'b'.repeat(24)}`,
+    ])
+  })
 })

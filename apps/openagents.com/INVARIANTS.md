@@ -730,6 +730,31 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
 - "The whole Khala lane" above means the PUBLIC `openagents/khala` id. The
   persona-neutral internal lane below is the single deliberate exception.
 
+## Sarah Terminal-History Harness Learning
+
+- Sarah's active conversational harness is one released, content-addressed
+  six-dimension policy bundle. The server binds its exact ref and digest to a
+  turn before provider inference; activation during that turn cannot change
+  the binding and affects only a later turn.
+- Only completed/failed/interrupted/closed turns from the authenticated
+  owner's exact Sarah thread can become private experiences. The current turn,
+  cross-owner rows, deleted messages, raw secrets, and public projections are
+  ineligible. Experience rows retain bounded outcome facts and private source
+  refs/digests rather than copying transcript bodies.
+- Optimization and held-out evaluation are separate model invocations over
+  disjoint terminal snapshots. The candidate schema can change only bounded
+  conversational instructions and a 40-240 word default ceiling; it cannot
+  express tools, authority, provider/account choice, workspace, budgets,
+  guardrails, approvals, release rights, or external effects.
+- The optimizer and Sarah cannot release or activate a candidate. A distinct
+  Blueprint gate requires held-out quality/regression plus privacy/safety
+  thresholds and exact dimension compatibility, then compare-and-swaps the
+  active base. A concurrent base change fails closed.
+- These records remain in Cloud SQL and have no Khala Sync/public projection.
+  Mobile can receive only the resulting ordinary Sarah reply and private tool
+  activity; it never receives the bank, training transcript, evaluator prompt,
+  or private scores.
+
 ## Persona-Neutral Internal Inference Lane (`openagents/internal-neutral`)
 
 - `openagents/internal-neutral` (#8600 FC-BRAIN) routes over EXACTLY the khala

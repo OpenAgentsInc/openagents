@@ -80,7 +80,7 @@ describe(`contract ${contractId}`, () => {
     expect(first.status).toBe(200);
     expect(body.principal).toMatchObject({
       memory: "durable_cited",
-      rootAuthorityRevision: 4,
+      rootAuthorityRevision: 5,
     });
     expect(body.principal.threadRef).toMatch(/^thread\.sarah\.[0-9a-f]{24}$/);
     expect(JSON.stringify(await second.json())).toContain(body.principal.threadRef);
@@ -177,6 +177,41 @@ describe(`contract ${contractId}`, () => {
     );
     expect(result).toMatchObject({ allowed: true });
     expect(insertedValues.flat()).toContain("dispatch_owner_capacity_coding_workers");
+    expect(insertedValues.flat()).toContain(SARAH_AUTHORITY_REVISION);
+  });
+
+  test("admits Sarah's exact owner-private terminal-history harness review broker", async () => {
+    const ownerUserId = "owner.fixture.123";
+    const threadRef = await sarahThreadRefForOwner(ownerUserId);
+    const insertedValues: Array<ReadonlyArray<unknown>> = [];
+    const sql = (async (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) => {
+      const statement = strings.join("?");
+      if (statement.includes("SELECT receipt_ref")) {
+        return [{ receipt_ref: "receipt.authority.sarah.current" }];
+      }
+      if (statement.includes("INSERT INTO sarah_authority_decision_receipts")) {
+        insertedValues.push(values);
+      }
+      return [];
+    }) as unknown as SyncSql;
+
+    const result = await Effect.runPromise(
+      authorizeSarahOperation(sql, {
+        action: "review_own_terminal_history_and_propose_harness",
+        ownerUserId,
+        resource: "owner_private_sarah_harness",
+        threadRef,
+        triggerRef: "turn.fixture.tool.call.harness_review",
+      }),
+    );
+
+    expect(result).toMatchObject({ allowed: true });
+    expect(insertedValues.flat()).toContain(
+      "review_own_terminal_history_and_propose_harness",
+    );
+    expect(insertedValues.flat()).toContain(
+      JSON.stringify(["resource:owner_private_sarah_harness"]),
+    );
     expect(insertedValues.flat()).toContain(SARAH_AUTHORITY_REVISION);
   });
 });

@@ -49,6 +49,10 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   authenticated persistent orchestrator inside OpenAgents mobile, using cited
   business projections and existing capability brokers while public `/sarah`
   and the standalone app remain retired.
+- [`2026-07-18-sarah-terminal-history-harness-implementation.md`](./2026-07-18-sarah-terminal-history-harness-implementation.md)
+  — current implementation record for Sarah's owner-private terminal-history
+  experience compiler, bounded conversational candidate, independent held-out
+  evaluation, release gate, and immutable next-turn harness binding.
 - [`2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md`](./2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md)
   — active revision-2 RC release authority, RC17–RC20 feedback-loop correction,
   impact-based delivery/OTA boundaries, immutable GitHub publication, bounded

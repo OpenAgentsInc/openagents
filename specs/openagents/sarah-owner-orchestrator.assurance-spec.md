@@ -34,13 +34,18 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "SARAH-AC-12",
       "SARAH-AC-13",
       "SARAH-AC-14",
-      "SARAH-AC-15"
+      "SARAH-AC-15",
+      "SARAH-AC-16",
+      "SARAH-AC-17",
+      "SARAH-AC-18",
+      "SARAH-AC-19",
+      "SARAH-AC-20"
     ],
-    "document_digest": "sha256:a3d84b6b86f2214c2f24151219bab12e4d442b649c01d9ee28d895429bdea287",
+    "document_digest": "sha256:356e31d5d552bb5aad07e1720fcd993d357b3abd72b5448d6fec3351026820ae",
     "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 2
+    "spec_revision": 3
   }
 }
 ```
@@ -52,8 +57,8 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 ```assurancespec-risks
 {
   "risks": [],
-  "source_digest": "sha256:b5ceafa73367e1d8bb9a6647648ff9fd8c858c84c45e0e1062f21e18800f41d3",
-  "source_snapshot": "- “Full knowledge” can become an unsafe database dump. Only purpose-built,\n  bounded, owner-scoped projections enter context.\n- A human name can obscure that Sarah is an AI. The system prompt and product\n  copy identify her as AI and prohibit impersonation.\n- One point of contact can become one point of failure. Her thread is durable,\n  context sources fail independently, and every action stays in existing\n  systems with its own receipts and rollback.\n- Broad company decision authority can collapse separation of duties. Sarah\n  may decide and delegate, but cannot self-verify assurance or self-release\n  from her own evidence."
+  "source_digest": "sha256:20f9b53a80f7a15929a21191e7d5f4e7ca0c24da75a2cf159ecdb23ac4b2aada",
+  "source_snapshot": "- “Full knowledge” can become an unsafe database dump. Only purpose-built,\n  bounded, owner-scoped projections enter context.\n- A human name can obscure that Sarah is an AI. The system prompt and product\n  copy identify her as AI and prohibit impersonation.\n- One point of contact can become one point of failure. Her thread is durable,\n  context sources fail independently, and every action stays in existing\n  systems with its own receipts and rollback.\n- Broad company decision authority can collapse separation of duties. Sarah\n  may decide and delegate, but cannot self-verify assurance or self-release\n  from her own evidence.\n- Self-improvement can become evaluation leakage or authority amplification.\n  Terminal-only snapshots, disjoint held-out turns, a non-authority candidate\n  schema, a distinct evaluator, and a compare-and-swap release gate keep the\n  producer out of verification and activation."
 }
 ```
 
@@ -250,9 +255,64 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     ],
     "disposition": "required",
     "id": "AO-SARAH-AC-15-01",
-    "source_claim_digest": "sha256:a95d5bac6c7df52ffea041abc17186146cdf241403fa349ed93a9f070be08fc3",
-    "source_claim_snapshot": "Sarah receives no tool for remote Full Auto start, raw local\nworkspace selection, MemoHarness private-bank retrieval, during-run harness\nadaptation, candidate self-promotion, AssuranceSpec admission, or authority\nexpansion. The new FA-AC-69–76 lifecycle remains governed by its own\nunimplemented admission gates.",
+    "source_claim_digest": "sha256:9ced3e8d7cd933f38993dce4fbeeac286083f684b15b6c7b0729e99b5ffebe37",
+    "source_claim_snapshot": "Sarah receives no tool for remote Full Auto start, raw local\nworkspace selection, Full Auto harness mutation, current-turn learning,\ncandidate self-promotion, AssuranceSpec admission, or authority expansion.\nThe broader FA-AC-69–76 Full Auto lifecycle remains governed by its own\nadmission gates.",
     "title": "Assure SARAH-AC-15"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-16"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-16-01",
+    "source_claim_digest": "sha256:45f4344108ee22a798da72ebae07f7b1a85c31c94e2cc92f2b37ed65786c0395",
+    "source_claim_snapshot": "Before provider inference, every Sarah turn resolves exactly\none released content-addressed policy and durably binds its digest and six\ndimension refs. A review or activation during the turn cannot change that\nbinding; a conflict fails closed.",
+    "title": "Assure SARAH-AC-16"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-17"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-17-01",
+    "source_claim_digest": "sha256:8af8e5a4687f43413d1863dc5b51896908198249350780c7fde9168bdc0f40e6",
+    "source_claim_snapshot": "Sarah can request a review of only terminal turns from the\nauthenticated owner's exact Sarah thread. The separate Effect compiler\ncreates append-only owner-private experiences with source refs/digests and\nbounded outcome facts; the running turn, deleted rows, and other owners are\nineligible.",
+    "title": "Assure SARAH-AC-17"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-18"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-18-01",
+    "source_claim_digest": "sha256:f06f4d8c355ce02e1fd8a459296643cfccca1d6b7c096f300acab01b353c87cc",
+    "source_claim_snapshot": "Harness optimization and evaluation are separate Gemma 4\ninvocations over disjoint training and held-out experience snapshots. The\ncandidate schema can alter only 1–8 bounded conversational instructions and\na 40–240 word default ceiling; six dimension identities and every authority-\nbearing field remain immutable and unexpressible.",
+    "title": "Assure SARAH-AC-18"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-19"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-19-01",
+    "source_claim_digest": "sha256:486de47efbbb856490f895256bf3c7becd0950b4a677e23294a2299f4f9225f4",
+    "source_claim_snapshot": "Sarah and the optimizer cannot evaluate, release, or activate\ntheir candidate. A separate Blueprint gate requires held-out quality and\nregression scores of at least 0.75, privacy and safety scores of at least\n0.90, exact dimension compatibility, and deterministic secret/provenance\nfencing before compare-and-swap activation; a concurrent base change fails\nclosed.",
+    "title": "Assure SARAH-AC-19"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-20"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-20-01",
+    "source_claim_digest": "sha256:b1e6cfbf2306b34363d240ed63acaca0b35c79be2a02ceaa0c2b43a7d1a1f537",
+    "source_claim_snapshot": "Harness bank rows, optimizer/evaluator prompts, raw thread\ncontent, and private scores have no public or mobile projection. A released\nimprovement affects only subsequent ordinary Sarah replies and exposes only\nbounded private activity/receipt refs when the owner explicitly asks.",
+    "title": "Assure SARAH-AC-20"
   }
 ]
 ```
