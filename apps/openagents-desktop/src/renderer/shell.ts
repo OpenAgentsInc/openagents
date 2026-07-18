@@ -119,6 +119,14 @@ import {
   type TerminalWorkspaceState,
 } from "./terminal-workspace.ts"
 import {
+  emptyFullAutoWorkspaceState,
+  fullAutoWorkspaceIntents,
+  fullAutoWorkspaceView,
+  makeFullAutoWorkspaceHandlers,
+  type FullAutoWorkspaceState,
+} from "./full-auto-workspace.ts"
+import { unavailableFullAutoRunRendererHost, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
+import {
   emptyGitPanelState,
   gitPanelIntents,
   gitPanelView,
@@ -274,7 +282,7 @@ export type QuestionCardInteraction = Readonly<{
   answers: ReadonlyArray<QuestionAnswer> | null
 }>
 
-export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
+export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings", "full-auto"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
 export type CodingSessionFilter = (typeof codingSessionFilters)[number]
@@ -530,6 +538,9 @@ export type DesktopShellState = Readonly<{
   /** Typed Git/GitHub review panel (see ./git-panel.ts). */
   git: GitPanelState
   update: DesktopUpdateProjection
+  /** Full Auto launcher + read-only run view (FA-UX-01, #8974; see
+   * ./full-auto-workspace.ts). */
+  fullAuto: FullAutoWorkspaceState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -630,6 +641,7 @@ export const initialDesktopShellState = (
   terminal: emptyTerminalWorkspaceState(),
   git: emptyGitPanelState(),
   update: emptyDesktopUpdateProjection(),
+  fullAuto: emptyFullAutoWorkspaceState(),
 })
 
 /**
@@ -989,6 +1001,7 @@ export const desktopShellIntents = [
   ...gitPanelIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
+  ...fullAutoWorkspaceIntents,
 ] as const
 
 export type CodexHistoryHost = Readonly<{
@@ -2055,6 +2068,10 @@ export const makeDesktopShellHandlers = (
   fullAutoHost: DesktopFullAutoRendererHost = { set: async () => ({}), get: async () => ({ enabled: false }) },
   acpProviderBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
   remoteConnectBridge: RemoteConnectBridge = unavailableRemoteConnectBridge,
+  // FA-UX-01 (#8974): the dedicated Full Auto launcher/run-view IPC bridge.
+  // Appended last (rather than inserted among the historical positional
+  // params above) so every existing call site keeps compiling unchanged.
+  fullAutoRunHost: FullAutoRunRendererHost = unavailableFullAutoRunRendererHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
@@ -2835,6 +2852,11 @@ export const makeDesktopShellHandlers = (
   ...settingsHandlers,
   ...diagnosticsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
+  ...makeFullAutoWorkspaceHandlers(
+    state,
+    fullAutoRunHost,
+    workspace => SubscriptionRef.update(state, current => withWorkspace(current, workspace as DesktopWorkspaceName)),
+  ),
   ...makeTerminalWorkspaceHandlers(state, terminalBridge, session =>
     SubscriptionRef.update(state, current => ({
       ...current,
@@ -4511,7 +4533,7 @@ const shellSidebar = (state: DesktopShellState): View => {
           //     entry point via ⌘K and the native Commands menu; no dock icon
           //     is called for.
           {id:"sidebar-workspace-dock",layout:"row",items:projectDesktopSidebarDestinations(
-            state.workspace === "settings" ? "settings" : "chat",
+            state.workspace === "settings" ? "settings" : state.workspace === "full-auto" ? "full-auto" : "chat",
             state.history.pendingThreadRef !== null || state.history.page !== null || state.activeThreadId !== null,
           ).map((destination: DesktopSidebarDestination) => ({
             id: destination.id,
@@ -5635,7 +5657,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
           })]),
           ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" || state.workspace === "home" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : chatTranscriptArea(state)),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" || state.workspace === "home" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "full-auto" ? [fullAutoWorkspaceView(state.fullAuto)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { flex: 1, width: "full", minHeight: 0 } }, [settingsView(state.settings), desktopUpdateSettings(state.update), commandBindingSettings(state), diagnosticsView(state.diagnostics)])] : chatTranscriptArea(state)),
         ],
       ),
     ],

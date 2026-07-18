@@ -65,6 +65,7 @@ describe("MVP visible-surface composition oracle (UX-4 #8790)", () => {
     }
     expect(mvpAllowedDockItemIds).toEqual([
       "workspace-new-chat",
+      "workspace-full-auto",
       "shell-settings-toggle",
     ])
     // The swept dock affordances stay off the allowlist AND on the forbidden list.

@@ -1001,15 +1001,16 @@ describe("React workbench shell", () => {
     const destinations = () => [...container.querySelectorAll<HTMLButtonElement>("[data-sidebar-destination-id]")]
     expect(destinations().map(row => row.dataset.sidebarDestinationId)).toEqual([
       "workspace-new-chat",
+      "workspace-full-auto",
       "shell-settings-toggle",
     ])
     expect(destinations().map(row => row.querySelector("[data-icon-name]")?.getAttribute("data-icon-name"))).toEqual([
-      "ChatCompose", "Settings",
+      "ChatCompose", "Zap", "Settings",
     ])
     expect(container.querySelector(".oa-react-sidebar-footer [data-sidebar-destination-id=\"shell-settings-toggle\"]")).not.toBeNull()
     expect(container.textContent).not.toContain("Workspaces")
     expect(container.querySelector('[data-react-workspace="home"]')).toBeNull()
-    await interact(() => destinations()[1]?.click())
+    await interact(() => destinations()[2]?.click())
     expect(received.at(-1)).toEqual({ name: "DesktopSettingsToggled", payload: null })
     await render(root, <WorkbenchShell state={{ ...chat, workspace: "settings" }} report={report} />)
     expect(container.querySelector('[data-react-workspace="settings"] h1')?.textContent).toBe("Settings")

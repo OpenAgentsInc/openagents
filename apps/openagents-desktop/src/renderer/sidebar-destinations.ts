@@ -10,19 +10,21 @@ import {
  * Compatibility and React renderers can lower this same projection into their
  * respective controls.
  */
-export type DesktopSidebarWorkspace = "chat" | "settings"
-export type DesktopSidebarIconName = Extract<IconName, "ChatCompose" | "Settings">
+export type DesktopSidebarWorkspace = "chat" | "settings" | "full-auto"
+export type DesktopSidebarIconName = Extract<IconName, "ChatCompose" | "Settings" | "Zap">
 
 export type DesktopSidebarIntent =
   | Readonly<{ name: "DesktopNewChat"; payload: null }>
   | Readonly<{ name: "DesktopSettingsToggled"; payload: null }>
+  | Readonly<{ name: "DesktopFullAutoLauncherOpened"; payload: null }>
 
 export type DesktopSidebarDestinationDefinition = Readonly<{
   id:
     | "workspace-new-chat"
+    | "workspace-full-auto"
     | "shell-settings-toggle"
   commandId: DesktopCommandId
-  label: "New session" | "Settings"
+  label: "New session" | "Settings" | "Full Auto"
   icon: DesktopSidebarIconName
   workspace: DesktopSidebarWorkspace | null
   intent: DesktopSidebarIntent
@@ -45,6 +47,15 @@ const desktopSidebarDestinationCatalog = [
     workspace: null,
   },
   {
+    // FA-AC-54 (#8974): "beside/under New session" -- placed directly after
+    // it, before Settings.
+    id: "workspace-full-auto",
+    commandId: "full-auto.launch",
+    label: "Full Auto",
+    icon: "Zap",
+    workspace: "full-auto",
+  },
+  {
     id: "shell-settings-toggle",
     commandId: "settings.open",
     label: "Settings",
@@ -61,6 +72,9 @@ const sidebarIntentFromCanonicalCommand = (commandId: DesktopCommandId): Desktop
   }
   if (command.intentName === "DesktopSettingsToggled" && command.defaultArguments.kind === "none") {
     return { name: "DesktopSettingsToggled", payload: null }
+  }
+  if (command.intentName === "DesktopFullAutoLauncherOpened" && command.defaultArguments.kind === "none") {
+    return { name: "DesktopFullAutoLauncherOpened", payload: null }
   }
   throw new Error(`Canonical Desktop command ${commandId} is not an admitted sidebar intent`)
 }

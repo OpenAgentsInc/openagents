@@ -887,9 +887,9 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     {
       authorityBoundary:
         "This binds only the launch entry point (a lightning-bolt Full Auto action beside/under New session in the left rail). It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1) or the read-only run view's contents (see full_auto_read_only_run_view.v1), and it grants no release or public-claim authority.",
-      blockerRefs: ["github:OpenAgentsInc/openagents#8974"],
+      blockerRefs: [],
       contractId: "openagents_desktop.full_auto_dedicated_launcher.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "specs/desktop/full-auto.product-spec.md",
         "docs/fable/2026-07-17-full-auto-implementation-audit.md",
@@ -899,8 +899,16 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "Planned real-Chromium DOM oracle proving the left rail renders a Full Auto launcher action beside/under New session, that Start collects title/objective/done-condition/workspace/provider-lane/turn-cap before it is enabled, and that Start applies the same workspace-authority refusal rule as the existing control-API start.",
-          id: "openagents_desktop.full_auto_dedicated_launcher.planned",
+            "FA-UX-01 (#8974) landed: real-DOM component oracles prove the left rail renders a dedicated Full Auto launcher action beside New session (sidebar-destinations.test.ts, mvp-visible-surfaces.test.ts), that the launcher form collects title/objective/done-condition/workspace/provider-lane/turn-cap and Start stays disabled until every required field is present (react-full-auto-surface.test.tsx, full-auto-workspace.test.ts), and that Start routes through the same startFullAutoRunAction the opt-in HTTP control API uses -- including the identical workspace-authority and active-run-conflict refusal rules (full-auto-run-actions.ts, full-auto-run-control-server.test.ts).",
+          id: "openagents_desktop.full_auto_dedicated_launcher.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+        },
+        {
+          description:
+            "Real-Chromium/Electron e2e visual smoke across the launch/running/paused/stalled/terminal states and supported viewport/theme combinations remains a residual for a follow-up issue; the DOM-level oracle above is the currently enforced, currently running proof.",
+          id: "openagents_desktop.full_auto_dedicated_launcher.e2e_residual",
           kind: "planned",
           mode: "e2e",
           ref: "github:OpenAgentsInc/openagents#8974",
@@ -912,19 +920,19 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-17",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
       surface: "openagents-desktop",
       verification:
-        "Planned: a real-Chromium e2e oracle under FA-UX-01 (#8974) drives the left rail, opens the launcher, fills the mission-contract fields, and asserts Start is disabled until required fields are present and refuses on a workspace mismatch exactly like the existing control-API start (FA-AC-28/FA-AC-54 in the ProductSpec).",
+        "FA-UX-01 (#8974) landed: pnpm --dir apps/openagents-desktop run test runs react-full-auto-surface.test.tsx and full-auto-workspace.test.ts in the normal Desktop sweep, driving the left rail, opening the launcher, filling the mission-contract fields, and asserting Start is disabled until required fields are present and refuses on a workspace mismatch/active-run-conflict exactly like the existing control-API start (FA-AC-28/FA-AC-54 in the ProductSpec). A real-Chromium/Electron e2e visual smoke is a residual, tracked as a planned oracle above.",
     },
     {
       authorityBoundary:
         "This binds only the visible run view while a Full Auto run is active: pinned objective/workspace, explicit lifecycle state, an inspectable per-turn transcript, and the absence of the ordinary chat composer. It does not grant live token-streaming, steering, or any release/public-claim authority, and it does not itself define Play/Pause/Stop transition legality (see full_auto_play_pause_stop_lifecycle.v1).",
-      blockerRefs: ["github:OpenAgentsInc/openagents#8974"],
+      blockerRefs: [],
       contractId: "openagents_desktop.full_auto_read_only_run_view.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "specs/desktop/full-auto.product-spec.md",
         "docs/fable/2026-07-17-full-auto-implementation-audit.md",
@@ -934,8 +942,16 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "Planned real-Chromium DOM oracle proving that once a run Starts, the main canvas renders a dedicated read-only run view (pinned objective/workspace, an explicit lifecycle state -- not a generic failure banner -- and an inspectable per-turn transcript) and that the ordinary chat composer, its Full Auto toggle, and its manual-send fencing are absent while the run is active.",
-          id: "openagents_desktop.full_auto_read_only_run_view.planned",
+            "FA-UX-01 (#8974) landed: real-DOM component oracles prove that once a run Starts, the main canvas renders a dedicated read-only run view (pinned objective/workspace/provider/cap, an explicit lifecycle state across all ten named states -- never a generic failure banner -- and an inspectable per-turn transcript) and that the ordinary chat composer, its retired Full Auto toggle, and its manual-send fencing are absent while the run is active (react-full-auto-surface.test.tsx: 'the ordinary chat composer is genuinely absent from the run view'; full-auto-workspace.test.ts's per-state rendering sweep; react-composer.test.tsx's FA-AC-56 retirement tests).",
+          id: "openagents_desktop.full_auto_read_only_run_view.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+        },
+        {
+          description:
+            "Real-Chromium/Electron e2e visual smoke across the launch/running/paused/stalled/terminal states and supported viewport/theme combinations remains a residual for a follow-up issue; the DOM-level oracle above is the currently enforced, currently running proof.",
+          id: "openagents_desktop.full_auto_read_only_run_view.e2e_residual",
           kind: "planned",
           mode: "e2e",
           ref: "github:OpenAgentsInc/openagents#8974",
@@ -947,22 +963,19 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-17",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
       surface: "openagents-desktop",
       verification:
-        "Planned: a real-Chromium e2e oracle under FA-UX-01 (#8974) asserts the read-only run view renders explicit lifecycle state (never a generic 'Turn failed' banner, closing the 2026-07-17 audit's observability gap) and that the ordinary composer, toggle, and badge (FA-AC-01/19/21 in the ProductSpec) are retired from the chat surface once the run view ships (FA-AC-55/FA-AC-56).",
+        "FA-UX-01 (#8974) landed: the read-only run view renders explicit lifecycle state across Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached (never a generic 'Turn failed' banner, closing the 2026-07-17 audit's observability gap), and the ordinary composer, toggle, and badge (FA-AC-01/19/21 in the ProductSpec) are retired from the chat surface (FA-AC-55/FA-AC-56), proven in the normal Desktop test sweep. A real-Chromium/Electron e2e visual smoke is a residual, tracked as a planned oracle above.",
     },
     {
       authorityBoundary:
         "This binds the lifecycle state machine and its Play/Pause/Stop (Resume/Pause/Stop) transition legality and attribution. It grants no autonomous provider-selection, mid-run steering, or concurrent multi-run authority, and it does not itself verify that a run's stated done condition was actually satisfied -- Completed remains a self-reported, owner-reviewable disposition.",
-      blockerRefs: [
-        "github:OpenAgentsInc/openagents#8969",
-        "github:OpenAgentsInc/openagents#8974",
-      ],
+      blockerRefs: [],
       contractId: "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "specs/desktop/full-auto.product-spec.md",
         "docs/fable/2026-07-17-full-auto-implementation-audit.md",
@@ -981,11 +994,11 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "Planned: FA-UX-01 (#8974) wires the read-only run view's Pause/Resume/Stop controls to the FA-RUN-01 transitions this contract already binds, so the full owner-facing statement (named launch, explicit objective/done condition, Play/Pause/Stop UI, read-only running view) is provable end to end.",
-          id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.planned",
-          kind: "planned",
-          mode: "unit",
-          ref: "github:OpenAgentsInc/openagents#8974",
+            "FA-UX-01 (#8974) landed: the read-only run view's Pause/Resume/Stop/Retry-now controls are wired to `full-auto-run-actions.ts` -- the SAME shared action functions the opt-in HTTP control server uses (actor:\"owner_ui\" vs actor:\"control_api\") -- via a dedicated renderer IPC bridge (full-auto-run-ipc-contract.ts, main.ts). Per-state control visibility (Pause only while Running, Resume only while Paused, Retry now only while Stalled with a recoverable cause, Stop present on every non-terminal state and absent once terminal) and click-to-intent wiring are proven end to end through the real Effect intent registry and a rendered DOM.",
+          id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.ui_wiring",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/full-auto-workspace.test.ts",
         },
       ],
       productArea: "Desktop Full Auto run lifecycle",
@@ -994,14 +1007,14 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-17",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
       surface: "openagents-desktop",
       verification:
-        "FA-RUN-01 (#8969) landed: the durable FullAutoRun lifecycle state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec), its control-API Pause/Resume/Stop routes, and the legacy-registry migration are unit- and route-tested (apps/openagents-desktop/tests/full-auto-run-registry.test.ts, apps/openagents-desktop/src/full-auto-run-control-server.test.ts). Still pending: FA-UX-01 (#8974) wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop controls -- an illegal transition (e.g. Resume from a non-Paused state) must be refused, never silently coerced, and this contract stays `pending` (not `enforced`) until that UI wiring lands.",
+        "FA-RUN-01 (#8969) landed the durable FullAutoRun lifecycle state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec), its control-API Pause/Resume/Stop routes, and the legacy-registry migration, unit- and route-tested (apps/openagents-desktop/tests/full-auto-run-registry.test.ts, apps/openagents-desktop/src/full-auto-run-control-server.test.ts). FA-UX-01 (#8974) landed wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop/Retry-now controls through a dedicated renderer IPC bridge sharing the same action functions as the control API (apps/openagents-desktop/src/full-auto-run-actions.ts) -- an illegal transition is refused by the shared registry.transition function, never silently coerced by the UI.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-17.1",
+  version: "2026-07-17.2",
 }

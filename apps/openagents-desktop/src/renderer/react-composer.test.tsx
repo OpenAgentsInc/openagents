@@ -204,7 +204,10 @@ describe("React Codex composer", () => {
     await interact(() => more.click());
     expect(more.getAttribute("aria-expanded")).toBe("true");
     expect(container.querySelector(".oa-react-composer-secondary-controls")?.getAttribute("data-open")).toBe("true");
-    expect(container.querySelector('[data-composer-button-kind="toggle"]')).not.toBeNull();
+    // FA-UX-01 (#8974): Full Auto retired the composer-embedded toggle
+    // (kind="toggle") entirely -- it starts only from the dedicated left-rail
+    // launcher now (see full-auto-workspace.test.ts, react-full-auto-surface.test.tsx).
+    expect(container.querySelector('[data-composer-button-kind="toggle"]')).toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     await render(
       root,
@@ -495,76 +498,47 @@ describe("React Codex composer", () => {
     expect([...container.querySelectorAll('button[title="This turn is already dispatching"]')]).toHaveLength(2);
   });
 
-  test("Full Auto (#8852, FA-H1 #8874): renders the ACTIVE thread's per-thread toggle state and reports DesktopFullAutoToggled", async () => {
+  test("FA-UX-01 (#8974), FA-AC-56: the composer-embedded Full Auto toggle is retired -- an ordinary chat thread never exposes Full Auto controls inline, even with legacy per-thread state present", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
+    const { report } = recorder();
     const root = createTestRoot(container);
+    // No toggle regardless of the legacy per-thread durable-enabled entry --
+    // Full Auto starts only from the dedicated left-rail launcher now (see
+    // full-auto-workspace.test.ts, react-full-auto-surface.test.tsx).
     await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: {} })} report={report} />);
-    const toggle = container.querySelector('[data-en-key="shell-full-auto-toggle"]');
-    expect(toggle).not.toBeNull();
-    // An absent entry is honestly off.
-    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
-    expect(toggle?.getAttribute("aria-label")).toBe("Turn on Full Auto");
-    await interact(() => {
-      (toggle as HTMLButtonElement).click();
-    });
-    expect(received).toEqual(
-      expect.arrayContaining([{ name: "DesktopFullAutoToggled", payload: null }]),
-    );
-    // The hydrated durable entry for the active thread drives the pressed
-    // state and the label — one click on this honestly means "turn it off".
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: { "thread-1": true } })} report={report} />);
-    const pressed = container.querySelector('[data-en-key="shell-full-auto-toggle"]');
-    expect(pressed?.getAttribute("aria-pressed")).toBe("true");
-    expect(pressed?.getAttribute("aria-label")).toBe("Turn off Full Auto");
-    // ANOTHER thread's enabled entry never leaks into this thread's toggle.
-    await render(root, <ReactComposer state={fixtureState({ fullAutoByThread: { "thread-2": true } })} report={report} />);
-    expect(
-      container.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute("aria-pressed"),
-    ).toBe("false");
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
   });
 
-  test("FA-H4 (#8877): a running background Full Auto turn renders the status badge and the Stop affordance; idle renders neither", async () => {
+  test("FA-UX-01 (#8974), FA-AC-56: the composer never renders the retired 'Full Auto running…' badge, and Stop reacts only to an ordinary in-flight (pending) turn", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
     const root = createTestRoot(container);
-    // Idle (no live entry): no badge, no Stop.
+    // Idle: no badge, no Stop.
     await render(root, <ReactComposer state={fixtureState()} report={report} />);
     expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
     expect(container.querySelector('[aria-label="Stop current turn"]')).toBeNull();
-    // Background turn running (renderer NOT pending): badge + Stop render,
-    // and Stop reports the same DesktopTurnInterrupted intent whose handler
-    // targets the actual background turn.
+    // A background Full Auto turn (renderer NOT pending) no longer renders
+    // any composer chrome at all -- that surface moved to the dedicated
+    // read-only run view. Stop stays absent even with a background turn
+    // live on this thread's legacy state.
     await render(root, <ReactComposer state={fixtureState({
       pending: false,
       input: "Queue this next",
       fullAutoLiveByThread: { "thread-1": { state: "turn_running", turnRef: "turn.full-auto.bg-1" } },
     })} report={report} />);
-    const badge = container.querySelector('[data-full-auto-status="running"]');
-    expect(badge?.getAttribute("data-slot")).toBe("badge");
-    expect(badge?.textContent).toBe("Full Auto running…");
-    const stop = container.querySelector('[aria-label="Stop current turn"]') as HTMLButtonElement;
-    expect(stop).not.toBeNull();
-    const queue = container.querySelector('[aria-label="Queue"]') as HTMLButtonElement;
-    expect(queue).not.toBeNull();
-    expect(queue.disabled).toBe(false);
-    await interact(() => queue.click());
-    expect(received).toContainEqual({ name: "DesktopQueueNextRequested", payload: "Queue this next" });
-    await interact(() => stop.click());
-    expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
-    // A terminal live state clears both again.
-    await render(root, <ReactComposer state={fixtureState({
-      fullAutoLiveByThread: { "thread-1": { state: "turn_completed", turnRef: null } },
-    })} report={report} />);
     expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
     expect(container.querySelector('[aria-label="Stop current turn"]')).toBeNull();
-    // ANOTHER thread's running turn never leaks into this thread's composer.
-    await render(root, <ReactComposer state={fixtureState({
-      fullAutoLiveByThread: { "thread-2": { state: "turn_running", turnRef: "turn.full-auto.bg-2" } },
-    })} report={report} />);
-    expect(container.querySelector('[data-full-auto-status="running"]')).toBeNull();
+    // An ordinary pending (foreground) turn still shows Stop -- this is the
+    // one case the composer's Stop control now covers.
+    await render(root, <ReactComposer state={fixtureState({ pending: true })} report={report} />);
+    const stop = container.querySelector('[aria-label="Stop current turn"]') as HTMLButtonElement;
+    expect(stop).not.toBeNull();
+    await interact(() => stop.click());
+    expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
   });
 
   test("L2 derives distinct composers when the active thread switches lanes", async () => {
@@ -587,7 +561,8 @@ describe("React Codex composer", () => {
     const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
     await render(root, <ReactComposer state={fixtureState({ providerLaneCapabilities: [codex, claude], harnessLanes: lanes })} report={report} />);
     expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).not.toBeNull();
-    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).not.toBeNull();
+    // FA-UX-01 (#8974): the toggle is retired regardless of lane capability.fullAuto.
+    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-permission-mode"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-model-select"]')?.textContent).toBe("gpt-5.5");
 

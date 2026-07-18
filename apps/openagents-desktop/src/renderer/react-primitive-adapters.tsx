@@ -86,6 +86,7 @@ import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import { ReactBrowserPreviewSurface, ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
 import { ReactSettingsSurface, type ReactSettingsSectionId } from "./react-settings-surface.tsx"
+import { ReactFullAutoSurface } from "./react-full-auto-surface.tsx"
 import {
   decodeDesktopSurfaceLayout,
   defaultDesktopSurfaceLayout,
@@ -531,9 +532,10 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   </div>
 }
 
-const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings"): DesktopRailIcon => {
+const sharedRailIcon = (icon: "ChatCompose" | "Chats" | "Settings" | "Zap"): DesktopRailIcon => {
   if (icon === "ChatCompose") return "new-session"
   if (icon === "Chats") return "chat"
+  if (icon === "Zap") return "zap"
   return "settings"
 }
 
@@ -549,7 +551,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
 }): ReactElement => {
   const rows = projectReactSessionRows(state)
   const destinations = projectDesktopSidebarDestinations(
-    state.workspace === "settings" ? "settings" : "chat",
+    state.workspace === "settings" ? "settings" : state.workspace === "full-auto" ? "full-auto" : "chat",
     rows.some(row => row.selected),
   )
   const primaryDestinations = destinations.filter(destination => destination.id !== "shell-settings-toggle")
@@ -856,6 +858,15 @@ export const WorkbenchShell = ({ state, report }: {
             <Button type="button" variant="outline" onClick={() => dispatch(report, "DesktopHarnessMaintenanceRefreshRequested")}>Refresh</Button>
           </header>
           <ReactSettingsSurface state={state} report={report} sectionId={selectedSettingsSectionId as ReactSettingsSectionId} />
+        </main>
+      // FA-UX-01 (#8974): the dedicated Full Auto launcher/run view is a full
+      // workspace-surface override, exactly like Settings -- it replaces
+      // DesktopSurfaceManager's `conversation` (and therefore the ordinary
+      // chat composer) rather than coexisting beside it the way the Files/
+      // Review side panels do.
+      : state.workspace === "full-auto"
+      ? <main className="oa-react-workspace-surface oa-react-full-auto-workspace" data-react-workspace="full-auto">
+          <ReactFullAutoSurface state={state} report={report} />
         </main>
       : null
   const maintenance = state.settings.harnessMaintenance

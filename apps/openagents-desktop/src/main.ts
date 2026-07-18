@@ -314,7 +314,11 @@ import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import { makeFullAutoFollowupHandoff } from "./full-auto-followup.ts"
 import { FULL_AUTO_CONTROL_PORT_ENV } from "./full-auto-control-contract.ts"
-import { isFullAutoControlEnabled, startFullAutoControlServer } from "./full-auto-control-server.ts"
+import {
+  isFullAutoControlEnabled,
+  startFullAutoControlServer,
+  type FullAutoControlCapabilities,
+} from "./full-auto-control-server.ts"
 import {
   FULL_AUTO_RUN_TERMINAL_STATES,
   migrateLegacyFullAutoRegistry,
@@ -323,6 +327,35 @@ import {
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
+import {
+  FULL_AUTO_OWNER_UI_CALLER_LABEL,
+  getFullAutoRunAction,
+  getFullAutoRunReceiptAction,
+  getFullAutoRunReportAction,
+  handoffFullAutoRunAction,
+  listFullAutoRunsAction,
+  pauseFullAutoRunAction,
+  resumeFullAutoRunAction,
+  retryFullAutoRunNowAction,
+  startFullAutoRunAction,
+  stopFullAutoRunAction,
+  type FullAutoRunActionContext,
+} from "./full-auto-run-actions.ts"
+import {
+  FullAutoRunGetChannel,
+  FullAutoRunHandoffChannel,
+  FullAutoRunListChannel,
+  FullAutoRunPauseChannel,
+  FullAutoRunReceiptChannel,
+  FullAutoRunReportChannel,
+  FullAutoRunResumeChannel,
+  FullAutoRunRetryNowChannel,
+  FullAutoRunStartChannel,
+  FullAutoRunStopChannel,
+  decodeFullAutoRunHandoffIpcRequest,
+  decodeFullAutoRunRefRequest,
+  decodeFullAutoRunStartRequest,
+} from "./full-auto-run-ipc-contract.ts"
 import {
   makeFullAutoRunProjectionPublisher,
   wrapFullAutoRunRegistryWithProjectionPublish,
@@ -4234,6 +4267,144 @@ ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown
 })
 
 /**
+ * FA-UX-01 (#8974): the SAME capability object the opt-in HTTP control
+ * server (below) hands to `full-auto-run-actions.ts` -- extracted once so
+ * this Desktop app's own always-on renderer IPC bridge (registered right
+ * after this block) drives the identical registry/liveness/report/handoff
+ * mutations through the identical main-owned transition service, never a
+ * second wiring of the same capabilities.
+ */
+const fullAutoRunActionCapabilities: FullAutoControlCapabilities = {
+  registry: fullAutoRegistry,
+  // FA-RUN-01 (#8969): the durable run objective/lifecycle store.
+  runRegistry: fullAutoRunRegistry,
+  resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
+  // continue-now is a new TRIGGER into the same promise-chain mutex --
+  // the exact function every other Full Auto trigger point calls.
+  triggerReconciliation: () => runFullAutoReconciliation(),
+  liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
+  listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
+  appendSystemNote: appendFullAutoSystemNote,
+  // FA-AC-44 Pause: the exact same live-state-resolved three-way
+  // interrupt chain CodexLocalFullAutoInterruptChannel already uses.
+  interruptLiveTurn: threadRef => {
+    const live = fullAutoLiveState.get(threadRef)
+    if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return false
+    return codexLocal.interrupt(live.turnRef) ||
+      grokAcpDriver.interrupt(live.turnRef) ||
+      cursorAcpDriver.interrupt(live.turnRef)
+  },
+  // start bootstrap: main mints the thread in its own store -- callers
+  // never name a ref -- so the reconcile dispatcher finds a real thread
+  // and the first continuation opens a brand-new provider conversation.
+  createThread: (title, laneRef) => {
+    const thread = threads().newThread(title ?? "Full Auto")
+    providerLaneRegistry.bind(thread.id, laneRef)
+    return thread.id
+  },
+  listLanes: providerLaneEntries,
+  isLaneEligible: laneRef => {
+    const report = providerLaneCapabilityByRef(laneRef)
+    const policy = fullAutoLanePolicy(laneRef)
+    if (report === null || policy?.autoResolveQuestions !== true) return false
+    const projection = projectProviderLaneCapabilities(report)
+    return projection.admission === "admitted" && projection.fullAuto === true
+  },
+  // FA-HO-01 (#8975): the SAME admission/auth/capability re-check the
+  // existing interactive manual-switch IPC handler already uses.
+  providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
+  getThread: threadRef => threads().open(threadRef),
+  providerHandoffRegistry,
+  // FA-RUN-04 (#8972): the bounded, durable private report store.
+  reportStore: fullAutoRunReportStore,
+}
+
+/**
+ * FA-UX-01 (#8974): the Desktop UI's OWN always-on IPC bridge to the durable
+ * FullAutoRun model, backing the left-rail launcher and read-only run view.
+ * Every handler is a thin call into the shared action functions with
+ * actor:"owner_ui" -- the actor value full-auto-run-registry.ts explicitly
+ * reserves for this UI -- so the durable transition/system-note history
+ * always distinguishes an owner click from a CLI/MCP/OpenAPI caller.
+ */
+const fullAutoRunActionContext: FullAutoRunActionContext = {
+  capabilities: fullAutoRunActionCapabilities,
+  now: () => new Date(),
+  actor: "owner_ui",
+  callerLabel: FULL_AUTO_OWNER_UI_CALLER_LABEL,
+}
+ipcMain.handle(FullAutoRunListChannel, () => ({
+  runs: listFullAutoRunsAction(fullAutoRunActionContext),
+  // Same function `startFullAutoRunAction` checks `workspaceRef` against --
+  // the launcher pre-fills from this exact value.
+  resolvedWorkspaceRef: fullAutoRunActionCapabilities.resolveWorkspaceRef(),
+}))
+ipcMain.handle(FullAutoRunStartChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunStartRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "Invalid Full Auto run start request." } }
+  }
+  return startFullAutoRunAction(fullAutoRunActionContext, request)
+})
+ipcMain.handle(FullAutoRunGetChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return getFullAutoRunAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunPauseChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return pauseFullAutoRunAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunResumeChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return resumeFullAutoRunAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunStopChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return stopFullAutoRunAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunRetryNowChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return retryFullAutoRunNowAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunHandoffChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunHandoffIpcRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "Invalid Full Auto run handoff request." } }
+  }
+  const { runRef, ...body } = request
+  return handoffFullAutoRunAction(fullAutoRunActionContext, runRef, body)
+})
+ipcMain.handle(FullAutoRunReportChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return getFullAutoRunReportAction(fullAutoRunActionContext, request.runRef)
+})
+ipcMain.handle(FullAutoRunReceiptChannel, async (_event, value: unknown) => {
+  const request = decodeFullAutoRunRefRequest(value)
+  if (request === null) {
+    return { ok: false, status: 400, error: { error: "invalid_request", message: "runRef must be a 1-180 character string." } }
+  }
+  return getFullAutoRunReceiptAction(fullAutoRunActionContext, request.runRef)
+})
+
+/**
  * FA-H13 (#8886): the opt-in, loopback-only Phase 1 Full Auto control
  * surface. Off by default -- constructed ONLY under
  * OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 -- and handed a narrow capability
@@ -4246,50 +4417,7 @@ ipcMain.handle(CodexLocalFullAutoInterruptChannel, async (_event, value: unknown
 if (isFullAutoControlEnabled(process.env)) {
   const pinnedControlPort = Number.parseInt(process.env[FULL_AUTO_CONTROL_PORT_ENV] ?? "", 10)
   void startFullAutoControlServer({
-    capabilities: {
-      registry: fullAutoRegistry,
-      // FA-RUN-01 (#8969): the durable run objective/lifecycle store.
-      runRegistry: fullAutoRunRegistry,
-      resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
-      // continue-now is a new TRIGGER into the same promise-chain mutex --
-      // the exact function every other Full Auto trigger point calls.
-      triggerReconciliation: () => runFullAutoReconciliation(),
-      liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
-      listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
-      appendSystemNote: appendFullAutoSystemNote,
-      // FA-AC-44 Pause: the exact same live-state-resolved three-way
-      // interrupt chain CodexLocalFullAutoInterruptChannel already uses.
-      interruptLiveTurn: threadRef => {
-        const live = fullAutoLiveState.get(threadRef)
-        if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return false
-        return codexLocal.interrupt(live.turnRef) ||
-          grokAcpDriver.interrupt(live.turnRef) ||
-          cursorAcpDriver.interrupt(live.turnRef)
-      },
-      // start bootstrap: main mints the thread in its own store -- callers
-      // never name a ref -- so the reconcile dispatcher finds a real thread
-      // and the first continuation opens a brand-new provider conversation.
-      createThread: (title, laneRef) => {
-        const thread = threads().newThread(title ?? "Full Auto")
-        providerLaneRegistry.bind(thread.id, laneRef)
-        return thread.id
-      },
-      listLanes: providerLaneEntries,
-      isLaneEligible: laneRef => {
-        const report = providerLaneCapabilityByRef(laneRef)
-        const policy = fullAutoLanePolicy(laneRef)
-        if (report === null || policy?.autoResolveQuestions !== true) return false
-        const projection = projectProviderLaneCapabilities(report)
-        return projection.admission === "admitted" && projection.fullAuto === true
-      },
-      // FA-HO-01 (#8975): the SAME admission/auth/capability re-check the
-      // existing interactive manual-switch IPC handler already uses.
-      providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
-      getThread: threadRef => threads().open(threadRef),
-      providerHandoffRegistry,
-      // FA-RUN-04 (#8972): the bounded, durable private report store.
-      reportStore: fullAutoRunReportStore,
-    },
+    capabilities: fullAutoRunActionCapabilities,
     controlFilePath: path.join(app.getPath("userData"), "full-auto", "control.json"),
     ...(Number.isInteger(pinnedControlPort) && pinnedControlPort > 0 && pinnedControlPort <= 65535
       ? { port: pinnedControlPort }
@@ -4532,7 +4660,7 @@ const smokeReactSidebarDestinations = `(async () => {
   const deadline = Date.now() + 30000
   const rows = () => [...document.querySelectorAll('[data-sidebar-destination-id]')]
   const ids = () => rows().map(row => row.getAttribute('data-sidebar-destination-id'))
-  const expected = ['workspace-new-chat', 'shell-settings-toggle']
+  const expected = ['workspace-new-chat', 'workspace-full-auto', 'shell-settings-toggle']
   const click = (id) => document.querySelector('[data-sidebar-destination-id="' + id + '"]')?.click()
   const waitFor = async (selector) => {
     while (Date.now() < deadline && document.querySelector(selector) === null) await wait(50)
@@ -4734,46 +4862,86 @@ const smokeReactTurn = `(async () => {
 // the session and start the first autonomous turn without a Send click. Turn
 // the toggle back off as soon as dispatch is observed so this bounded smoke
 // proves one turn rather than intentionally exercising the continuation cap.
+/**
+ * FA-UX-01 (#8974): drives the dedicated Full Auto launcher and read-only
+ * run view -- the composer-embedded toggle this smoke exercised before
+ * (FA-AC-56) is retired. Opens the launcher from the left rail, fills the
+ * mission contract, Starts, observes the run view render an explicit
+ * lifecycle state and a completed turn from the same smoke-fixture Codex
+ * dispatch loop, then Stops and confirms the terminal state.
+ */
 const smokeReactFullAutoImmediate = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 60000
-  const buttons = () => [...document.querySelectorAll('button')]
-  const newSession = buttons().find(button => button.textContent?.trim() === 'New session')
-  if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: 'new session unavailable' }
-  newSession.click()
-  const timeline = () => [...document.querySelectorAll('.oa-react-timeline-item')]
-  while (Date.now() < deadline && timeline().length !== 0) await wait(25)
-  const toggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
-  if (!(toggle instanceof HTMLButtonElement)) return { ok: false, reason: 'Full Auto toggle unavailable' }
-  const completedTurns = () => timeline().filter(item => (item.textContent ?? '').includes('Codex local fixture proof.')).length
-  const completedBefore = completedTurns()
-  toggle.click()
-  let runningObserved = false
-  let pressedObserved = false
-  let turnObserved = false
-  while (Date.now() < deadline && !(runningObserved || turnObserved)) {
-    runningObserved = document.querySelector('[data-full-auto-status="running"]') !== null
-    pressedObserved ||= toggle.getAttribute('aria-pressed') === 'true'
-    turnObserved = timeline().length > 0
-    if (!(runningObserved || turnObserved)) await wait(10)
+  const setValue = (el, value) => {
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
   }
-  // Stop the loop while its first turn is running; this click is the only
-  // action after toggle-on and cannot be mistaken for a composer Send.
-  const activeToggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
-  if (activeToggle instanceof HTMLButtonElement && activeToggle.getAttribute('aria-pressed') === 'true') activeToggle.click()
-  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-full-auto-toggle"]')?.getAttribute('aria-pressed') !== 'false') {
+  const launcher = document.querySelector('[data-sidebar-destination-id="workspace-full-auto"]')
+  if (!(launcher instanceof HTMLButtonElement)) return { ok: false, reason: 'Full Auto launcher dock entry unavailable' }
+  launcher.click()
+  const titleField = await (async () => {
+    while (Date.now() < deadline && document.querySelector('#full-auto-launcher-title') === null) await wait(25)
+    return document.querySelector('#full-auto-launcher-title')
+  })()
+  if (!(titleField instanceof HTMLInputElement)) return { ok: false, reason: 'Full Auto launcher form unavailable' }
+  setValue(titleField, 'Smoke run')
+  setValue(document.querySelector('#full-auto-launcher-objective'), 'Prove the launcher and run view render real live state.')
+  setValue(document.querySelector('#full-auto-launcher-done-condition'), 'The smoke check observes a completed turn and a terminal Stop.')
+  const start = document.querySelector('[data-en-key="full-auto-launcher-start"]')
+  let startEnabled = false
+  while (Date.now() < deadline && !(start instanceof HTMLButtonElement && !start.disabled)) {
+    startEnabled = start instanceof HTMLButtonElement && !start.disabled
+    if (startEnabled) break
     await wait(25)
   }
-  while (Date.now() < deadline && completedTurns() <= completedBefore) await wait(50)
-  const finalToggle = document.querySelector('[data-en-key="shell-full-auto-toggle"]')
+  if (!(start instanceof HTMLButtonElement) || start.disabled) return { ok: false, reason: 'Start stayed disabled', workspaceRef: document.querySelector('#full-auto-launcher-workspace')?.value ?? null }
+  start.click()
+  const runStateBadge = () => document.querySelector('[data-en-key="full-auto-run-state"]')
+  const launcherError = () => document.querySelector('.oa-react-full-auto-error')?.textContent ?? null
+  const startDeadline = Math.min(deadline, Date.now() + 10000)
+  while (Date.now() < startDeadline && runStateBadge() === null && launcherError() === null) await wait(25)
+  if (runStateBadge() === null) return { ok: false, reason: 'run view did not render after Start', launcherError: launcherError() }
+  const initialState = runStateBadge()?.textContent ?? null
+  const terminalLabels = ['Completed', 'Failed', 'Stopped', 'Cap reached']
+  const turnCompleted = () => (document.querySelector('.oa-react-full-auto-transcript')?.textContent ?? '').includes('Codex local fixture proof.')
+    || (document.querySelector('.oa-react-full-auto-transcript')?.textContent ?? '').toLowerCase().includes('completed')
+  let turnObserved = false
+  const turnDeadline = Math.min(deadline, Date.now() + 15000)
+  while (Date.now() < turnDeadline && !turnObserved && !terminalLabels.includes(runStateBadge()?.textContent ?? '')) {
+    turnObserved = turnCompleted()
+    if (!turnObserved) await wait(50)
+  }
+  // Stop is legal from any non-terminal state (including a live turn, which
+  // it interrupts) -- click it while it is still offered; the smoke-fixture
+  // dispatch loop can independently win the race to a terminal state first
+  // (Completed/Cap reached), which is an equally valid proof that the live
+  // polling above reflects real background state changes without any owner
+  // action, per FA-AC-47/48.
+  const stopDeadline = Math.min(deadline, Date.now() + 20000)
+  let stopClicked = false
+  while (Date.now() < stopDeadline && !terminalLabels.includes(runStateBadge()?.textContent ?? '')) {
+    const button = document.querySelector('[data-en-key="full-auto-run-stop"]')
+    if (button instanceof HTMLButtonElement) { button.click(); stopClicked = true; break }
+    await wait(25)
+  }
+  while (Date.now() < stopDeadline && !terminalLabels.includes(runStateBadge()?.textContent ?? '')) await wait(50)
+  const finalState = runStateBadge()?.textContent ?? null
+  const actionError = document.querySelector('.oa-react-full-auto-error')?.textContent ?? null
+  // Leaving the workbench on the terminal run view would break every
+  // subsequent smoke step's ordinary-chat assumptions -- return to a fresh
+  // session, exactly like this check's own entry point.
+  const newSession = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'New session')
+  if (newSession instanceof HTMLButtonElement) newSession.click()
+  while (Date.now() < deadline && document.querySelector('[data-react-workspace="full-auto"]') !== null) await wait(25)
   return {
-    ok: (pressedObserved || runningObserved || turnObserved) && completedTurns() > completedBefore &&
-      finalToggle?.getAttribute('aria-pressed') === 'false',
-    pressedObserved,
-    runningObserved,
+    ok: initialState !== null && terminalLabels.includes(finalState ?? ''),
+    initialState,
+    finalState,
     turnObserved,
-    assistantCompleted: completedTurns() > completedBefore,
-    toggleStopped: finalToggle?.getAttribute('aria-pressed') === 'false',
+    stopClicked,
+    actionError,
   }
 })()`
 
@@ -5574,7 +5742,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
   // UX-4 (#8790): the rendered dock is EXACTLY the MVP allowlist, in order.
   const dockIds = Array.from(document.querySelectorAll('[data-en-key="sidebar-workspace-dock"] > button[data-en-key]'))
     .map((item) => item.getAttribute("data-en-key"))
-  const expectedDock = ["workspace-new-chat", "shell-settings-toggle"]
+  const expectedDock = ["workspace-new-chat", "workspace-full-auto", "shell-settings-toggle"]
   const dockExact = JSON.stringify(dockIds) === JSON.stringify(expectedDock)
   const codex = document.querySelector('[data-en-key="shell-codex-engine"]')
   return { ok: present.length === 0 && dockExact && codex?.textContent === "Codex", present, dockIds, dockExact, codex: codex?.textContent ?? null }

@@ -12,11 +12,12 @@ import {
   UserRound,
   ShieldCheck,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react"
 import { Fragment, forwardRef, type KeyboardEvent, type ReactElement, type ReactNode } from "react"
 
-export type DesktopRailIcon = "account" | "back" | "chat" | "general" | "home" | "new-session" | "privacy" | "settings"
+export type DesktopRailIcon = "account" | "back" | "chat" | "general" | "home" | "new-session" | "privacy" | "settings" | "zap"
 
 export type DesktopRailDestination = Readonly<{
   id: string
@@ -45,6 +46,7 @@ const railIcons: Readonly<Record<DesktopRailIcon, LucideIcon>> = {
   "new-session": SquarePen,
   privacy: ShieldCheck,
   settings: Settings,
+  zap: Zap,
 }
 
 const railIconNames: Readonly<Record<DesktopRailIcon, string>> = {
@@ -56,6 +58,7 @@ const railIconNames: Readonly<Record<DesktopRailIcon, string>> = {
   "new-session": "ChatCompose",
   privacy: "ShieldCheck",
   settings: "Settings",
+  zap: "Zap",
 }
 
 export type DesktopSessionRailProps = Readonly<{

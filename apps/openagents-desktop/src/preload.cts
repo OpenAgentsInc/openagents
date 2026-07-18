@@ -222,6 +222,23 @@ import {
   type CodexLocalFullAutoState,
 } from "./codex-local-contract.ts"
 import {
+  FullAutoRunGetChannel,
+  FullAutoRunHandoffChannel,
+  FullAutoRunListChannel,
+  FullAutoRunPauseChannel,
+  FullAutoRunReceiptChannel,
+  FullAutoRunReportChannel,
+  FullAutoRunResumeChannel,
+  FullAutoRunRetryNowChannel,
+  FullAutoRunStartChannel,
+  FullAutoRunStopChannel,
+  decodeFullAutoRunHandoffIpcRequest,
+  decodeFullAutoRunStartRequest,
+  unavailableFullAutoRunOutcome,
+  type FullAutoRunHandoffIpcRequest,
+  type FullAutoRunStartRequest,
+} from "./full-auto-run-ipc-contract.ts"
+import {
   CodexEcosystemMutationChannel,
   CodexEcosystemSnapshotChannel,
   decodeCodexEcosystemMutationRequest,
@@ -1151,5 +1168,51 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return () => ipcRenderer.removeListener(DesktopCommandEventChannel, handler)
     },
     ready: () => ipcRenderer.invoke(DesktopCommandReadyChannel),
+  },
+  /**
+   * FA-UX-01 (#8974): the dedicated Full Auto launcher + read-only run view
+   * bridge. A thin, schema-decoded pass-through to main's IPC handlers,
+   * which in turn call the exact same main-owned action functions the
+   * opt-in HTTP control server (OpenAPI/CLI/MCP) uses -- one transition
+   * service, two thin transports. Every raw payload decodes on THIS side of
+   * the bridge (renderer never trusts an undecoded IPC reply); an invalid
+   * request never reaches main and an unavailable bridge degrades to a
+   * typed 503 outcome instead of throwing.
+   */
+  fullAutoRun: {
+    list: () => ipcRenderer.invoke(FullAutoRunListChannel),
+    start: (value: unknown) => {
+      const request = decodeFullAutoRunStartRequest(value)
+      return request === null
+        ? Promise.resolve(unavailableFullAutoRunOutcome())
+        : ipcRenderer.invoke(FullAutoRunStartChannel, request satisfies FullAutoRunStartRequest)
+    },
+    get: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunGetChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    pause: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunPauseChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    resume: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunResumeChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    stop: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunStopChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    retryNow: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunRetryNowChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    handoff: (value: unknown) => {
+      const request = decodeFullAutoRunHandoffIpcRequest(value)
+      return request === null
+        ? Promise.resolve(unavailableFullAutoRunOutcome())
+        : ipcRenderer.invoke(FullAutoRunHandoffChannel, request satisfies FullAutoRunHandoffIpcRequest)
+    },
+    report: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunReportChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
+    receipt: (runRef: unknown) => typeof runRef === "string"
+      ? ipcRenderer.invoke(FullAutoRunReceiptChannel, { runRef })
+      : Promise.resolve(unavailableFullAutoRunOutcome()),
   },
 })

@@ -16,7 +16,7 @@ describe("Codex release notes", () => {
         }), { status: 200 })
       }) as typeof fetch,
     })
-    expect(requested).toEndWith("/rust-v0.144.1")
+    expect(requested.endsWith("/rust-v0.144.1")).toBe(true)
     expect(notes?.body).toHaveLength(12_000)
     expect(notes?.version).toBe("0.144.1")
   })

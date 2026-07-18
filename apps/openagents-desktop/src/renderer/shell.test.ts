@@ -538,6 +538,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(dock?.items[0]?.id).toBe("workspace-new-chat")
     expect(dock?.items.map(item => item.id)).toEqual([
       "workspace-new-chat",
+      "workspace-full-auto",
       "shell-settings-toggle",
     ])
     expect(navItemById(view, "workspace-new-chat")).toMatchObject({ icon: "ChatCompose", accessibilityLabel: "New session" })

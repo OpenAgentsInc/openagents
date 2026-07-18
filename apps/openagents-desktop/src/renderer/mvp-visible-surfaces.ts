@@ -32,6 +32,10 @@ export const mvpDockSurfaces = [
     authority: "ProductSpec Scope: session catalog with new, resume, fork, archive, delete",
   },
   {
+    id: "workspace-full-auto",
+    authority: "FA-AC-54 (#8974): a dedicated Full Auto launcher action beside/under New session, replacing the retired composer toggle as the run's entry point",
+  },
+  {
     id: "shell-settings-toggle",
     authority: "CW-AC-01/02 session truth, CW-AC-18 update/rollback, CW-AC-17 diagnostics, CW-AC-12 keyboard bindings, MAINT-1 #8785 harness maintenance",
   },
@@ -85,10 +89,13 @@ export const forbiddenVisibleSurfaceKeys: ReadonlyArray<string> = [
   "workspace-terminal-panel",
   "workspace-inbox-panel",
   // Composer affordances outside the MVP cut (#8828 explicitly admits the
-  // already-authorized bounded image attachment control; #8852 explicitly
-  // admits the Full Auto toggle (`shell-full-auto-toggle`) as a second named
-  // exception -- an explicit, dated owner direction to add it, not a silent
-  // reintroduction of the harness/model/reasoning/voice chrome named below).
+  // already-authorized bounded image attachment control). The composer
+  // Full Auto toggle (`shell-full-auto-toggle`, admitted by #8852) was
+  // retired by FA-UX-01 (#8974): Full Auto now has its own dedicated
+  // left-rail launcher and read-only run view (`workspace-full-auto`
+  // above) instead of a composer-embedded control, so the toggle is a
+  // forbidden surface again rather than a named exception.
+  "shell-full-auto-toggle",
   "shell-harness-select",
   "shell-model-select",
   "shell-reasoning-select",

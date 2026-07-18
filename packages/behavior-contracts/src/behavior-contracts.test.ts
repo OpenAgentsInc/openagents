@@ -144,7 +144,10 @@ describe("behavior contract registry", () => {
     expect(validation).toEqual({ issues: [], ok: true })
     expect(decoded.contracts).toHaveLength(33)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
-    expect(pending).toHaveLength(12)
+    // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
+    // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
+    // full_auto_read_only_run_view.v1, full_auto_play_pause_stop_lifecycle.v1.
+    expect(pending).toHaveLength(9)
     expect(
       decoded.contracts.find(
         contract =>

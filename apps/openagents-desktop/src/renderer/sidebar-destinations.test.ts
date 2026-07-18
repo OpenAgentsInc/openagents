@@ -11,6 +11,7 @@ describe("Desktop sidebar destination projection", () => {
   test("keeps the exact admitted catalog order and closed icon identities", () => {
     expect(desktopSidebarDestinationDefinitions.map(({ id, label, icon }) => ({ id, label, icon }))).toEqual([
       { id: "workspace-new-chat", label: "New session", icon: "ChatCompose" },
+      { id: "workspace-full-auto", label: "Full Auto", icon: "Zap" },
       { id: "shell-settings-toggle", label: "Settings", icon: "Settings" },
     ])
     for (const destination of desktopSidebarDestinationDefinitions) {
@@ -21,6 +22,7 @@ describe("Desktop sidebar destination projection", () => {
   test("binds every row to its existing canonical command and typed intent", () => {
     expect(desktopSidebarDestinationDefinitions.map(({ commandId, intent }) => ({ commandId, intent }))).toEqual([
       { commandId: "chat.new", intent: { name: "DesktopNewChat", payload: null } },
+      { commandId: "full-auto.launch", intent: { name: "DesktopFullAutoLauncherOpened", payload: null } },
       { commandId: "settings.open", intent: { name: "DesktopSettingsToggled", payload: null } },
     ])
     for (const destination of desktopSidebarDestinationDefinitions) {

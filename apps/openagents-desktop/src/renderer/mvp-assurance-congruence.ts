@@ -73,6 +73,22 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     contractRefs: ["openagents_desktop.mvp.uses_logged_in_codex_session.v1"],
     oracleRefs: ["apps/openagents-desktop/src/renderer/settings.test.ts", "apps/openagents-desktop/src/codex-local-runtime.test.ts"],
   },
+  {
+    surfaceId: "workspace-full-auto",
+    interaction: "Start a durable Full Auto run from a dedicated left-rail launcher and observe its read-only run view (pinned mission contract, explicit lifecycle state, Pause/Resume/Stop) with no ordinary chat composer visible",
+    criterionRefs: ["FA-AC-54", "FA-AC-55", "FA-AC-56", "FA-AC-57"],
+    assuranceItemRefs: ["AO-FA-AC-54-01", "AO-FA-AC-55-01"],
+    contractRefs: [
+      "openagents_desktop.full_auto_dedicated_launcher.v1",
+      "openagents_desktop.full_auto_read_only_run_view.v1",
+      "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1",
+    ],
+    oracleRefs: [
+      "apps/openagents-desktop/src/renderer/full-auto-workspace.test.ts",
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+    ],
+  },
 ]
 
 export const mvpAssuranceCongruenceViolations = (

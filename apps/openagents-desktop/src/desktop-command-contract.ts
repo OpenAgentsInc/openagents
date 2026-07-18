@@ -21,6 +21,7 @@ export const DesktopCommandId = Schema.Literals([
   "workspace.choose",
   "workspace.files",
   "workspace.review",
+  "full-auto.launch",
 ])
 export type DesktopCommandId = typeof DesktopCommandId.Type
 
@@ -76,6 +77,10 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   { id: "workspace.review", label: "Review changes", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "review" }, result: "workspace_selected", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "workspace.choose", label: "Choose workspace folder", intentName: "DesktopWorkspacePickerRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "workspace_picker_requested", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+O", "Control+O"], palette: true },
   { id: "settings.open", label: "Open Settings", intentName: "DesktopSettingsToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+,", "Control+,"], palette: true },
+  // FA-AC-54 (#8974): the dedicated left-rail Full Auto launcher entry,
+  // distinct from the retired composer toggle -- opens the mission-contract
+  // form rather than applying to the next message.
+  { id: "full-auto.launch", label: "Full Auto", intentName: "DesktopFullAutoLauncherOpened", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "session", availability: "always", authorization: "local_user", defaultBindings: [], palette: true },
 ]
 
 export type DesktopCommandBinding = Readonly<{

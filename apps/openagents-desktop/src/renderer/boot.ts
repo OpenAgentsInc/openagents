@@ -99,6 +99,7 @@ import {
   type FableLocalRendererBridge,
 } from "./local-harness.ts"
 import { withHarnessLanes, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
   decodeFableLocalAvailability,
@@ -259,6 +260,19 @@ type DesktopBridge = Readonly<{
         detail?: string
       }>) => void) => () => void
     }>
+  }>
+  /** FA-UX-01 (#8974): the dedicated Full Auto launcher/run-view bridge. */
+  fullAutoRun?: Readonly<{
+    list?: () => Promise<unknown>
+    start?: (value: unknown) => Promise<unknown>
+    get?: (runRef: unknown) => Promise<unknown>
+    pause?: (runRef: unknown) => Promise<unknown>
+    resume?: (runRef: unknown) => Promise<unknown>
+    stop?: (runRef: unknown) => Promise<unknown>
+    retryNow?: (runRef: unknown) => Promise<unknown>
+    handoff?: (value: unknown) => Promise<unknown>
+    report?: (runRef: unknown) => Promise<unknown>
+    receipt?: (runRef: unknown) => Promise<unknown>
   }>
   codexEcosystem?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -1111,6 +1125,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           : { ok: false }
       },
     }
+    // FA-UX-01 (#8974): the dedicated Full Auto launcher/run-view bridge.
+    // Every method is a thin pass-through to `bridge.fullAutoRun` (absent
+    // preload degrades to the raw bridge's own `unavailableFullAutoRunOutcome`
+    // shape); `full-auto-workspace.ts` is the one place that schema-decodes
+    // the raw payload.
+    const fullAutoRunHost: FullAutoRunRendererHost = {
+      list: () => readBridge()?.fullAutoRun?.list?.() ?? Promise.resolve({ runs: [], resolvedWorkspaceRef: null }),
+      start: request => readBridge()?.fullAutoRun?.start?.(request) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      get: runRef => readBridge()?.fullAutoRun?.get?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      pause: runRef => readBridge()?.fullAutoRun?.pause?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      resume: runRef => readBridge()?.fullAutoRun?.resume?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      stop: runRef => readBridge()?.fullAutoRun?.stop?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      retryNow: runRef => readBridge()?.fullAutoRun?.retryNow?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      handoff: request => readBridge()?.fullAutoRun?.handoff?.(request) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      report: runRef => readBridge()?.fullAutoRun?.report?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+      receipt: runRef => readBridge()?.fullAutoRun?.receipt?.(runRef) ?? Promise.resolve(unavailableFullAutoRunOutcome()),
+    }
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -1200,7 +1231,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       } satisfies AcpProviderSettingsBridge, {
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
-      }),
+      }, fullAutoRunHost),
     )
     if (typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

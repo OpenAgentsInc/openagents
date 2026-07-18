@@ -55,7 +55,6 @@ import {
   Globe2,
   X,
   XCircle,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -81,7 +80,7 @@ import {
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { activeFullAutoEnabled, activeFullAutoTurnRunning, capabilityForActiveLane, formatRelativeTimestamp, nextSelectableProviderLane, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { capabilityForActiveLane, formatRelativeTimestamp, nextSelectableProviderLane, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
@@ -92,7 +91,6 @@ const composerIconNames = {
   submit: "ArrowUp",
   attach: "Image",
   remove: "X",
-  fullAuto: "Zap",
 } as const satisfies Readonly<Record<string, IconName>>;
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -472,13 +470,13 @@ export const ReactComposer = ({
   // reusing selectableProviderLanes' exact evidence-derived admission truth.
   // No admitted lane is left unreachable, and no unadmitted lane is offered.
   const nextProviderLane = nextSelectableProviderLane(state, state.activeLaneRef);
-  const canSwitchProvider = !state.pending && !activeFullAutoTurnRunning(state) && nextProviderLane !== null;
-  // FA-H4 (#8877): main reports a BACKGROUND Full Auto turn running on the
-  // active thread (renderer non-pending — no live events reach it). Renders
-  // the running badge and the Stop control; the send handler fences manual
-  // submits while this holds.
-  const fullAutoRunning = activeFullAutoTurnRunning(state);
-  const activeSubmitMode = fullAutoRunning ? "queue" : state.pendingSubmitMode;
+  const canSwitchProvider = !state.pending && nextProviderLane !== null;
+  // FA-UX-01 (#8974): Full Auto no longer runs as a per-thread composer
+  // toggle -- it starts only from the dedicated left-rail launcher and runs
+  // in its own read-only run view, so the ordinary composer's submit/attach/
+  // model/reasoning/permission gating collapses back to plain `state.pending`
+  // (an ordinary in-flight turn) with no Full Auto branch.
+  const activeSubmitMode = state.pendingSubmitMode;
   const pendingAction = composerActionPresentation(state.composerAdmission, activeSubmitMode);
   const alternatePendingMode = state.pendingSubmitMode === "steer" ? "queue" : "steer";
   const alternatePendingAction = composerActionPresentation(state.composerAdmission, alternatePendingMode);
@@ -488,13 +486,13 @@ export const ReactComposer = ({
   const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
   const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null || state.composerPreviewContext !== null;
-  const canSubmit = state.pending || fullAutoRunning
+  const canSubmit = state.pending
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
     : lane.available && capabilityAdmitted && (hasText || hasBoundedContext);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const imageSupported = capabilities?.images ?? true;
-  const attachmentDisabled = state.pending || fullAutoRunning || atImageLimit || !imageSupported;
-  const attachmentLabel = state.pending || fullAutoRunning
+  const attachmentDisabled = state.pending || atImageLimit || !imageSupported;
+  const attachmentLabel = state.pending
     ? "Attach images after the current turn finishes"
     : !imageSupported
       ? `${capabilities?.displayName ?? "This lane"} does not support image attachments`
@@ -508,12 +506,12 @@ export const ReactComposer = ({
     setDiscoveryOpen(false);
     setSecondaryControlsOpen(false);
   }, [sessionKey]);
-  const submitIntentFor = (pendingMode: "steer" | "queue") => state.pending || fullAutoRunning
+  const submitIntentFor = (pendingMode: "steer" | "queue") => state.pending
     ? pendingMode === "steer"
       ? "DesktopSteerCurrentRequested"
       : "DesktopQueueNextRequested"
     : "DesktopNoteSubmitted";
-  const submitLabel = state.pending || fullAutoRunning
+  const submitLabel = state.pending
     ? activeSubmitMode === "steer"
       ? "Steer"
       : "Queue"
@@ -691,13 +689,13 @@ export const ReactComposer = ({
           editorRef={editorRef}
           value={state.input}
           placeholder={
-            state.pending || fullAutoRunning
+            state.pending
               ? activeSubmitMode === "steer"
                 ? "Steer the current turn…"
                 : "Queue a follow-up…"
               : `Message ${capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}…`
           }
-          ariaLabel={state.pending || fullAutoRunning ? `${submitLabel} a ${capabilities?.displayName ?? "provider"} message` : `Message ${capabilities?.displayName ?? "provider"}`}
+          ariaLabel={state.pending ? `${submitLabel} a ${capabilities?.displayName ?? "provider"} message` : `Message ${capabilities?.displayName ?? "provider"}`}
           disabled={false}
           onChange={(value) => dispatch(report, "DesktopInputChanged", value)}
           onSubmit={submit}
@@ -749,7 +747,7 @@ export const ReactComposer = ({
         <DesktopComposerButton
           data-en-key="shell-model-select"
           kind="action"
-          disabled={state.pending || fullAutoRunning || visibleModels.length < 2 || !capabilityAdmitted}
+          disabled={state.pending || visibleModels.length < 2 || !capabilityAdmitted}
           onClick={() => dispatch(report, "DesktopModelSelected", nextModel)}
           aria-label={`Model: ${selectedModel}`}
           title={`Model: ${selectedModel}`}
@@ -767,7 +765,7 @@ export const ReactComposer = ({
         {capabilities !== null && capabilities.reasoningEfforts.length > 0 ? <DesktopComposerButton
           data-en-key="shell-reasoning-select"
           kind="action"
-          disabled={state.pending || fullAutoRunning}
+          disabled={state.pending}
           onClick={() => {
             const index = Math.max(0, capabilities.reasoningEfforts.indexOf(state.codexReasoningEffort));
             dispatch(report, "DesktopCodexReasoningSelected", capabilities.reasoningEfforts[(index + 1) % capabilities.reasoningEfforts.length] ?? state.codexReasoningEffort);
@@ -780,26 +778,12 @@ export const ReactComposer = ({
         {capabilities !== null && capabilities.permissionModes.includes("plan_only") && state.activeThreadId !== null ? <DesktopComposerButton
           data-en-key="shell-permission-mode"
           kind="action"
-          disabled={state.pending || fullAutoRunning}
+          disabled={state.pending}
           onClick={() => dispatch(report, "DesktopPermissionModeSelected", (state.permissionModeByThread[state.activeThreadId!] ?? "owner_full") === "owner_full" ? "plan_only" : "owner_full")}
           aria-label={(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools. Switch to plan only" : "Plan only. Switch to full tools"}
           title="Permission mode"
         >
           {(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools" : "Plan only"}
-        </DesktopComposerButton> : null}
-        {(capabilities?.fullAuto ?? true) ? <DesktopComposerButton
-          data-en-key="shell-full-auto-toggle"
-          kind="toggle"
-          // FA-H1 #8874: the pressed state and label read the ACTIVE thread's
-          // durable-truth entry, so a thread main resumed after a restart
-          // shows ON and a single click honestly means "turn it off".
-          aria-pressed={activeFullAutoEnabled(state)}
-          onClick={() => dispatch(report, "DesktopFullAutoToggled")}
-          aria-label={activeFullAutoEnabled(state) ? "Turn off Full Auto" : "Turn on Full Auto"}
-          title="Full Auto: Codex looks at this repo and keeps working, turn after turn, until you turn it off"
-        >
-          <Zap data-icon-name={composerIconNames.fullAuto} aria-hidden="true" />
-          Full Auto
         </DesktopComposerButton> : null}
           </div>
         </div>
@@ -834,19 +818,7 @@ export const ReactComposer = ({
             {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : capabilities?.reason ?? lane.reason ?? `${capabilities?.displayName ?? "Provider"} unavailable`}
           </Badge>
         ) : null}
-        {!state.pending && fullAutoRunning ? (
-          <Badge
-            className="oa-react-composer-status"
-            variant="outline"
-            role="status"
-            aria-live="polite"
-            data-full-auto-status="running"
-          >
-            <span className="oa-react-composer-status-dot" aria-hidden="true" />
-            Full Auto running…
-          </Badge>
-        ) : null}
-        {(state.pending || fullAutoRunning) && (capabilities?.interrupt ?? true) ? (
+        {state.pending && (capabilities?.interrupt ?? true) ? (
           <DesktopComposerButton
             kind="stop"
             onClick={() => dispatch(report, "DesktopTurnInterrupted")}
