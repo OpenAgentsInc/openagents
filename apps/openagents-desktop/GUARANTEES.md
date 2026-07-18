@@ -746,51 +746,115 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
   `src/full-auto-run-registry.ts`: stable `runRef`, bound thread, title,
   objective, done condition, exact workspace, provider profile, cap, counts,
   lifecycle revision, transition history, and timestamps survive restart.
-  One Desktop profile admits at most one active run. Draft, Running, Pausing,
-  Paused, Retrying, Stalled, Completed, Failed, Stopped, and Cap reached are
-  distinct; Stop is terminal and Resume is valid only from Paused (#8969).
+  One Desktop profile admits at most one active run; a second start is a typed
+  conflict naming the existing `runRef`. Draft, Running, Pausing, Paused,
+  Retrying, Stalled, Completed, Failed, Stopped, and Cap reached are distinct;
+  Stop is terminal, Resume is valid only from Paused, and an illegal
+  transition is a typed refusal, never silent coercion (#8969; oracles:
+  `tests/full-auto-run-registry.test.ts`,
+  `src/full-auto-run-control-server.test.ts`).
 - The old per-thread `enabled` registry and the visible composer toggle remain
   only as an additive migration/entry bridge. Enabled legacy rows migrate
   idempotently with an explicit `legacy_migration` objective; they do not
-  invent a user-authored mission or bypass the one-active-run rule. FA-UX-01
-  #8974 must replace this bridge with the dedicated left-rail launcher and
-  read-only run view before the new interaction model is an enforced UX
-  guarantee.
+  invent a user-authored mission or bypass the one-active-run rule (the
+  “Legacy registry migration (FA-AC-41)” suite in
+  `tests/full-auto-run-registry.test.ts`). FA-UX-01 #8974 must replace this
+  bridge with the dedicated left-rail launcher and read-only run view before
+  the new interaction model is an enforced UX guarantee.
 - Continuation remains main-owned, serialized, lease-fenced, workspace-bound,
   provider-admitted, restart-reconciled, and capped. The renderer never owns a
-  continuation loop. The older in-flight projection, toggle hydration,
-  exactly-once lease, failure/backoff, profile continuity, cap, and registry
-  corruption gaps listed in the July 16 deep dive are fixed; their closed
-  hardening issues are foundations, not AFK-product acceptance.
+  continuation loop. The gaps listed in the July 16 deep dive are closed on
+  `main` with retained oracles, not by assertion:
+  - The composer toggle hydrates from the durable registry at mount and on
+    every thread switch, a control-API enable survives later window
+    attachment read-only, a racing local toggle beats an in-flight hydration
+    fetch, and a single click durably stops (#8874 FA-H1 and #8928; oracles:
+    the `FA-H1 (#8874)` and `#8928` tests in `src/renderer/shell.test.ts`
+    plus `src/full-auto-hydration.integration.test.ts`).
+  - Continuation dispatch is exactly-once: a serial task queue serializes
+    overlapping reconciliation passes and a durable per-thread lease admits
+    one dispatch per continuation — the adversarial double-reconcile probe
+    proves exactly one dispatch and a +1 continuation count, and only the
+    startup pass clears a stale crashed-mid-dispatch lease (#8876 FA-H3;
+    oracles: the “Full Auto exactly-once dispatch (FA-H3 #8876)” suite in
+    `tests/full-auto-restart.e2e.test.ts` and the `claimPending`
+    exactly-once lease test in `tests/full-auto-registry.test.ts`).
+  - A main-owned background turn is projected as per-thread in-flight state,
+    Stop routes to the thread-scoped main interrupt channel while it runs,
+    and a manual send during the turn is fenced into the durable queue —
+    never a silent second concurrent turn (#8877 FA-H4; oracles: the
+    `FA-H4 (#8877)` tests in `src/renderer/shell.test.ts` and the enforced
+    `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`
+    oracles in `src/full-auto-followup.test.ts`,
+    `src/renderer/react-composer.test.tsx`, and `src/provider-lane.test.ts`).
+  - Workspace binding (#8875), dispatch failure/backoff and the disable
+    threshold (#8878), profile continuity (#8879), the 20-continuation cap
+    (#8880), and registry-corruption quarantine (#8883) keep their retained
+    regressions in `tests/full-auto-restart.e2e.test.ts` and
+    `tests/full-auto-registry.test.ts`. These closed #8873 hardening children
+    are foundations, not AFK-product acceptance.
 - Run-level liveness is distinct from a healthy long provider turn. Main
-  persists progress, retry deadline, stall classification, and recovery
-  transitions (#8971). The exact overnight five-thread eviction has a real
-  thread-store regression (#8970), and an active-run thread is not treated as
-  disposable cache state.
+  persists progress, retry deadline, typed stall classification, recovery
+  transitions, and deduplicated attention signals (#8971; oracle:
+  `tests/full-auto-liveness.test.ts`, including the end-to-end case that maps
+  the exact overnight incident failure string to an actionable stall). The
+  overnight five-thread eviction itself is fixed and replayed: the mutable
+  thread cache evicts by last access and an active Full Auto thread is not
+  disposable cache state (commit `8cb900bbf9`, #8970 FA-RUN-02; oracles:
+  `src/thread-store.test.ts` and the “Full Auto composed multi-chat
+  thread-store pressure (FA-RUN-02 #8970)” suite in
+  `tests/full-auto-restart.e2e.test.ts`).
+- Resuming a stalled Full Auto conversation from Codex history adopts the
+  canonical thread identity, restores its controls, and keeps follow-ups
+  queue-only (commits `d3ad8424da`, `2ae33f3e09`; enforced contract
+  `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`,
+  described above). Control-API enables/disables append distinctly-attributed
+  notes so a stop is traceable to its actor (commit `83c136dead`, #8928;
+  oracle: `src/full-auto-control-server.test.ts`).
 - Every terminal run can produce the bounded owner-private
-  `FullAutoRunReport` plus a separately redacted public-safe receipt (#8972).
-  Raw prompts, tool output, paths, credentials, and provider transcripts do
-  not enter that public projection. A provider saying “done” does not itself
+  `FullAutoRunReport` plus a separately redacted public-safe receipt (#8972;
+  oracle: `src/full-auto-run-report.test.ts`, including the adversarial case
+  proving objective, done condition, workspace paths, reasons, titles,
+  account/session refs, and assistant text never enter the receipt). Raw
+  prompts, tool output, paths, credentials, and provider transcripts do not
+  enter that public projection. A provider saying “done” does not itself
   prove the objective or acceptance condition.
 - Manual same-thread provider handoff uses the main-owned objective-priority
   envelope and a visible from/to/actor/reason/truncation receipt, rechecking
   target admission and preserving provider-private state as explicitly
-  non-transferable (#8975). This does not authorize loop-decided provider,
-  model, or account rotation.
+  non-transferable (#8975; oracle: `src/full-auto-provider-handoff.test.ts`).
+  This does not authorize loop-decided provider, model, or account rotation.
+- The loop is generalized over the provider SPI: per-lane Full Auto policies
+  keep prompt framing and background-question behavior fail-closed for
+  unknown lanes (#8901; oracle: `src/full-auto-lane.test.ts`), and every
+  dispatched lane receives the same bounded main-owned ProductSpec/
+  AssuranceSpec obligation projection with fail-closed evidence revalidation
+  (#8902; oracle: `src/spec-lane-workflow.test.ts`).
 - Desktop publishes only the bounded live Full Auto projection consumed by
-  mobile (#8981); mobile first-screen rendering is not remote run-control
-  authority. The offline/private analyzer and comparison pipeline are landed
-  (#8973). The six-test owner-visible dogfood batch, AssuranceSpec, signed
-  packaged restart observation, and public promise gate remain open
-  (#8976/#8978/#8979).
+  mobile (#8981; oracle: `tests/full-auto-run-projection-publisher.test.ts`);
+  mobile first-screen rendering is not remote run-control authority. The
+  offline/private analyzer and comparison pipeline are landed (#8973; oracle:
+  `src/full-auto-run-analyzer.test.ts`).
+- Still-open honest limits: the dedicated launcher and read-only run view
+  (#8974), the six-test owner-visible dogfood batch (#8976), the Full Auto
+  AssuranceSpec (still `lifecycle_state: proposed` in
+  `specs/desktop/full-auto.assurance-spec.md`; #8978), and release admission
+  with packaged restart observation and the public promise gate (#8979). The
+  newest Desktop release tag (`openagents-desktop-v0.1.0-rc.17`) contains the
+  hardened composer-bridge loop and the stall/resume fixes but not the
+  durable `FullAutoRun` model, so no shipped artifact yet carries the run
+  core. Full Auto remains single-lane per bound profile.
 - Full Auto still inherits the admitted provider lane's execution posture. It
   does not add a second permission system, containment claim, release claim,
   or public reliability claim. Owner-local Codex remains honestly
   `danger-full-access` where that is the selected runtime posture.
 
-Enforced legacy bridge contract:
-`openagents_desktop.chat.full_auto_composer_loop.v2`. Pending dedicated-mode
-contracts:
+The composer bridge has no standalone contract entry in
+`src/contracts/ux-contracts.ts`; its enforcement is the enforced
+`openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`
+contract plus the named Full Auto suites above, all in the normal test sweep.
+Pending dedicated-mode contracts (all `pending` in
+`packages/behavior-contracts/src/openagents-apps.ts`, blocked on #8974):
 `openagents_desktop.full_auto_dedicated_launcher.v1`,
 `openagents_desktop.full_auto_read_only_run_view.v1`, and
 `openagents_desktop.full_auto_play_pause_stop_lifecycle.v1`.
