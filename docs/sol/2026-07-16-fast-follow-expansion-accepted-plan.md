@@ -2907,6 +2907,71 @@ completion remain later packets.
 - released_at: `2026-07-17T23:42:52Z`
 - residual: broader historical-session ingestion, Desktop host/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, actual `main.ts` acquisition, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-37 — Desktop canonical-export search-catalog ingestion
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-36. Desktop now
+has a verified canonical export artifact store and a private ref-only search
+receipt catalog, but successful host-runtime exports do not admit their receipt
+into that catalog. Active work owns Desktop `main.ts`, renderer, installed-
+runtime, Full Auto, mobile, T3, and teardown surfaces. This packet therefore
+composes only the existing export host/Electron adapters with the existing
+catalog, leaving the actual call site and pixels unchanged.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-host-runtime.ts`
+- `apps/openagents-desktop/src/thread-export-host-runtime.test.ts`
+- `apps/openagents-desktop/src/thread-export-electron-host.ts`
+- `apps/openagents-desktop/src/thread-export-electron-host.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-37-desktop-canonical-export-search-catalog-ingestion-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-32 export host resource graph, FF-D1-33 Electron
+`userData` boundary, FF-D1-35 verified persisted search acquisition, and
+FF-D1-36 ref-only receipt catalog. No transcript, acceptance, visibility,
+preload, renderer, Sync, provider, or release authority is added.
+
+Required behavior:
+
+- preflight the private receipt catalog before a canonical artifact write so
+  corrupt catalog state cannot produce a falsely successful export;
+- after a successful or unchanged artifact persist, durably record its exact
+  canonical owner-only receipt before returning success;
+- reconcile exact intent/idempotency retry to the original cataloged receipt
+  without minting a second receipt or rewriting the catalog, while conflicting
+  artifact identity fails closed;
+- map catalog refusal to one path-free persistence failure and never project
+  catalog paths, artifact bytes, transcript content, or partial success; and
+- derive the receipt-catalog directory only beneath the validated Electron
+  `userData/thread-exports` root.
+
+Proof: focused host-runtime, Electron-host, catalog, acquisition, artifact-
+store, command, compiler, disclosure, and authority tests; Desktop and shared-
+package typechecks; Fast Follow, behavior-contract, ProductSpec, Sol,
+AssuranceSpec baseline, and repository-required checks.
+
+Close rule: this packet closes only automatic catalog admission for newly
+created canonical exports through the already-composed host runtime. Broader
+historical-session backfill, Desktop `main.ts`/UI consumption and pixels,
+authoritative supersession/reversion producers, named-group authority/
+publication, installed/runtime-rendered evidence, and Day 1 completion remain
+later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-37-20260718`
+- base: `c3dd17313e36af8e7c347d5cb56d5d4082143556`
+- worktree/branch: `openagents-ff-d1-37` / detached `origin/main`
+- scope: admit each successful canonical host export's exact ref-only receipt into FF-D1-36 and reconcile exact retry
+- paths: the FF-D1-37 owned implementation paths above
+- hot files: export host runtime/Electron adapter and their focused tests, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: preflighted private catalog, artifact-then-receipt success boundary, original retry receipt, validated userData custody, and no partial-success projection
+- dependencies: FF-D1-32, FF-D1-33, FF-D1-35, and FF-D1-36 released; no relevant open bug issue or competing claim; active `main.ts`/UI, Full Auto, mobile, T3, teardown, and installed-runtime work explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T01:32:07Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
