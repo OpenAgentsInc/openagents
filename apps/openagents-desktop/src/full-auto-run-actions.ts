@@ -304,10 +304,12 @@ export const pauseFullAutoRunAction = (
   }
   // Pause immediately prevents any new dispatch, whether or not a turn is
   // currently in flight -- disable the thread-level gate right now rather
-  // than waiting for the turn to resolve.
+  // than waiting for the turn to resolve. Unlike Stop, Pause drains the
+  // already-admitted turn normally. This preserves its accepted evidence and
+  // makes the Pausing -> Paused handoff boundary deterministic; Stop remains
+  // the explicit interrupting action.
   if (run.threadRef !== undefined) {
     capabilities.registry.set(run.threadRef, false, { disabledBy: disabledByForActor(actor) })
-    if (turnRunning) capabilities.interruptLiveTurn?.(run.threadRef)
     capabilities.appendSystemNote(run.threadRef, `Full Auto run paused via ${callerLabel}.`)
   }
   return { ok: true, value: settleSyncAndProject(capabilities, result.run, now) }

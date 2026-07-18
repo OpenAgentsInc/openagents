@@ -236,7 +236,7 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
     }
   })
 
-  test("Pause with an active turn goes to Pausing immediately (dispatch prevented right away), settling to Paused once GET observes the turn resolved", async () => {
+  test("Pause drains an active turn while preventing a new dispatch, then settles to Paused", async () => {
     const harness = await startHarness()
     try {
       const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
@@ -249,7 +249,8 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       expect(pausing.body.run.state).toBe("pausing")
       // New dispatch is prevented immediately, even while the turn is still resolving.
       expect(harness.registry.get(threadRef)).toBe(false)
-      expect(harness.interruptCalls).toEqual([threadRef])
+      // Pause is a drain boundary; Stop is the explicit interrupt action.
+      expect(harness.interruptCalls).toEqual([])
 
       // Still running: GET observes Pausing, unresolved.
       const stillPausing = await harness.request("GET", `/v1/full-auto/runs/${runRef}`)

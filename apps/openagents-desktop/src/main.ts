@@ -4453,8 +4453,8 @@ const fullAutoRunActionCapabilities: FullAutoControlCapabilities = {
   liveState: threadRef => fullAutoLiveState.get(threadRef) ?? null,
   listTurns: threadRef => localTurnJournal.list().filter(record => record.threadRef === threadRef),
   appendSystemNote: appendFullAutoSystemNote,
-  // FA-AC-44 Pause: the exact same live-state-resolved three-way
-  // interrupt chain CodexLocalFullAutoInterruptChannel already uses.
+  // Stop's exact live-state-resolved three-way interrupt chain. Pause drains
+  // an already-admitted turn and therefore deliberately does not call this.
   interruptLiveTurn: threadRef => {
     const live = fullAutoLiveState.get(threadRef)
     if (live === undefined || live.state !== "turn_running" || live.turnRef === null) return false

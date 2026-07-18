@@ -412,6 +412,12 @@ const runInteractiveHandoff = async (input: Readonly<{
   step1: string
   step2: string
 }>): Promise<void> => {
+  // New chats inherit the currently selected lane. Normalize that owner
+  // preference before minting the acceptance row so source-lane setup is not
+  // miscounted as a handoff inside the test; only source -> target belongs to
+  // the row's transition receipt.
+  await setProvider(input.page, input.source)
+  if (input.source === "Claude") await selectStableClaudeModel(input.page)
   const threadRef = await newSession(input.page)
   activeAcceptance = { page: input.page, testId: input.testId, threadRef, runRef: null }
   await setProvider(input.page, input.source)
@@ -489,6 +495,21 @@ const startRun = async (input: Readonly<{
   if (runRef === null) throw new Error("Full Auto run mounted without a runRef")
   const threadRef = await selectedThreadRef(input.page)
   if (input.pauseImmediately === true) {
+    // Pause is a drain boundary. Wait until the first provider turn has a
+    // durable nonterminal journal row before requesting it, so the action can
+    // neither beat initial dispatch nor accidentally target turn two.
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      const active = openLocalTurnJournal(profileFile("local-turns", "journal.json"))
+        .nonterminal()
+        .some(turn => turn.threadRef === threadRef && turn.turnRef.startsWith("turn.full-auto."))
+      if (active) break
+      await input.page.waitForTimeout(50)
+    }
+    const active = openLocalTurnJournal(profileFile("local-turns", "journal.json"))
+      .nonterminal()
+      .some(turn => turn.threadRef === threadRef && turn.turnRef.startsWith("turn.full-auto."))
+    if (!active) throw new Error("first Full Auto turn did not enter the durable journal before Pause")
     await input.page.locator('[data-en-key="full-auto-run-pause"]').click()
   }
   return { runRef, threadRef }
