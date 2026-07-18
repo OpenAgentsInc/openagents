@@ -49,3 +49,61 @@ export const isolatedProofReceiptPath = (input: Readonly<{
     ? resolved
     : null
 }
+
+export const CodexSessionsRootEnvironment = "OPENAGENTS_DESKTOP_CODEX_SESSIONS"
+export const ClaudeProjectsRootEnvironment = "OPENAGENTS_DESKTOP_CLAUDE_PROJECTS"
+
+/**
+ * Codex/Claude history-importer source-directory resolution (#8999).
+ *
+ * Before this fix, isolated-app-proof mode correctly scoped Electron's own
+ * `userData` (session vault, mock Keychain) below the OS temp directory, but
+ * the Codex-history importer computed its `sessionsRoot` independently and
+ * fell straight through to the real global `~/.codex/sessions` whenever
+ * smoke mode and the explicit env override were both absent — a real
+ * UI-automation session under isolated-app-proof surfaced genuine unrelated
+ * Codex session titles from the host machine's real history in the sidebar.
+ *
+ * The fix scopes the importer's source directory the same way `userData` is
+ * scoped: under isolated-app-proof mode (and no smoke mode, no explicit
+ * override) it resolves to a directory nested under the already-isolated
+ * `userDataPath` — which `isIsolatedAppProof` has already proven sits
+ * strictly beneath the OS temp directory. That directory never exists on a
+ * real host, so the importer legitimately finds zero sessions rather than
+ * reading the operator's real history. An explicit
+ * `OPENAGENTS_DESKTOP_CODEX_SESSIONS` / `OPENAGENTS_DESKTOP_CLAUDE_PROJECTS`
+ * override still wins even in isolated mode, since that is how tests point
+ * the importer at deliberate fixture data.
+ */
+export const resolveCodexSessionsRoot = (input: Readonly<{
+  env: NodeJS.ProcessEnv
+  smokeMode: boolean
+  isolatedAppProofMode: boolean
+  smokeFixtureRoot: string
+  userDataPath: string
+  realHome: string
+}>): string => {
+  const explicit = input.env[CodexSessionsRootEnvironment]
+  if (explicit !== undefined) return path.resolve(explicit)
+  if (input.smokeMode) return path.resolve(path.join(input.smokeFixtureRoot, "codex-smoke", "sessions"))
+  if (input.isolatedAppProofMode) return path.resolve(path.join(input.userDataPath, "isolated-codex-home", "sessions"))
+  return path.resolve(path.join(input.realHome, ".codex", "sessions"))
+}
+
+/** Same isolation reasoning as {@link resolveCodexSessionsRoot}, for the
+ * Claude Code history import tree (#8712 H3). `null` disables the import
+ * entirely (an explicit empty-string override does this today too). */
+export const resolveClaudeProjectsRoot = (input: Readonly<{
+  env: NodeJS.ProcessEnv
+  smokeMode: boolean
+  isolatedAppProofMode: boolean
+  smokeFixtureRoot: string
+  userDataPath: string
+  realHome: string
+}>): string | null => {
+  const explicit = input.env[ClaudeProjectsRootEnvironment]
+  if (explicit !== undefined) return explicit === "" ? null : path.resolve(explicit)
+  if (input.smokeMode) return path.resolve(path.join(input.smokeFixtureRoot, "claude-smoke", "projects"))
+  if (input.isolatedAppProofMode) return path.resolve(path.join(input.userDataPath, "isolated-claude-home", "projects"))
+  return path.resolve(path.join(input.realHome, ".claude", "projects"))
+}

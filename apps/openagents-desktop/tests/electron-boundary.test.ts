@@ -234,8 +234,16 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
 
   test("normal verification uses checked-in smoke history instead of ambient provider homes", () => {
     expect(main).toContain('path.join(here, "..", "tests", "fixtures")');
-    expect(main).toContain('path.join(smokeFixtureRoot, "codex-smoke", "sessions")');
-    expect(main).toContain("smokeMode");
+    // The sessionsRoot resolution itself (smoke fixture vs. real ~/.codex vs.
+    // isolated-app-proof scoping, #8999) lives in the shared, unit-tested
+    // `resolveCodexSessionsRoot` so main.ts, tests, and the isolated-app-proof
+    // boundary share one source of truth instead of main.ts recomputing it
+    // inline. main.ts still calls it with smokeMode threaded through.
+    expect(main).toContain("resolveCodexSessionsRoot(");
+    expect(main).toContain("smokeMode,");
+    const isolatedAppProof = stripComments(read("src/isolated-app-proof.ts"));
+    expect(isolatedAppProof).toContain('path.join(input.smokeFixtureRoot, "codex-smoke", "sessions")');
+    expect(isolatedAppProof).toContain("input.smokeMode");
   });
 
   test("automated smoke stays hidden unless headed presentation is explicit", () => {

@@ -108,6 +108,8 @@ import {
   isolatedAppProofWorkspaceRoot,
   isolatedProofReceiptPath,
   isIsolatedAppProof,
+  resolveClaudeProjectsRoot,
+  resolveCodexSessionsRoot,
 } from "./isolated-app-proof.ts"
 import {
   DesktopRendererScheme,
@@ -1450,24 +1452,30 @@ const desktopUpdateHost = openDesktopUpdateStagingHost({
 })
 let desktopIsQuitting = false
 const localTurnFlushers = new Set<() => unknown>()
-const codexSessionsRoot = () => path.resolve(
-  process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? (
-    smokeMode
-      ? path.join(smokeFixtureRoot, "codex-smoke", "sessions")
-      : path.join(app.getPath("home"), ".codex", "sessions")
-  ),
-)
+// Codex/Claude history-importer source-directory resolution (#8999): scoped
+// under isolated-app-proof mode the same way `userData` already is, so a
+// disposable isolated instance never surfaces the operator's real `~/.codex`
+// or `~/.claude` history titles. See `resolveCodexSessionsRoot` /
+// `resolveClaudeProjectsRoot` in `isolated-app-proof.ts` for the exact
+// resolution order and rationale.
+const codexSessionsRoot = () => resolveCodexSessionsRoot({
+  env: process.env,
+  smokeMode,
+  isolatedAppProofMode,
+  smokeFixtureRoot,
+  userDataPath: desktopUserDataPath,
+  realHome: app.getPath("home"),
+})
 // Claude Code history projects tree (#8712 H3). Read-only, owner-local; imported
 // into the SAME catalog as Codex, tagged by source. Null disables the import.
-const claudeProjectsRoot = (): string | null => {
-  const explicit = process.env.OPENAGENTS_DESKTOP_CLAUDE_PROJECTS
-  if (explicit !== undefined) return explicit === "" ? null : path.resolve(explicit)
-  return path.resolve(
-    smokeMode
-      ? path.join(smokeFixtureRoot, "claude-smoke", "projects")
-      : path.join(app.getPath("home"), ".claude", "projects"),
-  )
-}
+const claudeProjectsRoot = (): string | null => resolveClaudeProjectsRoot({
+  env: process.env,
+  smokeMode,
+  isolatedAppProofMode,
+  smokeFixtureRoot,
+  userDataPath: desktopUserDataPath,
+  realHome: app.getPath("home"),
+})
 const codexHistoryWorkerUrl = desktopWorkerUrl(import.meta.url, "codex-history-worker.js")
 const codexHistoryHost = makeCodexHistoryHost(makeCodexHistoryUtilityFactory(
   codexHistoryWorkerUrl,
