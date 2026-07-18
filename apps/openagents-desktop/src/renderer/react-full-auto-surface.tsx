@@ -24,10 +24,12 @@ import {
   fullAutoRunStatusLabel,
   fullAutoTurnTimingLabel,
   validateFullAutoLauncherDraft,
+  FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION,
   FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP,
   type FullAutoWorkspaceState,
 } from "./full-auto-workspace.ts"
 import { ConversationTimeline } from "./react-timeline.tsx"
+import "./react-full-auto-surface.css"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(payload === null ? IntentRef(name) : IntentRef(name, ComponentValueBinding()), payload) as Effect.Effect<void, IntentError>).catch(() => undefined)
@@ -55,144 +57,74 @@ const FullAutoLauncher = ({ state, report }: {
   return <section className="oa-react-full-auto-launcher" aria-labelledby="react-full-auto-launcher-title">
     <header>
       <h1 id="react-full-auto-launcher-title">Full Auto</h1>
-      <p>One durable, unattended run. Set the mission contract below, then Start — Full Auto keeps working, turn after turn, until it completes, stalls, or you Stop it.</p>
+      <p>Describe the outcome once. Codex and Claude keep moving it forward until it is done or needs you.</p>
     </header>
-    <div className="oa-react-full-auto-field">
-      <label htmlFor="full-auto-launcher-title">Title</label>
-      <Input
-        id="full-auto-launcher-title"
-        data-en-key="full-auto-launcher-title-field"
-        placeholder="Run title"
-        value={draft.title}
-        disabled={draft.submitting}
-        onChange={event => dispatch(report, "DesktopFullAutoLauncherTitleChanged", event.currentTarget.value)}
-      />
-    </div>
-    <div className="oa-react-full-auto-field">
-      <label htmlFor="full-auto-launcher-objective">Objective</label>
+    <div className="oa-react-full-auto-field oa-react-full-auto-objective-field">
+      <label htmlFor="full-auto-launcher-objective">What should Full Auto accomplish?</label>
       <Textarea
         id="full-auto-launcher-objective"
         data-en-key="full-auto-launcher-objective-field"
-        placeholder="What should this run accomplish?"
+        rows={4}
+        autoFocus
+        placeholder="Implement the outcome, verify it in the real system, fix what breaks, and keep going until it works."
         value={draft.objective}
         disabled={draft.submitting}
         onChange={event => dispatch(report, "DesktopFullAutoLauncherObjectiveChanged", event.currentTarget.value)}
       />
     </div>
-    <div className="oa-react-full-auto-field">
-      <label htmlFor="full-auto-launcher-done-condition">Done condition</label>
-      <Textarea
-        id="full-auto-launcher-done-condition"
-        data-en-key="full-auto-launcher-done-condition-field"
-        placeholder="How will you know it's finished?"
-        value={draft.doneCondition}
-        disabled={draft.submitting}
-        onChange={event => dispatch(report, "DesktopFullAutoLauncherDoneConditionChanged", event.currentTarget.value)}
-      />
+    <div className="oa-react-full-auto-defaults" aria-label="Full Auto defaults">
+      <span>{draft.workspaceRef || "Resolving workspace…"}</span>
+      <span>Codex → Claude</span>
+      <span>{draft.turnCapText || FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP} turns</span>
     </div>
-    <div className="oa-react-full-auto-field">
-      <label htmlFor="full-auto-launcher-workspace">Workspace</label>
-      <Input
-        id="full-auto-launcher-workspace"
-        data-en-key="full-auto-launcher-workspace-field"
-        placeholder="Workspace path"
-        value={draft.workspaceRef}
-        disabled={draft.submitting}
-        onChange={event => dispatch(report, "DesktopFullAutoLauncherWorkspaceRefChanged", event.currentTarget.value)}
-      />
-    </div>
-    <div className="oa-react-full-auto-row">
-      <div className="oa-react-full-auto-field">
-        <label htmlFor="full-auto-launcher-lane">Provider</label>
-        <select
-          id="full-auto-launcher-lane"
-          data-en-key="full-auto-launcher-lane-field"
-          className="oa-react-full-auto-select"
-          value={draft.lane}
-          disabled={draft.submitting}
-          onChange={event => dispatch(report, "DesktopFullAutoLauncherLaneChanged", event.currentTarget.value)}
-        >
-          {fullAutoLauncherLaneOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+    <details className="oa-react-full-auto-advanced">
+      <summary>Advanced</summary>
+      <div className="oa-react-full-auto-advanced-grid">
+        <div className="oa-react-full-auto-field">
+          <label htmlFor="full-auto-launcher-title">Title (inferred when blank)</label>
+          <Input id="full-auto-launcher-title" data-en-key="full-auto-launcher-title-field" placeholder="From the first line of the mission" value={draft.title} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherTitleChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field oa-react-full-auto-wide-field">
+          <label htmlFor="full-auto-launcher-done-condition">Done condition (inferred when blank)</label>
+          <Textarea id="full-auto-launcher-done-condition" data-en-key="full-auto-launcher-done-condition-field" rows={3} placeholder={FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION} value={draft.doneCondition} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherDoneConditionChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field oa-react-full-auto-wide-field">
+          <label htmlFor="full-auto-launcher-workspace">Workspace</label>
+          <Input id="full-auto-launcher-workspace" data-en-key="full-auto-launcher-workspace-field" placeholder="Workspace path" value={draft.workspaceRef} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherWorkspaceRefChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field">
+          <label htmlFor="full-auto-launcher-lane">Primary provider</label>
+          <select id="full-auto-launcher-lane" data-en-key="full-auto-launcher-lane-field" className="oa-react-full-auto-select" value={draft.lane} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherLaneChanged", event.currentTarget.value)}>
+            {fullAutoLauncherLaneOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+        <div className="oa-react-full-auto-field">
+          <label htmlFor="full-auto-launcher-model">Model</label>
+          <Input id="full-auto-launcher-model" data-en-key="full-auto-launcher-model-field" placeholder="Provider default" value={draft.model} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherModelChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field">
+          <label htmlFor="full-auto-launcher-turn-cap">Turn cap</label>
+          <Input id="full-auto-launcher-turn-cap" data-en-key="full-auto-launcher-turn-cap-field" inputMode="numeric" placeholder={String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP)} value={draft.turnCapText} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherTurnCapChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field">
+          <label htmlFor="full-auto-launcher-max-wall-clock">Wall clock (minutes)</label>
+          <Input id="full-auto-launcher-max-wall-clock" data-en-key="full-auto-launcher-max-wall-clock-field" inputMode="numeric" placeholder="No limit" value={draft.maxWallClockMinutesText} disabled={draft.submitting} onChange={event => dispatch(report, "DesktopFullAutoLauncherMaxWallClockChanged", event.currentTarget.value)} />
+        </div>
+        <div className="oa-react-full-auto-field oa-react-full-auto-wide-field">
+          <label htmlFor="full-auto-launcher-fallback-add">Provider rotation</label>
+          <select id="full-auto-launcher-fallback-add" data-en-key="full-auto-launcher-fallback-add" className="oa-react-full-auto-select" value="" disabled={draft.submitting} aria-label="Add a fallback provider lane" onChange={event => dispatch(report, "DesktopFullAutoLauncherFallbackLaneAdded", event.currentTarget.value)}>
+            <option value="">Add fallback provider…</option>
+            {fullAutoLauncherLaneOptions.filter(option => option.value !== draft.lane && !draft.fallbackLanes.includes(option.value)).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <div className="oa-react-full-auto-rotation-order" data-en-key="full-auto-launcher-rotation-order">
+            {[draft.lane, ...draft.fallbackLanes].map((lane, index) => <span key={lane} data-rotation-lane={lane}>
+              {index > 0 ? "→ " : ""}{fullAutoLauncherLaneLabel(lane)}
+              {index === 0 ? null : <button type="button" data-en-key={`full-auto-launcher-fallback-remove-${lane}`} disabled={draft.submitting} aria-label={`Remove fallback lane ${fullAutoLauncherLaneLabel(lane)}`} onClick={() => dispatch(report, "DesktopFullAutoLauncherFallbackLaneRemoved", lane)}>×</button>}
+            </span>)}
+          </div>
+        </div>
       </div>
-      <div className="oa-react-full-auto-field">
-        <label htmlFor="full-auto-launcher-turn-cap">{`Turn cap (default ${FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP})`}</label>
-        <Input
-          id="full-auto-launcher-turn-cap"
-          data-en-key="full-auto-launcher-turn-cap-field"
-          inputMode="numeric"
-          placeholder={String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP)}
-          value={draft.turnCapText}
-          disabled={draft.submitting}
-          onChange={event => dispatch(report, "DesktopFullAutoLauncherTurnCapChanged", event.currentTarget.value)}
-        />
-      </div>
-      <div className="oa-react-full-auto-field">
-        <label htmlFor="full-auto-launcher-model">Model (optional)</label>
-        <Input
-          id="full-auto-launcher-model"
-          data-en-key="full-auto-launcher-model-field"
-          placeholder="lane default"
-          value={draft.model}
-          disabled={draft.submitting}
-          onChange={event => dispatch(report, "DesktopFullAutoLauncherModelChanged", event.currentTarget.value)}
-        />
-      </div>
-    </div>
-    {/* FA-WIRE-01 (#8996): ordered fallback lanes (rotation priority) + the
-        optional wall-clock guardrail. */}
-    <div className="oa-react-full-auto-row">
-      <div className="oa-react-full-auto-field">
-        <label htmlFor="full-auto-launcher-fallback-add">Fallback lanes</label>
-        <select
-          id="full-auto-launcher-fallback-add"
-          data-en-key="full-auto-launcher-fallback-add"
-          className="oa-react-full-auto-select"
-          value=""
-          disabled={draft.submitting}
-          aria-label="Add a fallback provider lane (order is rotation priority)"
-          onChange={event => dispatch(report, "DesktopFullAutoLauncherFallbackLaneAdded", event.currentTarget.value)}
-        >
-          <option value="">Add fallback lane…</option>
-          {fullAutoLauncherLaneOptions
-            .filter(option => option.value !== draft.lane && !draft.fallbackLanes.includes(option.value))
-            .map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-      </div>
-      <div className="oa-react-full-auto-field">
-        <label htmlFor="full-auto-launcher-max-wall-clock">Max wall clock (minutes, optional)</label>
-        <Input
-          id="full-auto-launcher-max-wall-clock"
-          data-en-key="full-auto-launcher-max-wall-clock-field"
-          inputMode="numeric"
-          placeholder="no limit"
-          value={draft.maxWallClockMinutesText}
-          disabled={draft.submitting}
-          onChange={event => dispatch(report, "DesktopFullAutoLauncherMaxWallClockChanged", event.currentTarget.value)}
-        />
-      </div>
-    </div>
-    {draft.fallbackLanes.length === 0 ? null : <div className="oa-react-full-auto-rotation-order" data-en-key="full-auto-launcher-rotation-order">
-      <p className="oa-react-full-auto-rotation-caption">Rotation order on account exhaustion / rate limit / provider error:</p>
-      <ol>
-        {[draft.lane, ...draft.fallbackLanes].map((lane, index) => <li key={lane} data-rotation-lane={lane}>
-          <span>{fullAutoLauncherLaneLabel(lane)}</span>
-          {index === 0
-            ? <Badge variant="outline">primary</Badge>
-            : <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-en-key={`full-auto-launcher-fallback-remove-${lane}`}
-                disabled={draft.submitting}
-                aria-label={`Remove fallback lane ${fullAutoLauncherLaneLabel(lane)}`}
-                onClick={() => dispatch(report, "DesktopFullAutoLauncherFallbackLaneRemoved", lane)}
-              >
-                Remove
-              </Button>}
-        </li>)}
-      </ol>
-    </div>}
+    </details>
     {draft.error === null ? null : <p role="alert" className="oa-react-full-auto-error">{draft.error}</p>}
     <div className="oa-react-full-auto-actions">
       <Button
@@ -200,7 +132,7 @@ const FullAutoLauncher = ({ state, report }: {
         disabled={draft.submitting || !validation.ok}
         onClick={() => dispatch(report, "DesktopFullAutoLauncherStartRequested")}
       >
-        {draft.submitting ? "Starting…" : "Start"}
+        {draft.submitting ? "Starting…" : "Start Full Auto"}
       </Button>
       <Button
         variant="ghost"
@@ -313,11 +245,14 @@ const FullAutoRunView = ({ state, report }: {
           {fullAutoRunStatusLabel(run)}
         </Badge>
       </div>
-      <p className="oa-react-full-auto-run-objective">{run.objective}</p>
-      <p className="oa-react-full-auto-run-done-condition">Done when: {run.doneCondition}</p>
       <p className="oa-react-full-auto-run-meta">
         Workspace: {run.workspaceRef ?? "—"} · Provider: {run.lane ?? "—"} · Cap: {run.successfulAttempts + run.failedAttempts}/{run.turnCap}
       </p>
+      <details className="oa-react-full-auto-mission-details">
+        <summary>Mission details</summary>
+        <p className="oa-react-full-auto-run-objective">{run.objective}</p>
+        <p className="oa-react-full-auto-run-done-condition">Done when: {run.doneCondition}</p>
+      </details>
       {run.state !== "stalled" ? null : <p role="alert" className="oa-react-full-auto-stall-copy">
         {run.stallCause === null
           ? "This run has stalled."
@@ -341,10 +276,67 @@ const FullAutoRunView = ({ state, report }: {
   </section>
 }
 
+const FULL_AUTO_ACTIVE_STATES = new Set(["running", "pausing", "paused", "retrying", "stalled"])
+
+const FullAutoRunMonitor = ({ state, report }: {
+  readonly state: DesktopShellState
+  readonly report: IntentReporter
+}): ReactElement => {
+  const sorted = [...state.fullAuto.runs].sort((left, right) => {
+    const activeDifference = Number(FULL_AUTO_ACTIVE_STATES.has(right.state)) - Number(FULL_AUTO_ACTIVE_STATES.has(left.state))
+    return activeDifference !== 0 ? activeDifference : right.createdAt.localeCompare(left.createdAt)
+  })
+  const activeCount = sorted.filter(run => FULL_AUTO_ACTIVE_STATES.has(run.state)).length
+  const visible = sorted.filter((run, index) => FULL_AUTO_ACTIVE_STATES.has(run.state) || index < activeCount + 6)
+  return <aside className="oa-react-full-auto-monitor" aria-labelledby="full-auto-monitor-title">
+    <header>
+      <div>
+        <h2 id="full-auto-monitor-title">Runs</h2>
+        <p>{activeCount === 0 ? "No active runs" : `${activeCount} active`}</p>
+      </div>
+      <Button size="sm" data-en-key="full-auto-new-run" onClick={() => dispatch(report, "DesktopFullAutoLauncherOpened")}>New run</Button>
+    </header>
+    <div className="oa-react-full-auto-run-list" aria-live="polite">
+      {visible.length === 0 ? <p className="oa-react-full-auto-run-list-empty">Your Full Auto runs will appear here.</p> : visible.map(run => {
+        const active = FULL_AUTO_ACTIVE_STATES.has(run.state)
+        const selected = state.fullAuto.activeRunRef === run.runRef
+        return <article key={run.runRef} className="oa-react-full-auto-run-row" data-active={active ? "true" : "false"} data-selected={selected ? "true" : "false"}>
+          <button type="button" className="oa-react-full-auto-run-open" aria-label={`Open ${run.title}`} onClick={() => dispatch(report, "DesktopFullAutoRunOpened", run.runRef)}>
+            <span className="oa-react-full-auto-run-row-title">{run.title}</span>
+            <span className="oa-react-full-auto-run-row-meta">
+              <Badge variant={RUN_STATE_BADGE_VARIANT[run.state] ?? "outline"}>{fullAutoRunStatusLabel(run)}</Badge>
+              <span>{run.successfulAttempts + run.failedAttempts}/{run.turnCap}</span>
+            </span>
+          </button>
+          {!active ? null : <Button
+            size="sm"
+            variant="ghost"
+            data-en-key={`full-auto-run-stop-${run.runRef}`}
+            aria-label={`Stop ${run.title}. This cannot be undone.`}
+            onClick={() => dispatch(report, "DesktopFullAutoRunStopByRefRequested", run.runRef)}
+          >Stop</Button>}
+        </article>
+      })}
+    </div>
+    <Button variant="ghost" size="sm" data-en-key="full-auto-monitor-refresh" onClick={() => dispatch(report, "DesktopFullAutoRunsListRefreshed")}>Refresh runs</Button>
+  </aside>
+}
+
 export const ReactFullAutoSurface = ({ state, report }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
-}): ReactElement =>
-  state.fullAuto.mode === "run" && state.fullAuto.activeRunRef !== null
-    ? <FullAutoRunView state={state} report={report} />
-    : <FullAutoLauncher state={state} report={report} />
+}): ReactElement => {
+  useEffect(() => {
+    dispatch(report, "DesktopFullAutoRunsListRefreshed")
+    const timer = setInterval(() => dispatch(report, "DesktopFullAutoRunsListRefreshed"), FULL_AUTO_RUN_POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [report])
+  return <div className="oa-react-full-auto-surface">
+    <main className="oa-react-full-auto-main">
+      {state.fullAuto.mode === "run" && state.fullAuto.activeRunRef !== null
+        ? <FullAutoRunView state={state} report={report} />
+        : <FullAutoLauncher state={state} report={report} />}
+    </main>
+    <FullAutoRunMonitor state={state} report={report} />
+  </div>
+}

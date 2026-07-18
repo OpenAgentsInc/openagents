@@ -17,7 +17,8 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import {
   emptyFullAutoLauncherDraft,
   emptyFullAutoWorkspaceState,
-  findActiveFullAutoRun,
+  FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION,
+  activeFullAutoRuns,
   fullAutoLauncherView,
   fullAutoRunStatusLabel,
   fullAutoRunView,
@@ -90,14 +91,16 @@ const baseRun = (overrides: Partial<FullAutoControlRun> = {}): FullAutoControlRu
 })
 
 describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
-  test("refuses an empty title, objective, done condition, or workspace", () => {
+  test("requires only the objective and resolved workspace; infers title and done condition", () => {
     const draft = emptyFullAutoLauncherDraft()
-    expect(validateFullAutoLauncherDraft(draft)).toEqual({ ok: false, error: "Give this run a title." })
-    expect(validateFullAutoLauncherDraft({ ...draft, title: "Run" })).toEqual({ ok: false, error: "Describe the objective." })
-    expect(validateFullAutoLauncherDraft({ ...draft, title: "Run", objective: "Do it" }))
-      .toEqual({ ok: false, error: "State an explicit done condition." })
-    expect(validateFullAutoLauncherDraft({ ...draft, title: "Run", objective: "Do it", doneCondition: "Done" }))
+    expect(validateFullAutoLauncherDraft(draft)).toEqual({ ok: false, error: "Describe the objective." })
+    expect(validateFullAutoLauncherDraft({ ...draft, objective: "Do it" }))
       .toEqual({ ok: false, error: "Choose a workspace." })
+    expect(validateFullAutoLauncherDraft({ ...draft, objective: "Implement the compact launcher", workspaceRef: "/ws" })).toMatchObject({
+      ok: true,
+      title: "Implement the compact launcher",
+      doneCondition: FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION,
+    })
   })
 
   test("refuses a non-integer or out-of-range turn cap", () => {
@@ -113,10 +116,12 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
     // FA-WIRE-01: the turn cap doubles as guardrails.maxTurns so the
     // thread-level cap follows the owner's chosen cap.
     expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "5" })).toEqual({
-      ok: true, turnCap: 5, routingPolicy: undefined, guardrails: { maxTurns: 5 },
+      ok: true, title: "Run", doneCondition: "Done", turnCap: 5,
+      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: { maxTurns: 5 },
     })
     expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "" })).toEqual({
-      ok: true, turnCap: undefined, routingPolicy: undefined, guardrails: undefined,
+      ok: true, title: "Run", doneCondition: "Done", turnCap: undefined,
+      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: undefined,
     })
   })
 
@@ -125,6 +130,8 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
     const withFallback = validateFullAutoLauncherDraft({ ...draft, fallbackLanes: ["acp:grok-cli", "acp:cursor-agent"] })
     expect(withFallback).toEqual({
       ok: true,
+      title: "Run",
+      doneCondition: "Done",
       turnCap: undefined,
       routingPolicy: [{ lane: "codex-local" }, { lane: "acp:grok-cli" }, { lane: "acp:cursor-agent" }],
       guardrails: undefined,
@@ -138,7 +145,8 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
   test("FA-WIRE-01: max wall clock minutes converts to maxWallClockMs; invalid values refuse typed", () => {
     const draft = { ...emptyFullAutoLauncherDraft(), title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws", turnCapText: "" }
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "90" })).toEqual({
-      ok: true, turnCap: undefined, routingPolicy: undefined, guardrails: { maxWallClockMs: 90 * 60_000 },
+      ok: true, title: "Run", doneCondition: "Done", turnCap: undefined,
+      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: { maxWallClockMs: 90 * 60_000 },
     })
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "0" }).ok).toBe(false)
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "ten" }).ok).toBe(false)
@@ -162,13 +170,14 @@ describe("FA-UX-02 (#8997): turn-row time formatting", () => {
   })
 })
 
-describe("findActiveFullAutoRun (FA-AC-39 concurrency slot)", () => {
-  test("finds the single non-terminal, non-draft run and ignores terminal/draft rows", () => {
+describe("activeFullAutoRuns (FA-AC-39 concurrent monitor)", () => {
+  test("returns every non-terminal, non-draft run and ignores terminal/draft rows", () => {
     const draft = baseRun({ runRef: "run-draft", state: "draft" })
     const completed = baseRun({ runRef: "run-done", state: "completed" })
-    const active = baseRun({ runRef: "run-active", state: "paused" })
-    expect(findActiveFullAutoRun([draft, completed, active])).toEqual(active)
-    expect(findActiveFullAutoRun([draft, completed])).toBeNull()
+    const running = baseRun({ runRef: "run-running", state: "running" })
+    const paused = baseRun({ runRef: "run-paused", state: "paused" })
+    expect(activeFullAutoRuns([draft, running, completed, paused])).toEqual([running, paused])
+    expect(activeFullAutoRuns([draft, completed])).toEqual([])
   })
 })
 
@@ -249,8 +258,8 @@ describe("fullAutoLauncherView (FA-AC-54)", () => {
     expect(start.disabled).toBe(true)
   })
 
-  test("Start is enabled once title/objective/done-condition/workspace are set", () => {
-    const complete = { ...emptyFullAutoWorkspaceState(), launcher: { ...emptyFullAutoWorkspaceState().launcher, title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws" } }
+  test("Start is enabled once objective and workspace are set", () => {
+    const complete = { ...emptyFullAutoWorkspaceState(), launcher: { ...emptyFullAutoWorkspaceState().launcher, objective: "Do it", workspaceRef: "/ws" } }
     const view = fullAutoLauncherView(complete)
     const start = nodeByKey(view, "full-auto-launcher-start") as { disabled?: boolean }
     expect(start.disabled).toBe(false)
@@ -292,7 +301,7 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
     }))
   })
 
-  test("opening the launcher with an already-active run redirects straight to the run view (FA-AC-39)", async () => {
+  test("opening the launcher keeps existing active runs in the monitor and permits a new run", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const active = baseRun({ runRef: "run-active", state: "running" })
       const { state, registry } = yield* makeHarness({
@@ -302,8 +311,9 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
       })
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherOpened", StaticPayload(null))))
       const next = yield* SubscriptionRef.get(state)
-      expect(next.fullAuto.mode).toBe("run")
-      expect(next.fullAuto.activeRunRef).toBe("run-active")
+      expect(next.fullAuto.mode).toBe("launcher")
+      expect(next.fullAuto.activeRunRef).toBeNull()
+      expect(next.fullAuto.runs.map(run => run.runRef)).toContain("run-active")
       expect(next.workspace).toBe("full-auto")
     }))
   })
@@ -353,10 +363,10 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
     }))
   })
 
-  test("Start surfaces an active_run_conflict refusal as a launcher error, never a silent no-op", async () => {
+  test("Start surfaces a main-process refusal as a launcher error, never a silent no-op", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const { state, registry } = yield* makeHarness({
-        start: async () => ({ ok: false, status: 409, error: { error: "active_run_conflict", message: "A Full Auto run is already active for this Desktop profile." } }),
+        start: async () => ({ ok: false, status: 409, error: { error: "lane_not_eligible", message: "The selected provider is not currently eligible." } }),
       }, {
         fullAuto: {
           ...emptyFullAutoWorkspaceState(),
@@ -365,7 +375,7 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
       })
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherStartRequested", StaticPayload(null))))
       const draft = (yield* SubscriptionRef.get(state)).fullAuto.launcher
-      expect(draft.error).toBe("A Full Auto run is already active for this Desktop profile.")
+      expect(draft.error).toBe("The selected provider is not currently eligible.")
       expect(draft.submitting).toBe(false)
     }))
   })
@@ -455,12 +465,12 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("codex-local"))))
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherMaxWallClockChanged", StaticPayload("120"))))
       const draft = (yield* SubscriptionRef.get(state)).fullAuto.launcher
-      expect(draft.fallbackLanes).toEqual(["acp:grok-cli"])
+      expect(draft.fallbackLanes).toEqual(["fable-local", "acp:grok-cli"])
       expect(draft.maxWallClockMinutesText).toBe("120")
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherStartRequested", StaticPayload(null))))
       expect(startRequests).toHaveLength(1)
       expect(startRequests[0]).toMatchObject({
-        routingPolicy: [{ lane: "codex-local" }, { lane: "acp:grok-cli" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }, { lane: "acp:grok-cli" }],
         guardrails: { maxTurns: 5, maxWallClockMs: 120 * 60_000 },
         turnCap: 5,
       })

@@ -8,6 +8,7 @@ import {
 } from "./full-auto-liveness.ts"
 import {
   FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
+  FULL_AUTO_RUN_ACTIVE_LIMIT,
   FULL_AUTO_RUN_OBJECTIVE_LIMIT,
   FULL_AUTO_RUN_REASON_LIMIT,
   FULL_AUTO_RUN_TITLE_LIMIT,
@@ -66,8 +67,8 @@ const errorResponseSchema = { $ref: "#/components/schemas/FullAutoControlError" 
 
 const runResponseSchema = { $ref: "#/components/schemas/FullAutoControlRunStatusResponse" } as const
 
-const activeRunConflictResponse = {
-  description: "A Full Auto run is already active for this Desktop profile (FA-AC-39); nothing was started.",
+const runStartConflictResponse = {
+  description: "The requested provider lane, model, routing policy, or workspace is not eligible; nothing was started.",
   content: { "application/json": { schema: errorResponseSchema } },
 } as const
 
@@ -393,9 +394,8 @@ export const fullAutoControlOpenApiDocument = {
         operationId: "startFullAutoRun",
         summary: "Start a new FullAutoRun: title, objective, and done condition are required (FA-AC-38).",
         description:
-          "Enforces the v1 one-active-run-per-profile concurrency policy (FA-AC-39): refused with 409 " +
-          "active_run_conflict naming the existing active runRef when one already exists, before minting " +
-          "anything. On success mints a new thread, binds the resolved workspace, creates the run in the " +
+          "Mints a distinct runRef and threadRef even while other runs are active (FA-AC-39 rev 13). " +
+          "On success it binds the resolved workspace, creates the run in the " +
           "Running state, appends a distinctly-attributed system note, and schedules the shared serialized " +
           "reconcile pass.",
         requestBody: {
@@ -413,7 +413,7 @@ export const fullAutoControlOpenApiDocument = {
           },
           "400": invalidRequestResponse,
           "401": unauthorizedResponse,
-          "409": activeRunConflictResponse,
+          "409": runStartConflictResponse,
         },
       },
     },
@@ -938,6 +938,7 @@ export const fullAutoControlOpenApiDocument = {
               "workspace_mismatch",
               "lane_not_eligible",
               "active_run_conflict",
+              "active_run_limit_reached",
               "illegal_transition",
               "not_recoverable",
               "routing_policy_refused",
@@ -948,6 +949,8 @@ export const fullAutoControlOpenApiDocument = {
           expectedWorkspaceRef: { type: "string", minLength: 1, maxLength: 1024 },
           resolvedWorkspaceRef: { type: "string", minLength: 1, maxLength: 1024 },
           activeRunRef: { type: "string", minLength: 1, maxLength: 180 },
+          activeRunCount: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+          activeRunLimit: { type: "integer", const: FULL_AUTO_RUN_ACTIVE_LIMIT },
           fromState: { $ref: "#/components/schemas/FullAutoRunState" },
           toState: { $ref: "#/components/schemas/FullAutoRunState" },
           handoffRefusalReason: { $ref: "#/components/schemas/ProviderHandoffRefusalReason" },

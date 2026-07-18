@@ -886,7 +886,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This binds only the launch entry point (a lightning-bolt Full Auto action beside/under New session in the left rail). It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1) or the read-only run view's contents (see full_auto_read_only_run_view.v1), and it grants no release or public-claim authority.",
+        "This binds the lightning-bolt Full Auto entry point, its compact one-mission default, collapsed Advanced configuration, and persistent run monitor. It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1), and it grants no fleet scheduling, release, or public-claim authority.",
       blockerRefs: [],
       contractId: "openagents_desktop.full_auto_dedicated_launcher.v1",
       enforcementTier: "test-sweep",
@@ -899,7 +899,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "FA-UX-01 (#8974) landed: real-DOM component oracles prove the left rail renders a dedicated Full Auto launcher action beside New session (sidebar-destinations.test.ts, mvp-visible-surfaces.test.ts), that the launcher form collects title/objective/done-condition/workspace/provider-lane/turn-cap and Start stays disabled until every required field is present (react-full-auto-surface.test.tsx, full-auto-workspace.test.ts), and that Start routes through the same startFullAutoRunAction the opt-in HTTP control API uses -- including the identical workspace-authority and active-run-conflict refusal rules (full-auto-run-actions.ts, full-auto-run-control-server.test.ts).",
+            "Rev 13 real-DOM oracles prove the left rail renders a dedicated Full Auto action beside New session; the default form requires only objective plus host-resolved workspace, deterministically infers title/done condition, defaults to Codex then Claude, and keeps every other field in a closed Advanced disclosure. The persistent monitor lists every active run and dispatches open/stop by exact runRef. Start routes through the same startFullAutoRunAction as the authenticated HTTP/CLI/MCP surface, including workspace/provider admission and the eight-active-run bound.",
           id: "openagents_desktop.full_auto_dedicated_launcher.dom",
           kind: "bun-test",
           mode: "dom",
@@ -916,16 +916,16 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       ],
       productArea: "Desktop Full Auto launch surface",
       source: {
-        channel: "github-issue",
+        channel: "owner-codex-session",
         statedBy: "owner",
-        statedOn: "2026-07-17",
+        statedOn: "2026-07-18",
       },
       state: "enforced",
       statement:
         "Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.",
       surface: "openagents-desktop",
       verification:
-        "FA-UX-01 (#8974) landed: pnpm --dir apps/openagents-desktop run test runs react-full-auto-surface.test.tsx and full-auto-workspace.test.ts in the normal Desktop sweep, driving the left rail, opening the launcher, filling the mission-contract fields, and asserting Start is disabled until required fields are present and refuses on a workspace mismatch/active-run-conflict exactly like the existing control-API start (FA-AC-28/FA-AC-54 in the ProductSpec). A real-Chromium/Electron e2e visual smoke is a residual, tracked as a planned oracle above.",
+        "The normal Desktop sweep runs react-full-auto-surface.test.tsx and full-auto-workspace.test.ts, proving the compact launcher, inferred contract, collapsed Advanced fields, Codex-to-Claude default, multi-run monitor, and runRef-scoped Stop. The Electron React smoke drives a real start/turn/stop lifecycle; Playwright-rendered review captures verify the compact and expanded layouts.",
     },
     {
       authorityBoundary:
@@ -972,7 +972,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This binds the lifecycle state machine and its Play/Pause/Stop (Resume/Pause/Stop) transition legality and attribution. It grants no autonomous provider-selection, mid-run steering, or concurrent multi-run authority, and it does not itself verify that a run's stated done condition was actually satisfied -- Completed remains a self-reported, owner-reviewable disposition.",
+        "This binds each runRef-scoped lifecycle state machine and its Play/Pause/Stop transition legality and attribution. Rev 13 admits up to eight independently active run/thread identities, but grants no fleet allocation, provider selection outside an owner-admitted ordered rotation policy, or mid-run steering; it does not itself verify that a run's stated done condition was actually satisfied.",
       blockerRefs: [],
       contractId: "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1",
       enforcementTier: "test-sweep",
@@ -986,7 +986,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "FA-RUN-01 (#8969) landed: unit coverage over the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle state machine, its exhaustive legal-transition matrix, the v1 one-active-run-per-profile concurrency policy, rerun/new-generation semantics, and the additive legacy-registry migration -- Pause with an active turn transitions through Pausing to Paused only once that turn resolves; Pause with no turn in flight transitions directly to Paused; Resume is legal only from Paused and dispatches exactly once; Stop is terminal, legal from any non-terminal state, and distinct from Pause (never resumable); and every transition persists actor/timestamp/typed reason.",
+            "Unit coverage exercises the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached state machine, its exhaustive legal-transition matrix, up to eight independently active runs with a typed no-side-effect capacity refusal, rerun/new-generation semantics, and additive legacy migration. Pause/Resume/Stop semantics and actor/timestamp/typed-reason attribution remain exact per runRef.",
           id: "openagents_desktop.full_auto_play_pause_stop_lifecycle.run_model",
           kind: "bun-test",
           mode: "unit",
@@ -1016,5 +1016,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-17.2",
+  version: "2026-07-18.1",
 }

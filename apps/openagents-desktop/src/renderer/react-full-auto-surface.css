@@ -1,0 +1,400 @@
+/* Full Auto is a compact operator surface: one mission composer, progressive
+   disclosure for policy knobs, and a persistent run monitor. */
+.oa-react-full-auto-surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 276px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.oa-react-full-auto-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: var(--en-color-borderStrong) transparent;
+}
+
+.oa-react-full-auto-workspace .oa-react-full-auto-launcher,
+.oa-react-full-auto-workspace .oa-react-full-auto-run {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 780px);
+  min-height: auto;
+  margin: 0 auto;
+  padding: var(--en-spacing-8) var(--en-spacing-6);
+}
+
+.oa-react-full-auto-launcher > header h1,
+.oa-react-full-auto-run-heading h1,
+.oa-react-full-auto-monitor h2,
+.oa-react-full-auto-transcript h2 {
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.oa-react-full-auto-launcher > header h1,
+.oa-react-full-auto-run-heading h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.oa-react-full-auto-launcher > header p {
+  max-width: 60ch;
+  margin: var(--en-spacing-1\.5) 0 var(--en-spacing-6);
+  color: var(--en-color-textMuted);
+  line-height: 1.5;
+}
+
+.oa-react-full-auto-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--en-spacing-1\.5);
+}
+
+.oa-react-full-auto-field label {
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.oa-react-full-auto-objective-field label {
+  color: var(--en-color-textPrimary);
+  font-size: 0.875rem;
+}
+
+.oa-react-full-auto-objective-field textarea {
+  min-height: 104px;
+  max-height: 220px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.oa-react-full-auto-defaults {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-1) var(--en-spacing-3);
+  margin: var(--en-spacing-2) 0 var(--en-spacing-4);
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+}
+
+.oa-react-full-auto-defaults span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-full-auto-defaults span + span::before {
+  content: "·";
+  margin-right: var(--en-spacing-3);
+  color: var(--en-color-borderStrong);
+}
+
+.oa-react-full-auto-advanced,
+.oa-react-full-auto-mission-details {
+  border-top: 1px solid var(--en-color-borderSubtle);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-full-auto-advanced summary,
+.oa-react-full-auto-mission-details summary {
+  padding: var(--en-spacing-2\.5) 0;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.oa-react-full-auto-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--en-spacing-3);
+  padding: var(--en-spacing-1) 0 var(--en-spacing-4);
+}
+
+.oa-react-full-auto-wide-field {
+  grid-column: 1 / -1;
+}
+
+.oa-react-full-auto-wide-field textarea {
+  max-height: 128px;
+  resize: vertical;
+}
+
+.oa-react-full-auto-select {
+  width: 100%;
+  min-height: var(--en-control-md-height);
+  padding: 0 var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-full-auto-rotation-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-1);
+  margin-top: var(--en-spacing-1\.5);
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+}
+
+.oa-react-full-auto-rotation-order span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+}
+
+.oa-react-full-auto-rotation-order button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+}
+
+.oa-react-full-auto-actions,
+.oa-react-full-auto-run-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-2);
+  margin-top: var(--en-spacing-4);
+}
+
+.oa-react-full-auto-error,
+.oa-react-full-auto-stall-copy {
+  color: var(--en-color-danger);
+  font-size: 0.8125rem;
+}
+
+.oa-react-full-auto-run {
+  padding-top: var(--en-spacing-5);
+}
+
+.oa-react-full-auto-run-header {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  padding: var(--en-spacing-2) 0 var(--en-spacing-3);
+  background: color-mix(in srgb, var(--en-color-background) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.oa-react-full-auto-run-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-3);
+}
+
+.oa-react-full-auto-run-heading h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-full-auto-run-meta,
+.oa-react-full-auto-run-done-condition,
+.oa-react-full-auto-terminal-reason {
+  margin: var(--en-spacing-1\.5) 0 0;
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.oa-react-full-auto-mission-details {
+  margin-top: var(--en-spacing-2);
+}
+
+.oa-react-full-auto-run-objective {
+  max-width: 70ch;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.oa-react-full-auto-workspace .oa-react-full-auto-conversation,
+.oa-react-full-auto-workspace .oa-react-full-auto-transcript {
+  min-width: 0;
+  margin-top: var(--en-spacing-4);
+}
+
+.oa-react-full-auto-workspace .oa-react-full-auto-conversation {
+  display: flex;
+}
+
+.oa-react-full-auto-conversation-empty,
+.oa-react-full-auto-transcript > p {
+  color: var(--en-color-textMuted);
+  font-size: 0.8125rem;
+}
+
+.oa-react-full-auto-transcript h2 {
+  font-size: 0.875rem;
+}
+
+.oa-react-full-auto-turn-list,
+.oa-react-full-auto-transition-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--en-spacing-2);
+  padding: 0;
+  list-style: none;
+}
+
+.oa-react-full-auto-turn {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2) 0;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  font-size: 0.8125rem;
+}
+
+.oa-react-full-auto-turn-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-full-auto-turn-time {
+  color: var(--en-color-textMuted);
+  font-variant-numeric: tabular-nums;
+}
+
+.oa-react-full-auto-monitor {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: var(--en-spacing-4) var(--en-spacing-2);
+  border-left: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surface);
+}
+
+.oa-react-full-auto-monitor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  padding: 0 var(--en-spacing-1) var(--en-spacing-3);
+}
+
+.oa-react-full-auto-monitor h2 {
+  font-size: 0.875rem;
+}
+
+.oa-react-full-auto-monitor header p {
+  margin: var(--en-spacing-1) 0 0;
+  color: var(--en-color-textMuted);
+  font-size: 0.6875rem;
+}
+
+.oa-react-full-auto-run-list {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--en-spacing-1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.oa-react-full-auto-run-list-empty {
+  padding: var(--en-spacing-3);
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.oa-react-full-auto-run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--en-radius-sm);
+}
+
+.oa-react-full-auto-run-row[data-selected="true"] {
+  border-color: var(--en-color-borderStrong);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-react-full-auto-run-row[data-active="true"] {
+  box-shadow: inset 2px 0 0 var(--en-color-accent);
+}
+
+.oa-react-full-auto-run-open {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--en-spacing-1);
+  padding: var(--en-spacing-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oa-react-full-auto-run-row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.oa-react-full-auto-run-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 920px) {
+  .oa-react-full-auto-surface {
+    grid-template-columns: minmax(0, 1fr) 232px;
+  }
+
+  .oa-react-full-auto-workspace .oa-react-full-auto-launcher,
+  .oa-react-full-auto-workspace .oa-react-full-auto-run {
+    padding-right: var(--en-spacing-4);
+    padding-left: var(--en-spacing-4);
+  }
+}
+
+@media (max-width: 720px) {
+  .oa-react-full-auto-surface {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .oa-react-full-auto-monitor {
+    max-height: 220px;
+    border-top: 1px solid var(--en-color-borderSubtle);
+    border-left: 0;
+  }
+
+  .oa-react-full-auto-advanced-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oa-react-full-auto-wide-field {
+    grid-column: auto;
+  }
+}

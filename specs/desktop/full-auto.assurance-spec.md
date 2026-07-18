@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.full.auto.codex.composer.loop"
-assurance_revision: 2
+assurance_revision: 3
 title: "Full Auto Autonomous-Run Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,7 +10,7 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-This revision reconciles the Full Auto AssuranceSpec from the stale rev-1 stub (bound to the superseded ProductSpec rev 9 digest, all 37 obligations `needs_design`) to the current accepted ProductSpec on `main` at the time of this authoring pass -- rev 12, which is downstream of rev 10's (#8968) autonomous-run redesign plus rev 11's multi-lane routing (#8987) and rev 12's guardrails (#8991). It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
+This revision reconciles the Full Auto AssuranceSpec to ProductSpec rev 13, including the owner-directed one-click launcher, bounded concurrent-run admission, and run monitor. It preserves rev 2's complete FA-AC-01..68 subject set and changes AO-FA-AC-39-01 from a second-run refusal oracle to positive independent admission plus a negative ninth-run capacity oracle. It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
 
 **What this revision DOES establish:** a real risk model (Risk Model section); explicit local/dev/packaged/owner-real environment profiles with honest capability gaps (Environments section); a criterion-to-obligation map covering every one of the 68 FA-AC-* criteria with no criterion silently dropped from the subject binding (Obligations section, `uncovered_acceptance_criterion` is structurally impossible here); and, for the nine highest-risk clusters FA-AS-01 (#8978) names, DESIGNED obligations (oracle + falsifier + technique + environment + evidence + independence + activation gate) citing real, currently-passing test files in `apps/openagents-desktop` by exact path -- not placeholder text.
 
@@ -18,9 +18,9 @@ This revision reconciles the Full Auto AssuranceSpec from the stale rev-1 stub (
 
 ## Subject
 
-This revision rebinds the subject from the stale rev-9 digest to the exact ProductSpec bytes on `main` at authoring time: revision 12, path `specs/desktop/full-auto.product-spec.md`. ProductSpec's own `tool_metadata.openagents_assurance_spec_status` (as of rev 12) records this AssuranceSpec as `stale_pending_reconciliation` against rev 10 specifically ("rev 10 adds FA-AC-38..66 and a criterion disposition map that the AssuranceSpec has not yet absorbed... Reconciliation... is FA-AS-01 (#8978)"). Two further revisions (11: multi-lane routing #8987, adding FA-AC-67; 12: guardrails #8991, adding FA-AC-68) landed on `main` between #8978's authoring and this reconciliation pass. Binding to the CURRENT rev 12 rather than the historically-named rev 10 is a deliberate honesty choice: binding to an already-superseded rev-10 digest would make this very document stale on arrival, which is the same defect being fixed. All 68 `FA-AC-01` through `FA-AC-68` criterion refs are bound below (`criterion_refs`), so `uncovered_acceptance_criterion` cannot fire for any of them -- coverage completeness (a subject-binding property) is distinct from proof-design completeness (a per-obligation property tracked in the Obligations section and the `custom-criterion-coverage-ledger`).
+This revision binds the subject to the exact ProductSpec rev-13 bytes at `specs/desktop/full-auto.product-spec.md`. All 68 `FA-AC-01` through `FA-AC-68` criterion refs remain bound below. Rev 13 changes the intent of FA-AC-39 without adding a new criterion identity, so this pass updates its exact source snapshot/digest, oracle, falsifier, and test evidence instead of pretending the rev-12 refusal plan still covers the new policy.
 
-A future rebind to a still-later ProductSpec revision (if rev 13+ lands before this AssuranceSpec is admitted) must repeat this same digest/criterion-set update; per ASSURANCE_SPEC.md Law/§13, ANY ProductSpec revision or intent change stales this AssuranceSpec until explicit reconciliation -- "the text looks close" is not reconciliation.
+A future rebind to ProductSpec rev 14+ must repeat this same digest/criterion-set update; per ASSURANCE_SPEC.md Law/§13, any ProductSpec revision or intent change stales this AssuranceSpec until explicit reconciliation.
 
 ```assurancespec-subject
 {
@@ -95,7 +95,7 @@ A future rebind to a still-later ProductSpec revision (if rev 13+ lands before t
       "FA-AC-67",
       "FA-AC-68"
     ],
-    "document_digest": "sha256:dc1f390741c06393b3054231eb7b6f52849b9c92a05b00b3736ea85df12a6911",
+    "document_digest": "sha256:edf0663cc8e74024efa78b25c3ba3da7358285a56671b05e59b2b569bf215982",
     "path": "specs/desktop/full-auto.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
@@ -4163,7 +4163,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     },
     "falsifier": {
       "expected_verdict": "REFUTED",
-      "kind": "second_active_run_fixture",
+      "kind": "ninth_active_run_capacity_fixture",
       "ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts"
     },
     "id": "AO-FA-AC-39-01",
@@ -4172,10 +4172,10 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     },
     "oracle": {
       "evaluator_ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts",
-      "statement": "A second active-run start for the same profile is refused with a typed conflict naming the existing runRef; never silently queued or run in parallel."
+      "statement": "Two active-run starts mint distinct runRef/threadRef identities and remain independently controllable; the ninth concurrent start refuses before minting a thread, and per-thread lease tests still forbid duplicate dispatch."
     },
-    "source_claim_digest": "sha256:e5d172b7d06a6f723999aeae58c705cf81053deb6e6561b4884e900e17bb41fc",
-    "source_claim_snapshot": "Starting a second active (non-terminal) run while one active\nrun already exists for the Desktop profile is refused with a typed conflict\nidentifying the existing active `runRef`; it is never silently queued and\nnever dispatched in parallel. Draft and terminal run records are unaffected\nby this limit.\nProof: planned, owned by FA-RUN-01 (#8969).",
+    "source_claim_digest": "sha256:8d01cdf671b3c4bab025ef31871271502057b69939fbfbfab1338a3fb250f8a5",
+    "source_claim_snapshot": "Starting another active run while other runs are active mints a\ndistinct `runRef` and `threadRef` and admits it without mutating, pausing, or\nsilently queueing any existing run, up to the explicit eight-active-run\nlocal capacity. A ninth start refuses before minting a thread. The monitor\nand authenticated control surfaces list and control each run by exact\n`runRef`. The existing durable\nper-thread lease still permits at most one in-flight Full Auto turn for a\ngiven thread, while different run threads may be in flight concurrently.\nProof: `full-auto-run-registry.test.ts` concurrent-active case,\n`full-auto-run-control-server.test.ts` two-run bootstrap case, and\n`react-full-auto-surface.test.tsx` multi-run monitor/open/stop case.",
     "technique": "unit",
     "title": "Assure FA-AC-39"
   },

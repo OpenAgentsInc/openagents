@@ -24,6 +24,7 @@ import {
   type FullAutoRunReport,
 } from "./full-auto-run-report.ts"
 import {
+  FULL_AUTO_RUN_ACTIVE_LIMIT,
   type FullAutoRun,
   type FullAutoRunActor,
   type FullAutoRunThreadSnapshot,
@@ -221,20 +222,24 @@ export const startFullAutoRunAction = (
       },
     }
   }
-  // FA-AC-39: check BEFORE minting anything -- a refusal must leave no side
-  // effect behind, never a half-started thread.
-  const existingActive = capabilities.runRegistry.activeRun()
-  if (existingActive !== null) {
+  // Runs are independently admitted by runRef/threadRef. Bound local
+  // concurrency is checked before minting a thread so a refusal cannot leave
+  // an orphaned session behind.
+  const activeRunCount = capabilities.runRegistry.activeRuns().length
+  if (activeRunCount >= FULL_AUTO_RUN_ACTIVE_LIMIT) {
     return {
       ok: false,
       status: 409,
       error: {
-        error: "active_run_conflict",
-        message: "A Full Auto run is already active for this Desktop profile.",
-        activeRunRef: existingActive.runRef,
+        error: "active_run_limit_reached",
+        message: `This Desktop profile is already running ${activeRunCount} Full Auto runs (limit ${FULL_AUTO_RUN_ACTIVE_LIMIT}). Stop or finish one before starting another.`,
+        activeRunCount,
+        activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
       },
     }
   }
+  // The low-level registry's durable per-thread lease remains the exactly-once boundary;
+  // no profile-wide active slot is acquired here.
   const startedThreadRef = capabilities.createThread(body.title, lane)
   const profile = { lane, ...(body.model === undefined ? {} : { model: body.model }) }
   capabilities.registry.set(startedThreadRef, true, { workspaceRef: resolvedWorkspaceRef, profile })
@@ -255,9 +260,11 @@ export const startFullAutoRunAction = (
       ok: false,
       status: 409,
       error: {
-        error: result.reason === "active_run_conflict" ? "active_run_conflict" : "invalid_request",
+        error: result.reason === "active_run_limit_reached" ? "active_run_limit_reached" : "invalid_request",
         message: "A Full Auto run could not be started.",
-        ...(result.reason === "active_run_conflict" ? { activeRunRef: result.activeRunRef } : {}),
+        ...(result.reason === "active_run_limit_reached"
+          ? { activeRunCount: result.activeRunCount, activeRunLimit: result.activeRunLimit }
+          : {}),
       },
     }
   }

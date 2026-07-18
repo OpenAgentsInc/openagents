@@ -46,12 +46,14 @@ export const FULL_AUTO_RUN_DONE_CONDITION_LIMIT = 2000
 export const FULL_AUTO_RUN_TURN_CAP_DEFAULT = FULL_AUTO_MAX_CONTINUATIONS
 export const FULL_AUTO_RUN_TRANSITION_HISTORY_LIMIT = 200
 export const FULL_AUTO_RUN_OBJECTIVE_HISTORY_LIMIT = 50
+/** Bounded local concurrency: enough for the documented five-worker Fast
+ * Follow shape plus operator headroom, without unbounded provider fan-out. */
+export const FULL_AUTO_RUN_ACTIVE_LIMIT = 8
 
 /**
  * The exact lifecycle enumeration named by ProductSpec FA-AC-43 and the
  * `openagents_desktop.full_auto_play_pause_stop_lifecycle.v1` behavior
- * contract. `draft` is a run that has not Started yet (does not count
- * against the v1 one-active-run concurrency policy); the four listed
+ * contract. `draft` is a run that has not Started yet; the four listed
  * terminal states never transition again -- a rerun always mints a new
  * `runRef` (FA-AC-40).
  */
@@ -424,7 +426,7 @@ export type FullAutoRunCreateInput = Readonly<{
 
 export type FullAutoRunStartResult =
   | Readonly<{ ok: true; run: FullAutoRun }>
-  | Readonly<{ ok: false; reason: "active_run_conflict"; activeRunRef: string }>
+  | Readonly<{ ok: false; reason: "active_run_limit_reached"; activeRunCount: number; activeRunLimit: typeof FULL_AUTO_RUN_ACTIVE_LIMIT }>
   | Readonly<{ ok: false; reason: "not_found" }>
   | Readonly<{ ok: false; reason: "illegal_transition"; from: FullAutoRunState }>
 
@@ -436,14 +438,16 @@ export type FullAutoRunTransitionResult =
 export type FullAutoRunRegistry = Readonly<{
   list: () => ReadonlyArray<FullAutoRun>
   get: (runRef: string) => FullAutoRun | null
-  /** The single active (non-terminal, non-draft) run for this profile, or
-   * null. v1 concurrency guarantees at most one ever exists. */
+  /** Compatibility convenience: the newest active run, or null. */
   activeRun: () => FullAutoRun | null
+  /** Every independently active run. Lifecycle/control remains runRef-scoped
+   * and dispatch concurrency remains protected by one lease per thread. */
+  activeRuns: () => ReadonlyArray<FullAutoRun>
   findByThreadRef: (threadRef: string) => FullAutoRun | null
-  /** Always succeeds; a draft never competes for the concurrency slot. */
+  /** Always succeeds; a draft has no dispatch authority until Start. */
   createDraft: (input: FullAutoRunCreateInput) => FullAutoRun
-  /** draft -> running. Refuses with a typed conflict naming the existing
-   * active runRef (FA-AC-39) rather than queuing or dispatching in parallel. */
+  /** draft -> running. Other active runs do not compete for a profile-global
+   * slot; the per-thread lease is the concurrency authority. */
   start: (
     runRef: string,
     options: Readonly<{ actor: FullAutoRunActor; reason: string; threadRef?: string; correlationRef?: string }>,
@@ -523,7 +527,10 @@ export const openFullAutoRunRegistry = (
     const index = findIndex(runRef)
     return index === -1 ? null : runs[index]!
   }
-  const activeRun = (): FullAutoRun | null => runs.find(run => isFullAutoRunActive(run.state)) ?? null
+  const activeRuns = (): ReadonlyArray<FullAutoRun> =>
+    runs.filter(run => isFullAutoRunActive(run.state))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  const activeRun = (): FullAutoRun | null => activeRuns()[0] ?? null
   const findByThreadRef = (threadRef: string): FullAutoRun | null =>
     runs.find(run => run.threadRef === threadRef) ?? null
 
@@ -581,12 +588,16 @@ export const openFullAutoRunRegistry = (
   }
 
   const start: FullAutoRunRegistry["start"] = (runRef, options) => {
-    const existingActive = activeRun()
-    if (existingActive !== null && existingActive.runRef !== runRef) {
-      return { ok: false, reason: "active_run_conflict", activeRunRef: existingActive.runRef }
-    }
     const index = findIndex(runRef)
     if (index === -1) return { ok: false, reason: "not_found" }
+    if (runs[index]!.state === "draft" && activeRuns().length >= FULL_AUTO_RUN_ACTIVE_LIMIT) {
+      return {
+        ok: false,
+        reason: "active_run_limit_reached",
+        activeRunCount: activeRuns().length,
+        activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
+      }
+    }
     if (options.threadRef !== undefined && runs[index]!.threadRef === undefined) {
       runs[index] = Schema.decodeUnknownSync(FullAutoRunSchema)({ ...runs[index]!, threadRef: options.threadRef })
     }
@@ -602,8 +613,14 @@ export const openFullAutoRunRegistry = (
   }
 
   const startNew: FullAutoRunRegistry["startNew"] = input => {
-    const existingActive = activeRun()
-    if (existingActive !== null) return { ok: false, reason: "active_run_conflict", activeRunRef: existingActive.runRef }
+    if (activeRuns().length >= FULL_AUTO_RUN_ACTIVE_LIMIT) {
+      return {
+        ok: false,
+        reason: "active_run_limit_reached",
+        activeRunCount: activeRuns().length,
+        activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
+      }
+    }
     const draft = createDraft(input)
     return start(draft.runRef, { actor: input.actor, reason: input.reason, correlationRef: input.correlationRef })
   }
@@ -686,6 +703,7 @@ export const openFullAutoRunRegistry = (
     list,
     get,
     activeRun,
+    activeRuns,
     findByThreadRef,
     createDraft,
     start,
@@ -724,11 +742,8 @@ export type FullAutoRunMigrationOutcome = Readonly<{
   /** A prior startup already migrated this exact threadRef -- idempotent
    * no-op, not a data-loss condition. */
   skippedAlreadyMigrated: ReadonlyArray<string>
-  /** The v1 one-active-run-per-profile policy refused a second concurrent
-   * legacy row from starting. Nothing is lost: a Draft run preserving every
-   * field (workspace/profile/counters) was created for owner review, per
-   * the migration requirement that data is "preserved or rejected with a
-   * typed, owner-visible migration outcome." */
+  /** A legacy row failed its lifecycle transition for another typed reason.
+   * Nothing is lost: a Draft preserving every field is created for review. */
   preservedAsDraft: ReadonlyArray<Readonly<{ threadRef: string; runRef: string }>>
 }>
 
@@ -777,10 +792,8 @@ export const migrateLegacyFullAutoRegistry = (input: Readonly<{
       alreadyMigratedThreadRefs.add(legacy.threadRef)
       continue
     }
-    // The v1 one-active-run policy is a genuine, new behavior change versus
-    // the legacy model (which had no such limit). Preserve every field as a
-    // Draft rather than silently dropping it -- an owner can review and
-    // manually Start it once the currently active run finishes.
+    // Preserve every field as a Draft rather than silently dropping a row
+    // whose lifecycle transition failed for any other reason.
     const draft = input.runRegistry.createDraft(createInput)
     preservedAsDraft.push({ threadRef: legacy.threadRef, runRef: draft.runRef })
     alreadyMigratedThreadRefs.add(legacy.threadRef)

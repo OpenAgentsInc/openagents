@@ -21,6 +21,7 @@ import {
 } from "./full-auto-liveness.ts"
 import {
   FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
+  FULL_AUTO_RUN_ACTIVE_LIMIT,
   FULL_AUTO_RUN_OBJECTIVE_LIMIT,
   FULL_AUTO_RUN_REASON_LIMIT,
   FULL_AUTO_RUN_TITLE_LIMIT,
@@ -139,8 +140,8 @@ export const decodeFullAutoControlRunRef = (value: unknown): string | null => {
  * FA-RUN-01 (#8969): POST /v1/full-auto/runs/start -- the run-level
  * bootstrap. Unlike the thread-level /v1/full-auto/start (kept unchanged),
  * this route requires an explicit title/objective/doneCondition (FA-AC-38)
- * and enforces the v1 one-active-run-per-profile concurrency policy
- * (FA-AC-39) before it mints anything.
+ * and mints a distinct runRef/threadRef for independent concurrent admission
+ * (FA-AC-39 rev 13).
  */
 export const FullAutoControlRunStartRequestSchema = Schema.Struct({
   workspaceRef: WorkspaceRef,
@@ -439,9 +440,10 @@ export const FullAutoControlErrorTagSchema = Schema.Literals([
   "workspace_mismatch",
   "lane_not_eligible",
   "model_not_eligible",
-  /** FA-AC-39: a second active run was refused. `activeRunRef` on the error
-   * body identifies the existing run without leaking its objective. */
+  /** Legacy pre-rev-13 compatibility tag. New starts no longer emit it. */
   "active_run_conflict",
+  /** The bounded local concurrent-run capacity is full. */
+  "active_run_limit_reached",
   /** FA-AC-43: the requested run-lifecycle transition is not legal from the
    * run's current state (for example Resume from a non-Paused state). */
   "illegal_transition",
@@ -472,9 +474,11 @@ export const FullAutoControlErrorSchema = Schema.Struct({
    * Local loopback surface -- the caller already knows its own paths. */
   expectedWorkspaceRef: Schema.optional(WorkspaceRef),
   resolvedWorkspaceRef: Schema.optional(WorkspaceRef),
-  /** active_run_conflict only: identifies the existing run, never its
-   * objective (FA-AC-39). */
+  /** Legacy active_run_conflict only; retained for decoder compatibility. */
   activeRunRef: Schema.optional(RunRef),
+  /** active_run_limit_reached only: bounded local capacity evidence. */
+  activeRunCount: Schema.optional(Count),
+  activeRunLimit: Schema.optional(Schema.Literal(FULL_AUTO_RUN_ACTIVE_LIMIT)),
   /** illegal_transition only: the exact refused edge. */
   fromState: Schema.optional(FullAutoRunStateSchema),
   toState: Schema.optional(FullAutoRunStateSchema),
@@ -512,8 +516,8 @@ export const FULL_AUTO_CONTROL_ROUTES = [
   { method: "get", path: "/v1/full-auto/{threadRef}/turns", operationId: "listFullAutoTurns" },
   // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface. Distinct
   // from the thread-level routes above (kept unchanged) -- these operate on
-  // runRef identity, enforce the v1 one-active-run-per-profile concurrency
-  // policy, and route every mutation through the single typed transition
+  // runRef identity, support independently active runs, and route every
+  // mutation through the single typed transition
   // function in full-auto-run-registry.ts.
   { method: "get", path: "/v1/full-auto/runs", operationId: "listFullAutoRuns" },
   { method: "post", path: "/v1/full-auto/runs/start", operationId: "startFullAutoRun" },

@@ -1296,9 +1296,8 @@ const fullAutoRunReportStore = openFullAutoRunReportStore(
  * transition" gap. */
 const fullAutoRunProjectionHeartbeatMs = 60_000
 const fullAutoRunProjectionHeartbeatTimer = setInterval(() => {
-  const active = fullAutoRunRegistry.activeRun()
-  if (active !== null && active.state === "running") {
-    Effect.runFork(fullAutoRunProjectionPublisher.publish(active))
+  for (const active of fullAutoRunRegistry.activeRuns()) {
+    if (active.state === "running") Effect.runFork(fullAutoRunProjectionPublisher.publish(active))
   }
 }, fullAutoRunProjectionHeartbeatMs)
 fullAutoRunProjectionHeartbeatTimer.unref?.()

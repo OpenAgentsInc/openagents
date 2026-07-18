@@ -12,6 +12,7 @@ import {
   FULL_AUTO_LEGACY_MIGRATION_DONE_CONDITION,
   FULL_AUTO_LEGACY_MIGRATION_OBJECTIVE,
   FULL_AUTO_RUN_ACTIVE_STATES,
+  FULL_AUTO_RUN_ACTIVE_LIMIT,
   FULL_AUTO_RUN_LEGAL_TRANSITIONS,
   FULL_AUTO_RUN_RECORD_LIMIT,
   FULL_AUTO_RUN_REGISTRY_SCHEMA,
@@ -170,7 +171,7 @@ describe("FullAutoRun lifecycle state machine (FA-RUN-01 #8969, FA-AC-43/44/45/4
   })
 })
 
-describe("FullAutoRun registry: concurrency, draft/start, rerun, eviction (FA-AC-38/39/40/50)", () => {
+describe("FullAutoRun registry: concurrent runs, draft/start, rerun, eviction (FA-AC-38/39/40/50)", () => {
   test("a run created via startNew carries runRef, title, objective, doneCondition, workspace, profile, cap, and state", () => {
     withTempDir("oa-full-auto-run-create-", root => {
       const registry = openFullAutoRunRegistry(path.join(root, "runs.json"), () => new Date("2026-07-17T00:00:00.000Z"))
@@ -194,31 +195,58 @@ describe("FullAutoRun registry: concurrency, draft/start, rerun, eviction (FA-AC
     })
   })
 
-  test("starting a second active run while one is already active is refused with a typed conflict naming the existing runRef; drafts and terminal runs are unaffected", () => {
+  test("starts multiple active runs with distinct runRef/threadRef-scoped lifecycle state", () => {
     withTempDir("oa-full-auto-run-concurrency-", root => {
       const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
       const first = registry.startNew({ ...draftInput(), actor: "control_api", reason: "first" })
       expect(first.ok).toBe(true)
       if (!first.ok) return
 
-      // A second draft is always fine -- drafts never compete for the slot.
+      // A second draft and start are independent of the first run.
       const secondDraft = registry.createDraft(draftInput({ title: "Second mission" }))
       expect(secondDraft.state).toBe("draft")
 
       const secondStart = registry.start(secondDraft.runRef, { actor: "control_api", reason: "second" })
-      expect(secondStart.ok).toBe(false)
-      if (secondStart.ok) return
-      expect(secondStart.reason).toBe("active_run_conflict")
-      if (secondStart.reason !== "active_run_conflict") return
-      expect(secondStart.activeRunRef).toBe(first.run.runRef)
-      // The refused draft is untouched -- still a draft, not silently queued.
-      expect(registry.get(secondDraft.runRef)?.state).toBe("draft")
+      expect(secondStart.ok).toBe(true)
+      if (!secondStart.ok) return
+      expect(registry.activeRuns().map(run => run.runRef)).toEqual(expect.arrayContaining([
+        first.run.runRef,
+        secondStart.run.runRef,
+      ]))
 
-      // Stopping the first run frees the slot; the second can now start.
+      // Stopping one run does not mutate or stop the other.
       const stopped = registry.transition(first.run.runRef, { to: "stopped", actor: "owner_ui", reason: "done" })
       expect(stopped.ok).toBe(true)
-      const secondStartRetry = registry.start(secondDraft.runRef, { actor: "control_api", reason: "retry" })
-      expect(secondStartRetry.ok).toBe(true)
+      expect(registry.get(secondStart.run.runRef)?.state).toBe("running")
+      expect(registry.activeRuns().map(run => run.runRef)).toEqual([secondStart.run.runRef])
+    })
+  })
+
+  test("bounds local concurrent admission without mutating an existing run or minting an extra draft", () => {
+    withTempDir("oa-full-auto-run-capacity-", root => {
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+      for (let index = 0; index < FULL_AUTO_RUN_ACTIVE_LIMIT; index += 1) {
+        expect(registry.startNew({
+          ...draftInput({ title: `Mission ${index}` }),
+          threadRef: `thread-${index}`,
+          actor: "control_api",
+          reason: "capacity fixture",
+        }).ok).toBe(true)
+      }
+      const before = registry.list().map(run => ({ runRef: run.runRef, state: run.state }))
+      const refused = registry.startNew({
+        ...draftInput({ title: "Mission over limit" }),
+        threadRef: "thread-over-limit",
+        actor: "control_api",
+        reason: "capacity fixture",
+      })
+      expect(refused).toEqual({
+        ok: false,
+        reason: "active_run_limit_reached",
+        activeRunCount: FULL_AUTO_RUN_ACTIVE_LIMIT,
+        activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
+      })
+      expect(registry.list().map(run => ({ runRef: run.runRef, state: run.state }))).toEqual(before)
     })
   })
 
@@ -390,7 +418,7 @@ describe("Legacy registry migration (FA-AC-41)", () => {
     })
   })
 
-  test("a second concurrently-enabled legacy row is preserved as a Draft (no data loss) rather than silently dropped, honoring the new v1 one-active-run policy", () => {
+  test("concurrently-enabled legacy rows migrate as independently active runs without data loss", () => {
     withTempDir("oa-full-auto-migration-concurrency-", root => {
       const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
       const outcome = migrateLegacyFullAutoRegistry({
@@ -400,13 +428,11 @@ describe("Legacy registry migration (FA-AC-41)", () => {
         ],
         runRegistry,
       })
-      expect(outcome.migrated).toHaveLength(1)
-      expect(outcome.migrated[0]!.threadRef).toBe("thread-a")
-      expect(outcome.preservedAsDraft).toEqual([{ threadRef: "thread-b", runRef: outcome.preservedAsDraft[0]!.runRef }])
-      const draftRun = runRegistry.get(outcome.preservedAsDraft[0]!.runRef)
-      expect(draftRun?.state).toBe("draft")
-      expect(draftRun?.workspaceRef).toBe("/b")
-      expect(draftRun?.threadRef).toBe("thread-b")
+      expect(outcome.migrated).toHaveLength(2)
+      expect(outcome.migrated.map(run => run.threadRef)).toEqual(["thread-a", "thread-b"])
+      expect(outcome.preservedAsDraft).toEqual([])
+      expect(runRegistry.activeRuns()).toHaveLength(2)
+      expect(runRegistry.findByThreadRef("thread-b")?.workspaceRef).toBe("/b")
     })
   })
 

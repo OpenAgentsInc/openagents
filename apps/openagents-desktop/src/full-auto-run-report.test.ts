@@ -368,19 +368,8 @@ describe("full-auto-run-report retention/eviction", () => {
       if (!active.ok) return
       harness.reportStore.sync({ run: active.run, turns: [], handoffs: [] })
 
-      // Stop it isn't allowed to make room without a real second run since
-      // v1 concurrency permits only one active run; stop the active run
-      // first so subsequent runs can start, then fill past the bound with
-      // terminal runs.
-      const stopped = harness.runRegistry.transition(active.run.runRef, {
-        to: "stopped",
-        actor: "control_api",
-        reason: "test setup",
-      })
-      expect(stopped.ok).toBe(true)
-      if (!stopped.ok) return
-      harness.reportStore.sync({ run: stopped.run, turns: [], handoffs: [] })
-
+      // Concurrent admission lets terminal filler runs cycle while this
+      // first report remains genuinely protected and active.
       for (let index = 0; index < FULL_AUTO_RUN_REPORT_LIMIT + 20; index += 1) {
         harness.advance(1_000)
         const result = harness.runRegistry.startNew({
@@ -400,8 +389,8 @@ describe("full-auto-run-report retention/eviction", () => {
 
       expect(harness.reportStore.list().length).toBeLessThanOrEqual(FULL_AUTO_RUN_REPORT_LIMIT)
 
-      // Now start (and keep active) one more run -- it must always be
-      // present even though the store is at its bound.
+      // Start and keep a second active run -- both protected reports must
+      // remain present even though the store is at its bound.
       harness.advance(1_000)
       const finalActive = harness.runRegistry.startNew({
         ...START,
@@ -415,6 +404,7 @@ describe("full-auto-run-report retention/eviction", () => {
         handoffs: [],
       })
       expect(harness.reportStore.get(finalReport.runRef)).not.toBeNull()
+      expect(harness.reportStore.get(active.run.runRef)).not.toBeNull()
       expect(harness.reportStore.list().length).toBeLessThanOrEqual(FULL_AUTO_RUN_REPORT_LIMIT)
     } finally {
       harness.dispose()

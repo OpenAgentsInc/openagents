@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-18-full-auto-one-click-concurrent-runs-implementation.md": {
+      "class": "current-status",
+      "owner": "OpenAgents Desktop Full Auto / epic #8967",
+      "disposition": "retain-implementation-record",
+      "dispatch": false
+    },
     "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md": {
       "class": "authority",
       "owner": "OpenAgents Desktop Full Auto / epic #8967",

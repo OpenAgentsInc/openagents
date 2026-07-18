@@ -57,13 +57,16 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   Effect-owned Desktop mission/thread/provider seams were repaired and the
   native Codex/Claude lanes passed the owner-real matrix without invoking the
   Vercel Harness fallback.
+- [`2026-07-18-full-auto-one-click-concurrent-runs-implementation.md`](./2026-07-18-full-auto-one-click-concurrent-runs-implementation.md)
+  — current implementation record for the one-prompt launcher, collapsed
+  advanced policy, bounded concurrent runs, and exact-run operator monitor.
 - [`2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md`](./2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md)
   — owner-directed, owner-local experimental alternative for a bounded
   Codex-first Full Auto loop in one shared Vercel AI SDK Harness workspace;
   it is retained as the provider oracle/fallback, not production Full Auto
   authority or the selected sprint path.
 - [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
-  — Full Auto rev-12 mission, lifecycle, routing, guardrails, liveness,
+  — Full Auto rev-13 mission, lifecycle, routing, guardrails, liveness,
   evidence, UX, and handoff intent for epic #8967; live child issues own
   implementation sequence.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,

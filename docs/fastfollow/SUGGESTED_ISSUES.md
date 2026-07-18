@@ -241,18 +241,19 @@ Out: five-worker concurrency.
 
 Depends on: FF-05 and FF-06.
 
-Outcome: safely run multiple delivery, research, and implementation workers
-against an explicit capacity policy after the one-active-`FullAutoRun` local
-product is green. This is the future surface-vision FA-E2 portfolio/routing
-seam; it is not admitted by Full Auto ProductSpec rev 10 or by Fast Follow
-alone.
+Outcome: coordinate multiple delivery, research, and implementation workers
+against an explicit claim-aware capacity policy after rev 13's independently
+active local `FullAutoRun` product is green. This is the future surface-vision
+FA-E2 portfolio/routing seam; local concurrent run admission does not provide
+portfolio allocation or duplicate-work prevention by itself.
 
 Scope:
 
 - separately admitted run-policy schema; do not put runtime leases in authored
   FastFollowSpec;
-- an explicit Full Auto intent/invariant revision that admits concurrency and
-  autonomous provider/account rotation before either behavior ships;
+- an explicit Full Auto intent/invariant revision that admits portfolio
+  allocation and any provider/account selection beyond the current
+  owner-admitted ordered rotation policy before either behavior ships;
 - capacity profiles and dynamic reallocation when a work source is exhausted;
 - research writes limited to configured artifact paths;
 - implementation requires admitted candidates and isolated claims/worktrees;

@@ -263,9 +263,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/full-auto-run-registry.ts` and its control-API
   surface (`full-auto-control-server.ts`, routes under `/v1/full-auto/runs`):
   a run's `runRef` is durable and independent of any `threadRef` it is
-  currently bound to; v1 permits at most one active (non-terminal) Full Auto
-  run per Desktop profile, never silent queueing or parallel dispatch of a
-  second active run; every lifecycle transition among Draft, Running,
+  currently bound to; multiple active (non-terminal) Full Auto runs may
+  coexist in one Desktop profile only as distinct `runRef` + `threadRef`
+  identities, with monitor/control mutations scoped to an exact `runRef` and
+  no shared lifecycle state; local admission is bounded at eight active runs
+  and a ninth start fails before minting a thread; every lifecycle transition among Draft, Running,
   Pausing, Paused, Retrying, Stalled, Completed, Failed, Stopped, and
   Cap-reached carries actor, timestamp, and a typed reason, extending the
   existing `disabledBy` attribution pattern to the full graph; Stop is a
@@ -279,8 +281,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   (`migrateLegacyFullAutoRegistry`): an `enabled: true` legacy row becomes a
   Running run whose objective is the exact prior generic instruction, marked
   `legacy_migration`, never an invented user-authored goal; an `enabled:
-  false` row never migrates to an active run; and a legacy row that loses the
-  v1 one-active-run race is preserved as a Draft rather than dropped. A
+  false` row never migrates to an active run; every distinct enabled legacy
+  row may migrate independently, and any row whose transition fails is
+  preserved as a Draft rather than dropped. A
   provider reporting a turn as done never by itself asserts that a run's
   objective/done condition was satisfied; automatic done-condition
   verification is out of scope, and Completed stays a self-reported,
@@ -299,10 +302,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   host-owned bounded history, re-check target admission/auth/capability with
   rollback on refusal, append a visible from/to/actor/time/reason/truncation
   receipt, and never imply that provider-private session state itself
-  transfers. Cross-machine control, concurrent multi-run execution,
-  fleet/multi-repo scheduling, and autonomous (loop-decided) provider
-  selection remain out of this authority until a separately admitted design
-  changes it.
+  transfers. Concurrent runs never authorize concurrent turns on the same
+  thread: the durable per-thread dispatch lease remains the exactly-once gate,
+  while distinct run threads may be in flight concurrently. Cross-machine
+  admission, fleet/multi-repo scheduling, and provider selection outside an
+  owner-admitted ordered routing policy remain out of this authority until a
+  separately admitted design changes it.
 
 - Public UI does not own settlement, payout, runtime promotion, or accepted
   outcome authority.

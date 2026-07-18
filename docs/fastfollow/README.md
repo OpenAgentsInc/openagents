@@ -65,11 +65,12 @@ shared study service already exists.
 
 The current OpenAgents Desktop Full Auto implementation already:
 
-- owns one durable `FullAutoRun` mission and lifecycle in Electron main;
+- owns durable `FullAutoRun` missions and lifecycles in Electron main;
 - persists objective, done condition, workspace, provider profile, transition
   attribution, liveness, and bounded report identity across restart;
-- admits one active run per Desktop profile and keeps Pause, Stop, retry,
-  stall, cap, and terminal dispositions distinct;
+- admits multiple independently active runs per Desktop profile, each with a
+  distinct run/thread identity, and keeps Pause, Stop, retry, stall, cap, and
+  terminal dispositions distinct;
 - uses repository `AGENTS.md`, README, docs, issues, and bounded
   ProductSpec/AssuranceSpec context as candidate sources;
 - takes one concrete useful action per continuation through the serialized
@@ -77,8 +78,8 @@ The current OpenAgents Desktop Full Auto implementation already:
 - preserves manual objective-safe provider handoff in a bounded envelope; and
 - publishes a bounded live run projection that mobile can prioritize.
 
-The visible Desktop bridge is still the legacy composer toggle until FA-UX-01
-#8974 lands the dedicated rail launcher and read-only run view. The private
+The visible Desktop surface is a dedicated compact launcher, read-only run
+view, and persistent multi-run monitor. The private
 analyzer/comparison pipeline is now landed (#8973); the six-test owner-visible
 batch, new AssuranceSpec, and packaged release gate remain open. Current
 `main` therefore proves the run core and private analysis, not the finished AFK
@@ -95,8 +96,7 @@ Because the OpenAgents `AGENTS.md` points Full Auto at `FASTFOLLOW.md`, an
 owner can use Fast Follow now without waiting for the native portfolio policy:
 
 1. Open a session rooted at the OpenAgents repository.
-2. Start the current Full Auto bridge for that repository (the composer toggle
-   until #8974 replaces it with the dedicated launcher).
+2. Open **Full Auto**, enter the mission in the compact launcher, and start it.
 3. Send one of these initial instructions:
 
    ```text
@@ -117,15 +117,14 @@ owner can use Fast Follow now without waiting for the native portfolio policy:
    actionable backlog work.
    ```
 
-The five-worker shape in the owner brief remains a future native allocation:
+The five-worker portfolio shape in the owner brief remains a future native allocation:
 three delivery workers, one ordered-program research worker, and one
-implementation worker scoped to an admitted candidate. Do not simulate that by
-starting five Full Auto runs in one Desktop profile: the current rev-10
-contract permits one active run per profile. Independently authorized ordinary
-sessions may still be coordinated manually with isolated claims/worktrees, but
-that is not a FullAutoRunPolicy or a five-worker proof. The native portfolio
-policy and concurrent supervisor remain separately admitted implementation
-work.
+implementation worker scoped to an admitted candidate. Rev 13 permits multiple
+local Full Auto runs, but starting five unrelated missions does not create a
+claim-aware portfolio: owners must still isolate claims/worktrees and avoid
+duplicate scope manually. That is not a FullAutoRunPolicy or a five-worker
+proof. The native portfolio policy and supervisor remain separately admitted
+implementation work.
 
 ## The four artifact layers
 

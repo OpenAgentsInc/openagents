@@ -140,7 +140,7 @@ const fixtureState = (extra: Partial<DesktopShellState> = {}): DesktopShellState
 });
 
 describe("ReactFullAutoSurface: launcher (FA-AC-54)", () => {
-  test("Start is disabled until title/objective/done-condition/workspace are filled, then enables and dispatches on click", async () => {
+  test("Start needs only objective + resolved workspace; advanced fields stay collapsed and inferred", async () => {
     const { container } = installDom();
     const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
     const { received, report } = recorder();
@@ -158,8 +158,10 @@ describe("ReactFullAutoSurface: launcher (FA-AC-54)", () => {
     expect(doneCondition).not.toBeNull();
     expect(workspace).not.toBeNull();
 
+    const advanced = container.querySelector(".oa-react-full-auto-advanced") as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
     await render(root, <ReactFullAutoSurface state={fixtureState({
-      fullAuto: { ...emptyFullAutoWorkspaceState(), launcher: { ...emptyFullAutoWorkspaceState().launcher, title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws" } },
+      fullAuto: { ...emptyFullAutoWorkspaceState(), launcher: { ...emptyFullAutoWorkspaceState().launcher, objective: "Do it", workspaceRef: "/ws" } },
     })} report={report} />);
     const startEnabled = container.querySelector('[data-en-key="full-auto-launcher-start"]') as HTMLButtonElement;
     expect(startEnabled.disabled).toBe(false);
@@ -203,6 +205,25 @@ describe("ReactFullAutoSurface: launcher (FA-AC-54)", () => {
     const cancel = container.querySelector('[data-en-key="full-auto-launcher-cancel"]') as HTMLButtonElement;
     await interact(() => cancel.click());
     expect(received).toContainEqual({ name: "DesktopFullAutoLauncherCancelled", payload: null });
+  });
+
+  test("monitor shows every active run and can open or stop a run by runRef", async () => {
+    const { container } = installDom();
+    const { ReactFullAutoSurface } = await import("./react-full-auto-surface.tsx");
+    const { received, report } = recorder();
+    const root = createTestRoot(container);
+    const first = baseRun({ runRef: "run-1", title: "First active" });
+    const second = baseRun({ runRef: "run-2", threadRef: "thread-2", title: "Second active", state: "paused" });
+    await render(root, <ReactFullAutoSurface state={fixtureState({
+      fullAuto: { ...emptyFullAutoWorkspaceState(), runs: [first, second] },
+    })} report={report} />);
+    expect(container.querySelector(".oa-react-full-auto-monitor")?.textContent).toContain("2 active");
+    const open = container.querySelector('[aria-label="Open Second active"]') as HTMLButtonElement;
+    await interact(() => open.click());
+    expect(received).toContainEqual({ name: "DesktopFullAutoRunOpened", payload: "run-2" });
+    const stop = container.querySelector('[data-en-key="full-auto-run-stop-run-1"]') as HTMLButtonElement;
+    await interact(() => stop.click());
+    expect(received).toContainEqual({ name: "DesktopFullAutoRunStopByRefRequested", payload: "run-1" });
   });
 });
 

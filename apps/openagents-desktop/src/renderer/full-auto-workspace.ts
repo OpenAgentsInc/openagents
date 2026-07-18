@@ -41,6 +41,8 @@ import {
 
 export const FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP = 20
 export const FULL_AUTO_LAUNCHER_DEFAULT_LANE = "codex-local"
+export const FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION =
+  "Complete the objective, run the relevant verification, and report the result or any concrete blocker."
 /** FA-WIRE-01 (#8996): mirrors FULL_AUTO_ROUTING_POLICY_LIMIT in
  * full-auto-registry.ts (renderer-boundary duplicate; see the note in
  * full-auto-run-ipc-contract.ts for why the value is copied, not imported). */
@@ -60,6 +62,12 @@ export const fullAutoLauncherLaneOptions: ReadonlyArray<Readonly<{ value: string
 
 export const fullAutoLauncherLaneLabel = (laneRef: string): string =>
   fullAutoLauncherLaneOptions.find(option => option.value === laneRef)?.label ?? laneRef
+
+export const inferFullAutoRunTitle = (objective: string): string => {
+  const firstLine = objective.trim().split(/\r?\n/, 1)[0]?.replace(/\s+/g, " ") ?? ""
+  if (firstLine === "") return "Full Auto run"
+  return firstLine.length <= 80 ? firstLine : `${firstLine.slice(0, 77).trimEnd()}…`
+}
 
 export type FullAutoLauncherDraft = Readonly<{
   title: string
@@ -90,7 +98,9 @@ export const emptyFullAutoLauncherDraft = (
   workspaceRef: defaults?.workspaceRef ?? "",
   lane: FULL_AUTO_LAUNCHER_DEFAULT_LANE,
   model: "",
-  fallbackLanes: [],
+  // The default path is Codex with Claude available for typed automatic
+  // rotation. Main still re-validates both lanes before admitting the run.
+  fallbackLanes: ["fable-local"],
   turnCapText: String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP),
   maxWallClockMinutesText: "",
   submitting: false,
@@ -128,12 +138,12 @@ export const emptyFullAutoWorkspaceState = (): FullAutoWorkspaceState => ({
   actionError: null,
 })
 
-/** Non-terminal, non-draft states -- the v1 "one active run" concurrency
- * slot (mirrors `full-auto-run-registry.ts`'s own definition). */
+/** Non-terminal, non-draft states used to order the monitor. Multiple rows
+ * may be active concurrently; identity and controls are always runRef-scoped. */
 const ACTIVE_RUN_STATES = new Set(["running", "pausing", "paused", "retrying", "stalled"])
-export const findActiveFullAutoRun = (
+export const activeFullAutoRuns = (
   runs: ReadonlyArray<FullAutoRunProjection>,
-): FullAutoRunProjection | null => runs.find(run => ACTIVE_RUN_STATES.has(run.state)) ?? null
+): ReadonlyArray<FullAutoRunProjection> => runs.filter(run => ACTIVE_RUN_STATES.has(run.state))
 
 // ---------------------------------------------------------------------------
 // Intents
@@ -159,6 +169,7 @@ export const DesktopFullAutoRunsListRefreshed = defineIntent("DesktopFullAutoRun
 export const DesktopFullAutoRunPauseRequested = defineIntent("DesktopFullAutoRunPauseRequested", Schema.Null)
 export const DesktopFullAutoRunResumeRequested = defineIntent("DesktopFullAutoRunResumeRequested", Schema.Null)
 export const DesktopFullAutoRunStopRequested = defineIntent("DesktopFullAutoRunStopRequested", Schema.Null)
+export const DesktopFullAutoRunStopByRefRequested = defineIntent("DesktopFullAutoRunStopByRefRequested", Schema.String)
 export const DesktopFullAutoRunRetryNowRequested = defineIntent("DesktopFullAutoRunRetryNowRequested", Schema.Null)
 export const DesktopFullAutoRunHandoffRequested = defineIntent("DesktopFullAutoRunHandoffRequested", Schema.String)
 
@@ -182,6 +193,7 @@ export const fullAutoWorkspaceIntents = [
   DesktopFullAutoRunPauseRequested,
   DesktopFullAutoRunResumeRequested,
   DesktopFullAutoRunStopRequested,
+  DesktopFullAutoRunStopByRefRequested,
   DesktopFullAutoRunRetryNowRequested,
   DesktopFullAutoRunHandoffRequested,
 ] as const
@@ -206,6 +218,8 @@ export type FullAutoLauncherValidation = Readonly<
   | {
       ok: true
       turnCap: number | undefined
+      title: string
+      doneCondition: string
       /** FA-WIRE-01 (#8996): the ordered policy Start submits (primary lane
        * first), or undefined for the exact single-lane default. */
       routingPolicy: ReadonlyArray<{ lane: string }> | undefined
@@ -217,9 +231,11 @@ export type FullAutoLauncherValidation = Readonly<
   | { ok: false; error: string }
 >
 
-/** Validates the draft against exactly the fields `full-auto-run-actions.ts`'
- * `startFullAutoRunAction` requires -- title/objective/doneCondition
- * non-empty, workspaceRef non-empty, turnCap a 1-1000 integer when present --
+/** Validates the compact one-click draft and resolves optional advanced
+ * fields into the explicit mission contract `startFullAutoRunAction` requires.
+ * Objective and workspace are the only required owner inputs; title and done
+ * condition have deterministic, visible defaults and remain editable under
+ * Advanced. Turn cap must be a 1-1000 integer when present --
  * plus the FA-WIRE-01 ordered-policy/guardrail fields (distinct bounded
  * fallback lanes, positive wall-clock minutes). Mirrors FA-AC-54's "Start is
  * enabled only once the mission contract is complete"; refusals are the exact
@@ -227,9 +243,7 @@ export type FullAutoLauncherValidation = Readonly<
 export const validateFullAutoLauncherDraft = (
   draft: FullAutoLauncherDraft,
 ): FullAutoLauncherValidation => {
-  if (draft.title.trim() === "") return { ok: false, error: "Give this run a title." }
   if (draft.objective.trim() === "") return { ok: false, error: "Describe the objective." }
-  if (draft.doneCondition.trim() === "") return { ok: false, error: "State an explicit done condition." }
   if (draft.workspaceRef.trim() === "") return { ok: false, error: "Choose a workspace." }
   const trimmedCap = draft.turnCapText.trim()
   let turnCap: number | undefined
@@ -264,6 +278,10 @@ export const validateFullAutoLauncherDraft = (
   }
   return {
     ok: true,
+    title: draft.title.trim() === "" ? inferFullAutoRunTitle(draft.objective) : draft.title.trim(),
+    doneCondition: draft.doneCondition.trim() === ""
+      ? FULL_AUTO_LAUNCHER_DEFAULT_DONE_CONDITION
+      : draft.doneCondition.trim(),
     turnCap,
     routingPolicy: draft.fallbackLanes.length === 0
       ? undefined
@@ -314,12 +332,10 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
     }
   })
 
-  const runMutation = (
+  const runMutationFor = (
+    runRef: string,
     call: (runRef: string) => Promise<unknown>,
   ) => Effect.gen(function* () {
-    const current = yield* SubscriptionRef.get(state)
-    const runRef = current.fullAuto.activeRunRef
-    if (runRef === null) return
     const raw = yield* Effect.promise(() => call(runRef).catch(() => null))
     const outcome = decodeFullAutoRunOutcome(raw)
     if (outcome === null) {
@@ -331,29 +347,26 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
         runs: upsertRun(next.fullAuto.runs, outcome.value),
         actionError: null,
       }))
-      yield* refreshActiveRun()
+      const current = yield* SubscriptionRef.get(state)
+      if (current.fullAuto.activeRunRef === runRef) yield* refreshActiveRun()
+      else yield* refreshList()
       return
     }
     yield* SubscriptionRef.update(state, next => withFullAuto(next, { actionError: outcome.error.message }))
   })
 
+  const runMutation = (
+    call: (runRef: string) => Promise<unknown>,
+  ) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const runRef = current.fullAuto.activeRunRef
+    if (runRef === null) return
+    yield* runMutationFor(runRef, call)
+  })
+
   return {
     DesktopFullAutoLauncherOpened: () => Effect.gen(function* () {
       yield* refreshList()
-      const afterList = yield* SubscriptionRef.get(state)
-      const active = findActiveFullAutoRun(afterList.fullAuto.runs)
-      if (active !== null) {
-        // FA-AC-39/54: at most one active run per profile. Route straight to
-        // the existing run instead of presenting a launcher that will just
-        // refuse with active_run_conflict.
-        yield* SubscriptionRef.update(state, next => withFullAuto(next, { mode: "run", activeRunRef: active.runRef }))
-        yield* refreshActiveRun()
-        // FA-UX-02 (#8997): hydrate the bound thread through the canonical
-        // selection path so the run view's timeline shows the conversation.
-        yield* selectRunThread(active.runRef)
-        yield* selectWorkspace("full-auto")
-        return
-      }
       yield* SubscriptionRef.update(state, next => withFullAuto(next, {
         mode: "launcher",
         launcher: emptyFullAutoLauncherDraft({ workspaceRef: next.fullAuto.resolvedWorkspaceRef ?? undefined }),
@@ -378,8 +391,15 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
           lane: value,
           model: "",
           // The primary lane can never also be a fallback -- keep the ordered
-          // list coherent when the primary changes.
-          fallbackLanes: current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value),
+          // list coherent when the primary changes. Codex and Claude remain
+          // each other's default fallback when either is selected.
+          fallbackLanes: (() => {
+            const remaining = current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value)
+            if (remaining.length > 0) return remaining
+            if (value === "codex-local") return ["fable-local"]
+            if (value === "fable-local") return ["codex-local"]
+            return []
+          })(),
           error: null,
         },
       })),
@@ -426,9 +446,9 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
       yield* SubscriptionRef.update(state, next => withFullAuto(next, { launcher: { ...next.fullAuto.launcher, submitting: true, error: null } }))
       const raw = yield* Effect.promise(() => host.start({
         workspaceRef: draft.workspaceRef.trim(),
-        title: draft.title.trim(),
+        title: validation.title,
         objective: draft.objective.trim(),
-        doneCondition: draft.doneCondition.trim(),
+        doneCondition: validation.doneCondition,
         lane: draft.lane,
         ...(draft.model.trim() === "" ? {} : { model: draft.model.trim() }),
         ...(validation.turnCap === undefined ? {} : { turnCap: validation.turnCap }),
@@ -477,6 +497,7 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
     DesktopFullAutoRunPauseRequested: () => runMutation(runRef => host.pause(runRef)),
     DesktopFullAutoRunResumeRequested: () => runMutation(runRef => host.resume(runRef)),
     DesktopFullAutoRunStopRequested: () => runMutation(runRef => host.stop(runRef)),
+    DesktopFullAutoRunStopByRefRequested: (runRef: string) => runMutationFor(runRef, ref => host.stop(ref)),
     DesktopFullAutoRunRetryNowRequested: () => runMutation(runRef => host.retryNow(runRef)),
     DesktopFullAutoRunHandoffRequested: (targetLaneRef: string) => Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)

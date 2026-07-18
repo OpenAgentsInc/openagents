@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import { FULL_AUTO_RUN_ACTIVE_LIMIT, openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { startFullAutoControlServer, type FullAutoControlServer } from "./full-auto-control-server.ts"
 
@@ -179,7 +179,7 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
     }
   })
 
-  test("runs/start refuses a second active run with a typed conflict naming the existing runRef, without minting anything new", async () => {
+  test("runs/start admits multiple independent active runs and lists both", async () => {
     const harness = await startHarness()
     try {
       const first = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
@@ -187,12 +187,37 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       const second = await harness.request("POST", "/v1/full-auto/runs/start", {
         body: { ...START_BODY, title: "Second mission" },
       })
-      expect(second.status).toBe(409)
-      expect(second.body.error).toBe("active_run_conflict")
-      expect(second.body.activeRunRef).toBe(first.body.run.runRef)
-      // Only the first run's thread was minted -- no orphaned second thread.
-      expect(harness.registry.list()).toHaveLength(1)
-      expect(harness.runRegistry.list()).toHaveLength(1)
+      expect(second.status).toBe(200)
+      expect(second.body.run.runRef).not.toBe(first.body.run.runRef)
+      expect(second.body.run.threadRef).not.toBe(first.body.run.threadRef)
+      expect(harness.registry.list()).toHaveLength(2)
+      expect(harness.runRegistry.activeRuns()).toHaveLength(2)
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("runs/start refuses only when bounded concurrent capacity is full and does not mint an orphan thread", async () => {
+    const harness = await startHarness()
+    try {
+      for (let index = 0; index < FULL_AUTO_RUN_ACTIVE_LIMIT; index += 1) {
+        const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+          body: { ...START_BODY, title: `Mission ${index}` },
+        })
+        expect(started.status).toBe(200)
+      }
+      const beforeThreadCount = harness.registry.list().length
+      const refused = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, title: "Mission over limit" },
+      })
+      expect(refused.status).toBe(409)
+      expect(refused.body).toMatchObject({
+        error: "active_run_limit_reached",
+        activeRunCount: FULL_AUTO_RUN_ACTIVE_LIMIT,
+        activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
+      })
+      expect(harness.registry.list()).toHaveLength(beforeThreadCount)
+      expect(harness.runRegistry.list()).toHaveLength(FULL_AUTO_RUN_ACTIVE_LIMIT)
     } finally {
       await harness.dispose()
     }
@@ -369,7 +394,7 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       expect(resumeAfterStop.status).toBe(409)
       expect(resumeAfterStop.body.error).toBe("illegal_transition")
 
-      // Stopping freed the concurrency slot for a brand-new run.
+      // A terminal run remains immutable while a distinct new run starts.
       const rerunStart = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
       expect(rerunStart.status).toBe(200)
       expect(rerunStart.body.run.runRef).not.toBe(runRef)
