@@ -27,6 +27,35 @@ export type ChangelogRelease = Readonly<{
 export const CHANGELOG_RELEASES: ReadonlyArray<ChangelogRelease> =
   [
     {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-18-desktop-0.1.0-rc.21.md",
+      "blocks": [
+        {
+          "items": [
+            "Full Auto now starts from one mission prompt. Advanced provider, model, workspace, budget, and completion controls stay available without blocking the quick path.",
+            "You can run several independent Full Auto missions at once. Each mission gets its own conversation, lifecycle, progress row, and stop control, while duplicate work on the same conversation remains fenced.",
+            "Codex and Claude handoffs retain the mission, selected model, provider state, and reviewed outcome across navigation and restart. Terminal Claude results now settle cleanly instead of leaving a hidden process or misleading running state.",
+            "Pause waits for the active provider turn to drain before reporting Paused, and provider failures remain visible and typed for recovery instead of being silently converted into success.",
+            "Isolated acceptance runs no longer inspect the owner's real Codex or Claude history. Ordinary user history behavior is unchanged.",
+            "The release page and changelog now show what triggered an update, who published it, the source feedback, and the exact delegated authority. GitHub candidate assets are immutable; a correction always receives a newer RC.",
+            "This remains a release candidate. macOS builds are signed and notarized; Linux and experimental Windows availability is described by the candidate's published limitations and does not create a signed-feed support claim."
+          ],
+          "kind": "bullets"
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-18",
+      "title": "OpenAgents Desktop 0.1.0-rc.21 — 2026-07-18",
+      "version": "0.1.0-rc.21",
+      "attribution": {
+        "authorityRef": "AUTHORITY.md revision 2; program.full_auto_release; grant.autonomous_rc_release_and_communication",
+        "releaseActor": "OpenAgents release operator",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.21",
+        "sourceFeedback": "https://github.com/OpenAgentsInc/openagents/issues/8995",
+        "triggeredBy": "OpenAgents owner request for autonomous Full Auto release delivery",
+        "triggerKind": "owner_direction"
+      }
+    },
+    {
       "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-18-desktop-0.1.0-rc.20.md",
       "blocks": [
         {
