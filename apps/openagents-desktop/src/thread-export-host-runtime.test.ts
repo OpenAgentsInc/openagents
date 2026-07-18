@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,6 +15,7 @@ import {
 } from "./thread-export-host-runtime.ts";
 import type { DesktopThreadExportMainHandler } from "./thread-export-main-handler.ts";
 import { DesktopThreadExportMainCompositionUnavailable } from "./thread-export-main-composition.ts";
+import { openDesktopThreadEventSearchReceiptCatalog } from "./thread-event-search-receipt-catalog.ts";
 
 const THREAD = "thread.host.runtime.1";
 const RUN = "run.host.runtime.1";
@@ -76,13 +77,13 @@ afterEach(() => {
   }
 });
 
-const sha256 = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> = {}) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "oa-thread-export-host-runtime-"));
   roots.push(root);
   const storeDirectory = path.join(root, "private-store");
+  const receiptCatalogDirectory = path.join(root, "search-receipts");
   const destination = path.join(root, "selected-export.json");
   const channels: string[] = [];
   const closes: string[] = [];
@@ -91,6 +92,7 @@ const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> 
   let createHandler: DesktopThreadExportCreateMainHandler | undefined;
   const dependencies: DesktopThreadExportHostRuntimeDependencies = {
     storeDirectory,
+    receiptCatalogDirectory,
     snapshotForThread: (threadRef) => {
       reads.push(threadRef);
       return confirmedSnapshot;
@@ -125,6 +127,7 @@ const harness = (overrides: Partial<DesktopThreadExportHostRuntimeDependencies> 
     closes,
     reads,
     storeDirectory,
+    receiptCatalogDirectory,
     destination,
     dependencies,
     get writeHandler() {
@@ -158,9 +161,10 @@ describe("Desktop canonical-export host runtime", () => {
     const written = await value.writeHandler("trusted", { receipt: created.receipt });
     expect(written).toMatchObject({
       status: "written",
-      artifactRef: created.receipt.result.status === "export_created"
-        ? created.receipt.result.artifactRef
-        : undefined,
+      artifactRef:
+        created.receipt.result.status === "export_created"
+          ? created.receipt.result.artifactRef
+          : undefined,
     });
     expect(existsSync(value.destination)).toBe(true);
     const exported = readFileSync(value.destination, "utf8");
@@ -168,6 +172,15 @@ describe("Desktop canonical-export host runtime", () => {
     expect(exported).toContain('\"state\":\"accepted\"');
     expect(JSON.stringify({ created, written })).not.toContain(value.storeDirectory);
     expect(JSON.stringify({ created, written })).not.toContain(value.destination);
+    expect(
+      openDesktopThreadEventSearchReceiptCatalog(value.receiptCatalogDirectory).list(),
+    ).toEqual({ status: "available", receipts: [created.receipt] });
+
+    const retried = await value.createHandler("trusted", { intent });
+    expect(retried).toEqual({ status: "unchanged", receipt: created.receipt });
+    expect(
+      openDesktopThreadEventSearchReceiptCatalog(value.receiptCatalogDirectory).list(),
+    ).toEqual({ status: "available", receipts: [created.receipt] });
 
     registration.close();
     registration.close();
@@ -200,6 +213,7 @@ describe("Desktop canonical-export host runtime", () => {
     expect(value.reads).toEqual([]);
     expect(destinations).toBe(0);
     expect(existsSync(value.storeDirectory)).toBe(false);
+    expect(existsSync(value.receiptCatalogDirectory)).toBe(false);
     registration.close();
   });
 
@@ -216,5 +230,26 @@ describe("Desktop canonical-export host runtime", () => {
     expect(value.closes).toEqual(["write"]);
     expect(value.reads).toEqual([]);
     expect(existsSync(value.storeDirectory)).toBe(false);
+    expect(existsSync(value.receiptCatalogDirectory)).toBe(false);
+  });
+
+  test("preflights catalog corruption before artifact persistence", async () => {
+    const value = harness();
+    mkdirSync(value.receiptCatalogDirectory, { recursive: true });
+    writeFileSync(
+      path.join(value.receiptCatalogDirectory, "canonical-export-receipts.json"),
+      "corrupt",
+    );
+    const registration = await Effect.runPromise(
+      openDesktopThreadExportHostRuntime(value.dependencies),
+    );
+    if (value.createHandler === undefined) throw new Error("expected create handler");
+
+    await expect(value.createHandler("trusted", { intent })).resolves.toEqual({
+      status: "rejected",
+      reason: "persistence_failed",
+    });
+    expect(existsSync(value.storeDirectory)).toBe(false);
+    registration.close();
   });
 });

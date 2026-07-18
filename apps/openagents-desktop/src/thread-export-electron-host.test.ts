@@ -15,6 +15,7 @@ import {
   type DesktopThreadExportSaveDialogOptions,
 } from "./thread-export-electron-host.ts";
 import { DesktopThreadExportMainCompositionUnavailable } from "./thread-export-main-composition.ts";
+import { openDesktopThreadEventSearchReceiptCatalog } from "./thread-event-search-receipt-catalog.ts";
 
 const THREAD = "thread.electron.host.1";
 const RUN = "run.electron.host.1";
@@ -143,9 +144,7 @@ describe("Desktop canonical-export Electron host", () => {
 
     const written = await write("trusted", { receipt: created.receipt });
     expect(written).toMatchObject({ status: "written", replaceAuthorized: true });
-    expect(readFileSync(value.destination, "utf8")).toContain(
-      "Electron host confirmed evidence",
-    );
+    expect(readFileSync(value.destination, "utf8")).toContain("Electron host confirmed evidence");
     expect(value.dialogs).toEqual([
       {
         title: "Export canonical thread events",
@@ -156,8 +155,18 @@ describe("Desktop canonical-export Electron host", () => {
       },
     ]);
     const privateStore = path.join(value.userDataDirectory, "thread-exports", "artifacts");
+    const privateReceiptCatalog = path.join(
+      value.userDataDirectory,
+      "thread-exports",
+      "search-receipts",
+    );
     expect(existsSync(privateStore)).toBe(true);
+    expect(openDesktopThreadEventSearchReceiptCatalog(privateReceiptCatalog).list()).toEqual({
+      status: "available",
+      receipts: [created.receipt],
+    });
     expect(JSON.stringify({ created, written })).not.toContain(privateStore);
+    expect(JSON.stringify({ created, written })).not.toContain(privateReceiptCatalog);
     expect(JSON.stringify({ created, written })).not.toContain(value.destination);
 
     lifetime.close();
@@ -233,10 +242,7 @@ describe("Desktop canonical-export Electron host", () => {
     await expect(
       Effect.runPromise(openDesktopThreadExportElectronHost(rollback.dependencies)),
     ).rejects.toEqual(new DesktopThreadExportMainCompositionUnavailable({ stage: "create" }));
-    expect(installed).toEqual([
-      DesktopThreadExportWriteChannel,
-      DesktopThreadExportCreateChannel,
-    ]);
+    expect(installed).toEqual([DesktopThreadExportWriteChannel, DesktopThreadExportCreateChannel]);
     expect(registered.has(DesktopThreadExportWriteChannel)).toBe(true);
     expect(rollback.removed).toEqual([DesktopThreadExportWriteChannel]);
   });

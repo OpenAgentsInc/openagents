@@ -2972,6 +2972,17 @@ later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-18T01:32:07Z`
 
+### CLAIM-STATUS
+
+- implementation: composed the canonical export host runtime with FF-D1-36 so every successful new export records its exact ref-only receipt, exact retries return the original cataloged receipt, and the Electron adapter derives both private stores beneath validated `userData`
+- fail-closed proof: corrupt catalog preflight prevents artifact persistence; catalog refusal returns one path-free persistence failure; retry with conflicting artifact identity returns the existing artifact conflict; untrusted and registration-failure paths still perform no catalog/store effects
+- bounded proof: the existing 1,000-receipt/1-MiB catalog remains the only receipt authority; no second index, artifact bytes, paths, transcript content, or partial-success result crosses the host boundary
+- focused proof: host-runtime/Electron/catalog/acquisition/store/command/compiler/disclosure/authority tests 59/59 passed; agent-runtime-schema typecheck passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13 plus typecheck/distribution, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: Desktop typecheck reproduced only three unrelated Full Auto run-report fixture typing failures already present on the claimed `origin/main`; AssuranceSpec reproduced only the recorded environment-profile digest snapshot mismatch, 189/190; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-37-desktop-canonical-export-search-catalog-ingestion-receipt.md`
+- residual: broader historical-session backfill, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

@@ -41,16 +41,23 @@ export class DesktopThreadExportElectronHostUnavailable extends Schema.TaggedErr
 const field = (value: unknown, key: string): unknown =>
   typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
 
-const artifactDirectory = (userDataDirectory: string): string | undefined => {
+const privateDirectories = (
+  userDataDirectory: string,
+): Readonly<{ storeDirectory: string; receiptCatalogDirectory: string }> | undefined => {
   if (!path.isAbsolute(userDataDirectory) || userDataDirectory.includes("\0")) return undefined;
   const resolved = path.resolve(userDataDirectory);
   if (resolved === path.parse(resolved).root) return undefined;
-  return path.join(resolved, "thread-exports", "artifacts");
+  const root = path.join(resolved, "thread-exports");
+  return {
+    storeDirectory: path.join(root, "artifacts"),
+    receiptCatalogDirectory: path.join(root, "search-receipts"),
+  };
 };
 
-const selectDestination = (
-  dependencies: Pick<DesktopThreadExportElectronHostDependencies, "showSaveDialog">,
-): DesktopThreadExportHostRuntimeDependencies["selectDestination"] =>
+const selectDestination =
+  (
+    dependencies: Pick<DesktopThreadExportElectronHostDependencies, "showSaveDialog">,
+  ): DesktopThreadExportHostRuntimeDependencies["selectDestination"] =>
   async ({ suggestedName }) => {
     const raw = await dependencies.showSaveDialog({
       title: "Export canonical thread events",
@@ -74,9 +81,10 @@ type RegisterElectronHandler = (
   handler: DesktopThreadExportElectronHandler,
 ) => () => void;
 
-const register = (
-  dependencies: Pick<DesktopThreadExportElectronHostDependencies, "handle" | "removeHandler">,
-): RegisterElectronHandler =>
+const register =
+  (
+    dependencies: Pick<DesktopThreadExportElectronHostDependencies, "handle" | "removeHandler">,
+  ): RegisterElectronHandler =>
   (channel, handler) => {
     dependencies.handle(channel, handler);
     let removed = false;
@@ -95,8 +103,8 @@ const register = (
 export const openDesktopThreadExportElectronHost = Effect.fn(
   "DesktopThreadExportElectronHost.open",
 )(function* (dependencies: DesktopThreadExportElectronHostDependencies) {
-  const storeDirectory = artifactDirectory(dependencies.userDataDirectory);
-  if (storeDirectory === undefined) {
+  const directories = privateDirectories(dependencies.userDataDirectory);
+  if (directories === undefined) {
     return yield* Effect.fail(
       new DesktopThreadExportElectronHostUnavailable({ stage: "user_data" }),
     );
@@ -104,7 +112,8 @@ export const openDesktopThreadExportElectronHost = Effect.fn(
 
   const registerHandler = register(dependencies);
   return yield* openDesktopThreadExportHostRuntime({
-    storeDirectory,
+    storeDirectory: directories.storeDirectory,
+    receiptCatalogDirectory: directories.receiptCatalogDirectory,
     snapshotForThread: dependencies.snapshotForThread,
     selectDestination: selectDestination(dependencies),
     registerWrite: registerHandler,
