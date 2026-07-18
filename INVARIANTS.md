@@ -248,6 +248,40 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## Authority Boundaries
 
+- Delegated action authority is explicit, revisioned, revocable, and
+  non-amplifying. The current authored profile is [`AUTHORITY.md`](AUTHORITY.md);
+  it composes by intersection with system/current-owner instruction,
+  applicable law and platform terms, repository invariants, resource policy,
+  runtime gates, ProductSpec/AssuranceSpec intent, roadmap/issue/claim state,
+  and target-local contracts. An explicit deny wins. No delegate may grant
+  itself new roles, actions, resources, budgets, credentials, environments, or
+  exceptions, and possession of access or evidence never implies authority.
+- Every delegated mutation resolves exact actor, action, resource, program,
+  conditions, claim/lease, and reserved-action exclusions before execution and
+  again before production deploy, release, spend, destructive action, or
+  public-claim transition. Budget exhaustion, revocation, supersession,
+  security failure, or invariant failure stops new actions and moves in-flight
+  work only to the safest bounded checkpoint.
+- Producer, evidence producer, verifier, AssuranceSpec admitter, release
+  operator, and public-claim roles remain separate wherever the bound contract
+  requires independence. An owner-designated independent reviewer must use a
+  distinct execution identity and reproduce evidence; a producer cannot verify
+  or admit its own obligation, and assurance admission cannot authorize
+  release or a public claim.
+- An owner/device/credential blocker must exhaust the admitted verify,
+  use-existing-access, typed-UI/API, substitute, automate, repair, and
+  honest-narrowing ladder. Only a reserved, inherently human, inaccessible
+  external-identity, or over-budget action may settle as an owner request.
+  Waiting is not an execution disposition. Every action, refusal, rollback,
+  narrowing, revocation, and owner exception emits a bounded redacted receipt.
+- Raw secret/key/mnemonic/token extraction, custody/payment/settlement,
+  legal/employment/regulatory commitments, irreversible production
+  customer-data destruction, natural-person identity ceremonies, over-budget
+  spend, invariant weakening, unsupported public claims, and authority
+  self-amplification are always reserved unless a higher current owner
+  instruction lawfully and explicitly revises the profile; evidence gates and
+  secret-handling invariants cannot be waived by profile text.
+
 - Desktop local Codex usage collection is triple-gated: the review-only
   Desktop control gate, an explicit default-off user preference, and the
   server ingest rollout gate. An authenticated bearer alone is insufficient:
@@ -280,9 +314,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   additively and idempotently into this model
   (`migrateLegacyFullAutoRegistry`): an `enabled: true` legacy row becomes a
   Running run whose objective is the exact prior generic instruction, marked
-  `legacy_migration`, never an invented user-authored goal; an `enabled:
-  false` row never migrates to an active run; every distinct enabled legacy
-  row may migrate independently, and any row whose transition fails is
+  `legacy_migration`, never an invented user-authored goal; an `enabled: false`
+  row never migrates to an active run; every distinct enabled legacy row may
+  migrate independently, and any row whose transition fails is
   preserved as a Draft rather than dropped. A
   provider reporting a turn as done never by itself asserts that a run's
   objective/done condition was satisfied; automatic done-condition

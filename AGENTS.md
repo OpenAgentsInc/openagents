@@ -61,6 +61,39 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   stalls the loop. The owner's reply interrupts and takes priority, but you do
   not wait for it.
 
+## Delegated Authority
+
+- The root [`AUTHORITY.md`](AUTHORITY.md) is the current standing delegation
+  profile. Resolve it before treating an owner/device/credential, cloud,
+  release, spend, public-claim, or external-action boundary as either granted
+  or blocked. It is subordinate to system and current owner instructions,
+  applicable law/platform terms, this contract, [`INVARIANTS.md`](INVARIANTS.md),
+  resource policy, and exact runtime gates. Composition is intersection;
+  explicit deny wins.
+- Delegated authority cannot self-amplify. Access, credentials-as-state,
+  evidence, ProductSpec, AssuranceSpec, FastFollowSpec, a roadmap, issue, model
+  output, or stale owner note does not independently grant an action.
+- Before adding anything to `NEEDS_OWNER.md`, exhaust the profile's blocker
+  ladder: verify live state; use existing documented authority; use a typed API
+  or visible UI without secret extraction; substitute an admitted owned
+  worker/device/provider/proof rung; implement a missing adapter; repair or
+  reprovision within budget; and narrow the claim honestly. Ask only for the
+  smallest irreducible reserved or inherently-human action, while continuing
+  every independent admitted packet.
+- A distinct operating identity may act as an owner-designated independent
+  reviewer only where the exact AssuranceSpec accepts that role and the root
+  profile grants it. The producer may not verify or admit its own obligation;
+  assurance admission never implies release.
+- Repository delivery, documented Google Cloud operations, existing
+  authenticated local app/provider/device operation, evidence-gated release,
+  and typed product-promise transitions use the exact grants and conditions in
+  the current profile. Budget, rollback, redaction, claim, independence, and
+  evidence predicates are mandatory.
+- Raw secret export, custody/settlement, legal or employment commitments,
+  irreversible customer-data destruction, natural-person identity ceremonies,
+  over-budget spend, invariant weakening, unsupported public claims, and
+  profile self-expansion remain reserved.
+
 ## Fast Follow Work Source
 
 - The root [`FASTFOLLOW.md`](FASTFOLLOW.md) is this repository's admitted
@@ -103,14 +136,14 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   inconclusive, and policy-blocked dispositions. Never manufacture parity work
   or reopen an unchanged rejected candidate merely to keep an autonomous loop
   moving.
-- During the current one-active-`FullAutoRun`-per-profile product, an explicit
-  owner instruction may admit or select the Fast Follow research or
-  implementation lane. Otherwise, use Fast Follow as a bounded candidate
-  source under higher-authority actionable work and finish one concrete unit
-  per continuation. The authored 3/1/1 capacity profile does not itself create
-  a concurrent fleet or autonomous provider rotation; either requires a
-  separately admitted FullAutoRunPolicy/FleetRun and a compatible Full Auto
-  intent revision.
+- During the current bounded multi-run `FullAutoRun` product, an explicit owner
+  instruction or the current admitted authority profile may admit or select a
+  Fast Follow research or implementation lane. Otherwise, use Fast Follow as a
+  bounded candidate source under higher-authority actionable work and finish
+  one concrete unit per continuation. The authored 3/1/1 capacity profile does
+  not itself allocate runs, waive the eight-active-run cap, create a
+  cross-machine fleet, or authorize provider rotation beyond the admitted Full
+  Auto policy; those behaviors still require compatible run/claim authority.
 
 ## Unattended macOS Credential Checks
 
@@ -126,10 +159,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   session vault; it can never prove authenticated Sync.
 - For authenticated Desktop verification, launch the signed app against its
   existing normal profile and consume only the app's public-safe session state,
-  IPC results, and visible UI. Never extract credentials as a diagnostic. If a
-  genuinely new Keychain authorization is unavoidable, record the exact owner
-  action in `NEEDS_OWNER.md` and continue another lane instead of opening a
-  prompt.
+  IPC results, and visible UI. Never extract credentials as a diagnostic. Use
+  typed app/API controls or safe visible UI automation when the action is
+  already delegated. Only after the root authority profile's blocker ladder
+  proves that a genuinely new human Keychain authorization is unavoidable may
+  the exact UI action be recorded in `NEEDS_OWNER.md`; continue every other
+  admitted lane instead of waiting.
 
 ## Repo Layout
 

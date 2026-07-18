@@ -2,11 +2,11 @@
 
 Status: first OpenAgents proposal and dogfood format, 2026-07-16.
 
-FastFollowSpec is the learning-intent companion to ProductSpec and
-AssuranceSpec. It declares which source projects a target wants to study,
-which source lessons may be combined into target outcomes, how fresh and
-shareable the research must be, and which work stages may be proposed. It does
-not carry runtime or product authority.
+FastFollowSpec is the learning-intent companion to ProductSpec, AssuranceSpec,
+and AuthorityDelegationSpec. It declares which source projects a target wants
+to study, which source lessons may be combined into target outcomes, how fresh
+and shareable the research must be, and which work stages may be proposed. It
+does not carry runtime, product, or action authority.
 
 Normative terms **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are used in the
 usual standards sense.
@@ -17,13 +17,15 @@ usual standards sense.
    does not change the target ProductSpec, roadmap, invariants, or architecture.
 2. **Research is not admission.** A valid candidate is evidence-only until a
    target-owned issue, accepted plan, or work packet admits implementation. A
-   current explicit owner instruction may become that accepted plan; it is
-   separate target authority, not authority inferred from the research.
+   current explicit owner instruction or an exact admitted
+   AuthorityDelegationSpec program may supply that separate target authority;
+   it is never authority inferred from the research.
 3. **Evidence is not a verdict.** A study, test, receipt, or cache hit does not
    self-verify, self-accept, merge, release, or change a public promise.
 4. **The target stays sovereign.** The nearest target `AGENTS.md`,
-   `INVARIANTS.md`, ProductSpec, AssuranceSpec, accepted roadmap, issue state,
-   and runtime policy take precedence over every source.
+   `INVARIANTS.md`, AuthorityDelegationSpec, ProductSpec, AssuranceSpec,
+   accepted roadmap, issue state, and runtime policy take precedence over
+   every source.
 5. **Control flow is typed.** A deterministic program controls lifecycle and
    authority. Models may propose bounded semantic results inside that program;
    they do not invent a parallel scheduler or parser.

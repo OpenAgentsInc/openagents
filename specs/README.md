@@ -1,4 +1,32 @@
-# Formal Specs
+# OpenAgents specs
+
+This root contains two complementary spec tiers:
+
+- `.product-spec.md` intent artifacts under `specs/<area>/`, governed by
+  [`CONVENTIONS.md`](CONVENTIONS.md) and validated by
+  `packages/product-spec`; and
+- bounded TLA+ models and mutation checks described below.
+
+The current owner-delegated completion program is recorded in
+[`../AUTHORITY.md`](../AUTHORITY.md) and
+[`../docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md`](../docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md).
+That authority permits agents to implement and prove the specs; it does not
+let implementation silently rewrite intent or let a model authorize runtime
+behavior.
+
+## Product intent tier
+
+The current ProductSpec areas are Desktop, mobile, OpenAgents-wide, and web.
+Each consequential outcome keeps its intent here while the Sol roadmap, live
+issues/packets, implementation, AssuranceSpec, formal models where warranted,
+and product-promise registry retain their separate authorities. Validate the
+tree with:
+
+```sh
+node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs
+```
+
+## Formal model tier
 
 This directory is the bounded TLA+ tier for `docs/fable/ROADMAP.md` task
 T6.13 / GitHub issue #7857. These models are design and regression checks only:

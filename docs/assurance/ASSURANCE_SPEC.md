@@ -37,8 +37,11 @@ ProductSpec.
 - **Assurance Receipts** report observations. They do not revise either spec.
 - The Desktop workroom may register a qualifying Assurance Receipt by exact
   reference and keeps packet verification and owner disposition separate.
-- Separate review and release policy decides what the assurance evidence
-  permits.
+- An **AuthorityDelegationSpec** may designate independent reviewer, admitter,
+  executor, and release roles and their resource conditions. It cannot make
+  missing evidence pass or collapse producer/verifier independence.
+- Separate admitted authority and release policy decides what the assurance
+  evidence permits.
 - The product-promise registry remains the only authority for public claims.
 
 The proposed authored filename is `<name>.assurance-spec.md`. The public

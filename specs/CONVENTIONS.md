@@ -22,6 +22,12 @@ plans, work packets, leases, evidence envelopes, distinct-verifier references,
 and owner packet dispositions for an exact spec. Neither the document
 nor that runtime decides assurance adequacy, release, or public claims.
 
+The root [`AUTHORITY.md`](../AUTHORITY.md) and
+[`AuthorityDelegationSpec`](../docs/authority/AUTHORITY_DELEGATION_SPEC.md)
+separately define who may take an action, against which resource, under which
+conditions. They can authorize implementation of ProductSpec intent but cannot
+change that intent, supply proof, or make a success metric true.
+
 A spec **declares — it never enforces**:
 
 - Behavior contracts and Eval Suites stay the oracles. Specs link contract IDs

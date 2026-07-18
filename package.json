@@ -86,6 +86,7 @@
     "test:node-vp-inventory": "node --test scripts/node-vp-cutover-inventory.test.mjs",
     "test:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run test",
     "test:sol-docs": "vp test --run scripts/check-sol-docs.test.ts",
+    "test:authority-delegation": "vp test --run scripts/check-authority-delegation.test.ts",
     "test:fast-follow": "vp test --run scripts/check-fast-follow.test.ts && pnpm --dir packages/fast-follow-spec run test",
     "check:fast-follow-spec": "pnpm --dir packages/fast-follow-spec run typecheck && pnpm --dir packages/fast-follow-spec run test && pnpm --dir packages/fast-follow-spec run verify:distribution",
     "qa:nightly": "node --import tsx scripts/qa-nightly-matrix.ts",

@@ -37,6 +37,13 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 
 ## Current authorities and contracts
 
+- [`../../AUTHORITY.md`](../../AUTHORITY.md) — current standing owner-delegated
+  action profile: exact programs, grants, budgets, independence, blocker
+  routing, reserved actions, and receipt policy.
+- [`2026-07-18-owner-delegated-autonomy-accepted-plan.md`](./2026-07-18-owner-delegated-autonomy-accepted-plan.md)
+  — active owner direction to eliminate generic owner/device waiting, finish
+  Full Auto, complete root specs and Fast Follow, then pursue transcript-backed
+  user and revenue outcomes within the admitted profile.
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — canonical product direction,
   durable gates, non-goals, current issue set, and next-ready sequence.
 - [`issues/README.md`](./issues/README.md) — classification and navigation for
