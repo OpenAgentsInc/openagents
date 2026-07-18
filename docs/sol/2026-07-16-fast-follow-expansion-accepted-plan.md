@@ -3568,6 +3568,73 @@ completion remain later packets.
 - released_at: `2026-07-18T03:49:34Z`
 - residual: real supersession/reversion observation and producer composition, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+## FF-D1-45 — Desktop terminal-authority export resource composition
+
+Status: claimed implementation packet; not a Day 1 completion claim.
+
+This packet is the next unblocked Day 1 residual after FF-D1-44. The validated
+terminal-authority overlay exists, but the production canonical-export command
+and Electron host resource graph still call the earlier accepted-only reader,
+so already-observed terminal facts cannot reach an actual export. This packet
+composes the existing overlay and private ledger directory into that resource
+graph. It does not add, infer, or claim a terminal-fact producer.
+
+Owned implementation paths:
+
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-command.ts`
+- `apps/openagents-desktop/src/thread-export-confirmed-timeline-command.test.ts`
+- `apps/openagents-desktop/src/thread-export-host-runtime.ts`
+- `apps/openagents-desktop/src/thread-export-host-runtime.test.ts`
+- `apps/openagents-desktop/src/thread-export-electron-host.ts`
+- `apps/openagents-desktop/src/thread-export-electron-host.test.ts`
+- `docs/fastfollow/receipts/2026-07-18-ff-d1-45-desktop-terminal-authority-export-composition-receipt.md`
+- this accepted-plan ledger and `docs/sol/document-manifest.json`
+
+Hot contracts: FF-D1-31 confirmed-timeline command composition, FF-D1-32/33
+private host resource graph, FF-D1-43 terminal ledger, FF-D1-44 overlay, and
+no invented authority. No schema, producer, `main.ts`, renderer, Sync,
+disclosure audience, artifact format, provider, or release authority is added.
+
+Required behavior:
+
+- make the canonical-export command read evidence through FF-D1-44 rather
+  than bypassing it through the accepted-only adapter;
+- require an explicit private terminal-authority ledger directory throughout
+  command and host composition;
+- derive that directory only beneath validated Electron
+  `userData/thread-exports` placement beside the existing artifact and receipt
+  stores;
+- preserve accepted-only output when no terminal facts exist and produce exact
+  terminal authority only for complete already-observed histories; and
+- fail closed on corrupt or invalid terminal evidence without writing an
+  artifact, catalog receipt, or destination and without projecting a path or
+  native error.
+
+Proof: focused command, overlay, host, Electron, ledger, artifact, and search
+tests; Desktop and shared-package typechecks; Fast Follow,
+behavior-contract, ProductSpec, Sol, AssuranceSpec baseline, and repository-
+required checks.
+
+Close rule: this packet closes only production resource composition for
+consuming already-observed terminal facts during canonical export. Real
+supersession/reversion observation and producer composition, historical-
+session backfill, the actual Desktop `main.ts` call site, Desktop UI
+consumption and pixels, named-group authority/publication, installed/runtime-
+rendered evidence, and Day 1 completion remain later packets.
+
+### CLAIM
+
+- actor/session: `codex-full-auto-ff-d1-45-20260718`
+- base: `73c19ea3ee9db967deb65dbdf94d93098fa94318`
+- worktree/branch: `openagents-ff-d1-45` / detached `origin/main`
+- scope: compose the FF-D1-44 terminal-authority overlay and FF-D1-43 private ledger into the actual canonical-export command/host/Electron resource graph
+- paths: the FF-D1-45 owned implementation paths above
+- hot files: six existing Desktop command/host/Electron files and focused tests, accepted-plan ledger, Sol manifest, and packet receipt
+- hot contracts: accepted-then-terminal evidence, private ledger placement, export resource lifetime, fail-closed persistence, and no inferred producer authority
+- dependencies: FF-D1-31 through FF-D1-33 and FF-D1-43/44 released; no relevant open bug issue or competing claim; active `main.ts`/renderer work and unavailable historical receipt identity explicitly excluded
+- verification: the focused and repository-required checks above plus the packet receipt
+- claimed_at: `2026-07-18T04:03:56Z`
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
