@@ -2094,12 +2094,17 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   create/append uses stable mobile refs, waits for the exact ref to become
   confirmed, labels drafts pending, and clears account-linked projections on
   denial or sign-out.
-- After authenticated Sync becomes live, mobile may bootstrap and prefer the
-  owner's stable Sarah thread when no explicitly restored coding session or
-  active Full Auto thread takes precedence. Sarah remains a projection inside
-  the ordinary conversation state machine: the drawer pins her identity, her
-  messages force the server-owned `hosted_khala` lane, credentials remain in
-  the native host, and the public `/sarah` tombstone stays 404.
+- After authenticated Sync becomes live, mobile bootstraps and prefers the
+  owner's stable Sarah thread as the deterministic owner landing surface.
+  Restored coding sessions and active Full Auto threads remain reachable from
+  navigation, but their composers cannot own or leak an execution target into
+  Sarah. Selecting Sarah clears the prior coding binding before send, and late
+  settlement from another thread cannot replace her visible conversation.
+  Sarah remains a projection inside the ordinary conversation state machine:
+  the drawer pins her identity, her messages force the server-owned
+  `hosted_khala` lane, credentials remain in the native host, and the public
+  `/sarah` tombstone stays 404. This boundary is enforced by
+  `apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts`.
 - Effect Native React Native stacks are structural layout containers, never
   aggregate accessibility controls. A stack may retain a catalog region/group
   label for diagnostics, but the native View is explicitly excluded from the

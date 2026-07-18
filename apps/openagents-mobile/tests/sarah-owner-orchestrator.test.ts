@@ -1,5 +1,10 @@
 import { ComponentValueBinding, IntentRef } from "@effect-native/core";
 import { Effect, Stream } from "@effect-native/core/effect";
+import {
+  composerBlockId,
+  decodeCodingComposerDraftSnapshot,
+  emptyComposerState,
+} from "@openagentsinc/khala-sync-client";
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -84,9 +89,12 @@ describe(`contract ${contractId}`, () => {
       subtitle: "Owner orchestrator · Authority v3",
     });
     expect(chromeProps(program.initialState).composerPlaceholder).toBe("Message Sarah");
-    expect(JSON.stringify(renderDrawerView(program.initialState))).toContain(
-      "Sarah · Owner orchestrator",
-    );
+    const drawer = JSON.stringify(renderDrawerView(program.initialState));
+    expect(drawer).toContain('"label":"Sarah"');
+    expect(drawer).not.toContain("workspace-search");
+    expect(drawer).not.toContain("workspace-status-filter");
+    expect(drawer).not.toContain("workspace-fleet-summary");
+    expect(drawer).not.toContain("drawer-bundle");
   });
 
   test("forces ordinary Sarah messages through the hosted Khala lane", async () => {
@@ -119,5 +127,94 @@ describe(`contract ${contractId}`, () => {
     await Effect.runPromise(Effect.yieldNow);
     expect(runtimeTarget).toEqual({ lane: "hosted_khala" });
     expect((await Effect.runPromise(lastState(program))).activeThreadRef).toBe(thread.threadRef);
+  });
+
+  test("clears an old coding composer before Sarah can send", async () => {
+    const oldThread: MobileConversationThread = {
+      ...thread,
+      threadRef: "thread.coding.0123456789abcdef01234567",
+      title: "Old coding chat",
+    };
+    let cleared = 0;
+    let runtimeTarget: unknown;
+    const host: MobileConversationHost = {
+      listThreads: async () => [oldThread, thread],
+      newThread: async () => ({ ok: true, thread: oldThread }),
+      openThread: async (threadRef) => threadRef === thread.threadRef ? thread : oldThread,
+      sendMessage: async (input) => {
+        runtimeTarget = input.runtimeTarget;
+        return { ok: true, thread };
+      },
+    };
+    const composerState = emptyComposerState();
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [oldThread, thread],
+        archivedThreads: [],
+        activeThread: oldThread,
+      },
+      coding: {
+        activeComposer: () => ({
+          repositoryLabel: "openagents",
+          worktreeLabel: "main",
+          targetLabel: "Old coding target",
+          draft: decodeCodingComposerDraftSnapshot({
+            schema: "openagents.coding_composer_draft.v1",
+            draftRef: "draft.old-coding-chat",
+            ownerRef: "local_mobile_home",
+            sessionRef: "session.old-coding-chat",
+            threadRef: oldThread.threadRef,
+            revision: 1,
+            doc: {
+              ...composerState.doc,
+              blocks: [{
+                id: composerBlockId("block-old-coding-chat"),
+                kind: "paragraph",
+                text: "Old coding draft",
+                marks: [],
+              }],
+            },
+            selection: composerState.selection,
+            view: composerState.view,
+            context: [],
+            target: {
+              laneRef: "lane.codex_app_server",
+              providerRef: "provider.openai.codex",
+              readiness: "ready",
+              executionTargetRef: "target.old-coding-chat",
+            },
+            submission: { status: "editing" },
+            updatedAt: now,
+          }),
+        }),
+        directory: {
+          authority: "confirmed",
+          phase: "live",
+          cacheState: "current",
+          repositories: [],
+          sessions: [],
+        },
+        clearSelection: async () => { cleared += 1; },
+      } as never,
+    });
+
+    expect(program.initialState.codingComposer).not.toBeNull();
+    await Effect.runPromise(program.report(
+      IntentRef("ConversationThreadSelected", ComponentValueBinding()),
+      { threadRef: thread.threadRef },
+    ) as Effect.Effect<unknown>);
+    const selected = await Effect.runPromise(lastState(program));
+    expect(cleared).toBe(1);
+    expect(selected.activeThreadRef).toBe(thread.threadRef);
+    expect(selected.codingComposer).toBeNull();
+
+    await Effect.runPromise(program.report(
+      IntentRef("KhalaTurnSubmitted", ComponentValueBinding()),
+      "What is the release status?",
+    ) as Effect.Effect<unknown>);
+    expect(runtimeTarget).toEqual({ lane: "hosted_khala" });
   });
 });

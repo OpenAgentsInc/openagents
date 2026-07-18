@@ -451,7 +451,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-02"
+export const BUNDLE_TAG = "2026-07-18.sarah-owner-orchestrator-03"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -944,6 +944,9 @@ export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
       : `${composer.repositoryLabel} · ${composer.worktreeLabel}`,
   }
 }
+
+const sarahIsActive = (state: HomeState): boolean =>
+  state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
 
 /** MOB-FA-02 (#8994): the control actions legal from a given lifecycle
  * state, in display order. Mirrors Desktop's exact legality (Pause is legal
@@ -1526,7 +1529,7 @@ export const renderHomeView = (state: HomeState): View =>
               style: { surface: "glass", borderRadius: "full" },
             },
             [
-              ...(state.codingComposer === null
+              ...(state.codingComposer === null || sarahIsActive(state)
                 ? []
                 : [IconButton({
                     key: "home-files",
@@ -1573,13 +1576,15 @@ export const renderHomeView = (state: HomeState): View =>
                     ),
                     style: mobileInteractiveStyle(state.accessibility),
                   })]),
-              IconButton({
-                key: "home-new-chat",
-                icon: "Compose",
-                accessibilityLabel: "New chat",
-                onPress: IntentRef("NewChatPressed", StaticPayload({})),
-                style: mobileInteractiveStyle(state.accessibility),
-              }),
+              ...(sarahIsActive(state)
+                ? []
+                : [IconButton({
+                    key: "home-new-chat",
+                    icon: "Compose",
+                    accessibilityLabel: "New chat",
+                    onPress: IntentRef("NewChatPressed", StaticPayload({})),
+                    style: mobileInteractiveStyle(state.accessibility),
+                  })]),
               IconButton({
                 key: "home-more",
                 icon: "Ellipsis",
@@ -1806,8 +1811,8 @@ const threadLifecycleRows = (state: HomeState): ReadonlyArray<View> => {
   return rows
 }
 
-const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
-  const openIntent = row.attentionTarget !== null
+const workspaceRowOpenIntent = (row: MobileWorkspaceRow) =>
+  row.attentionTarget !== null
     ? IntentRef("ControllerAttentionSelected", StaticPayload({
         schema: MobileAttentionTargetSchemaVersion,
         ...row.attentionTarget,
@@ -1819,6 +1824,9 @@ const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
           threadRef: row.threadRef,
         }))
       : IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: row.threadRef }))
+
+const workspaceRow = (row: MobileWorkspaceRow, state: HomeState): View => {
+  const openIntent = workspaceRowOpenIntent(row)
   const canOpen = row.state !== "archived" && row.state !== "recovery"
   const hasLifecycle = state.conversationAuthority === "sync" &&
     [...state.conversationThreads, ...state.archivedConversationThreads]
@@ -1999,30 +2007,71 @@ const workspaceNavigationRows = (state: HomeState): ReadonlyArray<View> => {
   ]
 }
 
+const sarahFocusedNavigationRows = (state: HomeState): ReadonlyArray<View> => {
+  const directory = state.codingDirectory === null
+    ? null
+    : projectMobileControllerDirectory(state.codingDirectory)
+  const rows = projectMobileWorkspaceNavigation({
+    threads: state.conversationThreads,
+    archivedThreads: state.archivedConversationThreads,
+    directory,
+    attention: state.attentionSnapshot,
+    activeThreadRef: state.activeThreadRef,
+    search: "",
+    status: "all",
+    projectRef: null,
+  }).rows
+    .filter(row => row.threadRef !== state.sarah?.threadRef && row.state !== "archived")
+    .slice(0, 5)
+
+  return rows.length === 0
+    ? []
+    : [
+        Text({
+          key: "sarah-recent-title",
+          content: "Recent conversations",
+          variant: "caption",
+          color: "textMuted",
+        }),
+        ...rows.map(row => Button({
+          key: `sarah-recent-${row.rowId}`,
+          label: row.title,
+          variant: "ghost",
+          disabled: row.state === "recovery",
+          onPress: workspaceRowOpenIntent(row),
+          style: { width: "full", ...mobileInteractiveStyle(state.accessibility) },
+        })),
+      ]
+}
+
 export const renderDrawerView = (state: HomeState): View =>
   Stack(
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
     [
       Spacer({ key: "drawer-top-space", size: "10" }),
-      drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
       drawerRow({
         key: "drawer-sarah",
         label: state.sarah === null
           ? "Sarah · Sign in as owner"
-          : "Sarah · Owner orchestrator",
+          : "Sarah",
         onPress: state.sarah === null
           ? IntentRef("OpenAgentsSignInPressed", StaticPayload({}))
           : IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: state.sarah.threadRef })),
         selected: state.sarah !== null && state.activeThreadRef === state.sarah.threadRef,
       }, state.accessibility),
-      drawerRow({
-        key: "drawer-current-surface",
-        label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala",
-        onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })),
-        selected: state.surfaceMode === "khala",
-      }, state.accessibility),
-      ...workspaceNavigationRows(state),
-      ...((state.fleetRuns?.runs.length ?? 0) === 0
+      drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
+      ...(sarahIsActive(state)
+        ? sarahFocusedNavigationRows(state)
+        : [
+            drawerRow({
+              key: "drawer-current-surface",
+              label: state.conversationAuthority === "sync" ? "OpenAgents" : "Khala",
+              onPress: IntentRef("SurfaceModeSelected", StaticPayload({ mode: "khala" })),
+              selected: state.surfaceMode === "khala",
+            }, state.accessibility),
+            ...workspaceNavigationRows(state),
+          ]),
+      ...(sarahIsActive(state) || (state.fleetRuns?.runs.length ?? 0) === 0
         ? []
         : [Text({
             key: "workspace-fleet-summary",
@@ -2030,7 +2079,9 @@ export const renderDrawerView = (state: HomeState): View =>
             variant: "caption",
             color: "textMuted",
           })]),
-      ...(state.workspaceLayoutMode === "compact"
+      ...(sarahIsActive(state)
+        ? []
+        : state.workspaceLayoutMode === "compact"
         ? [Sheet({
             key: "workspace-lifecycle-sheet",
             open: state.threadLifecycle.actionThreadRef !== null ||
@@ -2042,10 +2093,12 @@ export const renderDrawerView = (state: HomeState): View =>
             onDismiss: IntentRef("WorkspaceLifecycleSheetDismissed", StaticPayload({})),
           }, threadLifecycleRows(state))]
         : threadLifecycleRows(state)),
-      ...codingOfflineCacheAccountingRows(state),
+      ...(sarahIsActive(state) ? [] : codingOfflineCacheAccountingRows(state)),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }, state.accessibility),
-      Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),
+      ...(sarahIsActive(state)
+        ? []
+        : [Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" })]),
     ],
   )
 
@@ -2657,11 +2710,14 @@ const makeSyncedConversationHandlers = (
   }),
   ConversationThreadSelected: (payload: { readonly threadRef: string }) => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
-    if (before.khala.pending) return
-    if (coding !== undefined) yield* Effect.promise(coding.clearSelection)
+    const selectingSarah = before.sarah?.threadRef === payload.threadRef
+    if (before.khala.pending && !selectingSarah) {
+      return
+    }
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
+      activeThreadRef: payload.threadRef,
       workspaceFocusTarget: "transcript" as const,
       workbenchRoute: "conversation" as const,
       repositoryBrowser: initialMobileRepositoryBrowserState,
@@ -2675,8 +2731,27 @@ const makeSyncedConversationHandlers = (
       codingAttachmentPicking: false,
       codingAttachmentMutatingRef: null,
       codingAttachmentStatus: null,
-      khala: { ...current.khala, pending: true },
+      khala: selectingSarah
+        ? {
+            ...confirmedKhalaState(
+              null,
+              current.khala.turnCounter,
+              current.khala.interactionActionsAvailable,
+              current.khala.runtimeControlActionsAvailable,
+            ),
+            pending: true,
+            entries: [{
+              key: "pending-sarah-thread",
+              role: "system" as const,
+              text: "Opening Sarah…",
+              status: "pending" as const,
+            }],
+          }
+        : { ...current.khala, pending: true },
     }))
+    if (coding !== undefined) {
+      yield* Effect.promise(coding.clearSelection).pipe(Effect.ignore)
+    }
     const thread = yield* Effect.promise(() => selectedThreadLease.activate(
       payload.threadRef,
       update => {
@@ -2926,16 +3001,18 @@ const makeSyncedConversationHandlers = (
   KhalaTurnSubmitted: (raw: string) => Effect.gen(function* () {
     const message = raw.trim()
     const before = yield* SubscriptionRef.get(state)
-    if (message === "" && (before.codingComposer?.draft.doc.attachments.length ?? 0) === 0) return
+    const sarahSelected = before.sarah !== null &&
+      before.activeThreadRef === before.sarah.threadRef
+    const composer = sarahSelected ? null : before.codingComposer
+    if (message === "" && (composer?.draft.doc.attachments.length ?? 0) === 0) return
     if (before.khala.pending) return
-    if (before.codingComposer !== null &&
-      before.codingComposer.draft.target.readiness !== "ready") return
-    const selectedExecutionTarget = before.codingComposer === null
+    if (composer !== null && composer.draft.target.readiness !== "ready") return
+    const selectedExecutionTarget = composer === null
       ? undefined
       : before.codingExecutionTargets.find(option =>
-          option.targetId === before.codingComposer!.draft.target.executionTargetRef &&
+          option.targetId === composer.draft.target.executionTargetRef &&
           option.readiness === "ready")
-    if (before.codingComposer !== null &&
+    if (composer !== null &&
       before.codingExecutionTargetCatalogRequired &&
       selectedExecutionTarget === undefined) {
       yield* SubscriptionRef.update(state, current => ({
@@ -2947,14 +3024,14 @@ const makeSyncedConversationHandlers = (
       }))
       return
     }
-    const prepared = before.codingComposer === null || coding === undefined
+    const prepared = composer === null || coding === undefined
       ? { ok: true as const, body: message }
       : coding.prepareComposerSubmission === undefined
-        ? before.codingComposer.draft.doc.attachments.length === 0
+        ? composer.draft.doc.attachments.length === 0
           ? { ok: true as const, body: message }
           : { ok: false as const, error: "Attachment delivery is unavailable. The draft was kept." }
         : yield* Effect.promise(() => coding.prepareComposerSubmission!(
-            before.codingComposer!,
+            composer,
             message,
           ))
     if (!prepared.ok) {
@@ -2967,6 +3044,7 @@ const makeSyncedConversationHandlers = (
     const turn = before.khala.turnCounter + 1
     yield* SubscriptionRef.update(state, current => ({
       ...current,
+      codingComposer: sarahSelected ? null : current.codingComposer,
       khala: {
         ...current.khala,
         draft: "",
@@ -3016,12 +3094,13 @@ const makeSyncedConversationHandlers = (
       ))
     }
 
+    const submittedThreadRef = threadRef
     const result = yield* Effect.promise(() => host.sendMessage({
-      threadRef,
+      threadRef: submittedThreadRef,
       body: prepared.body,
       ...(prepared.attachments === undefined ? {} : { attachments: prepared.attachments }),
       ...(selectedExecutionTarget === undefined
-        ? before.sarah !== null && threadRef === before.sarah.threadRef
+        ? sarahSelected
           ? { runtimeTarget: { lane: "hosted_khala" as const } }
           : {}
         : { runtimeTarget: selectedExecutionTarget.runtimeTarget }),
@@ -3036,12 +3115,15 @@ const makeSyncedConversationHandlers = (
         }))
       },
     }))
-    const settledComposer = !result.ok || before.codingComposer === null || coding === undefined
-      ? before.codingComposer
+    const settledComposer = !result.ok || composer === null || coding === undefined
+      ? composer
       : coding.clearComposer === undefined
-        ? yield* Effect.promise(() => coding.updateComposerText(before.codingComposer!, ""))
-        : yield* Effect.promise(() => coding.clearComposer!(before.codingComposer!))
-    yield* SubscriptionRef.update(state, current => result.ok
+        ? yield* Effect.promise(() => coding.updateComposerText(composer, ""))
+        : yield* Effect.promise(() => coding.clearComposer!(composer))
+    yield* SubscriptionRef.update(state, current =>
+      current.activeThreadRef !== submittedThreadRef
+        ? current
+        : result.ok
       ? (() => {
           const confirmed = withConfirmedThread(current, result.thread)
           return {
@@ -4750,7 +4832,11 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         options.conversation,
         options.accessibility,
       )
-      const activeComposer = options.coding?.activeComposer() ?? null
+      const sarahIsInitialThread = options.sarah !== undefined &&
+        baseInitialState.activeThreadRef === options.sarah.threadRef
+      const activeComposer = sarahIsInitialThread
+        ? null
+        : options.coding?.activeComposer() ?? null
       const programInitialState: HomeState = {
         ...baseInitialState,
         sarah: options.sarah ?? null,

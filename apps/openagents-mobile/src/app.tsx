@@ -167,10 +167,9 @@ const selectAuthenticatedMobileExperience = async (
   const restoredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
     : undefined
-  // Fetched before thread selection so an active, fresh Full Auto run's
-  // thread can take priority over the arbitrary `threads[0]` fallback
-  // (openagents #8982) — see `selectActiveConversationThreadRef`. An
-  // explicit restored coding session (`preferredThreadRef`) still wins.
+  // Fetched before thread selection so Sarah is the owner's deterministic
+  // landing surface. Active work remains available from navigation, but a
+  // restored coding composer must never silently own Sarah's send target.
   const fullAutoRunResult = await syncHost.fullAutoRun()
   // `threadRef` is nullable: a Full Auto run may exist before Desktop binds
   // it to a khala-sync thread. `undefined` here means "nothing to
@@ -181,7 +180,7 @@ const selectAuthenticatedMobileExperience = async (
       isFullAutoRunProjectionActive(fullAutoRunResult.projection)
     ? fullAutoRunResult.projection.threadRef
     : undefined
-  const preferredThreadRef = restoredThreadRef ?? activeFullAutoThreadRef ?? sarah?.threadRef
+  const preferredThreadRef = sarah?.threadRef ?? activeFullAutoThreadRef ?? restoredThreadRef
   const conversation = await selectMobileConversation({
     conversation: () => syncHost.conversation(),
     timeline: () => syncHost.timeline(),
@@ -249,7 +248,11 @@ const selectAuthenticatedMobileExperience = async (
     onActiveThread?.(latest)
     return { thread: latest, composer: composerSession }
   }
-  if (restored?.state === "ready") {
+  if (
+    restored?.state === "ready" &&
+    conversation.mode === "sync" &&
+    conversation.activeThread?.threadRef === restored.session.threadRef
+  ) {
     await bind(restored.target, "restore", () => undefined)
   }
   return {

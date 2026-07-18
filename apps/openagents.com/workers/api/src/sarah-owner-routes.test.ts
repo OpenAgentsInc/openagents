@@ -13,6 +13,7 @@ import { describe, expect, test } from "vitest";
 import { materializeHttpResult } from "./http/responses";
 import {
   SARAH_OWNER_PATH,
+  ensureSarahPrincipal,
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
   sarahThreadRefForOwner,
@@ -94,5 +95,23 @@ describe(`contract ${contractId}`, () => {
         "thread.sarah.ffffffffffffffffffffffff",
       ),
     ).toBe(false);
+  });
+
+  test("parses the authority evidence parameter through text before storing jsonb", async () => {
+    const ownerUserId = "owner.fixture.123";
+    const threadRef = await sarahThreadRefForOwner(ownerUserId);
+    const statements: Array<string> = [];
+    const sql = (async (strings: TemplateStringsArray, ..._values: ReadonlyArray<unknown>) => {
+      const statement = strings.join("?");
+      statements.push(statement);
+      return statement.includes("FROM khala_sync_chat_threads") ? [{ thread_id: threadRef }] : [];
+    }) as unknown as SyncSql;
+
+    await ensureSarahPrincipal(sql, ownerUserId);
+
+    const receiptInsert = statements.find((statement) =>
+      statement.includes("INSERT INTO sarah_authority_decision_receipts"),
+    );
+    expect(receiptInsert).toContain("::text::jsonb");
   });
 });

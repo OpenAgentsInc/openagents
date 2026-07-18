@@ -183,7 +183,7 @@ export const ensureSarahPrincipal = async (
        ${ownerUserId}, ${threadRef}, ${decision.profileRef},
        ${decision.profileRevision}, ${decision.grantRef},
        ${decision.request.action}, 'succeeded',
-       ${JSON.stringify(["schema:openagents.sarah.principal.v1"])}::jsonb,
+       ${JSON.stringify(["schema:openagents.sarah.principal.v1"])}::text::jsonb,
        ${startedAt.toISOString()}, ${settledAt})
     ON CONFLICT (receipt_ref) DO NOTHING
   `;
