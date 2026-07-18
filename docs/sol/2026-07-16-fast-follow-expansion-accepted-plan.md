@@ -3222,6 +3222,15 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-40-desktop-canonical-event-search-main-handler-receipt.md`
 - residual: historical-session backfill, Electron registration and acquisition host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `014a7aa5f0697a3a8c8a4ff1c0144f6705b30c5e`
+- implementation_revision: `b9ef4b13c63d325ea9a8b1b06d500884d2903d33`
+- status: released
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-40-desktop-canonical-event-search-main-handler-receipt.md`
+- released_at: `2026-07-18T02:38:28Z`
+- residual: historical-session backfill, Electron registration and acquisition host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
