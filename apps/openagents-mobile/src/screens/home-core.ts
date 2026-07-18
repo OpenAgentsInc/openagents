@@ -454,7 +454,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-runtime-truth-06"
+export const BUNDLE_TAG = "2026-07-18.sarah-runtime-truth-07"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -3084,6 +3084,7 @@ const makeSyncedConversationHandlers = (
       return
     }
     const turn = before.khala.turnCounter + 1
+    const pendingMessageKey = `pending-mobile-${turn}`
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       codingComposer: sarahSelected ? null : current.codingComposer,
@@ -3092,10 +3093,16 @@ const makeSyncedConversationHandlers = (
         draft: "",
         pending: true,
         turnCounter: turn,
+        // Opening the keyboard can report a transient unpinned layout just
+        // before Send. A newly submitted chat turn must begin at its newest
+        // message, then stay there while the confirmed runtime state arrives.
+        transcriptPinned: true,
+        transcriptUnreadCount: 0,
+        transcriptScrollToKey: pendingMessageKey,
         entries: [
           ...current.khala.entries,
           {
-            key: `pending-mobile-${turn}`,
+            key: pendingMessageKey,
             role: "user" as const,
             text: message.length > 4_000 ? `${message.slice(0, 4_000)}…` : message,
             status: "pending" as const,
@@ -4537,15 +4544,26 @@ export const makeHomeHandlers = (
         }
       }),
     [TranscriptPinnedChanged]: (pinned: boolean) =>
-      SubscriptionRef.update(state, current => ({
-        ...current,
-        khala: {
-          ...current.khala,
-          transcriptPinned: pinned,
-          transcriptUnreadCount: pinned ? 0 : current.khala.transcriptUnreadCount,
-          transcriptScrollToKey: null,
-        },
-      })),
+      SubscriptionRef.update(state, current => {
+        const turn = current.khala.runtimeTurn
+        const sarahTurnActive = current.sarah !== null &&
+          current.activeThreadRef === current.sarah.threadRef &&
+          (current.khala.pending || turn?.status === "queued" ||
+            turn?.status === "running" || turn?.status === "waiting_for_input")
+        // Keyboard/layout contraction can emit `false` immediately after the
+        // owner submits. Keep Sarah at the live edge until that turn settles;
+        // otherwise both the new user message and reply land below the screen.
+        if (!pinned && sarahTurnActive) return current
+        return {
+          ...current,
+          khala: {
+            ...current.khala,
+            transcriptPinned: pinned,
+            transcriptUnreadCount: pinned ? 0 : current.khala.transcriptUnreadCount,
+            transcriptScrollToKey: null,
+          },
+        }
+      }),
     [TranscriptEarlierHistoryRequested]: () =>
       SubscriptionRef.update(state, current => ({
         ...current,

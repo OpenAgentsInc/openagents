@@ -178,6 +178,43 @@ describe(`contract ${contractId}`, () => {
     expect((await Effect.runPromise(lastState(program))).activeThreadRef).toBe(thread.threadRef);
   });
 
+  test("keeps a submitted Sarah turn pinned to the newest message while the keyboard contracts", async () => {
+    let finish: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined;
+    const host: MobileConversationHost = {
+      listThreads: async () => [recentThread],
+      newThread: async () => ({ ok: true, thread: recentThread }),
+      openThread: async () => recentThread,
+      sendMessage: () => new Promise(resolve => { finish = resolve; }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [recentThread],
+        archivedThreads: [],
+        activeThread: recentThread,
+      },
+    });
+
+    program.khala.submitTurn("Keep this visible");
+    await Effect.runPromise(Effect.yieldNow);
+    const pending = await Effect.runPromise(lastState(program));
+    expect(pending.khala.transcriptPinned).toBe(true);
+    expect(pending.khala.transcriptScrollToKey).toBe("pending-mobile-1");
+
+    await Effect.runPromise(program.report(
+      IntentRef("TranscriptPinnedChanged", ComponentValueBinding()),
+      false,
+    ) as Effect.Effect<unknown>);
+    const contracted = await Effect.runPromise(lastState(program));
+    expect(contracted.khala.transcriptPinned).toBe(true);
+    expect(contracted.khala.transcriptScrollToKey).toBe("pending-mobile-1");
+
+    finish?.({ ok: true, thread: recentThread });
+    await Effect.runPromise(Effect.yieldNow);
+  });
+
   test("keeps Sarah conversational by withholding completed runtime plumbing", () => {
     const host: MobileConversationHost = {
       listThreads: async () => [thread],
