@@ -151,10 +151,17 @@ const renameSelectedThread = async (page: Page, title: string): Promise<void> =>
 const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void> => {
   const button = page.locator('[data-en-key="shell-provider-select"]')
   await button.waitFor({ state: "visible", timeout: 30_000 })
-  for (let attempts = 0; attempts < 5; attempts += 1) {
+  // The visible control cycles every admitted provider lane, not only the two
+  // native lanes. Owner profiles can therefore have several ACP lanes between
+  // Claude and Codex. Bound the traversal generously while still requiring
+  // the exact visible native label before sending.
+  for (let attempts = 0; attempts < 64; attempts += 1) {
     if ((await button.innerText()).trim().startsWith(label)) return
+    const before = (await button.innerText()).trim()
     await button.click()
-    await page.waitForTimeout(500)
+    await page.waitForFunction(previous =>
+      document.querySelector('[data-en-key="shell-provider-select"]')?.textContent?.trim() !== previous,
+    before, { timeout: 5_000 })
   }
   throw new Error(`could not select ${label}`)
 }
@@ -299,7 +306,10 @@ const runInteractiveHandoff = async (input: Readonly<{
     markerEstablishedInSource:
       first.includes(input.marker) && readArtifact(input.step1).trim() === `STEP-ONE-RESULT(${input.marker})`,
     markerStatedByTarget: second.includes(input.marker),
-    targetMarkerStatement: sha256(second),
+    // Evaluator authority is the private in-memory statement: the
+    // marker_retained rule checks the exact marker itself. Only the public
+    // receipt is digested/redacted; hashing here makes every real marker fail.
+    targetMarkerStatement: second,
     stepTwoUsedPriorResult:
       second.includes(`STEP-ONE-RESULT(${input.marker})`) &&
       second.includes(`STEP-TWO-COMPLETE(${input.marker})`) &&
