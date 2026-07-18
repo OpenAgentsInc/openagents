@@ -3647,6 +3647,15 @@ rendered evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-45-desktop-terminal-authority-export-composition-receipt.md`
 - residual: real supersession/reversion observation and producer composition, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `59ae8c4ae277b8ed671bb3218902cfa341dace9d`
+- implementation_revision: `3dde111785ba59097fc8acf66e337b4dc7b14cb6`
+- status: released
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-45-desktop-terminal-authority-export-composition-receipt.md`
+- released_at: `2026-07-18T04:07:58Z`
+- residual: real supersession/reversion observation and producer composition, historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

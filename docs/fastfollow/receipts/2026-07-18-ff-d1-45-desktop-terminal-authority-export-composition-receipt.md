@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "73c19ea3ee9db967deb65dbdf94d93098fa94318"
 claim_revision: "59ae8c4ae277b8ed671bb3218902cfa341dace9d"
-implementation_revision: "PENDING_REMOTE_IMPLEMENTATION_REVISION"
+implementation_revision: "3dde111785ba59097fc8acf66e337b4dc7b14cb6"
 proof_rung: "desktop_terminal_authority_export_resource_composition"
 observed_at: "2026-07-18T04:06:48Z"
 ---
@@ -76,5 +76,6 @@ producer exists. Real observation and producer composition, historical
 backfill, `main.ts`, renderer pixels, named-group authority/publication, and
 installed runtime evidence remain unclaimed.
 
-The exact tested implementation tree will be bound here after it lands on
-`origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`3dde111785ba59097fc8acf66e337b4dc7b14cb6` before the documentation-only
+claim release.
