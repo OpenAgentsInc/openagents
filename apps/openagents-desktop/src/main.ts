@@ -5600,16 +5600,18 @@ const smokeCodexHistoryDetails = `(async () => {
   if (first === null) return { ok: false, reason: "history row never mounted" }
   first.click()
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline &&
-    first.getAttribute("data-selected") !== "true" &&
-    first.getAttribute("aria-current") !== "page" &&
-    document.querySelector('[data-en-key="history-workspace-split"]') === null) {
+  const selected = () => first.getAttribute("data-selected") === "true" ||
+    first.getAttribute("aria-current") === "page"
+  const detail = () => document.querySelector('[data-en-key="history-workspace-split"]') !== null ||
+    (selected() && document.querySelector('[data-en-key="shell-transcript"]') !== null)
+  // Selection and detail hydration are separate commits. Waiting only until
+  // selection made this gate sample the gap between them and fail randomly.
+  while (Date.now() < deadline && (!selected() || !detail())) {
     await wait(100)
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-history-list"] > [data-en-role="section-label"]')
-  const selectedInReact = first.getAttribute("data-selected") === "true" || first.getAttribute("aria-current") === "page"
-  const detailVisible = document.querySelector('[data-en-key="history-workspace-split"]') !== null ||
-    (selectedInReact && document.querySelector('[data-en-key="shell-transcript"]') !== null)
+  const selectedInReact = selected()
+  const detailVisible = detail()
   // The header states the bounded recent scope. Prior smoke passes may persist
   // another fixture session, so accept the truthful one-through-ten count.
   const truthfulCount = /^Recent chats · (?:[1-9]|10)$/.test(sidebar?.textContent ?? "")
