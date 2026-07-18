@@ -43,6 +43,10 @@ export const FULL_AUTO_MAX_CONTINUATIONS = 20
 export const FULL_AUTO_MAX_CONSECUTIVE_FAILURES = 5
 export const FULL_AUTO_FAILURE_BACKOFF_BASE_MS = 30_000
 export const FULL_AUTO_FAILURE_BACKOFF_MAX_MS = 30 * 60_000
+/** Distinct Full Auto threads may dispatch in parallel, while each thread is
+ * still protected by its own durable exactly-once lease. Keep the local
+ * provider fan-out aligned with the bounded active-run admission policy. */
+export const FULL_AUTO_RECONCILE_CONCURRENCY = 8
 
 /** Bounded exponential backoff: min(2^failures * 30s, 30min). */
 export const fullAutoFailureBackoffMs = (consecutiveFailures: number): number =>
@@ -349,20 +353,22 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
   }>) => void
 }>): Promise<ReadonlyArray<string>> => {
   const now = input.now ?? (() => new Date())
-  const dispatched: string[] = []
   const inFlight = input.nonterminalThreadRefs()
-  for (const threadRef of input.registry.enabledThreads()) {
-    if (inFlight.has(threadRef)) continue
+  const threadRefs = input.registry.enabledThreads()
+  const results: Array<string | null> = new Array(threadRefs.length).fill(null)
+  let nextIndex = 0
+  const processThread = async (threadRef: string): Promise<string | null> => {
+    if (inFlight.has(threadRef)) return null
     // Re-read fresh: an earlier iteration (or a durable write from the same
     // serialized pass) may have disabled the record since the snapshot.
     const record = input.registry.record(threadRef)
-    if (record === null || !record.enabled) continue
+    if (record === null || !record.enabled) return null
     // FA-GD-01 (#8991): a durably paused record never dispatches. The pause
     // is not a disable -- the owner's grant stands -- but only an explicit
     // resume (resumeFullAuto) clears it. Checked before every other gate so
     // a paused loop can never be disabled underneath the owner by a
     // workspace change or wall-clock expiry while they decide.
-    if (record.pausedReason !== undefined) continue
+    if (record.pausedReason !== undefined) return null
     // FA-H2: authority binding first. An enabled record whose granted
     // workspace cannot be matched exactly never dispatches -- disable it
     // visibly instead of silently redirecting high-trust work.
@@ -377,7 +383,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
         grantedWorkspaceRef: null,
         resolvedWorkspaceRef,
       })
-      continue
+      return null
     }
     if (record.workspaceRef !== resolvedWorkspaceRef) {
       input.registry.set(threadRef, false, {
@@ -389,7 +395,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
         grantedWorkspaceRef: record.workspaceRef,
         resolvedWorkspaceRef,
       })
-      continue
+      return null
     }
     // FA-GD-01 (#8991): the wall-clock guardrail, checked before backoff so
     // an expired run terminates even while waiting out a failure window. The
@@ -415,14 +421,14 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
           observed: elapsedMs,
           reason,
         })
-        continue
+        return null
       }
     }
     // FA-H5: respect the bounded failure backoff window.
     const failures = record.consecutiveFailures ?? 0
     if (failures > 0 && record.lastFailureAt !== undefined) {
       const sinceFailureMs = now().getTime() - Date.parse(record.lastFailureAt)
-      if (sinceFailureMs < fullAutoFailureBackoffMs(failures)) continue
+      if (sinceFailureMs < fullAutoFailureBackoffMs(failures)) return null
     }
     // Cap check BEFORE dispatch: counts increment only on successful dispatch
     // (FA-H5), so a record at the cap disables here without minting a turn.
@@ -452,7 +458,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       } else {
         input.onCapReached?.(threadRef)
       }
-      continue
+      return null
     }
     // FA-H3: startup-only stale-lease recovery -- a lease whose turn ref never
     // produced a journal row belongs to a dispatch that crashed before the
@@ -481,7 +487,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
           reason,
           consecutiveNoProgressTurns: progress.consecutive,
         })
-        continue
+        return null
       }
     }
     // FA-GD-01 (#8991): guardrails.maxPerTurnFailures generalizes the
@@ -586,8 +592,7 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
             turnRef,
             ...(profile === undefined ? {} : { profile }),
           })
-          dispatched.push(threadRef)
-          break
+          return threadRef
         }
         failure = {
           reason: result.reason ?? "dispatch_failed",
@@ -627,6 +632,23 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
       failThread(failure.failureCause ?? failure.reason)
       break
     }
+    return null
   }
-  return dispatched
+  // The trigger queue remains serialized across reconciliation PASSES, but a
+  // pass fans out distinct threadRef tasks. Promise.all-style workers preserve
+  // registry order in the return value while allowing real Codex and Claude
+  // turns to overlap. Per-thread claimPending remains the dispatch mutex.
+  const workers = Array.from(
+    { length: Math.min(FULL_AUTO_RECONCILE_CONCURRENCY, threadRefs.length) },
+    async () => {
+      while (true) {
+        const index = nextIndex
+        nextIndex += 1
+        if (index >= threadRefs.length) return
+        results[index] = await processThread(threadRefs[index]!)
+      }
+    },
+  )
+  await Promise.all(workers)
+  return results.filter((threadRef): threadRef is string => threadRef !== null)
 }

@@ -272,6 +272,44 @@ describe("Full Auto workspace binding (FA-H2 #8875)", () => {
 })
 
 describe("Full Auto exactly-once dispatch (FA-H3 #8876)", () => {
+  test("distinct enabled threads dispatch concurrently while each retains its own durable lease", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-concurrent-threads-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-codex", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "codex-local" } })
+      registry.set("thread-claude", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "fable-local" } })
+
+      const started: string[] = []
+      let resolveBothStarted: (() => void) | null = null
+      let release: (() => void) | null = null
+      const bothStarted = new Promise<void>(resolve => { resolveBothStarted = resolve })
+      const gate = new Promise<void>(resolve => { release = resolve })
+      const reconciling = reconcile(registry, {
+        dispatch: async ({ threadRef }) => {
+          started.push(threadRef)
+          if (started.length === 2) resolveBothStarted!()
+          await gate
+          return { ok: true }
+        },
+      })
+
+      await Promise.race([
+        bothStarted,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("distinct threads did not overlap")), 1_000)),
+      ])
+      expect(started.toSorted()).toEqual(["thread-claude", "thread-codex"])
+      expect(registry.record("thread-codex")?.pendingTurnRef).toMatch(/^turn\.full-auto\./)
+      expect(registry.record("thread-claude")?.pendingTurnRef).toMatch(/^turn\.full-auto\./)
+
+      release!()
+      await expect(reconciling.then(threadRefs => threadRefs.toSorted())).resolves.toEqual(["thread-claude", "thread-codex"])
+      expect(registry.record("thread-codex")?.continuationCount).toBe(1)
+      expect(registry.record("thread-claude")?.continuationCount).toBe(1)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("audit probe (a): two overlapping reconcile passes against one enabled thread dispatch it exactly ONCE (durable lease), and continuationCount increments by exactly 1", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-overlap-"))
     try {
