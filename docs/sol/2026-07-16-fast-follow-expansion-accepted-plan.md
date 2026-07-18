@@ -3389,6 +3389,15 @@ later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-42-desktop-canonical-event-search-electron-host-receipt.md`
 - residual: historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `3b8268ed91d1cbcf6a44422da73c8ac7bcdfad64`
+- implementation_revision: `fe7b4aebf2ae1da4e77052a2850f28eb4d114d6c`
+- status: released
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-42-desktop-canonical-event-search-electron-host-receipt.md`
+- released_at: `2026-07-18T03:05:39Z`
+- residual: historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
