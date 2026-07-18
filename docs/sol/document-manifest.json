@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "86202729241b12c2826fa88b7ece416b777f0c7d081ea244d74013dc14077d92",
+  "sourceTreeSha256": "c97d8da64687ce7828d2a49b0df61d3a355152fe4479175eb7c9bab16081cab2",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2034,7 +2034,7 @@
       "owner": "OpenAgents delegated release autonomy",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "7b3f7747525f9a50904be10458afbb757c431b26441072ca861f6a8357dbf26c",
+      "sha256": "a7d4c23e70643af5f8253ffa56607b39682abef02e46482f0c5362e4748b55c1",
       "status": "active; revision-2 RC authority admitted, concrete matrix adapters remain #8917/#8926",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",

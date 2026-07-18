@@ -246,7 +246,13 @@ requested tester identities. A structured `PASS` creates an idempotent receipt
 comment. `BLOCKED` or an unstructured result creates one linked Full Auto issue
 with P0/P1 severity when supplied, comments the source conversation, and hands
 the new issue back to the normal implementation loop. It never infers broad
-intent from comment text and never messages unrelated users.
+intent from comment text and never messages unrelated users. If a requested
+tester files a direct issue instead, intake may additively restore
+`bug`/`area:release`/`area:desktop` only when the issue was created strictly
+after the candidate marker and contains an exact linked source-issue shorthand
+or canonical OpenAgents issue URL. This compensates for GitHub dropping labels
+from non-collaborator API issue creation without granting tester repository
+permissions or relabeling unrelated reports.
 
 ## 7. Verify `/download` and `/changelog` candidate truth
 

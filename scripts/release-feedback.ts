@@ -36,8 +36,18 @@ export type ReleaseIssueComment = Readonly<{
   createdAt: string;
 }>;
 
+export type ReleaseTesterIssue = Readonly<{
+  number: number;
+  author: string;
+  body: string;
+  labels: readonly string[];
+  url: string;
+  createdAt: string;
+}>;
+
 export interface ReleaseFeedbackPort {
   comments(issue: number): Promise<readonly ReleaseIssueComment[]>;
+  testerIssues(author: string, createdAfter: string): Promise<readonly ReleaseTesterIssue[]>;
   forumComments?(topicId: string): Promise<readonly ReleaseIssueComment[]>;
   findIssueByMarker(marker: string): Promise<Readonly<{ number: number; url: string }> | null>;
   createIssue(
@@ -47,6 +57,7 @@ export interface ReleaseFeedbackPort {
       labels: readonly string[];
     }>,
   ): Promise<Readonly<{ number: number; url: string }>>;
+  addIssueLabels(issue: number, labels: readonly string[]): Promise<void>;
   commentOnIssue(issue: number, body: string): Promise<void>;
   replyToForumTopic?(topicId: string, body: string, idempotencyKey: string): Promise<void>;
 }
@@ -56,6 +67,9 @@ export type ReleaseFeedbackIntakeResult = Readonly<{
   passesAcknowledged: number;
   followupIssuesCreated: number;
   alreadyIngested: number;
+  directIssuesMatched: number;
+  directIssueLabelsReconciled: number;
+  directIssueLabelsAlreadyPresent: number;
 }>;
 
 const field = (body: string, name: string): string | null =>
@@ -81,6 +95,8 @@ export const releaseFeedbackMarker = (commentId: string): string =>
 
 const normalizedTester = (value: string): string => value.replace(/^@/, "").toLowerCase();
 
+export const RELEASE_FEEDBACK_ISSUE_LABELS = ["bug", "area:release", "area:desktop"] as const;
+
 /**
  * A tester identity and a later timestamp do not bind a comment to a release.
  * The generated candidate request supplies this exact field so both structured
@@ -90,10 +106,103 @@ const isFeedbackForCandidate = (body: string, version: string): boolean =>
   field(body, "Candidate-Version") === version;
 
 const labelsFor = (feedback: ParsedTesterFeedback): readonly string[] => {
-  const labels = ["area:release", "area:desktop"];
+  const labels: string[] = [...RELEASE_FEEDBACK_ISSUE_LABELS];
   if (feedback.severity === "P0") labels.push("priority:P0");
   if (feedback.severity === "P1") labels.push("priority:P1-parallel");
   return labels;
+};
+
+const timestamp = (value: string): number | null => {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Direct issue correlation never guesses from report prose. The
+ * release-feedback route has already been selected, and this parser accepts
+ * only an exact source-issue shorthand or canonical OpenAgents issue URL.
+ */
+export const directIssueReferencesSource = (body: string, sourceIssue: number): boolean => {
+  const shorthand = new RegExp(`(^|[^A-Za-z0-9_])#${sourceIssue}(?![0-9])`);
+  const canonicalUrl = new RegExp(
+    `https://github\\.com/OpenAgentsInc/openagents/issues/${sourceIssue}(?:$|[?#/]|\\b)`,
+    "i",
+  );
+  return shorthand.test(body) || canonicalUrl.test(body);
+};
+
+type CandidateIssueWindow = Readonly<{
+  sourceIssue: number;
+  candidateCreatedAt: string;
+}>;
+
+const reconcileDirectTesterIssueLabels = async (
+  input: Readonly<{
+    candidateWindows: readonly CandidateIssueWindow[];
+    requestedTesters: readonly string[];
+    port: ReleaseFeedbackPort;
+  }>,
+): Promise<
+  Readonly<{
+    directIssuesMatched: number;
+    directIssueLabelsReconciled: number;
+    directIssueLabelsAlreadyPresent: number;
+  }>
+> => {
+  const windows = input.candidateWindows.flatMap((window) => {
+    const createdAt = timestamp(window.candidateCreatedAt);
+    return createdAt === null ? [] : [{ ...window, createdAt }];
+  });
+  const earliest = Math.min(...windows.map((window) => window.createdAt));
+  if (!Number.isFinite(earliest)) {
+    return {
+      directIssuesMatched: 0,
+      directIssueLabelsReconciled: 0,
+      directIssueLabelsAlreadyPresent: 0,
+    };
+  }
+
+  const candidates = new Map<number, ReleaseTesterIssue>();
+  for (const requestedTester of input.requestedTesters) {
+    const author = normalizedTester(requestedTester);
+    // eslint-disable-next-line no-await-in-loop -- bounded requested-tester API reads.
+    const issues = await input.port.testerIssues(author, new Date(earliest).toISOString());
+    for (const issue of issues) {
+      if (normalizedTester(issue.author) === author) candidates.set(issue.number, issue);
+    }
+  }
+
+  let directIssuesMatched = 0;
+  let directIssueLabelsReconciled = 0;
+  let directIssueLabelsAlreadyPresent = 0;
+  for (const issue of candidates.values()) {
+    const createdAt = timestamp(issue.createdAt);
+    if (createdAt === null) continue;
+    const correlated = windows.some(
+      (window) =>
+        createdAt > window.createdAt &&
+        issue.number !== window.sourceIssue &&
+        directIssueReferencesSource(issue.body, window.sourceIssue),
+    );
+    if (!correlated) continue;
+    directIssuesMatched += 1;
+    const existing = new Set(issue.labels.map((label) => label.toLowerCase()));
+    const missing = RELEASE_FEEDBACK_ISSUE_LABELS.filter(
+      (label) => !existing.has(label.toLowerCase()),
+    );
+    if (missing.length === 0) {
+      directIssueLabelsAlreadyPresent += 1;
+      continue;
+    }
+    // eslint-disable-next-line no-await-in-loop -- additive idempotent label writes.
+    await input.port.addIssueLabels(issue.number, missing);
+    directIssueLabelsReconciled += 1;
+  }
+  return {
+    directIssuesMatched,
+    directIssueLabelsReconciled,
+    directIssueLabelsAlreadyPresent,
+  };
 };
 
 const feedbackIssueTitle = (
@@ -154,6 +263,7 @@ export const ingestReleaseFeedback = async (
   let passesAcknowledged = 0;
   let followupIssuesCreated = 0;
   let alreadyIngested = 0;
+  const candidateWindows: CandidateIssueWindow[] = [];
 
   for (const issue of input.manifest.sourceIssues) {
     // eslint-disable-next-line no-await-in-loop -- bounded API sequence with per-comment idempotency.
@@ -162,6 +272,13 @@ export const ingestReleaseFeedback = async (
       comment.body.includes(releaseCommunicationMarker(input.manifest.version, "candidate")),
     );
     if (candidateIndex < 0) continue;
+    const candidateComment = comments[candidateIndex];
+    if (candidateComment !== undefined) {
+      candidateWindows.push({
+        sourceIssue: issue,
+        candidateCreatedAt: candidateComment.createdAt,
+      });
+    }
     const feedbackComments = comments
       .slice(candidateIndex + 1)
       .filter(
@@ -218,6 +335,12 @@ export const ingestReleaseFeedback = async (
       followupIssuesCreated += 1;
     }
   }
+
+  const directIssueResult = await reconcileDirectTesterIssueLabels({
+    candidateWindows,
+    requestedTesters: input.manifest.requestedTesters,
+    port: input.port,
+  });
 
   if (input.forumTopicId !== undefined) {
     if (input.port.forumComments === undefined || input.port.replyToForumTopic === undefined)
@@ -289,7 +412,13 @@ export const ingestReleaseFeedback = async (
       followupIssuesCreated += 1;
     }
   }
-  return { inspected, passesAcknowledged, followupIssuesCreated, alreadyIngested };
+  return {
+    inspected,
+    passesAcknowledged,
+    followupIssuesCreated,
+    alreadyIngested,
+    ...directIssueResult,
+  };
 };
 
 type GhComment = Readonly<{
@@ -298,6 +427,15 @@ type GhComment = Readonly<{
   url?: string;
   createdAt?: string;
   author?: Readonly<{ login?: string }>;
+}>;
+
+type GhIssue = Readonly<{
+  number?: number;
+  body?: string;
+  url?: string;
+  createdAt?: string;
+  author?: Readonly<{ login?: string }>;
+  labels?: ReadonlyArray<Readonly<{ name?: string }>>;
 }>;
 
 type ForumTopicResponse = Readonly<{
@@ -330,6 +468,44 @@ export const createReleaseFeedbackPort = (
       url: comment.url ?? `https://github.com/${repo}/issues/${issue}`,
       createdAt: comment.createdAt ?? "1970-01-01T00:00:00Z",
     }));
+  },
+  testerIssues: async (author, createdAfter) => {
+    const output = execFileSync(
+      "gh",
+      [
+        "issue",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        "all",
+        "--author",
+        author,
+        "--search",
+        `created:>=${createdAfter.slice(0, 10)}`,
+        "--limit",
+        "100",
+        "--json",
+        "number,author,body,labels,url,createdAt",
+      ],
+      { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+    );
+    return (JSON.parse(output) as GhIssue[]).flatMap((issue) =>
+      issue.number === undefined
+        ? []
+        : [
+            {
+              number: issue.number,
+              author: issue.author?.login ?? "unknown",
+              body: issue.body ?? "",
+              labels: (issue.labels ?? []).flatMap((label) =>
+                label.name === undefined ? [] : [label.name],
+              ),
+              url: issue.url ?? `https://github.com/${repo}/issues/${issue.number}`,
+              createdAt: issue.createdAt ?? "1970-01-01T00:00:00Z",
+            },
+          ],
+    );
   },
   forumComments: async (topicId) => {
     const output = execFileSync(
@@ -381,6 +557,11 @@ export const createReleaseFeedbackPort = (
     const number = Number(/\/issues\/(\d+)$/.exec(url)?.[1]);
     if (!Number.isSafeInteger(number)) throw new Error("GitHub issue create returned no issue id");
     return { number, url };
+  },
+  addIssueLabels: async (issue, labels) => {
+    const args = ["issue", "edit", String(issue), "--repo", repo];
+    for (const label of labels) args.push("--add-label", label);
+    execFileSync("gh", args, { stdio: ["ignore", "pipe", "pipe"] });
   },
   commentOnIssue: async (issue, body) => {
     execFileSync("gh", ["issue", "comment", String(issue), "--repo", repo, "--body-file", "-"], {

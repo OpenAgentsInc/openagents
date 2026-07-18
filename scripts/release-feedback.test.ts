@@ -11,6 +11,7 @@ import {
   releaseFeedbackMarker,
   type ReleaseFeedbackPort,
   type ReleaseIssueComment,
+  type ReleaseTesterIssue,
 } from "./release-feedback.js";
 import { releaseCommunicationMarker } from "./release-communications.js";
 
@@ -45,6 +46,13 @@ const candidateComment: ReleaseIssueComment = {
   createdAt: "2026-07-18T00:00:00Z",
 };
 
+const noDirectIssueActivity = {
+  testerIssues: async () => [],
+  addIssueLabels: async () => {
+    throw new Error("must not label a direct issue");
+  },
+} satisfies Pick<ReleaseFeedbackPort, "testerIssues" | "addIssueLabels">;
+
 describe("release feedback intake", () => {
   test("parses only the bounded fields after the release-feedback route is selected", () => {
     expect(
@@ -67,6 +75,7 @@ describe("release feedback intake", () => {
     ];
     const calls: string[] = [];
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => comments,
       findIssueByMarker: async () => null,
       createIssue: async (input) => {
@@ -92,8 +101,14 @@ describe("release feedback intake", () => {
       passesAcknowledged: 0,
       followupIssuesCreated: 1,
       alreadyIngested: 0,
+      directIssuesMatched: 0,
+      directIssueLabelsReconciled: 0,
+      directIssueLabelsAlreadyPresent: 0,
     });
-    expect(calls).toEqual(["create:area:release,area:desktop,priority:P0:true", "comment:true"]);
+    expect(calls).toEqual([
+      "create:bug,area:release,area:desktop,priority:P0:true",
+      "comment:true",
+    ]);
   });
 
   test("records PASS without manufacturing a bug issue", async () => {
@@ -110,6 +125,7 @@ describe("release feedback intake", () => {
     let created = false;
     let acknowledgement = "";
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => comments,
       findIssueByMarker: async () => null,
       createIssue: async () => {
@@ -142,6 +158,7 @@ describe("release feedback intake", () => {
       createdAt: "2026-07-18T00:10:00Z",
     };
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => [candidateComment, feedback],
       findIssueByMarker: async () => ({ number: 9000, url: "https://github.example/9000" }),
       createIssue: async () => {
@@ -189,6 +206,7 @@ describe("release feedback intake", () => {
     ];
     let acknowledgement = "";
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => comments,
       findIssueByMarker: async () => null,
       createIssue: async () => {
@@ -211,6 +229,9 @@ describe("release feedback intake", () => {
       passesAcknowledged: 1,
       followupIssuesCreated: 0,
       alreadyIngested: 0,
+      directIssuesMatched: 0,
+      directIssueLabelsReconciled: 0,
+      directIssueLabelsAlreadyPresent: 0,
     });
     expect(acknowledgement).toContain(releaseFeedbackMarker("current-candidate"));
   });
@@ -228,6 +249,7 @@ describe("release feedback intake", () => {
     ];
     let created = false;
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => comments,
       findIssueByMarker: async () => null,
       createIssue: async () => {
@@ -248,6 +270,71 @@ describe("release feedback intake", () => {
     expect(result.followupIssuesCreated).toBe(1);
   });
 
+  test("idempotently restores labels on a direct issue from any requested tester", async () => {
+    let matchingLabels: string[] = [];
+    const matchingIssue: ReleaseTesterIssue = {
+      number: 9003,
+      author: "lathe-agent-oa",
+      body: "Regression found while retesting https://github.com/OpenAgentsInc/openagents/issues/8995#issuecomment-fixture",
+      labels: matchingLabels,
+      url: "https://github.com/OpenAgentsInc/openagents/issues/9003",
+      createdAt: "2026-07-18T00:20:00Z",
+    };
+    const unrelatedIssue: ReleaseTesterIssue = {
+      number: 9004,
+      author: "lathe-agent-oa",
+      body: "A separate report with no candidate source reference.",
+      labels: [],
+      url: "https://github.com/OpenAgentsInc/openagents/issues/9004",
+      createdAt: "2026-07-18T00:21:00Z",
+    };
+    const labelWrites: string[] = [];
+    const port: ReleaseFeedbackPort = {
+      comments: async () => [candidateComment],
+      testerIssues: async () => [
+        { ...matchingIssue, labels: matchingLabels },
+        unrelatedIssue,
+        { ...matchingIssue, number: 9006, author: "not-the-requested-tester" },
+      ],
+      findIssueByMarker: async () => null,
+      createIssue: async () => {
+        throw new Error("direct feedback must not create a duplicate issue");
+      },
+      addIssueLabels: async (issue, labels) => {
+        labelWrites.push(`${issue}:${labels.join(",")}`);
+        matchingLabels = [...matchingLabels, ...labels];
+      },
+      commentOnIssue: async () => {
+        throw new Error("direct label reconciliation does not add a comment");
+      },
+    };
+
+    const first = await ingestReleaseFeedback({
+      manifest,
+      releaseUrl:
+        "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.99",
+      port,
+    });
+    const second = await ingestReleaseFeedback({
+      manifest,
+      releaseUrl:
+        "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.99",
+      port,
+    });
+
+    expect(first).toMatchObject({
+      directIssuesMatched: 1,
+      directIssueLabelsReconciled: 1,
+      directIssueLabelsAlreadyPresent: 0,
+    });
+    expect(second).toMatchObject({
+      directIssuesMatched: 1,
+      directIssueLabelsReconciled: 0,
+      directIssueLabelsAlreadyPresent: 1,
+    });
+    expect(labelWrites).toEqual(["9003:bug,area:release,area:desktop"]);
+  });
+
   test("ingests a blocked reply from the release-candidates Forum topic", async () => {
     const forumCandidate: ReleaseIssueComment = {
       ...candidateComment,
@@ -263,6 +350,7 @@ describe("release feedback intake", () => {
     };
     const calls: string[] = [];
     const port: ReleaseFeedbackPort = {
+      ...noDirectIssueActivity,
       comments: async () => [],
       forumComments: async () => [forumCandidate, forumFeedback],
       findIssueByMarker: async () => null,
@@ -291,9 +379,12 @@ describe("release feedback intake", () => {
       passesAcknowledged: 0,
       followupIssuesCreated: 1,
       alreadyIngested: 0,
+      directIssuesMatched: 0,
+      directIssueLabelsReconciled: 0,
+      directIssueLabelsAlreadyPresent: 0,
     });
     expect(calls).toEqual([
-      "create:area:release,area:desktop,priority:P1-parallel:true",
+      "create:bug,area:release,area:desktop,priority:P1-parallel:true",
       "reply:true:release-feedback-forum-feedback",
     ]);
   });

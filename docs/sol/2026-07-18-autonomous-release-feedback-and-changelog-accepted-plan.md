@@ -55,12 +55,16 @@ The implementation adds four bounded ports around that graph:
   updates to linked GitHub issues and Forum `release-candidates`; and
 - `release:feedback` reads only requested-tester replies after the candidate
   marker, records PASS, or creates one linked issue for BLOCKED/unstructured
-  feedback.
+  feedback. It also repairs GitHub's non-collaborator label drop on a direct
+  tester-filed issue only when requested identity, post-marker chronology, and
+  an exact source-issue reference all match the publication.
 
 All four use closed data contracts. No ad hoc string matcher chooses an intent,
-tool, route, or user-facing workflow. The only bounded text parsing occurs
-after the release-feedback route has already been selected and extracts the
-documented `Result`, `Severity`, and `Observed` fields.
+tool, route, or user-facing workflow. Bounded text parsing occurs only after
+the release-feedback route has already been selected: comment/Forum intake
+extracts the documented `Result`, `Severity`, and `Observed` fields, while
+direct-issue reconciliation accepts only an exact issue shorthand or canonical
+OpenAgents source-issue URL and never classifies report prose.
 
 ## Delivery and OTA decision
 
@@ -108,7 +112,8 @@ an indefinite owner wait.
 - Authority/ProductSpec/invariant revision for autonomous RC delivery.
 - Strict GitHub publication manifest and digest-verifying adapter.
 - Deterministic impact planner with a no-unrelated-Windows-build oracle.
-- Idempotent issue/Forum communications and requested-tester feedback intake.
+- Idempotent issue/Forum communications, requested-tester feedback intake, and
+  direct external-tester issue label reconciliation.
 - Historical RC17–RC20 changelog reconstruction and attributed `/changelog`
   projection.
 - Unit/route/authority tests covering version reuse, byte disagreement,
