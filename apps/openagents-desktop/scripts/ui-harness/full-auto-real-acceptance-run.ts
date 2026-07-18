@@ -355,6 +355,7 @@ const publishActiveFailure = async (error: unknown): Promise<void> => {
   const disposition: FullAutoAcceptanceDisposition =
     failureClassification === "account_exhausted"
     || failureClassification === "rate_limited"
+    || failureClassification === "provider_error"
     || failureClassification === "provider_session_missing"
       ? "BLOCKED"
       : "FAIL"
@@ -498,18 +499,7 @@ const startRun = async (input: Readonly<{
     // Pause is a drain boundary. Wait until the first provider turn has a
     // durable nonterminal journal row before requesting it, so the action can
     // neither beat initial dispatch nor accidentally target turn two.
-    const deadline = Date.now() + 30_000
-    while (Date.now() < deadline) {
-      const active = openLocalTurnJournal(profileFile("local-turns", "journal.json"))
-        .nonterminal()
-        .some(turn => turn.threadRef === threadRef && turn.turnRef.startsWith("turn.full-auto."))
-      if (active) break
-      await input.page.waitForTimeout(50)
-    }
-    const active = openLocalTurnJournal(profileFile("local-turns", "journal.json"))
-      .nonterminal()
-      .some(turn => turn.threadRef === threadRef && turn.turnRef.startsWith("turn.full-auto."))
-    if (!active) throw new Error("first Full Auto turn did not enter the durable journal before Pause")
+    await waitForActiveFullAutoTurn(input.page, threadRef)
     await input.page.locator('[data-en-key="full-auto-run-pause"]').click()
   }
   return { runRef, threadRef }
@@ -524,12 +514,42 @@ const refreshRun = async (page: Page): Promise<void> => {
 const completedTurns = async (page: Page): Promise<number> =>
   page.locator(".oa-react-full-auto-turn-summary", { hasText: "turn completed" }).count()
 
+const waitForActiveFullAutoTurn = async (page: Page, threadRef: string): Promise<void> => {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    const active = openLocalTurnJournal(profileFile("local-turns", "journal.json"))
+      .nonterminal()
+      .some(turn => turn.threadRef === threadRef && turn.turnRef.startsWith("turn.full-auto."))
+    if (active) return
+    await page.waitForTimeout(50)
+  }
+  throw new Error("Full Auto turn did not enter the durable journal before Pause")
+}
+
 const waitForPausedAfterTurn = async (page: Page): Promise<void> => {
   const deadline = Date.now() + 300_000
+  let providerRecoveries = 0
   while (Date.now() < deadline) {
     await refreshRun(page)
     const state = await page.locator("[data-full-auto-run-ref]").getAttribute("data-full-auto-run-state")
-    if (state === "paused" && await completedTurns(page) >= 1) return
+    if (state === "paused") {
+      if (await completedTurns(page) >= 1) return
+      const runRef = await page.locator("[data-full-auto-run-ref]").getAttribute("data-full-auto-run-ref")
+      const threadRef = await selectedThreadRef(page)
+      const record = openFullAutoRegistry(profileFile("full-auto", "registry.json")).record(threadRef)
+      const cause = classifyFullAutoDispatchFailureReason(record?.blockedReason)
+      const retryable = cause === "provider_error"
+        || cause === "rate_limited"
+        || cause === "provider_session_missing"
+      if (runRef !== null && retryable && providerRecoveries < 2) {
+        providerRecoveries += 1
+        await page.locator('[data-en-key="full-auto-run-resume"]').click()
+        await waitForActiveFullAutoTurn(page, threadRef)
+        await page.locator('[data-en-key="full-auto-run-pause"]').click()
+        continue
+      }
+      throw new Error(`run paused after its admitted source turn failed with ${cause}`)
+    }
     if (state !== null && terminalStates.has(state as never)) {
       throw new Error(`run terminated before paused handoff/restart: ${state}`)
     }
