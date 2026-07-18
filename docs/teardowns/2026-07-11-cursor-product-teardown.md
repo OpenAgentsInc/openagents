@@ -467,10 +467,14 @@ the stored `tracked_file_content` copy.
   working file changes or is deleted.
 - `User/workspaceStorage/<workspace-hash>/` held per-workspace `state.vscdb`
   databases, `workspace.json` with the original folder URI, database backups,
-  retrieval metadata (`embeddable_files.txt` and
-  `high_level_folder_description.txt`), and five screenshots attached during
-  work. The two observed workspace DBs held UI/extension state, not a vector
-  index.
+  retrieval metadata, and five screenshots attached during work. The retrieval
+  artifact is material: `embeddable_files.txt` was a 9.51 MB manifest of
+  exactly 100,000 unique relative paths (average 94 characters, maximum 273),
+  with no vectors or file contents. The exact round-number boundary is
+  consistent with a candidate-file cap, although the audit did not execute the
+  code path that selected it. `high_level_folder_description.txt` was only a
+  39-byte, one-line marker—not a compressed repository summary. The two
+  observed workspace DBs held UI/extension state, not a vector index.
 - `User/globalStorage/storage.json` retains window state, profile association,
   theme/splash state, shutdown timing, and stable telemetry device/machine/SQM
   identifiers. `workspace.json`, recently-opened state, tab state and CLI
@@ -533,6 +537,302 @@ Cursor's database even though plaintext used to compute them is request-lived.
   `machineid` retain feature-flag/experiment state and stable device
   identifiers. `sentry/`, logs and update diagnostics persist separately from
   the user's chat history.
+
+#### Best architectural reconstruction: why Cursor is shaped this way
+
+Everything in this subsection is inference from the pinned bundle, database
+schemas, aggregate state, timestamps, permissions and Cursor's public remote-
+index description. It is **not** a claim of access to Cursor's private design
+documents. Confidence labels mean:
+
+- **high** — the structure or shipped control flow has few plausible alternate
+  explanations;
+- **medium** — the explanation fits all observed evidence but another design
+  could produce the same artifacts; and
+- **low** — useful hypothesis, explicitly awaiting runtime/network proof.
+
+##### One product surface, at least four persistence systems
+
+`[inferred, high]` Cursor is not backed by one canonical local database. It is
+the composition of at least four independently evolved products:
+
+1. the inherited VS Code/Electron workbench under
+   `~/Library/Application Support/Cursor`;
+2. Cursor's Composer/Agents Window object store inside the global VS Code
+   `state.vscdb`;
+3. the separately shipped Cursor Agent/ACP runtime under `~/.cursor`; and
+4. cloud agents plus the server-side semantic index, represented locally by
+   ids, caches, fingerprints and sync state rather than a full remote replica.
+
+That layering explains the otherwise odd duplication. The GUI uses VS Code's
+existing storage lifecycle and extension APIs; the CLI needs a home that works
+without Electron and across editors; ACP needs session-local locking and
+resume; remote agents need account-scoped identity rather than a workstation-
+only row. Shipping each subsystem independently was faster and safer than one
+cross-product migration, at the cost of making retention and deletion
+non-atomic.
+
+```mermaid
+flowchart LR
+  W["Workspace files and Git"] --> M["Local path manifest / Merkle / grep"]
+  M --> R["Remote chunks, embeddings and metadata"]
+  R --> Q["Returned path + line ranges"]
+  Q --> W
+  W --> T["Agent turn"]
+  T --> H["composerHeaders: list projection"]
+  T --> C["composerData: conversation aggregate"]
+  T --> B["bubbleId + agentKv: content/event blobs"]
+  T --> P["checkpoints + original-file snapshots"]
+  B --> F["conversation-search.db: derived FTS5"]
+  T --> A["AI attribution DB"]
+  T --> L["logs / process monitor / telemetry caches"]
+  CLI["Cursor Agent / ACP"] --> S["Per-session blob databases in ~/.cursor"]
+  S -. "ids / handoff / import" .-> T
+```
+
+The arrows are the best reconstruction of ownership and derivation, not a
+captured trace. In particular, the exact bridge between ACP/CLI stores and GUI
+Composer rows remains unproven.
+
+##### `state.vscdb` is an object graph with materialized projections
+
+`[inferred, high]` The main chat representation is closer to a content-
+addressed object/event graph than a normalized relational transcript:
+
+- `composerHeaders` is the small, indexed list projection needed to render
+  recent/archive/workspace views without loading full chats;
+- `composerData:<id>` is a mutable conversation aggregate containing UI and
+  orchestration state;
+- `bubbleId:<conversation>:<bubble>` separates renderable turn units;
+- `agentKv:blob:<content-id>` holds large or polymorphic payloads—messages,
+  tool results, source, images and binary records—outside the aggregate; and
+- `composer.content.<digest>`, `ofsContent`, checkpoint and inline-diff rows
+  deduplicate or preserve file/change material by identity.
+
+This shape gives Cursor three important product properties. First, it can
+stream and persist a turn incrementally without rewriting one enormous JSON
+document. Second, new tool/event types can be added as opaque blobs without a
+relational migration for each release. Third, headers and lightweight
+conversation state load quickly while expensive payloads are lazy-loaded.
+Those properties fit an agent product whose event vocabulary and payload size
+change weekly.
+
+`[inferred, medium]` The tradeoff is orphan and garbage-collection risk. This
+snapshot had 25 headers, 32 `composerData` rows and 106 separate
+`composer.content` objects. Unequal counts can be legitimate—drafts, side
+chats, imported/archived state or shared content—but they also mean deletion
+cannot be implemented as one row removal. Cursor needs a reachability walk or
+reference accounting across headers, aggregates, bubbles, blobs, checkpoints,
+FTS and backups. The observed store does not expose foreign keys or cascading
+deletes, so that integrity is application-owned.
+
+##### WAL is for streaming durability; the backup is probably migration insurance
+
+`[inferred, high]` `state.vscdb.options.json` explicitly enables WAL. The live
+database reports `journal_mode=wal`, `synchronous=1` (`NORMAL`), 11,846 pages
+and 118 free pages. This is a sensible latency/durability compromise for an
+interactive stream: append updates without blocking readers, recover committed
+turn fragments after a crash, and avoid an `fsync` cost for every token or tool
+event.
+
+`[inferred, medium-high]` `state.vscdb.backup` is probably a pre-migration or
+recovery snapshot, not a continuously mirrored backup. It was last modified
+2026-05-07 while the live DB and conversation FTS were both last modified
+2026-07-12. A stale whole-file copy is exactly what an aggressive release
+train would keep before changing storage format. That helps rollback from a
+bad migration, but also retains conversations and credentials that the live
+store may later delete. The backup therefore serves product reliability at the
+expense of erasure clarity.
+
+##### FTS is a disposable read model, not conversation authority
+
+`[inferred, high]` `conversation-search.db` is a derived materialized view. Its
+candidate queue, reconciliation cursor, `in_progress` bit, root/cache
+fingerprints and 10,000-conversation cap describe a background indexer that
+can stop, resume, detect source changes and rebuild. The `local` versus
+`cloud-cache` source discriminator lets one search surface merge workstation
+history with locally cached remote-history text without pretending the two
+have the same authority.
+
+The likely flow is: discover changed conversations, queue ids, extract title
+and flattened body from the source graph/cache, update FTS and advance the
+reconciliation cursor. Deleting only FTS should lose search performance until
+rebuild; deleting only the source should require reconciliation before stale
+search text disappears. Because the FTS table stores its own content, a
+privacy-safe delete has to prove both sides converged.
+
+##### The 100,000-path file is a retrieval frontier, not "compressed code"
+
+`[inferred, medium-high]` `embeddable_files.txt` is most plausibly the local
+candidate frontier produced after ignore/filter rules and file discovery. Its
+100,000 unique relative paths let Cursor avoid rewalking a very large tree for
+every indexing status check, compare inventory state, populate UI, or feed the
+Merkle/upload worker. Relative paths make the manifest relocatable inside the
+same workspace and smaller than absolute URIs. The exact 100,000-row count is
+strong evidence of a hard or sampled ceiling rather than a naturally complete
+inventory.
+
+It is still sensitive knowledge: file and directory names reveal architecture,
+customers, features, languages and secret-adjacent naming even without source
+bytes. It is not an embedding, not a semantic summary, and not meaningfully
+compressed—the "compression" is simply that Cursor keeps names while remote
+systems keep vectors and the client rereads selected source ranges on demand.
+
+`[inferred, medium]` The tiny `high_level_folder_description.txt` is likely a
+legacy marker, cache key, or failed/placeholder output. At 39 bytes and one
+word it cannot encode useful high-level knowledge of a 100,000-file workspace.
+Its name should not be mistaken for evidence that Cursor stores a prose summary
+of the repository locally.
+
+##### Remote embeddings minimize local footprint but make the server the retrieval authority
+
+`[inferred, high]` Cursor chose a split retrieval architecture for economics
+and product speed: local code remains the byte authority; the client computes
+inventory/hashes and reads final ranges; expensive embedding, cache reuse and
+nearest-neighbor search are centralized. This permits one managed embedding
+model, cross-machine index reuse, team clone reuse, fast model upgrades and a
+thin desktop install. It also explains why `crepectl` can exist without a
+persistent vector DB: local indexes/snapshots can accelerate scanning, grep,
+telemetry or upload preparation while semantic recall remains a service.
+
+The consequence is that "delete local Cursor data" and "delete what Cursor
+knows about this repo" are different operations. Removing local manifests and
+databases cannot delete server vectors, chunk-hash caches, obfuscated paths,
+Git graph metadata or cloud conversations. Conversely, deleting a remote
+index does not remove local chats, file preimages, FTS, AI tracking or history.
+
+`[inferred, low]` The `blobEncryptionKey` and
+`speculativeSummarizationEncryptionKey` fields in composer state are probably
+client-side material for encrypting cloud-stored conversation blobs or
+speculative summaries, not local database encryption. The fields coexist with
+readable local content, so they plainly do not protect `state.vscdb` at rest.
+The audit did not bind either key to a network request or remote object and
+therefore cannot say which server-side store it protects.
+
+##### Checkpoints are preimages for undo, not merely chat decoration
+
+`[inferred, high]` `originalFileStates`, `ofsContent`, checkpoint manifests,
+inline diffs, changed-file lists and worktree/branch state form a reversible-
+edit system. Before or during an agent edit, Cursor records enough of the
+preimage and patch topology to show a diff, reject/apply selected changes,
+restore a checkpoint, undo a worktree operation, and resume after a crash.
+This is why source survives outside the current workspace even when semantic
+embeddings do not.
+
+`[inferred, medium]` Content/digest keys probably reduce duplication when the
+same file preimage is referenced by several bubbles or checkpoints. But without
+foreign keys, reference lifetime again belongs to application code. A failed
+turn or abandoned worktree can leave file objects reachable only through
+historical blobs until a garbage collector recognizes them.
+
+##### AI tracking is a provenance sidecar with a different retention clock
+
+`[inferred, high]` The AI tracking database exists separately because its
+primary query is not "render this chat" but "attribute these lines/commits to
+an agent request and model." Hashes establish identity; retained file content
+allows later comparison after the working tree changes; commit statistics
+roll that evidence into branch/commit-level percentages. The shipped retrieval
+code's post-commit scoring trigger corroborates this use.
+
+Separation lets attribution survive UI/chat schema migrations and lets Git-
+oriented reporting run without loading Composer. It also creates another
+retention clock: deleting a chat need not delete its content hashes, model/id
+links, tracked source snapshot or scored commit unless an explicit cross-store
+eraser does so. Nothing in the schema proves the database is used for training;
+the supported inference is local provenance and statistics.
+
+##### Plain Cursor JWTs reveal a parallel auth subsystem
+
+`[inferred, medium-high]` VS Code extension secrets in `ItemTable` use
+byte-buffer envelopes, while `cursorAuth/accessToken` and
+`cursorAuth/refreshToken` are directly readable JWT-shaped strings. The most
+likely explanation is that Cursor's first-party auth/session service predates
+or bypasses VS Code `SecretStorage` so the main process, renderer, extension
+hosts and separately downloaded agent worker can obtain account credentials
+through one fast cross-platform state service. Short-lived access credentials
+might make that choice seem acceptable, but a refresh credential makes the
+local database a durable account-takeover target.
+
+The design appears to rely on the user-profile directory boundary rather than
+field-level at-rest encryption. That assumption is stronger under the `0700`
+Application Support parent and weaker for the `~/.cursor` tree, whose
+session/meta files are broadly readable under this Mac's group permissions.
+The presence of tokens in the stale backup could extend exposure beyond token
+rotation if an old refresh credential remains accepted.
+
+##### Downloaded agent runtimes decouple agent velocity from editor releases
+
+`[inferred, high]` Four complete ~173 MB runtime versions inside the agent-
+worker extension's global storage show an updater inside the updater. Cursor
+can ship Agent/ACP service changes without replacing or notarizing the whole
+Electron app, keep the app bundle smaller, and select a runtime compatible with
+an in-flight session. Versioned directories also allow atomic install/switch
+and rollback if a new agent runtime fails.
+
+`[inferred, medium]` Retaining four versions may be an intentional rollback
+window, delayed cleanup while sessions reference old versions, or simply
+missing garbage collection. The disk shape alone cannot distinguish those.
+The same pattern in `CachedData/`—11 workbench commit directories—shows that
+Cursor generally favors side-by-side version safety over immediate space
+reclamation.
+
+##### Likely lifecycle of one local agent turn
+
+The following is the most coherent end-to-end reconstruction:
+
+1. **Open workspace** `[high]`: resolve the real folder from workspace state;
+   load workbench/editor/terminal state; start file watchers and retrieval.
+2. **Build retrieval frontier** `[medium-high]`: apply ignore/filter rules,
+   reuse or refresh the relative embeddable-file manifest, update local
+   Merkle/Git state, and sync changed material to the remote index.
+3. **Create/resume conversation** `[high]`: write/update a header and
+   `composerData`; resolve referenced bubble/blob/checkpoint objects lazily.
+4. **Assemble prompt** `[medium-high]`: remote semantic search returns path and
+   line ranges; local grep/recent files/editor context and attachments add
+   bytes; selected source is read locally and sent through Cursor's backend.
+5. **Stream execution** `[high]`: append bubble and `agentKv` objects under
+   WAL while tool calls, shell output, images, source reads and model events
+   arrive; update the lighter aggregate/header projection for UI responsiveness.
+6. **Protect edits** `[high]`: capture original-file content, checkpoints,
+   diffs, branch/worktree state and changed-file totals around mutations.
+7. **Derive secondary state** `[medium-high]`: reconcile conversation FTS,
+   update AI-code hashes/content/commit scoring, feature/usage state and logs.
+8. **Resume or hand off** `[medium]`: GUI uses the global object graph; CLI/ACP
+   uses its per-session blob DB; ids/fingerprints or explicit import/handoff
+   bridge local and cloud representations.
+
+This lifecycle explains why the disk footprint contains much more human-
+readable knowledge than the phrase "remote embeddings" suggests: embeddings
+answer _which files should be read_, while local stores preserve _what the
+agent saw, said, executed, changed and could undo_.
+
+##### Failure modes implied by the architecture
+
+`[inferred]` The structure predicts several recurring bug classes:
+
+- **chat appears missing but bytes survive:** header/projection loss while
+  blobs, composer content, FTS or backup remain;
+- **search finds deleted/renamed material:** delayed reconciliation between
+  source graph and derived FTS;
+- **restore corrupts or resurrects state:** migration fallback to a stale
+  whole-file backup;
+- **disk growth:** unreachable content blobs, checkpoints, verbose retrieval
+  logs, old workbench caches and four side-by-side agent runtimes each require
+  separate cleanup;
+- **cross-surface mismatch:** GUI, CLI, ACP and cloud each persist sessions
+  differently, so archive/delete/resume semantics can diverge;
+- **workspace hash mistaken for anonymity:** `workspace.json`, recent paths,
+  CLI `cwd`, logs and the 100,000-path manifest re-identify the workspace;
+- **credential copying:** ordinary profile backup or forensic collection also
+  copies readable Cursor JWTs and opaque extension-secret envelopes; and
+- **partial privacy controls:** disabling codebase indexing can stop future
+  remote semantic sync without deleting local chat/file/checkpoint/history
+  knowledge or proving deletion of an existing remote index.
+
+These are predictions, not observed incidents in this audit. They are the
+tests one would run in a dynamic follow-up: create/delete/archive one canary
+chat and file, rotate auth, disable/re-enable indexing, restart across an app
+update, inspect every store, and capture the network/API deletion receipts.
 
 #### Deletion and retention reality
 
