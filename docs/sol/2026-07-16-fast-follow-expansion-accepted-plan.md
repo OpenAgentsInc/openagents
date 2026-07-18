@@ -3378,6 +3378,17 @@ later packets.
 - verification: the focused and repository-required checks above plus the packet receipt
 - claimed_at: `2026-07-18T03:01:26Z`
 
+### CLAIM-STATUS
+
+- implementation: bound FF-D1-41's persisted canonical-event search resource to validated Desktop user-data placement and fixed Electron handle/remove seams
+- fail-closed proof: relative, root, and NUL-bearing user-data are rejected before registration; native registration detail remains inside D41's typed path-free failure
+- lifecycle proof: the fixed handler registers once, removes exactly once, and untrusted or post-close calls cannot reach private receipt or artifact acquisition
+- focused proof: Electron-host/runtime/handler/bridge/acquisition/catalog tests 32/32 passed; Desktop and agent-runtime-schema typechecks passed
+- authority proof: root Fast Follow 7/7, Fast Follow package 13/13, behavior contracts 36/36, ProductSpec 107/107, Sol 19/19, `pnpm run check`, and `pnpm run check:fast` passed
+- baseline: AssuranceSpec compiler reproduced only the recorded environment-profile digest snapshot mismatch, 5/6; no baseline, invariant, or Git configuration was mutated
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-42-desktop-canonical-event-search-electron-host-receipt.md`
+- residual: historical-session backfill, the actual Desktop `main.ts` call site, Desktop UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,
