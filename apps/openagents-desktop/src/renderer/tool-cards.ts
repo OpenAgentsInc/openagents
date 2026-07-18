@@ -84,6 +84,11 @@ export type ToolCardTranscriptEntry = Exclude<TranscriptEntry, Readonly<{ kind: 
 const isPrivateCodexCompatibilityNote = (note: DesktopNoteEntry): boolean =>
   note.role === "system" && note.text.startsWith("Codex compatibility notice:")
 
+const isHistoricalNoOpSpecRevalidationNote = (note: DesktopNoteEntry): boolean =>
+  note.role === "system" &&
+  note.text.startsWith("Spec revalidation ·") &&
+  note.text.includes("No obligation state changed during this turn.")
+
 /** Typed trace facts for a note: typed meta first, text-parse fallback. */
 export const toolTraceFromNote = (note: DesktopNoteEntry): DesktopToolTrace | null => {
   if (note.role !== "system") return null
@@ -155,11 +160,11 @@ export const projectToolCardEntries = (
   const openByTool = new Map<string, Array<number>>()
   const openByRef = new Map<string, number>()
   for (const note of notes) {
-    // Builds before the connection-diagnostics fix persisted compatibility
-    // receipts as ordinary system notes. Keep those historical diagnostics
-    // out of the conversation too; this exact product-owned prefix cannot
-    // hide Guardian, rotation, failure, or user/assistant content.
-    if (isPrivateCodexCompatibilityNote(note)) continue
+    // Builds before the diagnostics fixes persisted compatibility and no-op
+    // spec receipts as ordinary system notes. Keep those historical receipts
+    // out of the conversation too; the exact product-owned shapes cannot hide
+    // Guardian, rotation, failure, changed-spec, or user/assistant content.
+    if (isPrivateCodexCompatibilityNote(note) || isHistoricalNoOpSpecRevalidationNote(note)) continue
     if (note.runtime !== undefined) {
       entries.push({ kind: "runtime", note })
       continue

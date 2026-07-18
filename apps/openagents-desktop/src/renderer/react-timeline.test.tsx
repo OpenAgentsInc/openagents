@@ -187,6 +187,22 @@ describe("React typed timeline projection", () => {
     })
   })
 
+  test("keeps changed spec receipts informational even when diagnostics mention errors", () => {
+    const records = projectLocalTimelineRecords([{
+      key: "spec-changed",
+      role: "system",
+      text: "Spec revalidation · codex-local: 36/37 obligations remain unmet. Changed: desktop.startup → confirmed. Diagnostics: ProductSpec is not executable (8 errors).",
+      timestamp: "05:43",
+    }])
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      key: "spec-changed",
+      kind: "system_message",
+      label: "System",
+    })
+  })
+
   test("deduplicates and sorts typed items while preserving assistant segmentation", () => {
     const records = projectReactTimelineRecords([
       historyItem(2, "assistant_message", "after tool"),

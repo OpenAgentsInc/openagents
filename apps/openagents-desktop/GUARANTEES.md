@@ -834,7 +834,12 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
   unknown lanes (#8901; oracle: `src/full-auto-lane.test.ts`), and every
   dispatched lane receives the same bounded main-owned ProductSpec/
   AssuranceSpec obligation projection with fail-closed evidence revalidation
-  (#8902; oracle: `src/spec-lane-workflow.test.ts`).
+  (#8902; oracle: `src/spec-lane-workflow.test.ts`). An identical before/after
+  revalidation snapshot remains private instead of becoming a transcript row;
+  a genuinely changed bounded receipt remains an informational system record,
+  never a provider/turn error merely because its diagnostics mention errors
+  (owner review 2026-07-17; renderer projection oracles in
+  `src/renderer/tool-cards.test.ts` and `src/renderer/react-timeline.test.tsx`).
 - Desktop publishes only the bounded live Full Auto projection consumed by
   mobile (#8981; oracle: `tests/full-auto-run-projection-publisher.test.ts`);
   mobile first-screen rendering is not remote run-control authority. The

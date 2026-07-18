@@ -83,6 +83,29 @@ describe("projectTranscriptEntries (started + completion = ONE updating card)", 
     ])
   })
 
+  test("hides historical no-op spec receipts without hiding changed spec receipts", () => {
+    const entries = projectTranscriptEntries([
+      note({
+        key: "no-op",
+        text: "Spec revalidation · codex-local: 37/37 obligations remain unmet. No obligation state changed during this turn. Diagnostics: ProductSpec is not executable (8 errors).",
+      }),
+      note({
+        key: "changed",
+        text: "Spec revalidation · codex-local: 36/37 obligations remain unmet. Changed: desktop.startup → confirmed. Diagnostics: ProductSpec is not executable (8 errors).",
+      }),
+      note({
+        key: "assistant",
+        role: "assistant",
+        text: "Spec revalidation · quoted text. No obligation state changed during this turn.",
+      }),
+    ])
+
+    expect(entries.map(entry => entry.kind === "note" ? entry.note.key : entry.kind)).toEqual([
+      "changed",
+      "assistant",
+    ])
+  })
+
   test("folds a started/ok pair into a single card with the result attached", () => {
     const entries = projectTranscriptEntries([
       note({ key: "u", text: "hi", role: "user" }),

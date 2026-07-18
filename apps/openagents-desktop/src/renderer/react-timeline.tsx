@@ -279,6 +279,8 @@ export const projectLocalTimelineRecords = (
         ? "reasoning"
         : /^Approval\s*·/i.test(note.text)
           ? "approval"
+          : /^Spec revalidation\s*·/i.test(note.text)
+            ? "system_message"
           : /^Turn (completed|complete|canceled|cancelled)$/i.test(note.text)
             ? "lifecycle"
             : /^Turn (failed|interrupted)|error/i.test(note.text)

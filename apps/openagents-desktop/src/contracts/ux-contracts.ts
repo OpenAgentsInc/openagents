@@ -6,8 +6,54 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.2",
+    version: "2026-07-17.3",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "post-turn spec revalidation transcript projection",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-screenshot-review", statedBy: "owner", statedOn: "2026-07-17" },
+        statement: "works but whawt the fuck is that error",
+        authorityBoundary:
+          "The main-owned ProductSpec/AssuranceSpec revalidation remains fail-closed and re-reads the same bounded authority after a provider turn. An identical before/after snapshot is a private no-op receipt, not a conversation event, and is never persisted. Historical product-owned no-op receipts are omitted from transcript projection. A genuinely changed spec snapshot may still produce the existing bounded owner-visible receipt, but it is an informational system record rather than a provider or turn failure even when its structural diagnostics contain the word errors. This presentation rule does not confirm an obligation, repair an invalid spec, weaken validation, or grant release authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/spec-lane-workflow.ts",
+          "apps/openagents-desktop/src/renderer/tool-cards.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "github:OpenAgentsInc/openagents#8995",
+        ],
+        oracles: [
+          {
+            id: "spec_revalidation.identical_snapshot_emits_no_note",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/spec-lane-workflow.test.ts",
+            description:
+              "Proves identical before/after authority snapshots emit no conversation receipt for either local provider lane.",
+          },
+          {
+            id: "spec_revalidation.historical_noop_receipts_are_not_rendered",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/tool-cards.test.ts",
+            description:
+              "Proves a historical product-owned no-op receipt is omitted while changed receipts and assistant-authored quoted text remain visible.",
+          },
+          {
+            id: "spec_revalidation.changed_receipt_is_not_a_turn_error",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-timeline.test.tsx",
+            description:
+              "Proves a genuinely changed spec receipt remains an informational system record even when bounded diagnostics mention multiple errors.",
+          },
+        ],
+        verification:
+          "Spec-lane, transcript projection, React timeline, behavior-contract, Desktop typecheck/build, repository checks, and local oa-dev visual verification. No release command is part of the oracle.",
+      },
       {
         contractId: "openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1",
         state: "enforced",

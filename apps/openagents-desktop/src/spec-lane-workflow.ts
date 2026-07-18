@@ -287,6 +287,11 @@ export const specLaneRevalidationNote = (
   before: SpecLaneSnapshot,
   after: SpecLaneSnapshot,
 ): string | null => {
+  // Re-reading the exact same authority is useful internally, but it is not
+  // a conversation event. Persisting that no-op receipt after every ordinary
+  // turn both adds noise and lets unrelated spec diagnostics masquerade as a
+  // provider failure in the transcript.
+  if (specLaneSnapshotDigest(before) === specLaneSnapshotDigest(after)) return null
   if (
     before.assuranceSpecs.length === 0 && after.assuranceSpecs.length === 0 &&
     before.diagnostics.length === 0 && after.diagnostics.length === 0
@@ -302,7 +307,9 @@ export const specLaneRevalidationNote = (
   ]
   return clipped([
     `Spec revalidation · ${laneRef}: AssuranceSpec authority re-read ${after.assuranceSpecs.length} document(s); ${unmet.length}/${after.obligations.length} obligations remain unmet.`,
-    details.length === 0 ? "No obligation state changed during this turn." : `Changed: ${details.join(", ")}.`,
+    details.length === 0
+      ? "The projected spec inventory or diagnostics changed without an obligation transition."
+      : `Changed: ${details.join(", ")}.`,
     after.diagnostics.length === 0
       ? "Structural validation passed for every projected AssuranceSpec/evidence index."
       : `Diagnostics: ${after.diagnostics.slice(0, 4).join("; ")}.`,

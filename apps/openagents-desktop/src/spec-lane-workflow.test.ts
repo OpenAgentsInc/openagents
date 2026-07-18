@@ -145,6 +145,14 @@ describe("lane-independent spec workflow", () => {
     }
   })
 
+  test("does not persist a conversation receipt when revalidation is a no-op", () => {
+    const { root } = fixture()
+    const unchanged = projectSpecLaneTurn(root).snapshot
+
+    expect(specLaneRevalidationNote("codex-local", unchanged, unchanged)).toBeNull()
+    expect(specLaneRevalidationNote("fable-local", unchanged, unchanged)).toBeNull()
+  })
+
   test("fails evidence closed when its index is malformed", () => {
     const { root } = fixture()
     writeFileSync(join(root, "specs", "bad.assurance-evidence-index.json"), "{}\n")
