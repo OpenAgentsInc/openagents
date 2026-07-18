@@ -264,8 +264,8 @@ export const decodeReleasePublicationManifest = (value: unknown): ReleasePublica
   return value as unknown as ReleasePublicationManifest;
 };
 
-export const renderReleaseProvenance = (manifest: ReleasePublicationManifest): string =>
-  [
+export const renderReleaseProvenance = (manifest: ReleasePublicationManifest): string => {
+  const provenance = [
     "## Release provenance",
     "",
     `- Trigger: ${manifest.trigger.kind} — ${manifest.trigger.actor} (${manifest.trigger.ref})`,
@@ -275,7 +275,17 @@ export const renderReleaseProvenance = (manifest: ReleasePublicationManifest): s
     manifest.publicationClass === "desktop_experimental_prerelease"
       ? "- Distribution: experimental GitHub prerelease only; this does not promote the signed Desktop update feed."
       : "- Distribution: non-authoritative GitHub mirror of the separately verified signed ReleaseSet.",
+  ];
+  if (manifest.publicationClass !== "desktop_experimental_prerelease")
+    return provenance.join("\n");
+  return [
+    ...provenance,
+    "",
+    "## Experimental limitations",
+    "",
+    ...manifest.limitations.map((limitation) => `- ${limitation}`),
   ].join("\n");
+};
 
 export const validateReleasePublication = (
   rootDir: string,

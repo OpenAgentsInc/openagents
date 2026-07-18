@@ -113,6 +113,8 @@ describe("GitHub release publisher", () => {
     expect(renderReleaseProvenance(value.manifest)).toContain(
       "experimental GitHub prerelease only",
     );
+    expect(publication.notes).toContain("## Experimental limitations");
+    expect(publication.notes).toContain("- Fixture candidate only.");
   });
 
   test("creates a draft, verifies server digests, then publishes", async () => {
