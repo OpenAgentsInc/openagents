@@ -1,0 +1,47 @@
+@import "@fontsource-variable/geist";
+@import "tailwindcss";
+
+:root {
+  --background: oklch(0.145 0.02 255);
+  --foreground: oklch(0.95 0.01 255);
+  --muted-foreground: oklch(0.67 0.02 255);
+  --primary: oklch(0.74 0.16 235);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

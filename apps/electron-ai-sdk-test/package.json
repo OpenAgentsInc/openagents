@@ -1,0 +1,53 @@
+{
+  "name": "@openagentsinc/electron-ai-sdk-test",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minimal Electron UI for the experimental AI SDK Codex harness",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "dev": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "4.0.23",
+    "@ai-sdk/harness": "1.0.36",
+    "@ai-sdk/harness-codex": "1.0.38",
+    "@ai-sdk/provider": "4.0.3",
+    "@ai-sdk/provider-utils": "5.0.11",
+    "@ai-sdk/react": "4.0.34",
+    "@fontsource-variable/geist": "^5.2.9",
+    "@openagentsinc/ai-sdk-sandbox-local": "workspace:*",
+    "@standard-schema/spec": "^1.1.0",
+    "@vercel/oidc": "3.2.0",
+    "@workflow/serde": "4.1.0",
+    "ai": "7.0.31",
+    "dequal": "^2.0.3",
+    "electron-squirrel-startup": "^1.0.1",
+    "eventsource-parser": "^3.0.8",
+    "json-schema": "^0.4.0",
+    "lucide-react": "^1.24.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "scheduler": "^0.27.0",
+    "swr": "^2.4.1",
+    "throttleit": "2.1.0",
+    "use-sync-external-store": "^1.6.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/plugin-vite": "7.11.2",
+    "@electron-forge/shared-types": "7.11.2",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^43.1.0",
+    "tailwindcss": "^4.2.2",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
