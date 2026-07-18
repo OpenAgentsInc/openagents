@@ -125,31 +125,27 @@ const renameSelectedThread = async (page: Page, title: string): Promise<void> =>
     throw new Error("cannot rename an acceptance row without its selected thread identity")
   }
   const threadRef = key.slice("sidebar-thread-".length)
-  // The evidence reviewer uses the same schema-decoded renderer bridge as
-  // the visible Rename dialog, after the verdict exists. Reloading then
-  // proves the durable title is what a fresh owner UI actually renders.
-  const renamed = await page.evaluate(async ({ targetThreadRef, targetTitle }) => {
-    const bridge = (window as unknown as {
-      openagentsDesktop?: {
-        historyThreads?: {
-          renameLocal?: (input: Readonly<{ threadRef: string; title: string }>) =>
-            Promise<Readonly<{ ok?: boolean; error?: string }>>
-        }
-      }
-    }).openagentsDesktop
-    return bridge?.historyThreads?.renameLocal?.({
-      threadRef: targetThreadRef,
-      title: targetTitle,
-    }) ?? { ok: false, error: "rename bridge unavailable" }
-  }, { targetThreadRef: threadRef, targetTitle: title })
-  if (renamed.ok !== true) throw new Error(renamed.error ?? "acceptance row rename failed")
-  await page.reload()
-  await page.waitForSelector('[data-en-key="shell-settings-toggle"]', { timeout: 60_000 })
+  // Exercise the owner's visible rename path after the verdict exists. A
+  // sequential key path avoids racing React's controlled-input state, then
+  // the dialog closing and row text prove both host persistence and UI state.
+  await row.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Rename" }).click()
+  const dialog = page.getByRole("dialog", { name: "Rename chat" })
+  const input = dialog.locator("#desktop-chat-rename-title")
+  await input.click()
+  await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A")
+  await input.pressSequentially(title, { delay: 5 })
+  await page.waitForFunction(expected =>
+    (document.querySelector("#desktop-chat-rename-title") as HTMLInputElement | null)?.value === expected,
+  title)
+  await dialog.getByRole("button", { name: "Save" }).click()
+  await dialog.waitFor({ state: "hidden", timeout: 30_000 })
   const durableRow = page.locator(`[data-en-key="sidebar-thread-${threadRef}"]`)
-  await durableRow.waitFor({ state: "visible", timeout: 30_000 })
-  if (!(await durableRow.innerText()).includes(title)) {
-    throw new Error("the durable acceptance title did not render after reload")
-  }
+  await page.waitForFunction(({ key: targetKey, expected }) =>
+    document.querySelector(`[data-en-key="${targetKey}"] .oa-react-session-title`)
+      ?.textContent === expected,
+  { key: `sidebar-thread-${threadRef}`, expected: title }, { timeout: 30_000 })
+  if (await durableRow.count() === 0) throw new Error("renamed acceptance row left the visible sidebar")
 }
 
 const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void> => {
@@ -179,9 +175,16 @@ const sendAndWait = async (page: Page, prompt: string): Promise<string> => {
 }
 
 const newSession = async (page: Page): Promise<string> => {
+  const previous = await page.locator('[data-session-row][aria-current="page"]').first()
+    .getAttribute("data-en-key").catch(() => null)
   await page.getByRole("button", { name: "New session" }).click()
   await page.locator('[data-en-key="shell-input"] [contenteditable="true"]')
     .waitFor({ state: "visible", timeout: 30_000 })
+  await page.waitForFunction(previousKey => {
+    const selected = document.querySelector('[data-session-row][aria-current="page"]')
+      ?.getAttribute("data-en-key")
+    return selected !== null && selected !== previousKey
+  }, previous, { timeout: 30_000 })
   return selectedThreadRef(page)
 }
 
