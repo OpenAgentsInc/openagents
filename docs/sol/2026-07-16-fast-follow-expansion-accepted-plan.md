@@ -3142,6 +3142,15 @@ installed/runtime-rendered evidence, and Day 1 completion remain later packets.
 - receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-39-desktop-canonical-event-search-preload-receipt.md`
 - residual: historical-session backfill, main-process handler and host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
 
+### CLAIM-RELEASE
+
+- claim_revision: `d91251159ce248d6e13b65cd802c4a01d0b3f1c3`
+- implementation_revision: `3a614a85492959be4869e97e795d08607ad440d2`
+- status: released; FF-D1-39 implementation is landed and the bounded claim is closed
+- receipt: `docs/fastfollow/receipts/2026-07-18-ff-d1-39-desktop-canonical-event-search-preload-receipt.md`
+- released_at: `2026-07-18T02:17:48Z`
+- residual: historical-session backfill, main-process handler and host composition, Desktop `main.ts`/UI consumption and pixels, authoritative supersession/reversion producers, named-group authority/publication, installed/runtime-rendered evidence, and Day 1 completion remain unclaimed
+
 ## Explicit non-authority
 
 This plan grants no deployment, release, paid-provider spend, credential,

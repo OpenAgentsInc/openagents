@@ -9,7 +9,7 @@ stage: "implementation"
 fast_follow_revision: 3
 base_revision: "afe51fd0e5396a5f13bcbd83f3cabe47b48928a5"
 claim_revision: "d91251159ce248d6e13b65cd802c4a01d0b3f1c3"
-implementation_revision: "pending_remote_landing"
+implementation_revision: "3a614a85492959be4869e97e795d08607ad440d2"
 proof_rung: "desktop_canonical_event_search_preload"
 observed_at: "2026-07-18T02:15:15Z"
 ---
@@ -74,5 +74,6 @@ sessions, produce supersession/reversion facts, authorize named groups, or
 prove an installed runtime journey. Those residuals, owner acceptance, and Day
 1 completion remain unclaimed.
 
-The exact tested implementation tree will replace `pending_remote_landing`
-when it lands on `origin/main`, before the documentation-only claim release.
+The exact tested implementation tree landed on `origin/main` at
+`3a614a85492959be4869e97e795d08607ad440d2` before this documentation-only
+claim release.
