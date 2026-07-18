@@ -1,0 +1,291 @@
+{
+  "schema": "openagents.fast_follow.work_proposal.v0_1",
+  "proposal_ref": "proposal.t3code.worktree.6d065d3a97fe0795",
+  "proposal_key_digest": "sha256:6d065d3a97fe0795ae77ac1ef7d878fac4266d0273942804e7964faef29c978d",
+  "proposal_key": {
+    "candidate_identity": "t3.worktree_parallelism.v1|c9ff26d921aa5fcc155e05a43846d79b7c48560b|T3UI-04|typed-worktree-create",
+    "gap_assessment_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb",
+    "manifest_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc",
+    "study_packet_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7",
+    "target_commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+    "target_tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+    "directive_ref": "subagent_supervision",
+    "accepted_packet_ref": "T3UI-04",
+    "schema_version": "openagents.fast_follow.work_proposal.v0_1"
+  },
+  "run": {
+    "run_ref": "run.full-auto.mrqbkgry.bbok6dv9",
+    "thread_ref": "9e250d06-ec81-4fd0-8e30-a0561ef0a167",
+    "lane": "codex-local",
+    "continuation_ordinal": 4,
+    "provider_completion_is_verdict": false
+  },
+  "exact_refs": {
+    "fast_follow_spec": {
+      "path": "FASTFOLLOW.md",
+      "id": "openagents.fast_follow",
+      "revision": 3,
+      "document_digest": "sha256:5ec8a75f0efa2fa4234622fd7746b433ec50bf97fe25ce3d83b1107df19bc43c",
+      "intent_digest": "sha256:88cc577f951c82c30bcafd34ed06614e416eb3bf4d24b91b9fc36881a6ddac70"
+    },
+    "manifest": {
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-full-auto-manifest.json",
+      "content_digest": "sha256:653b67de599dfbb393209825fcf4b40813cbfc5560924f94042d21afb72099bc"
+    },
+    "study_packet": {
+      "path": "docs/fastfollow/studies/2026-07-18-t3-code-study-packet.json",
+      "packet_ref": "study.t3code.2395916f28f524b8",
+      "content_digest": "sha256:677ac03ebaec95bdc17639265324fe3b462578fd639138996b9dfd8dab0e7bd7"
+    },
+    "gap_assessment": {
+      "path": "docs/fastfollow/gaps/2026-07-18-t3-code-full-auto-gap-assessment.json",
+      "assessment_ref": "gap.t3code.436c6d129a5c90f2",
+      "content_digest": "sha256:1944f8b180295ea2d9e97e27e90ecd05653a036d5e3db2f9519ec2870b0c1eeb"
+    },
+    "source": {
+      "repository": "https://github.com/pingdotgg/t3code",
+      "commit": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "tree": "1f66f335cfb0a2ed4f7ad522270736fc537346e9",
+      "lesson_ref": "pingdotgg.t3code#worktree_parallelism",
+      "pattern_id": "t3.worktree_parallelism.v1",
+      "license": "MIT"
+    },
+    "target": {
+      "repository": "OpenAgentsInc/openagents",
+      "commit": "c9ff26d921aa5fcc155e05a43846d79b7c48560b",
+      "tree": "455c3906ee00af9c29ca156acc1fe8bd936aac69",
+      "directive_ref": "subagent_supervision"
+    }
+  },
+  "status": {
+    "stage": "candidate_proposal",
+    "disposition": "evidence_only_candidate",
+    "admission": "target_authority_match_found_unclaimed",
+    "mutation_lease": false,
+    "implementation_started": false,
+    "verification_started": false,
+    "owner_acceptance": false,
+    "merged": false,
+    "released": false,
+    "public_claim_allowed": false
+  },
+  "authority_reconciliation": {
+    "accepted_plan": {
+      "path": "docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md",
+      "packet": "T3UI-04",
+      "match": "The ordered packet explicitly names collision-safe project/worktree creation and selection.",
+      "limit": "The plan admits bounded target-native implementation but still requires one claimed packet, target-local proof, and ordinary review."
+    },
+    "implementation_receipt": {
+      "path": "docs/fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md",
+      "finding": "Selection, grouping, recovery, lifecycle actions, and header controls landed, but the receipt explicitly says no renderer path picker or worktree creation logic was introduced and grants no worktree-creation authority."
+    },
+    "product_spec": [
+      {
+        "path": "specs/openagents/fast-follow.product-spec.md",
+        "criteria": ["FF-AC-05", "FF-AC-06", "FF-AC-10"],
+        "effect": "Keep proposal, admission, claim, proof, acceptance, merge, release, and public claim separate; exact dedupe prevents duplicate candidates."
+      },
+      {
+        "path": "specs/desktop/desktop-trust-complete-workbench.product-spec.md",
+        "criteria": ["AC-6"],
+        "effect": "Worktrees are durable engine resources; unchanged cleanup, changed retention, dirty/unpushed refusal, cleanup receipts, and delivery state are required."
+      },
+      {
+        "path": "specs/desktop/full-auto.product-spec.md",
+        "criteria": ["FA-AC-34", "FA-AC-35", "FA-AC-36", "FA-AC-37"],
+        "effect": "The unmet obligation may be surfaced as candidate work through the bounded shared projection, but provider completion is not a target verdict and post-turn revalidation must remain honest."
+      }
+    ],
+    "assurance_spec": {
+      "mapped_design": "none_for_desktop_trust_complete_workbench_AC_6",
+      "full_auto_assurance_path": "specs/desktop/full-auto.assurance-spec.md",
+      "effect": "The proposed Full Auto AssuranceSpec governs this mission's run evidence, not worktree lifecycle acceptance. A reviewed oracle/falsifier/environment/independent-review design for the worktree candidate must be supplied by the target's assurance path before verified or accepted state."
+    },
+    "live_issue_check": {
+      "observed_on": "2026-07-18",
+      "matching_open_issue": null,
+      "related_open_issues": [8967, 8978, 8979, 8993],
+      "conclusion": "None owns typed worktree creation. Repository issue policy does not justify manufacturing a feature issue; the accepted T3UI-04 plan is the target-owned ledger."
+    },
+    "claim_protocol": {
+      "path": "docs/sol/CLAIM_PROTOCOL.md",
+      "state": "no_claim_created",
+      "required_before_mutation": "Record one bounded CLAIM against the accepted packet with exact base, worktree identity, paths, hot files/contracts, verification, and timestamp; confirm no active process/worktree owns it."
+    }
+  },
+  "current_implementation": {
+    "implemented": [
+      "stable opaque project, repository, worktree, WorkContext, and coding-session refs",
+      "one private root grant per admitted workspace",
+      "duplicate-open collapse and restart persistence",
+      "missing-worktree recovery with canonical identity retained",
+      "project/worktree grouping, selection, filtering, paging, archive, recover, delete confirmation, and header controls",
+      "branch list, create, and checkout through the existing Git host"
+    ],
+    "residual": [
+      "no typed host intent creates a worktree from an explicit base",
+      "no target proof covers path collision refusal or independent worktree progress",
+      "no proof establishes exact worktree-root propagation through Git, terminal, files, diff, and tools",
+      "no reviewed proof covers restart-safe cleanup without deleting changed, dirty, unpushed, or owner data",
+      "capability E3 remains partial because creation is agent-driven Bash"
+    ],
+    "evidence_refs": [
+      "apps/openagents-desktop/src/coding-catalog-contract.ts:32-63,173-229",
+      "apps/openagents-desktop/src/desktop-coding-catalog.ts:326-357,461-494",
+      "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts:60-87,123-202,286-304",
+      "apps/openagents-desktop/src/capability-registry.ts:293-300",
+      "docs/fastfollow/receipts/2026-07-17-t3ui-04-project-worktree-shell-receipt.md:10-30,45-50"
+    ]
+  },
+  "proposal": {
+    "title": "T3UI-04 residual — typed, collision-safe worktree creation and conservative lifecycle",
+    "bounded_outcome": "Add one main-process-owned typed worktree creation path that requires an explicit repository and base ref, chooses or validates a unique private path, creates the Git worktree, registers canonical worktree/session/WorkContext refs, and projects only bounded identity to the renderer. Preserve the resource across restart and implement conservative cleanup outcomes required by Desktop AC-6.",
+    "target_scopes": ["apps/openagents-desktop"],
+    "expected_paths": [
+      "apps/openagents-desktop/src/coding-catalog-contract.ts",
+      "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+      "apps/openagents-desktop/src/main.ts",
+      "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts",
+      "apps/openagents-desktop/src/capability-registry.ts"
+    ],
+    "new_path_candidates": [
+      "apps/openagents-desktop/src/desktop-worktree-host.ts",
+      "apps/openagents-desktop/src/desktop-worktree-host.test.ts"
+    ],
+    "hot_files": ["apps/openagents-desktop/src/main.ts", "apps/openagents-desktop/src/capability-registry.ts"],
+    "hot_contracts": ["Desktop coding-catalog IPC schemas", "CodingWorktreeEntity and WorkContext identity", "Git mutation serialization and cleanup receipt vocabulary"],
+    "integration_owner_required": true
+  },
+  "constraints": {
+    "source_derived": [
+      "require an explicit base and fail closed when it is absent",
+      "publish authoritative worktree identity before execution",
+      "route every work surface through exact worktree identity",
+      "serialize conflicting mutations per repository/worktree key",
+      "treat parallelism as isolated roots rather than concurrent mutation of one checkout"
+    ],
+    "target_native": [
+      "main process owns Git and filesystem effects; renderer sends schema-decoded intent only",
+      "raw local paths remain private and never enter public-safe projections or receipts",
+      "reuse canonical catalog, grant, WorkContext, and coding-session identities",
+      "creation is idempotent or refuses with a typed collision; no silent adoption of an unrelated directory",
+      "cleanup auto-removes only unchanged worktrees, retains changed worktrees, and refuses dirty or unpushed state with a typed receipt",
+      "never delete owner data, the repository root, the current worktree, or a path outside the validated worktree authority",
+      "do not add credentials, remote placement, release, deployment, or public parity claims"
+    ],
+    "explicit_rejections": [
+      "do not copy T3 service or client-local scheduler architecture",
+      "do not expose a renderer shell, arbitrary path, or raw Git command surface",
+      "do not treat a selected directory as proof it is the registered worktree",
+      "do not infer cleanup safety from a successful turn or clean catalog projection",
+      "do not close the candidate on fixture tests alone or on provider self-report"
+    ]
+  },
+  "dependencies_and_collisions": [
+    {
+      "dependency": "current accepted T3UI-04 packet and target ProductSpec remain unchanged",
+      "state": "present_at_assessment_pin"
+    },
+    {
+      "dependency": "reviewed AssuranceSpec-style proof design for Desktop AC-6 and creation safety",
+      "state": "missing",
+      "effect": "implementation may produce candidate evidence but cannot self-verify or self-accept"
+    },
+    {
+      "dependency": "one exact CLAIM and integration owner for main IPC, catalog schemas, Git serialization, and cleanup receipts",
+      "state": "not_claimed",
+      "effect": "required before mutation"
+    },
+    {
+      "dependency": "rebase/reconcile from pinned target to current origin/main",
+      "state": "required_before_implementation",
+      "effect": "refresh or supersede this proposal if authority, code, issue, or claim state changed"
+    }
+  ],
+  "proposed_acceptance": [
+    "Creation without an explicit base refuses before any filesystem or Git mutation.",
+    "Two creation requests for the same target identity/path deterministically collapse or one receives a typed collision; no partial catalog row remains.",
+    "Two distinct worktrees can execute independently while conflicting operations against one repository/worktree key serialize or refuse.",
+    "Git, terminal, files, diff, review, and tool launches resolve the same canonical WorkContext root and cannot accept a renderer-supplied replacement path.",
+    "Restart reloads the same canonical worktree/session/WorkContext refs; a missing directory enters explicit recovery rather than silent recreation.",
+    "Unchanged worktrees may be removed with a cleanup receipt; changed worktrees are retained; dirty or unpushed worktrees refuse cleanup; owner data is never recursively deleted.",
+    "Renderer and public-safe receipts expose bounded refs/status only and contain no raw local path, command, prompt, credential, or provider-private state.",
+    "Capability E3 changes from partial only after target-local proof, reviewed evidence, and target authority support that exact claim."
+  ],
+  "proof_plan_candidate": {
+    "design_status": "needs_reviewed_assurance_design",
+    "oracles": [
+      "real temporary Git repository with two actual linked worktrees and exact HEAD/base/path inspection",
+      "catalog snapshot and persisted restart reload decoded through production schemas",
+      "cross-surface WorkContext resolution assertions",
+      "cleanup receipt and on-disk postcondition inspection"
+    ],
+    "falsifiers": [
+      "inject an absent base, occupied path, duplicate request, Git failure after directory creation, mismatched catalog root, dirty tree, unpushed commit, missing directory, restart boundary, and cleanup interruption",
+      "mutate a fixture to bypass collision or dirty/unpushed refusal and require the proof to fail"
+    ],
+    "environment": "OS-temporary directories only; no owner repository, source checkout, credentials, network, Keychain, release, signing, or deployment",
+    "independent_review": "A reviewer other than the implementation producer inspects the proof design, receipt, destructive-path guards, and exact diff before any verified or accepted disposition.",
+    "commands": [
+      "pnpm exec vp test --run --max-concurrency 1 apps/openagents-desktop/tests/desktop-coding-catalog.test.ts apps/openagents-desktop/src/desktop-worktree-host.test.ts",
+      "pnpm --dir apps/openagents-desktop run typecheck",
+      "pnpm run check:fast-follow-spec"
+    ],
+    "evidence_requirements": [
+      "exact base and post-image commits",
+      "test counts and named adversarial cases",
+      "public-safe creation and cleanup receipt digests",
+      "restart evidence",
+      "source checkout clean status",
+      "independent review disposition"
+    ]
+  },
+  "close_rule": {
+    "evidence_present": "Implementation diff and raw target-local results exist at exact refs; this does not imply verification.",
+    "implemented": "The bounded typed creation/lifecycle path is merged into a candidate branch or commit; this does not imply proof passed.",
+    "verified": "A reviewed proof design executes in the bound environment, every oracle and falsifier passes, and evidence digests are independently checked.",
+    "owner_accepted": "The owner or delegated target authority explicitly accepts the verified result; provider or implementer completion cannot supply this state.",
+    "merged": "The reviewed commit is integrated into current main with claim release and no unresolved collision.",
+    "released": "A separately authorized packaged release includes the merged change; this proposal grants no release authority.",
+    "public_claim": "A separately authorized promise/public-claim gate approves exact wording; no T3 parity claim is implied.",
+    "terminal_no_change": "If current target reconciliation shows the exact behavior and proof already landed, close as no_material_delta with exact evidence rather than duplicate implementation.",
+    "terminal_rejected_or_superseded": "Persist the target authority and reason; unchanged evidence cannot reopen the candidate."
+  },
+  "sibling_dispositions": [
+    {
+      "pattern_id": "t3.provider_neutral_cqrs.v1",
+      "disposition": "no_material_delta",
+      "dedupe_basis": "gap.t3code.436c6d129a5c90f2|t3.provider_neutral_cqrs.v1|c9ff26d9",
+      "exception": "target-native ProviderLane architecture; real-run and independent assurance remain separate evidence gates"
+    },
+    {
+      "pattern_id": "t3.effect_projection_kernel.v1",
+      "disposition": "no_material_delta",
+      "dedupe_basis": "gap.t3code.436c6d129a5c90f2|t3.effect_projection_kernel.v1|c9ff26d9",
+      "exception": "Full Auto snapshot publication is intentionally fail-soft and no event-reducer requirement is admitted"
+    },
+    {
+      "pattern_id": "t3.acp_peer_profiles.v1",
+      "disposition": "no_material_delta",
+      "dedupe_basis": "gap.t3code.436c6d129a5c90f2|t3.acp_peer_profiles.v1|c9ff26d9",
+      "exception": "exact peer profiles and bounded duplex transport exist; arbitrary ACP parity is not claimed"
+    },
+    {
+      "pattern_id": "t3.dpop_environment_access.v1",
+      "disposition": "no_material_delta",
+      "dedupe_basis": "gap.t3code.436c6d129a5c90f2|t3.dpop_environment_access.v1|c9ff26d9",
+      "exception": "fleet-wide rollout is deferred without a current packet; rejected T3 credential authority stays rejected"
+    }
+  ],
+  "classification": {
+    "visibility": "public_safe_repository_artifact",
+    "external_source_is_authority": false,
+    "candidate_is_admission": false,
+    "provider_completion_is_verdict": false,
+    "grants_mutation_authority": false,
+    "grants_release_authority": false,
+    "contains_private_paths_or_credentials": false
+  },
+  "proposal_content_digest": "sha256:4963a872d0ab61dad1bfe3c113751c698c76ecc0a53b34bf9aa1b1827acc4eb4"
+}
