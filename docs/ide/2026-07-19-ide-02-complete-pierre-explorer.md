@@ -162,13 +162,13 @@ all percentiles rather than one favorable sample.
 
 | Metric | Repetitions | p50 | p95 | p99 | Written p95 budget |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| complete 10k scan | 7 | 113.059 ms | 116.525 ms | 116.898 ms | 1,500 ms |
-| cached Pierre projection | 101 | 9.698 ms | 10.733 ms | 14.345 ms | 40 ms |
-| keyboard target traversal | 101 | 9.665 ms | 10.003 ms | 11.381 ms | 40 ms |
-| incremental watcher update | 31 | 26.432 ms | 28.285 ms | 32.081 ms | 150 ms |
+| complete 10k scan | 7 | 112.338 ms | 122.283 ms | 123.653 ms | 1,500 ms |
+| cached Pierre projection | 101 | 9.282 ms | 11.089 ms | 13.698 ms | 40 ms |
+| keyboard target traversal | 101 | 9.228 ms | 9.678 ms | 10.643 ms | 40 ms |
+| incremental watcher update | 31 | 24.967 ms | 27.918 ms | 30.598 ms | 150 ms |
 
 The final snapshot contains 10,100 nodes and estimates 2,966,000 bytes of
-index data. Forced-GC retained heap delta is 5,977,192 bytes. Active resource
+index data. Forced-GC retained heap delta is 7,028,232 bytes. Active resource
 count falls from six to two during the process, the service reports zero owned
 source subscriptions after stop, and access after stop refuses.
 
@@ -183,9 +183,9 @@ The packaged large-repository receipt and screenshot are:
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-journey.json`;
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-explorer.png`.
 
-The archive contains 10,862 filesystem entries and the ready index contains
-10,697 admitted nodes. The journey launches packaged commit
-`546dca5320a4e04b13de8b7b1ed937a65ec62741`, attempts the canonical Files
+The archive contains 10,868 filesystem entries and the ready index contains
+10,703 admitted nodes. The journey launches packaged commit
+`65adfb7bf3ecb4beaef9b8b04ffbd94a72d2b32f`, attempts the canonical Files
 shortcut and falls back to the same visible Files command when the isolated
 CDP driver does not deliver that application chord, waits for ready, traverses
 with pointer and Home/End, opens the keyboard context menu, activates a file,
