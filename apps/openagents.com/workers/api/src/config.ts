@@ -2,6 +2,12 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  // SARAH-ACT-1 (#9065): comma-separated admin emails. Unset or empty keeps
+  // the compiled default (chris@openagents.com) exactly as before; set,
+  // this value becomes the exact admin list. Widens platform-wide admin
+  // authorization (isOpenAgentsAdminEmail is used far beyond Sarah), so this
+  // is set only under explicit owner direction, never inferred.
+  OPENAGENTS_ADMIN_EMAILS?: string | undefined
   // Default-off rollout gate for authenticated, pre-admitted Desktop Codex
   // exact-token usage. Consent remains independently default-off in Desktop.
   DESKTOP_CODEX_USAGE_INGEST_ENABLED?: string | undefined

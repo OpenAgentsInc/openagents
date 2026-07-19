@@ -28,7 +28,9 @@ import { Exit } from 'effect'
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import {
-  OPENAGENTS_ADMIN_EMAILS,
+  configureOpenAgentsAdminEmailsFromEnv,
+  getOpenAgentsAdminEmails,
+  getPrimaryOpenAgentsAdminEmail,
   isOpenAgentsAdminEmail,
 } from './admin-identity'
 import {
@@ -1388,7 +1390,7 @@ export {
 } from './sync-notifier'
 
 export {
-  OPENAGENTS_ADMIN_EMAILS,
+  getOpenAgentsAdminEmails,
   isOpenAgentsAdminEmail,
 } from './admin-identity'
 const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
@@ -2277,8 +2279,8 @@ const readUserKindTotals = async (
   const agents = countFor('agent')
 
   return {
-    admins: OPENAGENTS_ADMIN_EMAILS.length,
-    adminEmails: [...OPENAGENTS_ADMIN_EMAILS],
+    admins: getOpenAgentsAdminEmails().length,
+    adminEmails: [...getOpenAgentsAdminEmails()],
     humans,
     agents,
     total: humans + agents,
@@ -5928,7 +5930,7 @@ const readSelectedOperatorTargetUser = (
   identityDb: IdentityDb,
   selector: Record<string, unknown>,
 ): Promise<OperatorTargetUser | undefined> =>
-  readOperatorTargetUser(identityDb, selector, OPENAGENTS_ADMIN_EMAILS[0])
+  readOperatorTargetUser(identityDb, selector, getPrimaryOpenAgentsAdminEmail())
 
 const handleAdminSyncNotifyApi = async (
   request: Request,
@@ -14565,12 +14567,19 @@ const runWorkerFetch = (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
-): Promise<Response> =>
-  Effect.runPromise(
+): Promise<Response> => {
+  // SARAH-ACT-1 (#9065): re-applied every request (cheap) so a reused
+  // Worker isolate never serves a stale admin allowlist after a config
+  // change, without threading env through the ~30 isOpenAgentsAdminEmail
+  // call sites.
+  configureOpenAgentsAdminEmailsFromEnv(env.OPENAGENTS_ADMIN_EMAILS)
+
+  return Effect.runPromise(
     workerFetchProgram.pipe(
       Effect.provide(WorkerRequestLayer({ ctx, env, request })),
     ),
   )
+}
 
 /**
  * CFG-7 (#8522): the former Cloudflare Queues `queue()` consumer, unchanged,

@@ -2,10 +2,10 @@
 import { describe, expect, test } from 'vitest'
 
 import worker, {
-  OPENAGENTS_ADMIN_EMAILS,
   SESSION_MAX_AGE_SECONDS,
   appendClearSessionCookies,
   appendSessionCookies,
+  getOpenAgentsAdminEmails,
   isOpenAgentsAdminEmail,
 } from './index'
 
@@ -31,8 +31,8 @@ describe('OpenAgents admin access policy', () => {
     OPENAUTH_ISSUER_URL: 'https://auth.openagents.com',
   }
 
-  test('has exactly one configured admin account', () => {
-    expect(OPENAGENTS_ADMIN_EMAILS).toEqual(['chris@openagents.com'])
+  test('has exactly one configured admin account by default', () => {
+    expect(getOpenAgentsAdminEmails()).toEqual(['chris@openagents.com'])
   })
 
   test('matches the configured admin email case-insensitively', () => {
