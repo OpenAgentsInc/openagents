@@ -1,29 +1,13 @@
-import type { AtifStep, AtifTrajectory } from '@openagentsinc/atif/trace'
-import {
-  Badge,
-  Button,
-  Card,
-  CodeBlock,
-  Divider,
-  Image,
-  IntentRef,
-  Stack,
-  StaticPayload,
-  Text,
-  Transcript,
-  defineIntent,
-  makeIntentRegistry,
-  makeViewProgramFromState,
-  resolveIntentRef,
-  type IntentHandlers,
-  type IntentReporter,
-  type Tone,
-  type View,
-} from '@effect-native/core'
-import { makeDomRenderer } from '@effect-native/render-dom'
+import type { AtifStep, AtifToolCall, AtifTrajectory } from '@openagentsinc/atif/trace'
 import { khalaTheme } from '@effect-native/tokens'
-import { Effect, Exit, Schema, Scope, SubscriptionRef } from '@effect-native/core/effect'
-import { useEffect, useRef, useState } from 'react'
+import {
+  desktopThemeCssVariables,
+  dispatchWorkbenchItem,
+  type WorkbenchDispatchItem,
+} from '@openagentsinc/ui/desktop-workbench'
+import '@openagentsinc/ui/desktop-workbench.css'
+import { Copy, Terminal } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import {
   fetchTraceProjection,
@@ -32,6 +16,19 @@ import {
   type TraceProjection,
 } from './-trace-fetch'
 import './-trace.css'
+
+// The public `/trace/{uuid}` ATIF evidence viewer.
+//
+// Parity work (issue #9061): the timeline used to render every tool call as a
+// generic Effect Native Card with `JSON.stringify(arguments)` in a code block —
+// no per-tool components, no sub-agent UI. It now projects each ATIF step into
+// the SAME `WorkbenchDispatchItem` shape the desktop transcript uses and renders
+// it through `@openagentsinc/ui/desktop-workbench`'s `dispatchWorkbenchItem` —
+// the exact typed cards (`DesktopCommandCard` for Bash, `DesktopFileChangeCard`
+// for Edit/Write, `DesktopAgentGroup` for Task/Agent sub-agents,
+// `DesktopReasoningDisclosure`, `DesktopToolCallCard`) OpenAgents Desktop ships.
+// This mirrors the `/share/{shareId}` viewer (`-share-timeline.tsx`), which
+// already feeds ATIF-adjacent data into the same dispatch.
 
 type TraceVerdict = 'PASS' | 'REFUTED' | 'INCONCLUSIVE' | 'IN_PROGRESS'
 
@@ -53,7 +50,7 @@ const normalizeVerdict = (value: unknown): TraceVerdict | undefined => {
 }
 
 export const traceVerdict = (trajectory: AtifTrajectory): TraceVerdict => {
-  for (const step of [...trajectory.steps].reverse()) {
+  for (const step of trajectory.steps.toReversed()) {
     for (const call of step.tool_calls ?? []) {
       if (call.function_name.toLowerCase() !== 'done') continue
       const verdict = normalizeVerdict(call.arguments.verdict)
@@ -76,14 +73,20 @@ const verdictLabel = (verdict: TraceVerdict): string =>
         ? 'Inconclusive'
         : 'In progress'
 
-const verdictTone = (verdict: TraceVerdict): Tone =>
-  verdict === 'PASS'
-    ? 'success'
-    : verdict === 'REFUTED'
-      ? 'danger'
-      : verdict === 'INCONCLUSIVE'
-        ? 'warn'
-        : 'neutral'
+const verdictBadgeClass = (verdict: TraceVerdict): string => {
+  const base =
+    'inline-flex min-h-6 items-center border px-2 font-mono text-xs uppercase tracking-[0.08em]'
+  switch (verdict) {
+    case 'PASS':
+      return `${base} border-khala-success/60 bg-khala-success/10 text-khala-success`
+    case 'REFUTED':
+      return `${base} border-khala-danger/60 bg-khala-danger/10 text-khala-danger`
+    case 'INCONCLUSIVE':
+      return `${base} border-khala-warning/60 bg-khala-warning/10 text-khala-warning`
+    default:
+      return `${base} border-khala-border bg-khala-surface text-khala-text-muted`
+  }
+}
 
 const firstUserStep = (trajectory: AtifTrajectory): AtifStep | undefined =>
   trajectory.steps.find(step => step.source === 'user')
@@ -107,7 +110,7 @@ const formatCost = (value: number | undefined): string =>
 
 const traceDurationMs = (trajectory: AtifTrajectory): number | undefined => {
   const timestamps = trajectory.steps
-    .map(step => step.timestamp === undefined ? Number.NaN : Date.parse(step.timestamp))
+    .map(step => (step.timestamp === undefined ? Number.NaN : Date.parse(step.timestamp)))
     .filter(Number.isFinite)
   if (timestamps.length < 2) return undefined
   return Math.max(...timestamps) - Math.min(...timestamps)
@@ -123,7 +126,7 @@ const formatDuration = (durationMs: number | undefined): string => {
 }
 
 const terminalSummary = (trajectory: AtifTrajectory): string | undefined => {
-  for (const step of [...trajectory.steps].reverse()) {
+  for (const step of trajectory.steps.toReversed()) {
     for (const call of step.tool_calls ?? []) {
       if (call.function_name.toLowerCase() !== 'done') continue
       const summary = call.arguments.summary
@@ -147,10 +150,12 @@ export const trajectoryToMarkdown = (trajectory: AtifTrajectory): string => {
   for (const step of timelineSteps(trajectory)) {
     lines.push(`## Step ${step.step_id}`, '', step.message, '')
     for (const call of step.tool_calls ?? []) {
-      lines.push('```json', JSON.stringify({
-        tool: call.function_name,
-        arguments: call.arguments,
-      }, null, 2), '```', '')
+      lines.push(
+        '```json',
+        JSON.stringify({ tool: call.function_name, arguments: call.arguments }, null, 2),
+        '```',
+        '',
+      )
     }
     for (const result of step.observation?.results ?? []) {
       lines.push('Observation:', '', ...result.content.split('\n').map(line => `> ${line}`), '')
@@ -159,472 +164,436 @@ export const trajectoryToMarkdown = (trajectory: AtifTrajectory): string => {
   return `${lines.join('\n').trim()}\n`
 }
 
-const TraceCopyRequested = defineIntent('TraceCopyRequested', Schema.Struct({}))
-const TraceHomeRequested = defineIntent('TraceHomeRequested', Schema.Struct({}))
-const traceIntents = [TraceCopyRequested, TraceHomeRequested] as const
+// ---------------------------------------------------------------------------
+// ATIF step -> WorkbenchDispatchItem projection (the parity core).
+// ---------------------------------------------------------------------------
 
-export type TraceSurfaceState =
-  | Readonly<{ tag: 'loading' }>
-  | Readonly<{ tag: 'failed'; status: number }>
-  | Readonly<{
-      tag: 'loaded'
-      projection: TraceProjection
-      token?: string
-      origin: string
-      copied: boolean
-      scrollToKey?: string
-    }>
+const MAX_SNIPPET = 6_000
 
-const text = (
-  key: string,
-  content: string,
-  variant: 'caption' | 'label' | 'body' | 'title' | 'heading' = 'body',
-  color: 'textPrimary' | 'textMuted' | 'accent' = 'textPrimary',
-): View => Text({ key, content, variant, color, style: { width: 'full' } })
+const truncate = (value: string, max = MAX_SNIPPET): string =>
+  value.length <= max ? value : `${value.slice(0, max)}\n… [${value.length - max} more chars]`
 
-const codeBlock = (key: string, content: string): View =>
-  CodeBlock({
-    key,
-    language: 'text',
-    lines: content.split('\n').map(line => ({
-      tokens: [{ kind: 'plain' as const, text: line }],
-    })),
-    style: {
-      backgroundColor: 'surface',
-      borderColor: 'border',
-      borderRadius: 'none',
-      borderWidth: 1,
-      width: 'full',
-    },
-  })
+const argValue = (value: unknown): string => {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
 
-const toolCallView = (step: AtifStep, index: number): View => {
-  const call = step.tool_calls?.[index]
-  if (call === undefined) return Stack({ key: `step-${step.step_id}-empty-tool`, direction: 'column' })
-  const observation = step.observation?.results.find(result => result.source_call_id === call.tool_call_id)
-  return Card(
+const splitLines = (value: string): ReadonlyArray<string> =>
+  value === '' ? [] : value.split('\n')
+
+/** A `+old / -new` unified-diff string the desktop file-change card colorizes. */
+const buildEditDiff = (oldStr: string, newStr: string): string =>
+  [...splitLines(oldStr).map(line => `-${line}`), ...splitLines(newStr).map(line => `+${line}`)].join(
+    '\n',
+  )
+
+const observationFor = (step: AtifStep, callId: string): string | undefined => {
+  const result = step.observation?.results.find(r => r.source_call_id === callId)
+  return result === undefined ? undefined : result.content
+}
+
+type KeyedDispatchItem = Readonly<{ key: string; item: WorkbenchDispatchItem }>
+
+/** Project one tool call (+ its observation) onto the matching desktop card. */
+const toolCallToDispatchItem = (
+  step: AtifStep,
+  call: AtifToolCall,
+  index: number,
+): ReadonlyArray<KeyedDispatchItem> => {
+  const key = `step-${step.step_id}-tool-${index}`
+  const name = call.function_name
+  const lower = name.toLowerCase()
+  const args = call.arguments
+  const obs = observationFor(step, call.tool_call_id)
+
+  // Bash -> DesktopCommandCard (terminal command + output).
+  if (lower === 'bash') {
+    return [
+      {
+        key,
+        item: {
+          kind: 'command',
+          source: 'local',
+          command: argValue(args.command ?? ''),
+          status: 'completed',
+          ...(obs === undefined ? {} : { outputTail: truncate(obs) }),
+        },
+      },
+    ]
+  }
+
+  // Edit -> DesktopFileChangeCard (colorized diff).
+  if (lower === 'edit') {
+    const oldStr = typeof args.old_string === 'string' ? args.old_string : ''
+    const newStr = typeof args.new_string === 'string' ? args.new_string : ''
+    return [
+      {
+        key,
+        item: {
+          kind: 'fileChange',
+          source: 'local',
+          status: 'completed',
+          changes: [
+            {
+              path: argValue(args.file_path ?? 'file'),
+              kind: 'update',
+              adds: splitLines(newStr).length,
+              dels: splitLines(oldStr).length,
+              diff: truncate(buildEditDiff(oldStr, newStr)),
+            },
+          ],
+        },
+      },
+    ]
+  }
+
+  // Write -> DesktopFileChangeCard (new file content as additions).
+  if (lower === 'write') {
+    const content = typeof args.content === 'string' ? args.content : ''
+    return [
+      {
+        key,
+        item: {
+          kind: 'fileChange',
+          source: 'local',
+          status: 'completed',
+          changes: [
+            {
+              path: argValue(args.file_path ?? 'file'),
+              kind: 'add',
+              adds: splitLines(content).length,
+              diff: truncate(splitLines(content).map(line => `+${line}`).join('\n')),
+            },
+          ],
+        },
+      },
+    ]
+  }
+
+  // Task / Agent -> DesktopAgentGroup (sub-agent card) + the returned report.
+  if (lower === 'agent' || lower === 'task' || lower === 'spawn_agent') {
+    const subagentType =
+      typeof args.subagent_type === 'string' && args.subagent_type.trim() !== ''
+        ? args.subagent_type
+        : 'agent'
+    const description = typeof args.description === 'string' ? args.description : ''
+    const prompt = typeof args.prompt === 'string' ? args.prompt : description
+    const items: Array<KeyedDispatchItem> = [
+      {
+        key,
+        item: {
+          kind: 'agent',
+          source: 'local',
+          status: 'completed',
+          ...(prompt === '' ? {} : { prompt: truncate(prompt) }),
+          children: [
+            { threadRef: call.tool_call_id, status: 'completed', nickname: subagentType },
+          ],
+          ...(description === '' ? {} : { agentPath: description }),
+        },
+      },
+    ]
+    if (obs !== undefined && obs.trim() !== '') {
+      items.push({
+        key: `${key}-result`,
+        item: { kind: 'message', source: 'local', role: 'assistant', text: truncate(obs) },
+      })
+    }
+    return items
+  }
+
+  // Everything else -> DesktopToolCallCard (icon + arg table + result snippet).
+  const callKind: 'mcp' | 'web' | 'dynamic' = name.startsWith('mcp__')
+    ? 'mcp'
+    : lower === 'webfetch' || lower === 'websearch'
+      ? 'web'
+      : 'dynamic'
+  const webQuery =
+    callKind === 'web'
+      ? argValue(args.url ?? args.query ?? '')
+      : undefined
+  return [
     {
-      key: `step-${step.step_id}-tool-${call.tool_call_id}`,
-      padding: '3',
-      radius: 'none',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        width: 'full',
+      key,
+      item: {
+        kind: 'toolCall',
+        source: 'local',
+        callKind,
+        tool: name,
+        status: 'completed',
+        args: Object.entries(args).map(([k, v]) => ({ key: k, value: truncate(argValue(v), 800) })),
+        ...(webQuery === undefined || webQuery === '' ? {} : { query: webQuery }),
+        ...(obs === undefined ? {} : { resultSnippet: truncate(obs) }),
       },
     },
-    [
-      Stack(
-        { key: `step-${step.step_id}-tool-head-${index}`, direction: 'row', gap: '3', justify: 'between' },
-        [
-          text(`step-${step.step_id}-tool-name-${index}`, call.function_name, 'label'),
-          text(`step-${step.step_id}-tool-ref-${index}`, call.tool_call_id, 'caption', 'textMuted'),
-        ],
-      ),
-      codeBlock(
-        `step-${step.step_id}-tool-args-${index}`,
-        JSON.stringify(call.arguments, null, 2),
-      ),
-      ...(observation === undefined
-        ? []
-        : [
-            text(`step-${step.step_id}-observation-label-${index}`, 'Observation', 'caption', 'accent'),
-            codeBlock(`step-${step.step_id}-observation-${index}`, observation.content),
-          ]),
-    ],
-  )
+  ]
 }
 
-const traceTranscript = (
-  trajectory: AtifTrajectory,
-  scrollToKey: string | undefined,
-): View =>
-  Transcript({
-    key: 'trace-timeline',
-    messages: timelineSteps(trajectory).map(step => {
-      const timestamp = step.timestamp === undefined
-        ? undefined
-        : new Date(step.timestamp).toLocaleString(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })
-      const toolCallIds = new Set((step.tool_calls ?? []).map(call => call.tool_call_id))
-      return {
-        key: `step-${step.step_id}`,
-        role: step.source === 'agent' ? 'assistant' as const : step.source,
-        status: 'done' as const,
-        senderLabel: `STEP ${step.step_id} · ${step.source.toUpperCase()}`,
-        ...(timestamp === undefined ? {} : { timestamp }),
-        body: [
-          Stack(
-            {
-              key: `step-${step.step_id}-body`,
-              direction: 'column',
-              gap: '3',
-              style: { width: 'full' },
-            },
-            [
-              ...(step.message.trim() === ''
-                ? []
-                : [text(`step-${step.step_id}-message`, step.message, 'body')]),
-              ...(step.reasoning_content === undefined || step.reasoning_content.trim() === ''
-                ? []
-                : [
-                    text(`step-${step.step_id}-reasoning-label`, 'Reasoning', 'caption', 'textMuted'),
-                    text(`step-${step.step_id}-reasoning`, step.reasoning_content, 'caption', 'textMuted'),
-                  ]),
-              ...(step.tool_calls ?? []).map((_, index) => toolCallView(step, index)),
-              ...(step.observation?.results ?? [])
-                .filter(result => result.source_call_id === undefined || !toolCallIds.has(result.source_call_id))
-                .map((result, index) => codeBlock(
-                  `step-${step.step_id}-standalone-observation-${index}`,
-                  result.content,
-                )),
-            ],
-          ),
-        ],
-      }
-    }),
-    pinToEnd: false,
-    preserveScrollAnchor: true,
-    ...(scrollToKey === undefined ? {} : { scrollToKey }),
-    virtualize: false,
-    style: { width: 'full' },
+/** Project one ATIF step into its ordered dispatch items. */
+const stepToDispatchItems = (step: AtifStep): ReadonlyArray<KeyedDispatchItem> => {
+  const items: Array<KeyedDispatchItem> = []
+
+  if (step.message.trim() !== '') {
+    const role = step.source === 'agent' ? 'assistant' : step.source
+    items.push({
+      key: `step-${step.step_id}-message`,
+      item: { kind: 'message', source: 'local', role, text: step.message },
+    })
+  }
+
+  if (step.reasoning_content !== undefined && step.reasoning_content.trim() !== '') {
+    items.push({
+      key: `step-${step.step_id}-reasoning`,
+      item: { kind: 'reasoning', source: 'local', summary: step.reasoning_content },
+    })
+  }
+
+  const boundCallIds = new Set<string>()
+  ;(step.tool_calls ?? []).forEach((call, index) => {
+    boundCallIds.add(call.tool_call_id)
+    items.push(...toolCallToDispatchItem(step, call, index))
   })
 
-const metadataRow = (label: string, value: string, index: number) => ({
-  id: `trace-meta-${index}`,
-  cells: [
-    text(`trace-meta-${index}-label`, label, 'caption', 'textMuted'),
-    text(`trace-meta-${index}-value`, value, 'label'),
-  ],
-})
-
-const loadedTraceView = (state: Extract<TraceSurfaceState, { tag: 'loaded' }>): View => {
-  const { projection } = state
-  const trajectory = projection.trajectory
-  const verdict = traceVerdict(trajectory)
-  const goal = firstUserStep(trajectory)
-  const images = projection.blobRefs.filter(ref => ref.kind === 'screenshot' || ref.kind === 'image')
-
-  return Stack(
-    {
-      key: 'trace-root',
-      direction: 'column',
-      gap: '0',
-      style: { backgroundColor: 'background', minHeight: 'full', width: 'full' },
-    },
-    [
-      Stack(
-        {
-          key: 'trace-topbar',
-          direction: 'row',
-          align: 'center',
-          justify: 'between',
-          gap: '3',
-          padding: '3',
-          style: { backgroundColor: 'surface', borderColor: 'border', borderWidth: 1, width: 'full' },
-        },
-        [
-          text('trace-brand', 'OA / TRACE', 'label'),
-          Stack(
-            { key: 'trace-topbar-actions', direction: 'row', align: 'center', gap: '2' },
-            [
-              Badge({
-                key: 'trace-visibility',
-                label: projection.visibility.replace('_', ' '),
-                tone: 'neutral',
-                variant: 'outline',
-                size: 'sm',
-              }),
-              Button({
-                key: 'trace-copy',
-                label: state.copied ? 'Copied' : 'Copy trace',
-                variant: 'outline',
-                size: 'sm',
-                onPress: IntentRef('TraceCopyRequested', StaticPayload({})),
-              }),
-            ],
-          ),
-        ],
-      ),
-      Stack(
-        {
-          key: 'trace-article',
-          direction: 'column',
-          gap: '6',
-          padding: '6',
-          style: { alignSelf: 'center', maxWidth: 896, width: 'full' },
-        },
-        [
-          Stack({ key: 'trace-title-block', direction: 'column', gap: '3', style: { width: 'full' } }, [
-            text('trace-eyebrow', 'Agent session trace', 'caption', 'textMuted'),
-            text(
-              'trace-title',
-              terminalSummary(trajectory) ?? trajectory.trajectory_id,
-              'heading',
-            ),
-            text('trace-uuid', projection.uuid, 'caption', 'textMuted'),
-            Badge({
-              key: 'trace-verdict',
-              label: verdictLabel(verdict),
-              tone: verdictTone(verdict),
-              variant: 'soft',
-              size: 'md',
-            }),
-          ]),
-          Divider({ key: 'trace-header-divider' }),
-          Stack({ key: 'trace-metadata', direction: 'column', gap: '2', style: { width: 'full' } }, [
-            ...[
-              ['Agent', trajectory.agent.name],
-              ['Model', trajectory.agent.model_name ?? 'Unknown'],
-              ['Duration', formatDuration(traceDurationMs(trajectory))],
-              ['Cost', formatCost(trajectory.final_metrics?.total_cost_usd)],
-              ['Steps', formatNumber(projection.stepCount)],
-            ].map(([label, value], index) => Card(
-              {
-                key: `trace-meta-card-${index}`,
-                padding: '3',
-                radius: 'none',
-                style: { borderColor: 'border', borderWidth: 1, width: 'full' },
-              },
-              [
-                Stack(
-                  { key: `trace-meta-row-${index}`, direction: 'row', gap: '4', justify: 'between' },
-                  metadataRow(label ?? '', value ?? '', index).cells,
-                ),
-              ],
-            )),
-          ]),
-          text(
-            'trace-authority',
-            'Evidence only. This trace grants no accepted-work, payout, or public-claim authority.',
-            'caption',
-            'textMuted',
-          ),
-          ...(goal === undefined
-            ? []
-            : [
-                Divider({ key: 'trace-goal-divider' }),
-                text('trace-goal-label', 'Goal', 'label', 'textMuted'),
-                Card(
-                  {
-                    key: 'trace-goal',
-                    padding: '4',
-                    radius: 'none',
-                    style: {
-                      backgroundColor: 'surface',
-                      borderColor: 'border',
-                      borderWidth: 1,
-                      width: 'full',
-                    },
-                  },
-                  [text('trace-goal-copy', goal.message, 'body')],
-                ),
-              ]),
-          Divider({ key: 'trace-timeline-divider' }),
-          text('trace-timeline-label', 'Timeline', 'label', 'textMuted'),
-          traceTranscript(trajectory, state.scrollToKey),
-          ...(images.length === 0
-            ? []
-            : [
-                Divider({ key: 'trace-images-divider' }),
-                text('trace-images-label', 'Screenshots', 'label', 'textMuted'),
-                ...images.map((image, index) => Stack(
-                  { key: `trace-image-${index}`, direction: 'column', gap: '2', style: { width: 'full' } },
-                  [
-                    Image({
-                      key: `trace-image-content-${index}`,
-                      alt: image.caption ?? 'Trace screenshot',
-                      source: new URL(
-                        traceBlobUrl(projection.uuid, image.r2Key, state.token),
-                        state.origin,
-                      ).href,
-                      width: 'full',
-                      height: 480,
-                      fit: 'contain',
-                      style: { borderRadius: 'none', width: 'full' },
-                    }),
-                    text(
-                      `trace-image-caption-${index}`,
-                      image.caption ?? image.r2Key,
-                      'caption',
-                      'textMuted',
-                    ),
-                  ],
-                )),
-              ]),
-        ],
-      ),
-    ],
-  )
-}
-
-const statusTraceView = (state: Exclude<TraceSurfaceState, { tag: 'loaded' }>): View => {
-  const loading = state.tag === 'loading'
-  const notFound = state.tag === 'failed' && (state.status === 404 || state.status === 403)
-  return Stack(
-    {
-      key: 'trace-status-root',
-      direction: 'column',
-      align: 'center',
-      justify: 'center',
-      padding: '6',
-      style: { backgroundColor: 'background', minHeight: 'full', width: 'full' },
-    },
-    [
-      Card(
-        {
-          key: 'trace-status-card',
-          padding: '6',
-          radius: 'none',
-          style: {
-            backgroundColor: 'surface',
-            borderColor: 'border',
-            borderWidth: 1,
-            maxWidth: 480,
-            width: 'full',
-          },
-        },
-        [
-          text('trace-status-label', 'Trace', 'caption', 'textMuted'),
-          text(
-            'trace-status-title',
-            loading ? 'Loading trace' : notFound ? 'No trace at this link' : 'Trace unavailable',
-            'title',
-          ),
-          text(
-            'trace-status-body',
-            loading
-              ? 'Reading the stored ATIF evidence.'
-              : notFound
-                ? 'This trace does not exist, is private, or is no longer available.'
-                : 'The trace could not be loaded. Try again shortly.',
-            'body',
-            'textMuted',
-          ),
-          ...(loading
-            ? []
-            : [Button({
-                key: 'trace-home',
-                label: 'Go home',
-                variant: 'outline',
-                onPress: IntentRef('TraceHomeRequested', StaticPayload({})),
-              })]),
-        ],
-      ),
-    ],
-  )
-}
-
-export const traceSurfaceView = (state: TraceSurfaceState): View =>
-  state.tag === 'loaded' ? loadedTraceView(state) : statusTraceView(state)
-
-export const mountTraceEffectNativeSurface = (
-  container: HTMLElement,
-  initialState: TraceSurfaceState,
-) => Effect.gen(function* () {
-  const state = yield* SubscriptionRef.make(initialState)
-  const program = makeViewProgramFromState(state, traceSurfaceView)
-  const handlers: IntentHandlers<typeof traceIntents> = {
-    TraceCopyRequested: () => Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(state)
-      if (current.tag !== 'loaded') return
-      yield* Effect.tryPromise({
-        try: () => navigator.clipboard.writeText(trajectoryToMarkdown(current.projection.trajectory)),
-        catch: () => undefined,
-      }).pipe(Effect.catch(() => Effect.void))
-      yield* SubscriptionRef.set(state, { ...current, copied: true })
-    }),
-    TraceHomeRequested: () => Effect.sync(() => { window.location.assign('/') }),
-  }
-  const registry = yield* makeIntentRegistry(traceIntents, handlers)
-  const report: IntentReporter = (ref, runtimeValue) =>
-    registry.dispatch(resolveIntentRef(ref, runtimeValue))
-  const surface = yield* makeDomRenderer({ theme: khalaTheme })
-    .mount(container, program.viewStream, report)
-  return { state, unmount: surface.unmount }
-})
-
-function TraceEffectNativeSurface({ state }: Readonly<{ state: TraceSurfaceState }>) {
-  const rootRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const root = rootRef.current
-    if (root === null) return undefined
-    let disposed = false
-    let closeScope: (() => void) | undefined
-    void Effect.runPromise(Scope.make())
-      .then(scope => {
-        const close = () => { void Effect.runPromise(Scope.close(scope, Exit.void)) }
-        closeScope = close
-        if (disposed) {
-          close()
-          return undefined
-        }
-        return Effect.runPromise(Scope.provide(scope)(mountTraceEffectNativeSurface(root, state)))
+  // Observations with no matching tool_call in this step -> a quiet notice.
+  ;(step.observation?.results ?? [])
+    .filter(result => !boundCallIds.has(result.source_call_id))
+    .forEach((result, index) => {
+      items.push({
+        key: `step-${step.step_id}-obs-${index}`,
+        item: { kind: 'notice', source: 'local', severity: 'info', text: truncate(result.content) },
       })
-      .catch(() => undefined)
-    return () => {
-      disposed = true
-      closeScope?.()
-    }
-  }, [state])
+    })
 
-  return <div ref={rootRef} data-trace-effect-native-root="" />
+  return items
+}
+
+// ---------------------------------------------------------------------------
+// React views
+// ---------------------------------------------------------------------------
+
+const metadataRows = (
+  projection: TraceProjection,
+): ReadonlyArray<Readonly<{ label: string; value: string }>> => {
+  const trajectory = projection.trajectory
+  return [
+    { label: 'Agent', value: trajectory.agent.name },
+    { label: 'Model', value: trajectory.agent.model_name ?? 'Unknown' },
+    { label: 'Duration', value: formatDuration(traceDurationMs(trajectory)) },
+    { label: 'Cost', value: formatCost(trajectory.final_metrics?.total_cost_usd) },
+    { label: 'Steps', value: formatNumber(projection.stepCount) },
+  ]
+}
+
+function TraceCopyButton({ trajectory }: Readonly<{ trajectory: AtifTrajectory }>) {
+  const [copied, setCopied] = useState(false)
+  const handleClick = () => {
+    void navigator.clipboard
+      ?.writeText(trajectoryToMarkdown(trajectory))
+      .then(() => setCopied(true))
+      .catch(() => {})
+  }
+  return (
+    <button
+      aria-label="Copy trace as Markdown"
+      className="khala-focus inline-flex min-h-8 items-center gap-2 border border-khala-border bg-khala-surface px-2.5 font-mono text-xs text-khala-text-muted hover:border-khala-border-strong hover:text-khala-text"
+      onClick={handleClick}
+      type="button"
+    >
+      <Copy aria-hidden="true" className="size-4 text-khala-text-faint" />
+      <span className="max-[640px]:hidden">{copied ? 'Copied' : 'Copy trace'}</span>
+    </button>
+  )
 }
 
 export function TraceLoadedView({
   projection,
   token,
 }: Readonly<{ projection: TraceProjection; token?: string }>) {
-  const hashStep = typeof window === 'undefined'
-    ? undefined
-    : /^#step-\d+$/.test(window.location.hash)
-      ? window.location.hash.slice(1)
-      : undefined
+  const trajectory = projection.trajectory
+  const verdict = traceVerdict(trajectory)
+  const goal = firstUserStep(trajectory)
+  const images = projection.blobRefs.filter(
+    ref => ref.kind === 'screenshot' || ref.kind === 'image',
+  )
   const video = projection.blobRefs.find(ref => ref.kind === 'video')
-  const state: TraceSurfaceState = {
-    tag: 'loaded',
-    projection,
-    origin: typeof window === 'undefined' ? 'https://openagents.com' : window.location.origin,
-    copied: false,
-    ...(token === undefined ? {} : { token }),
-    ...(hashStep === undefined ? {} : { scrollToKey: hashStep }),
-  }
+  const timelineItems = timelineSteps(trajectory).flatMap(stepToDispatchItems)
 
   return (
-    <main className="h-dvh overflow-auto bg-khala-void text-khala-text" data-component="trace-page" data-route="trace" data-trace-effect-native="">
-      <TraceEffectNativeSurface state={state} />
-      {video === undefined ? null : (
-        // The Effect Native media-video Host is intentionally stream-only. This
-        // bounded URL-playback element is renderer machinery until the catalog
-        // gains a typed recorded-media source contract.
-        <section className="mx-auto grid w-full max-w-[896px] gap-3 border-t border-khala-border px-6 py-8" data-component="trace-recording">
-          <p className="m-0 font-mono text-xs uppercase tracking-[0.16em] text-khala-text-faint">Session recording</p>
-          <video className="aspect-video w-full border border-khala-border bg-black object-contain" controls playsInline preload="metadata" src={traceBlobUrl(projection.uuid, video.r2Key, token)} />
-          <p className="m-0 font-mono text-xs text-khala-text-faint">{video.caption ?? video.r2Key}</p>
-        </section>
-      )}
+    <main
+      className="oa-react-workbench min-h-dvh w-full overflow-auto bg-khala-void font-mono text-khala-text"
+      data-component="trace-page"
+      data-route="trace"
+      style={desktopThemeCssVariables(khalaTheme)}
+    >
+      <header
+        className="flex h-12 flex-none items-center justify-between gap-3 border-b border-khala-border bg-khala-surface px-4"
+        data-component="trace-header"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <a
+            aria-label="OpenAgents"
+            className="khala-focus inline-flex size-6 shrink-0 items-center justify-center border border-khala-border bg-khala-surface-raised text-khala-text no-underline hover:border-khala-border-strong"
+            href="/"
+          >
+            <Terminal aria-hidden="true" className="size-4 text-khala-text" />
+          </a>
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-khala-text-muted">
+            Trace
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex min-h-8 items-center border border-khala-border px-2.5 text-xs text-khala-text-muted">
+            {projection.visibility.replace('_', ' ')}
+          </span>
+          <TraceCopyButton trajectory={trajectory} />
+        </div>
+      </header>
+
+      <div className="mx-auto grid w-full max-w-[980px] gap-6 px-6 py-6 max-[760px]:px-3">
+        <div className="grid gap-3">
+          <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+            Agent session trace
+          </p>
+          <h1 className="m-0 min-w-0 break-words text-lg font-medium text-khala-text">
+            {terminalSummary(trajectory) ?? trajectory.trajectory_id}
+          </h1>
+          <p className="m-0 font-mono text-xs text-khala-text-faint">{projection.uuid}</p>
+          <span className={verdictBadgeClass(verdict)}>{verdictLabel(verdict)}</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-px border border-khala-border bg-khala-border sm:grid-cols-5">
+          {metadataRows(projection).map(row => (
+            <div className="grid gap-1 bg-khala-surface px-3 py-2.5" key={row.label}>
+              <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-khala-text-faint">
+                {row.label}
+              </span>
+              <span className="break-words text-sm text-khala-text">{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="m-0 font-mono text-xs text-khala-text-faint">
+          Evidence only. This trace grants no accepted-work, payout, or public-claim authority.
+        </p>
+
+        {goal === undefined ? null : (
+          <div className="grid gap-2">
+            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+              Goal
+            </p>
+            <div
+              className="border border-khala-border bg-khala-surface p-4 text-sm/6 text-khala-text"
+              data-component="trace-goal"
+            >
+              <p className="m-0 whitespace-pre-wrap break-words">{goal.message}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-2">
+          <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+            Timeline
+          </p>
+          <div className="flex min-w-0 flex-col gap-2.5" data-component="trace-timeline">
+            {timelineItems.map(({ key, item }) => (
+              <div className="min-w-0" key={key}>
+                {dispatchWorkbenchItem(item, { itemKey: key })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {images.length === 0 ? null : (
+          <div className="grid gap-3" data-component="trace-screenshots">
+            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+              Screenshots
+            </p>
+            {images.map((image, index) => (
+              <figure className="m-0 grid gap-2" key={index}>
+                <img
+                  alt={image.caption ?? 'Trace screenshot'}
+                  className="w-full border border-khala-border bg-black object-contain"
+                  src={traceBlobUrl(projection.uuid, image.r2Key, token)}
+                />
+                <figcaption className="m-0 font-mono text-xs text-khala-text-faint">
+                  {image.caption ?? image.r2Key}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
+
+        {video === undefined ? null : (
+          <section className="grid gap-3" data-component="trace-recording">
+            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+              Session recording
+            </p>
+            <video
+              className="aspect-video w-full border border-khala-border bg-black object-contain"
+              controls
+              playsInline
+              preload="metadata"
+              src={traceBlobUrl(projection.uuid, video.r2Key, token)}
+            />
+            <p className="m-0 font-mono text-xs text-khala-text-faint">
+              {video.caption ?? video.r2Key}
+            </p>
+          </section>
+        )}
+      </div>
+    </main>
+  )
+}
+
+function TraceStatusView({
+  status,
+  loading,
+}: Readonly<{ status?: number; loading: boolean }>) {
+  const notFound = status === 404 || status === 403
+  return (
+    <main
+      aria-busy={loading ? 'true' : undefined}
+      className="grid min-h-dvh place-items-center bg-khala-void px-4 py-12 font-mono text-khala-text"
+      data-component={loading ? 'trace-skeleton' : notFound ? 'trace-not-found' : 'trace-error'}
+      data-route="trace"
+    >
+      <div className="grid max-w-[min(100%,32rem)] justify-items-start gap-3 border border-khala-border bg-khala-surface p-6">
+        <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+          Trace
+        </p>
+        <h1 className="m-0 text-lg font-medium text-khala-text">
+          {loading ? 'Loading trace' : notFound ? 'No trace at this link' : 'Trace unavailable'}
+        </h1>
+        <p className="m-0 text-sm/6 text-khala-text-muted">
+          {loading
+            ? 'Reading the stored ATIF evidence.'
+            : notFound
+              ? 'This trace does not exist, is private, or is no longer available.'
+              : 'The trace could not be loaded. Try again shortly.'}
+        </p>
+        {loading ? null : (
+          <a
+            className="khala-focus inline-flex min-h-10 w-fit items-center border border-khala-text bg-khala-text px-4 font-mono text-[0.8125rem] text-black hover:bg-white"
+            href="/"
+          >
+            Go home
+          </a>
+        )}
+      </div>
     </main>
   )
 }
 
 export function TraceFailedView({ status }: Readonly<{ status: number }>) {
-  return (
-    <main className="h-dvh overflow-auto bg-khala-void" data-component="trace-not-found" data-route="trace" data-trace-effect-native="">
-      <TraceEffectNativeSurface state={{ tag: 'failed', status }} />
-    </main>
-  )
+  return <TraceStatusView loading={false} status={status} />
 }
 
 function TraceLoadingView() {
-  return (
-    <main aria-busy="true" className="h-dvh overflow-auto bg-khala-void" data-component="trace-skeleton" data-route="trace" data-trace-effect-native="">
-      <TraceEffectNativeSurface state={{ tag: 'loading' }} />
-    </main>
-  )
+  return <TraceStatusView loading />
 }
 
 type TraceLoadState =
@@ -641,19 +610,21 @@ export function TracePage({ traceUuid }: Readonly<{ traceUuid: string }>) {
     setState({ tag: 'loading' })
     void fetchTraceProjection(traceUuid, token).then(result => {
       if (cancelled) return
-      setState(result.tag === 'loaded'
-        ? { tag: 'loaded', projection: result.projection }
-        : { tag: 'failed', status: result.status })
+      setState(
+        result.tag === 'loaded'
+          ? { tag: 'loaded', projection: result.projection }
+          : { tag: 'failed', status: result.status },
+      )
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [token, traceUuid])
 
-  if (state.tag === 'loaded') return (
-    <TraceLoadedView
-      projection={state.projection}
-      {...(token === undefined ? {} : { token })}
-    />
-  )
+  if (state.tag === 'loaded')
+    return (
+      <TraceLoadedView projection={state.projection} {...(token === undefined ? {} : { token })} />
+    )
   if (state.tag === 'failed') return <TraceFailedView status={state.status} />
   return <TraceLoadingView />
 }

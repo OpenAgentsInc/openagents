@@ -13,7 +13,6 @@ import {
   TraceFailedView,
   TraceLoadedView,
   TracePage,
-  traceSurfaceView,
   traceVerdict,
   trajectoryToMarkdown,
 } from './-trace-page'
@@ -118,51 +117,142 @@ describe('Start /trace/$traceUuid route', () => {
     expect(html).toContain('aria-busy="true"')
   })
 
-  test('renders the former evidence hierarchy: verdict, goal, timeline, tools, and media', () => {
-    const view = traceSurfaceView({
-      tag: 'loaded',
-      projection,
-      origin: 'https://openagents.com',
-      copied: false,
-      scrollToKey: 'step-2',
-    })
-    const serialized = JSON.stringify(view)
-    expect(serialized).toContain('"_tag":"Transcript"')
-    expect(serialized).toContain('"key":"trace-timeline"')
-    expect(serialized).toContain('"scrollToKey":"step-2"')
-    expect(serialized).toContain('Verified the login route.')
-    expect(serialized).toContain('Verified')
-    expect(serialized).toContain('Verify the login page renders.')
-    expect(serialized).toContain('"key":"step-2"')
-    expect(serialized).toContain('"_tag":"CodeBlock"')
-    expect(serialized).toContain('navigate')
-    expect(serialized).toContain('ok: /login')
-    expect(serialized).toContain('"_tag":"Image"')
-    expect(serialized).toContain('/blob/shots/login%20page.png')
-
+  test('renders the evidence hierarchy through the shared desktop-workbench cards', () => {
     const html = renderToStaticMarkup(<TraceLoadedView projection={projection} />)
+    // Parity (#9061): the timeline renders through the SAME desktop-workbench
+    // components desktop uses — `oa-react-*` classes, not generic JSON boxes.
     expect(html).toContain('data-component="trace-page"')
-    expect(html).toContain('data-trace-effect-native-root')
+    expect(html).toContain('data-component="trace-timeline"')
+    expect(html).toContain('oa-react-')
+    // Verdict, goal, and the terminal summary title.
+    expect(html).toContain('Verified')
+    expect(html).toContain('Verify the login page renders.')
+    expect(html).toContain('Verified the login route.')
+    // The `navigate` tool call and its observation both render.
+    expect(html).toContain('navigate')
+    expect(html).toContain('ok: /login')
+    // Media: screenshot + recording.
+    expect(html).toContain('/blob/shots/login%20page.png')
     expect(html).toContain('data-component="trace-recording"')
     expect(html).toContain('/blob/session.mp4')
   })
 
   test('keeps the trace explicitly evidence-only', () => {
-    const serialized = JSON.stringify(traceSurfaceView({
-      tag: 'loaded',
-      projection,
-      origin: 'https://openagents.com',
-      copied: false,
-    }))
-    expect(serialized).toContain('grants no accepted-work, payout, or public-claim authority')
+    const html = renderToStaticMarkup(<TraceLoadedView projection={projection} />)
+    expect(html).toContain('grants no accepted-work, payout, or public-claim authority')
   })
 
   test('renders an honest not-found state without leaking private existence', () => {
     const html = renderToStaticMarkup(<TraceFailedView status={404} />)
     expect(html).toContain('data-component="trace-not-found"')
-    const serialized = JSON.stringify(traceSurfaceView({ tag: 'failed', status: 404 }))
-    expect(serialized).toContain('No trace at this link')
-    expect(serialized).toContain('does not exist, is private, or is no longer available')
+    expect(html).toContain('No trace at this link')
+    expect(html).toContain('does not exist, is private, or is no longer available')
+  })
+})
+
+const toolTrajectory = decodeAtifTrajectorySync({
+  schema_version: 'ATIF-v1.7',
+  trajectory_id: 'trajectory.tools.fixture',
+  agent: { name: 'claude-code', version: '2.1.0', model_name: 'openagents/khala' },
+  steps: [
+    { step_id: 1, source: 'user', message: 'Do the work.' },
+    {
+      step_id: 2,
+      source: 'agent',
+      message: '',
+      tool_calls: [{
+        tool_call_id: 'c-bash',
+        function_name: 'Bash',
+        arguments: { command: 'ls -la', description: 'list files' },
+      }],
+      observation: { results: [{ source_call_id: 'c-bash', content: 'total 0' }] },
+    },
+    {
+      step_id: 3,
+      source: 'agent',
+      message: '',
+      tool_calls: [{
+        tool_call_id: 'c-read',
+        function_name: 'Read',
+        arguments: { file_path: 'src/x.ts' },
+      }],
+      observation: { results: [{ source_call_id: 'c-read', content: 'export const x = 1' }] },
+    },
+    {
+      step_id: 4,
+      source: 'agent',
+      message: '',
+      tool_calls: [{
+        tool_call_id: 'c-edit',
+        function_name: 'Edit',
+        arguments: { file_path: 'src/x.ts', old_string: 'const x = 1', new_string: 'const x = 2' },
+      }],
+    },
+    {
+      step_id: 5,
+      source: 'agent',
+      message: '',
+      tool_calls: [{
+        tool_call_id: 'c-write',
+        function_name: 'Write',
+        arguments: { file_path: 'src/y.ts', content: 'line one\nline two' },
+      }],
+    },
+    {
+      step_id: 6,
+      source: 'agent',
+      message: '',
+      tool_calls: [{
+        tool_call_id: 'c-agent',
+        function_name: 'Agent',
+        arguments: { subagent_type: 'Explore', description: 'find the config', prompt: 'search the repo' },
+      }],
+      observation: { results: [{ source_call_id: 'c-agent', content: 'Found: config at root' }] },
+    },
+  ],
+})
+
+const toolProjection = new TraceProjection({
+  uuid: 'tool-fixture',
+  schemaVersion: 'ATIF-v1.7',
+  trajectoryId: toolTrajectory.trajectory_id,
+  visibility: 'public',
+  agentRef: 'agent:tools',
+  stepCount: toolTrajectory.steps.length,
+  trajectory: toolTrajectory,
+  blobRefs: [],
+  createdAt: '2026-07-19T00:00:00.000Z',
+  dataMarket: { trainingConsent: false, uploadSource: 'agent', reward: { eligible: false, amountSats: null, status: 'tbd' } },
+  authority: { acceptedWorkAuthority: false, payoutAuthority: false, publicClaimAuthority: false },
+})
+
+describe('per-tool desktop-workbench parity (#9061)', () => {
+  const html = renderToStaticMarkup(<TraceLoadedView projection={toolProjection} />)
+
+  test('Bash renders the command card with its output', () => {
+    expect(html).toContain('oa-react-command-output')
+    expect(html).toContain('ls -la')
+    expect(html).toContain('total 0')
+  })
+
+  test('Read renders a tool-call card with args and result', () => {
+    expect(html).toContain('oa-react-tool-args')
+    expect(html).toContain('oa-react-tool-result')
+    expect(html).toContain('src/x.ts')
+    expect(html).toContain('export const x = 1')
+  })
+
+  test('Edit and Write render colorized file-change diffs', () => {
+    expect(html).toContain('data-diff-line')
+    expect(html).toContain('const x = 2')
+    expect(html).toContain('line one')
+  })
+
+  test('Agent renders the sub-agent card and its returned report', () => {
+    expect(html).toContain('oa-react-agent-group')
+    expect(html).toContain('Explore')
+    expect(html).toContain('search the repo')
+    expect(html).toContain('Found: config at root')
   })
 })
 
