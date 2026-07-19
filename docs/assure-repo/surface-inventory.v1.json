@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:63a5cad8a1fb34a38f86fc06b3e6958029b6b7c1332e0e252a9717cd61b5a2e8",
+  "sourceDigest": "sha256:3a54c5af57288b3717b4a4c66276feb0552cce97f59e849a7319c4f5f6eb8853",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -200,7 +200,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1053 tracked test files)"
+          "ref": "apps/openagents.com (1057 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -358,7 +358,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-mobile (58 tracked test files)"
+          "ref": "apps/openagents-mobile (59 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2167,7 +2167,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/managed-sandbox-contract (4 tracked test files)"
+          "ref": "packages/managed-sandbox-contract (5 tracked test files)"
         }
       ],
       "obligation": {
@@ -2269,7 +2269,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/apps/start (58 tracked test files)"
+          "ref": "apps/openagents.com/apps/start (61 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2893,7 +2893,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (960 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (961 tracked test files)"
         },
         {
           "type": "behavior-contract",

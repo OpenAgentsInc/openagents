@@ -13,7 +13,7 @@
 Sarah has been through a hard pivot. The original **public sales surface** —
 `openagents.com/sarah`, the `apps/sarah` app, prospect CRM, and the owned
 avatar/voice/GPU stack (OAV) — was **removed entirely** on 2026-07-10 at owner
-direction; `/sarah` and `/sarah/api/*` are 404 tombstones and the GPU node is
+direction. `/sarah` and `/sarah/api/*` are 404 tombstones and the GPU node is
 stopped. The current Sarah is **`principal.sarah`**: an authenticated
 owner-orchestrator that lives on one stable owner-private Khala Sync thread
 inside the supported OpenAgents clients (mobile first), answers from cited
@@ -23,7 +23,7 @@ capability brokers. That runtime is **code-landed and live** in a bounded form
 profile revision 4**. The newest layer is the **managed agent sandbox broker**
 (SBX): **8 of 11 issues in epic #9023 are closed and code-landed** (SBX-00
 through SBX-07), leaving **SBX-08 supervision, SBX-09 live GCP proof, and
-SBX-10 deferred snapshot/fork** open. The sandbox broker ships **default-off**;
+SBX-10 deferred snapshot/fork** open. The sandbox broker ships **default-off**.
 mutation stays unavailable until SBX-09 independently proves the live GCP
 target, cleanup, cost, and rollback. The **AssuranceSpec is `proposed`, not
 admitted** — SARAH-AC-21..23 have proof design, SARAH-AC-01..20 remain
@@ -84,7 +84,7 @@ Normative current artifacts:
 | `specs/openagents/sarah-owner-orchestrator.assurance-spec.md` | **assurance_revision 4, `proposed`** (not admitted) |
 | `AUTHORITY.md` | **revision 6** (root profile) |
 | `docs/authority/SARAH_AUTHORITY.md` | **authority_revision 4, `admitted`** |
-| `docs/sol/MASTER_ROADMAP.md` | revision governs sequencing; Active P1 = SBX |
+| `docs/sol/MASTER_ROADMAP.md` | revision governs sequencing. Active P1 = SBX |
 
 The reboot reuses existing primitives (mobile conversation, hosted Khala, Full
 Auto, FleetRun, claims, repo/GitHub, Forum, Google Cloud, release,
@@ -125,7 +125,7 @@ weakening, unsupported public claims, self-amplification, and stable release
 without current owner direction.
 
 Every action must emit an `openagents.authority_decision_receipt.v1` and a
-target receipt; **visibility never implies mutation**, and Sarah **never claims
+target receipt. **Visibility never implies mutation**, and Sarah **never claims
 an action ran until a target receipt exists**.
 
 > **Note — a version label to watch.** The ProductSpec `tool_metadata` reads
@@ -134,7 +134,7 @@ an action ran until a target receipt exists**.
 > revision 6 but its prose describes the rev-5 harness-adaptation and rev-6
 > sandbox grants that the Sarah profile also carries. The numbering is internally
 > consistent (root rev ≠ Sarah profile rev) but the two counters are easy to
-> conflate; keep the root-vs-profile distinction explicit in future edits.
+> conflate. Keep the root-vs-profile distinction explicit in future edits.
 
 ## 4. ProductSpec acceptance-criteria surface
 
@@ -174,7 +174,7 @@ state/completion claims (lifetime), delegated completion ≥90%, and 100% manage
   `needs_design` and **prevent admission or execution**.
 - The risk model is **empty/`[]`** — reviewers must still design the applicable
   risk model from the ProductSpec risk prose (source snapshot preserved).
-- Repository inventory is `absent` / `not-supplied`; it names candidate
+- Repository inventory is `absent` / `not-supplied`. It names candidate
   artifacts only: `sarah-managed-sandbox.test.ts`,
   `managed-sandbox-broker.test.ts`, and
   `docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json`.
@@ -248,7 +248,7 @@ clients. Every file below has a matching `*.test.ts`.
   in `src/index.ts` ~6800–7078) — Sarah runs on a **queued/scheduled turn
   processor, not a synchronous HTTP chat route**. `prepareTurn` gates on
   `hasSarahThreadAuthority`, collects business context, binds the harness, and
-  builds the system prompt; `owner_conversation` calls `runSarahAgentTurn`.
+  builds the system prompt. `owner_conversation` calls `runSarahAgentTurn`.
 - `apps/openagents.com/workers/api/src/inference/gemma4-adapter.ts` — `makeGemma4Adapter`,
   the live inference lane: Google Generative Language API
   (`generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`),
@@ -257,7 +257,7 @@ clients. Every file below has a matching `*.test.ts`.
 **Routes, receipts, context:**
 
 - `apps/openagents.com/workers/api/src/sarah-owner-routes.ts` — route
-  `/api/mobile/sarah`; `ensureSarahPrincipal`, `authorizeSarahOperation`
+  `/api/mobile/sarah`. `ensureSarahPrincipal`, `authorizeSarahOperation`
   (resolves via `resolveAuthorityDecision`, writes **receipt-first** to the
   `sarah_authority_decision_receipts` table before any broker runs), and
   `hasSarahThreadAuthority` (admitted-bootstrap receipt + admin-email gate).
@@ -277,7 +277,7 @@ clients. Every file below has a matching `*.test.ts`.
 - `managed-sandbox-box-v1-adapter.ts` + `managed-sandbox-box-v1-routes.ts`
   (~2044 lines, the `/v1` Box facade) + `managed-sandbox-desktop-routes.ts`.
   `@asciidev/box-sdk@0.0.24` is a **dev-only conformance dependency**
-  (production must not import it); unsupported methods → `501
+  (production must not import it). Unsupported methods → `501
   capability_not_implemented`.
 - **Sarah's SBX-07 broker: `apps/openagents.com/workers/api/src/sarah-managed-sandbox.ts`**
   (~832 lines) — `makeSarahManagedSandboxTools`: the 8 closed owner-scoped tools
@@ -296,7 +296,7 @@ citing owner direction 2026-07-10 / #8610.
 defines `FLEET_RUNS_PATH = '/api/fleet-runs'` (neutral canonical) and
 `SARAH_FLEET_RUNS_PATH = '/api/sarah/fleet-runs'` (**served compatibility alias**,
 identical handler — kept, not 410'd, because shipped binaries hardcode it).
-Authority backend `packages/khala-sync-server/src/fleet-run-authority.ts`;
+Authority backend `packages/khala-sync-server/src/fleet-run-authority.ts`.
 the execution engine is `apps/pylon/src/orchestration/fleet-run-*.ts`.
 
 ## 8. How open / recently-closed issues move the program
@@ -323,8 +323,8 @@ the execution engine is `apps/pylon/src/orchestration/fleet-run-*.ts`.
 - **SBX-08 (#9031)** gives mobile/web the supervision projection for sandboxes
   Sarah spins up — needed for the owner to actually watch delegated work.
 - **SBX-10 (#9032)** is explicitly deferred (P2) — snapshot/fork/private desktop
-  after distinct proofs; not on the critical path.
-- **IDE-13 (#9041, P0)** shares the broker; its portable-capability work is a
+  after distinct proofs. Not on the critical path.
+- **IDE-13 (#9041, P0)** shares the broker. Its portable-capability work is a
   parallel dependency, not Sarah-specific.
 
 **Not moving (by design):** no open issue reopens the public `/sarah` surface,
@@ -344,7 +344,7 @@ avatar/voice/video revival.
    SBX-09 flag staying off. Any accidental enablement before SBX-09 would put an
    unproven GCP mutation path in Sarah's hands. The gate must remain owner-held.
 3. **Empty risk model in the AssuranceSpec.** Reviewers still owe the applicable
-   risk objects; the ProductSpec risk prose is captured but not yet modeled.
+   risk objects. The ProductSpec risk prose is captured but not yet modeled.
 4. **Version-label conflation** (root rev 6 vs Sarah profile rev 4) — cosmetic
    today, but a documentation footgun. Keep the two counters distinct.
 5. **Historical/current bleed in `docs/sarah/`.** The folder mixes retired Era-1
@@ -366,23 +366,23 @@ avatar/voice/video revival.
    AC-08 reserved refusals). This is the real blocker to any release beyond
    bounded owner dogfood.
 2. **Keep SBX-09 owner-gated and independent.** Its live-GCP proof is what turns
-   the code-landed broker into a usable Sarah capability; do not let the
+   the code-landed broker into a usable Sarah capability. Do not let the
    producer self-admit it.
 3. **Land SBX-08 supervision** so the owner can watch delegated sandbox work
    from mobile/web — the missing half of "delegate and follow."
 4. **Design the AssuranceSpec risk model** and attach obligations to the two
    named test artifacts.
 5. **Leave Era-1 retired.** No open issue should revive the public surface,
-   avatar, or CRM; treat this folder's OAV material as archive.
+   avatar, or CRM. Treat this folder's OAV material as archive.
 
 ## 11. Source index
 
 - ProductSpec: `specs/openagents/sarah-owner-orchestrator.product-spec.md` (rev 4)
 - AssuranceSpec: `specs/openagents/sarah-owner-orchestrator.assurance-spec.md` (rev 4, proposed)
-- Root authority: `AUTHORITY.md` (rev 6); Sarah profile: `docs/authority/SARAH_AUTHORITY.md` (rev 4)
+- Root authority: `AUTHORITY.md` (rev 6). Sarah profile: `docs/authority/SARAH_AUTHORITY.md` (rev 4)
 - Managed sandboxes: `specs/openagents/managed-agent-sandboxes.product-spec.md`,
   `docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md`, epic #9023
-- Roadmap: `docs/sol/MASTER_ROADMAP.md` (Active P1; owner decisions #2, #12, #14)
+- Roadmap: `docs/sol/MASTER_ROADMAP.md` (Active P1, owner decisions #2, #12, #14)
 - Retired contracts: `packages/behavior-contracts/src/sarah-retired.ts`, `docs/sarah/SARAH_CONTRACTS.md`
 - Era-1 history: `docs/sarah/README.md` (below banner), `MIGRATION.md`, `historical/`, OAV docs, `scoreboards/`
 - Removal decision: `docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md`, commit `13bc1e7443`

@@ -74,11 +74,11 @@ assert file paths and commands that nothing checked — the
 unverified-operational-directive failure class applied to the codebase itself.
 AR-4 gives those claims a compiler. `drift.ts` extracts backtick-quoted
 repo-root paths and `pnpm run <script>` commands and checks them
-**side-effect-free** (fs existence + root `package.json` scripts only; no
+**side-effect-free** (fs existence + root `package.json` scripts only, no
 command is executed, no production is probed). Findings are typed `ok` /
-`broken` / `unverifiable`; context-relative paths and npm specifiers are
+`broken` / `unverifiable`. Context-relative paths and npm specifiers are
 `unverifiable`, never `broken`. `pnpm run check:assure-repo-drift` fails on any
-**open** broken claim; a genuinely stale claim in a doc this packet does not
+**open** broken claim. A genuinely stale claim in a doc this packet does not
 own can be acknowledged via `driftDispositions` in the policy (still reported).
 Governed-document surfaces in the inventory are bound to this oracle.
 
@@ -89,7 +89,7 @@ Governed-document surfaces in the inventory are bound to this oracle.
 against the current tree and emits a typed `SweepReceipt` — commit, timestamp,
 per-oracle outcomes, obligation summary, drift summary, and an honest
 **evidence class**. Before IDE-10 host-observed tests and the SBX sandbox land
-it runs **degraded** and labels itself `degraded_terminal_observed`; it is
+it runs **degraded** and labels itself `degraded_terminal_observed`. It is
 read-only over source, so it cannot alter Full Auto guardrails. `diffSweeps`
 turns two receipts into typed regression findings (an oracle regressing, a drop
 in `designed` surfaces, an overall regression) so drift is visible, not silent.
@@ -99,7 +99,7 @@ verification readiness **only from a decoded, fresh receipt**. An absent or
 stale receipt renders `unknown`, never `green` — the repo-scale form of "no
 receipt means no light" (enforced by test). Run `pnpm run sweep:assure-repo`
 (optionally `--out <receipt.json>`) and `assure-repo readiness --receipt
-<receipt.json>`. Receipts are runtime evidence, not committed source; wiring
+<receipt.json>`. Receipts are runtime evidence, not committed source. Wiring
 the sweep into the actual Full Auto run loop with host-observed test evidence
 is the post-IDE-10/SBX fidelity step.
 

@@ -860,7 +860,7 @@ grading that never fabricates `observed`/`accepted`, a demonstrated-by-mutation
 false-green audit, a standing sweep with receipts, and drift oracles that
 already caught real stale claims in the governing docs. Program overview:
 [`docs/assure-repo/README.md`](../assure-repo/README.md). The paragraphs above
-are retained as the original argument for the packet; the packet now ships.
+are retained as the original argument for the packet. The packet now ships.
 
 ### 4. Why the bootstrap is the proof
 

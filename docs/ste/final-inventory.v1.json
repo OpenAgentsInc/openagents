@@ -16294,7 +16294,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "e1005f5c4bef3c1b7b6081d0cc5f332640ab300760b48522cde2c4b75ecc4d93",
+      "sha256": "777032447433b4683d27b4b134dd9474b134f3cb5a5998f7302e5b5d15e58851",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -23489,7 +23489,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "61082d837ab1e3088c744cee2e80a63596fc73c2c47f1704e128de2eb91fbb6f",
+      "sha256": "948c50a2b5ae079cee33ff52edb1f86425860f067c30f3af1604e066db1dd167",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38193,22 +38193,21 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
       "path": "docs/sarah/2026-07-19-sarah-program-assessment.md",
-      "sha256": "1f1569d41bf587615426d1d75201a93be2593d48c96387962e82049da2872eb3",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "956ac683c8e082f89443a9c0cfad059ffdd26f62a3566f8614ffdd142e74bccb",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -38216,7 +38215,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
