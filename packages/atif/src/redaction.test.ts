@@ -227,6 +227,38 @@ describe("redactString", () => {
     })
   }
 
+  test("slash-separated prose is not redacted as a long blob", () => {
+    const prose =
+      "states: candidate/shadow/released/active/rejected/rolled and schema/service/IPC/process/PTY/task/test/output/redaction"
+    const r = red(prose)
+    expect(r.value).toBe(prose)
+    expect(r.report.counts.long_blob ?? 0).toBe(0)
+  })
+
+  test("a contiguous base64 blob is still redacted", () => {
+    const blob = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5YWJjZGVm"
+    const r = red(`token=${blob} end`)
+    expect(r.value).not.toContain(blob)
+    expect(r.report.counts.long_blob ?? 0).toBeGreaterThanOrEqual(1)
+  })
+
+  test("prose that only matches the mnemonic SHAPE is not redacted", () => {
+    // 12 short lowercase words, so it matches the candidate regex, but the words
+    // are not all BIP39 words -> it is ordinary prose and must be preserved.
+    const prose = "the team will ship this year and then start over next month"
+    const r = red(prose)
+    expect(r.value).toBe(prose)
+    expect(r.report.counts.mnemonic ?? 0).toBe(0)
+  })
+
+  test("a real BIP39 seed phrase inside prose is still redacted", () => {
+    const r = red(
+      "backup phrase legal winner thank year wave sausage worth useful legal winner thank yellow now",
+    )
+    expect(r.value).not.toContain("legal winner thank year wave sausage")
+    expect(r.report.counts.mnemonic ?? 0).toBeGreaterThanOrEqual(1)
+  })
+
   test("known public false positives are preserved", () => {
     const r = red(
       "See https://openagents.com/trace/abc-123 and https://github.com/OpenAgentsInc/openagents/issues/6219 on openagents/khala for #6219.",

@@ -1,5 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 
+import { BIP39_ENGLISH_WORDS } from "./bip39-wordlist.ts"
+
 export type RedactionCategory =
   | "private_key"
   | "mnemonic"
@@ -149,7 +151,49 @@ type Rule = Readonly<{
   replace: (match: string, ...groups: Array<string>) => string
 }>
 
+// A candidate BIP39 seed phrase is a run of 12/15/18/21/24 lowercase words.
+// This regex only FINDS candidates cheaply; `mnemonicReplace` then confirms
+// every word is an actual BIP39 word before redacting, so ordinary English
+// prose (which is full of non-wordlist words like "the", "roadmap", "ide") is
+// left intact. Real seed phrases are all-wordlist by definition and still redact.
 const MNEMONIC = /\b(?:[a-z]{3,8} ){11}[a-z]{3,8}(?:(?: [a-z]{3,8}){3})*\b/g
+
+// Shortest real BIP39 mnemonic. Runs of consecutive wordlist words below this
+// length are treated as coincidental prose, not a seed phrase.
+const MIN_MNEMONIC_WORDS = 12
+
+/**
+ * Redact only the ACTUAL seed phrase inside a shape-matched candidate: the
+ * longest run of CONSECUTIVE BIP39 English words. If that run is at least a
+ * 12-word mnemonic it is replaced with the tag while any surrounding prose words
+ * (which are not in the wordlist) are preserved; otherwise the whole match is
+ * returned unchanged. This keeps genuine seed phrases fully redacted — even when
+ * they sit next to ordinary words — without redacting prose that merely happens
+ * to be a run of short lowercase words.
+ */
+const mnemonicReplace = (match: string): string => {
+  const words = match.split(" ")
+  let bestStart = -1
+  let bestLen = 0
+  let curStart = 0
+  let curLen = 0
+  for (let i = 0; i < words.length; i += 1) {
+    if (BIP39_ENGLISH_WORDS.has(words[i] as string)) {
+      if (curLen === 0) curStart = i
+      curLen += 1
+      if (curLen > bestLen) {
+        bestLen = curLen
+        bestStart = curStart
+      }
+    } else {
+      curLen = 0
+    }
+  }
+  if (bestLen < MIN_MNEMONIC_WORDS) return match
+  const before = words.slice(0, bestStart).join(" ")
+  const after = words.slice(bestStart + bestLen).join(" ")
+  return [before, tag("mnemonic"), after].filter(part => part !== "").join(" ")
+}
 
 const RULES: ReadonlyArray<Rule> = [
   {
@@ -158,7 +202,7 @@ const RULES: ReadonlyArray<Rule> = [
       /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
     replace: () => tag("private_key"),
   },
-  { category: "mnemonic", pattern: MNEMONIC, replace: () => tag("mnemonic") },
+  { category: "mnemonic", pattern: MNEMONIC, replace: mnemonicReplace },
   {
     category: "jwt",
     pattern:
@@ -299,8 +343,13 @@ const RULES: ReadonlyArray<Rule> = [
     replace: () => tag("long_blob"),
   },
   {
+    // A contiguous base64-ish blob. `/` is intentionally EXCLUDED from the class:
+    // it made slash-separated PROSE (e.g. "candidate/shadow/released/active" or a
+    // "schema/service/IPC/process/PTY" enum list) match as a fake blob. Real
+    // base64 secrets are caught by the specific secret rules above and the
+    // server tripwire; this catch-all only needs contiguous non-slash runs.
     category: "long_blob",
-    pattern: /\b[A-Za-z0-9+/]{48,}={0,2}\b/g,
+    pattern: /\b[A-Za-z0-9+]{48,}={0,2}\b/g,
     replace: () => tag("long_blob"),
   },
 ]
@@ -353,9 +402,15 @@ export const redactString = (
       if (match.includes(SENT_OPEN)) {
         return match
       }
-      bump(rule.category)
       const groups = args.slice(1, -2) as Array<string>
-      return rule.replace(match, ...groups)
+      const replaced = rule.replace(match, ...groups)
+      // Only count a real redaction. A rule whose `replace` returns the match
+      // unchanged (e.g. the mnemonic wordlist gate rejecting prose) is a no-op
+      // and must not inflate the report.
+      if (replaced !== match) {
+        bump(rule.category)
+      }
+      return replaced
     })
   }
 

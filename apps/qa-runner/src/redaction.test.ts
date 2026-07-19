@@ -73,7 +73,9 @@ describe("redactString — known secrets are redacted", () => {
   });
 
   test("24-word mnemonic", () => {
-    const words = Array(24).fill("alpha").join(" ");
+    // Real BIP39 words: the redactor now confirms wordlist membership, so a
+    // placeholder like "alpha" (not a BIP39 word) is correctly NOT a mnemonic.
+    const words = Array(24).fill("abandon").join(" ");
     const r = red(`recover ${words} now`);
     expect(r.value).toContain("[REDACTED:mnemonic]");
     expect(r.report.counts.mnemonic).toBe(1);
