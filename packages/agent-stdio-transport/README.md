@@ -2,7 +2,7 @@
 
 `@openagentsinc/agent-stdio-transport` is the shared Node transport for local
 Agent Client Protocol peers such as `grok agent stdio` and Cursor `agent acp`.
-It spawns one resolved executable with an argument array and `shell: false`;
+It spawns one resolved executable with an argument array and `shell: false`.
 stdout is reserved for NDJSON while stderr is separately bounded and redacted.
 This package does not implement Agent Communication Protocol or A2A.
 
@@ -20,7 +20,7 @@ This package does not implement Agent Communication Protocol or A2A.
 Every instance has a monotonically increasing generation. Pending work stores
 that generation, so an old process can never settle a new process's request.
 Shutdown is `stdin.end()` → grace period → `SIGTERM` → grace period →
-`SIGKILL`. JSON-RPC `$/cancel_request` cancels one request ID; ACP
+`SIGKILL`. JSON-RPC `$/cancel_request` cancels one request ID. ACP
 `session/cancel` remains a distinct semantic notification keyed by session ID.
 
 ## Trusted policy defaults
@@ -33,9 +33,9 @@ Shutdown is `stdin.end()` → grace period → `SIGTERM` → grace period →
 | outbound requests            |                  64 | local overload error                             |
 | concurrent reverse requests  |                  16 | JSON-RPC overload error                          |
 | notifications per second     |                 512 | protocol violation                               |
-| stderr capture               |              64 KiB | retain prefix; count dropped bytes               |
+| stderr capture               |              64 KiB | retain prefix. Count dropped bytes               |
 | private evidence             | 128 entries / 1 MiB | retain hash/size after raw cap                   |
-| request / reverse deadlines  |         60 s / 30 s | one timeout outcome; late response observed only |
+| request / reverse deadlines  |         60 s / 30 s | one timeout outcome. Late response observed only |
 | shutdown / terminate grace   |           1 s / 1 s | escalate deterministically                       |
 
 Overrides must be positive safe integers. Framing operates on raw bytes, accepts
@@ -44,8 +44,8 @@ malformed JSON, arrays, invalid UTF-8, and over-limit frames. Writes are
 serialized and honor Node stream backpressure.
 
 Reverse handlers execute outside the parser microtask. Missing handlers return
-`-32601`; `AgentStdioHandlerError` supports `-32602` invalid params or an
-authority refusal; internal failures, deadlines, overload, and cancellation
+`-32601`. `AgentStdioHandlerError` supports `-32602` invalid params or an
+authority refusal. Internal failures, deadlines, overload, and cancellation
 produce structured errors. Integer, string, and null IDs are keyed by exact
 JSON type, so `1` and `"1"` cannot collide. Unknown or late responses are
 counted and never resolve unrelated work.
@@ -62,7 +62,7 @@ private plane and require the instance's explicit evidence capability from
 
 `getReceipt().counters` exposes current and peak inbound/outbound queue,
 outbound request, and reverse-request pressure plus total/max request and
-reverse latency. `getTraces()` returns a bounded metadata-only lifecycle trace;
+reverse latency. `getTraces()` returns a bounded metadata-only lifecycle trace.
 it never includes params, results, prompt text, file content, or environment
 values. `getResourceDiagnostics()` is the leak-test surface for pending maps,
 queues, buffered bytes, native evidence, and process/stream listeners.

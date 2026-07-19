@@ -14,11 +14,11 @@ Publish the OpenAgents version of the Fugu-Ultra-vs-frontier prompt:
 The published pack must compare `openagents/khala` against a frontier baseline
 and report:
 
-- tokens, dollars, and wall-clock;
-- verifier verdict and verified rate;
-- cost per accepted outcome;
-- accepted outcomes per kWh when measured telemetry exists;
-- in-world vs gateway split;
+- tokens, dollars, and wall-clock.
+- verifier verdict and verified rate.
+- cost per accepted outcome.
+- accepted outcomes per kWh when measured telemetry exists.
+- in-world vs gateway split.
 - artifact playback refs, Verse playback refs, and settlement refs.
 
 External Fugu/Opus numbers stay in the manifest as reported claims until we can
@@ -28,7 +28,7 @@ cite or reproduce them. They are never mixed into OpenAgents measurements.
 
 - Fixture manifest:
   `docs/inference/fixtures/khala-head-to-head-dry-run.v1.json`
-- Recorded verified-run manifest (our real 2026-06-22 Khala data point; see
+- Recorded verified-run manifest (our real 2026-06-22 Khala data point, see
   `docs/inference/2026-06-23-khala-head-to-head-m8-status.md`):
   `docs/inference/fixtures/khala-head-to-head-recorded-run.v1.json`
 - Runner (drives both lanes, emits the manifest):
@@ -36,7 +36,7 @@ cite or reproduce them. They are never mixed into OpenAgents measurements.
 - Reducer/validator:
   `scripts/khala-demo/reduce-head-to-head.mjs`
 - Measured metric-table emitter (honest `not_measured` cells from a recorded
-  manifest; read-only over the manifest, no runner network/contract change):
+  manifest. Read-only over the manifest, no runner network/contract change):
   `scripts/khala-demo/emit-metric-table.mjs`
 - Publication renderer:
   `scripts/khala-demo/render-publication.mjs`
@@ -127,7 +127,7 @@ never fabricates metrics:
 - Settlement is `settled: false` unless the response explicitly says settled and
   supplies worker/validator receipt refs.
 - Verse playback, in-world artifact, and energy kWh stay `null` unless the
-  response provides them; energy is never estimated.
+  response provides them. Energy is never estimated.
 - Because the owner-gated live gateway does not yet return settlement, Verse,
   in-world, or energy evidence, a current live run still keeps
   `closureAudit.canClose: false` — exactly like the stub and fixture.
@@ -170,13 +170,13 @@ API-token strings anywhere in manifest string values.
 - `tokens`: use `usage.totalTokens`, or derive prompt plus completion tokens.
 - `dollars`: use measured `costUsd`.
 - `wallClockMs`: use measured run wall-clock.
-- `costPerAcceptedOutcomeUsd`: `costUsd` only when the run was accepted;
+- `costPerAcceptedOutcomeUsd`: `costUsd` only when the run was accepted.
   otherwise `not_applicable`.
 - `verifiedRate`: accepted runs divided by runs with a verifier verdict.
 - `inWorldVsGatewaySplit`: derive from `verse.inWorldWorkUnits` and
-  `verse.gatewayWorkUnits`; if both are zero, mark `not_measured`.
+  `verse.gatewayWorkUnits`. If both are zero, mark `not_measured`.
 - `acceptedOutcomesPerKwh`: accepted outcome count divided by measured kWh only
-  when measured telemetry exists; otherwise `not_measured`.
+  when measured telemetry exists. Otherwise `not_measured`.
 
 ## Publication Skeleton
 
@@ -238,12 +238,12 @@ is `true` for a live manifest. The current fixture intentionally returns
 
 Minimum live evidence:
 
-- a live `openagents/khala` run, not only `khala-mini` or fixture data;
-- a live frontier baseline run;
-- a verifier receipt for the accepted outcome;
-- a publishable M7 Conductor preflight evidence ref;
-- settlement refs for worker and validator payment;
-- Verse playback refs and artifact-in-world playback refs;
-- measured energy telemetry for AO/kWh;
-- publication refs for the final comparison;
+- a live `openagents/khala` run, not only `khala-mini` or fixture data.
+- a live frontier baseline run.
+- a verifier receipt for the accepted outcome.
+- a publishable M7 Conductor preflight evidence ref.
+- settlement refs for worker and validator payment.
+- Verse playback refs and artifact-in-world playback refs.
+- measured energy telemetry for AO/kWh.
+- publication refs for the final comparison.
 - no public-safety blockers in the manifest.

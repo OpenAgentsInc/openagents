@@ -2,7 +2,7 @@
 
 Date: 2026-07-07
 Status: owner-directed standalone narrative doc. Part I is the longform
-essay/analysis; Part II is the shortform talking points. Synthesized from
+essay/analysis. Part II is the shortform talking points. Synthesized from
 the 2026-07-07 strategy set — the Palantir sovereignty analysis
 (`2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`), the
 product suite doc, the overarching roadmap, the post-MVP direction doc —
@@ -12,7 +12,7 @@ QA Swarm, Tassadar). Execution sequencing for everything described here:
 `MASTER_ROADMAP.md`.
 
 **This is internal narrative source material, not published copy.** Public
-claims still gate through `docs/promises/` and owner sign-off; anything
+claims still gate through `docs/promises/` and owner sign-off. Anything
 below marked *(gated)* or *(private)* must not ship in public copy as-is.
 Terminology rules apply throughout: our systems are described in our own
 vocabulary (Blueprint, company brain, agent computers — never "ontology,"
@@ -37,7 +37,7 @@ content engine that has published every single week for over a year, CFO
 agents, triage agents, second brains. These operators are not engineers.
 They duct-tape the stack together from a cheap VPS, a harness they'll
 replace within a year, a model subscription, skills they found by
-Googling — and they know it. Their own settled security advice is "don't
+Googling — and they know it. Their own settled security advice is "do not
 trust anybody: never install a third-party skill." Their number-one
 operational complaint is that the agent dies when the laptop closes. They
 have already adopted the *ideology* of the AI employee — names, roles,
@@ -48,14 +48,14 @@ At the top of the market, **the sovereignty thesis went mainstream**.
 Palantir published a manifesto — *Institutional Sovereignty in the Age of
 AI* — telling every government and enterprise that their AI provider has a
 structural incentive to migrate their tribal knowledge into its own
-weights; that they should demand zero data retention, own their knowledge
+weights. That they should demand zero data retention, own their knowledge
 layer, keep models swappable commodities, log everything, and run their
 most sensitive work on hardware they control. The All-In podcast spent
-July 4th weekend making the same argument: *you can't rent intelligence
+July 4th weekend making the same argument: *you cannot rent intelligence
 from the same place that rents it to your competitor.* The category is
 being named, loudly, by people with hundred-billion-dollar megaphones.
 
-Here is the thing those megaphones won't say: **the remedy they sell
+Here is the thing those megaphones will not say: **the remedy they sell
 cannot reach 30 million businesses.** Palantir's delivery model is
 forward-deployed engineers and emailed sovereignty reviews. The enterprise
 agent-deployment firms mirror it at six-figure engagement minimums. The
@@ -63,7 +63,7 @@ solo lawyer, the HVAC contractor, the clinic, the agency — the operators
 who have already taken the pill — get nothing but the duct tape.
 
 OpenAgents exists to close that gap. **We deliver the agentic economy —
-with institutional-grade trust — to everyone the institutions can't
+with institutional-grade trust — to everyone the institutions cannot
 reach.** Our forward-deployed engineers are a fleet of agents. Our
 sovereignty review is an automated audit. Our knowledge layer arrives
 prefilled. And every claim we make ships with a receipt.
@@ -101,8 +101,8 @@ Everything we ship serves one arc, and the arc has a shape users climb:
    inside *your* walls, on *your* hardware, under a typed model policy
    you set — your models, your data, your building. We run our own
    production on it first.
-4. **Join the economy.** Every outcome an agent delivers is a receipt;
-   receipts become public proof; proof becomes reputation, referrals, and
+4. **Join the economy.** Every outcome an agent delivers is a receipt.
+   receipts become public proof. Proof becomes reputation, referrals, and
    routed work — settled in real money, including Bitcoin. The tool
    generates the network's inventory as exhaust.
 
@@ -110,11 +110,11 @@ Everything we ship serves one arc, and the arc has a shape users climb:
 
 **Khala Code (mobile)** is the entry point — the first coding agent
 designed phone-first. It exists because the moment of wanting work done
-is rarely the moment you're at a desk. Behind its simplicity is the part
+is rarely the moment you are at a desk. Behind its simplicity is the part
 that matters: every turn executes on an **agent computer** — an isolated
 micro virtual machine with its own kernel, booted for your work, wiped
-when it's done, metered to the token. That's not an implementation
-detail; it's the reason you can hand arbitrary work to an agent without
+when it is done, metered to the token. That is not an implementation
+detail. It is the reason you can hand arbitrary work to an agent without
 handing it your world.
 
 **Khala Code (desktop)** is the power surface, and it inverts the
@@ -129,7 +129,7 @@ approve. The editor is the manager's magnifying glass, not the product.
 us money and sees everything: itemized spend per agent and per meter,
 every receipt, every promise we've made and its current verified state,
 the roster of employees and their approval queues. Deliberately less
-cinematic than Khala Code; same data, business register. And everything
+cinematic than Khala Code. Same data, business register. And everything
 the dashboard shows rides the same public typed APIs, so your agents can
 manage your account programmatically — you can run the suite *with* the
 suite.
@@ -138,7 +138,7 @@ suite.
 staff. The employee is a typed record — goal, harness, allowed tools,
 triggers, budget, escalation — not a prompt. The company brain is your
 business's knowledge as a governed, structured object: every fact carries
-its source and its provenance; every agent sees only its slice; every
+its source and its provenance. Every agent sees only its slice. Every
 write goes through an approval boundary. This is the same architecture
 the enterprise world calls a digital twin with a control layer. Ours is
 called **Blueprint**, it predates the current fashion, and it adds the
@@ -161,14 +161,14 @@ sell what we operate.
 ## Why trust is the product
 
 Every vendor says "trust us." Our position is stronger and stranger:
-**don't trust us — check the receipt.**
+**do not trust us — check the receipt.**
 
 - **Exact-only accounting.** Every token, every compute-minute, every
   charge traces to a receipt row. Counters are projections of receipts,
-  never vibes. If we can't measure it exactly, it's labeled
+  never vibes. If we cannot measure it exactly, it is labeled
   `not_measured`, not estimated.
 - **Public promises with verified states.** Our product claims live in a
-  machine-readable registry; a promise flips green only on a
+  machine-readable registry. A promise flips green only on a
   dereferenceable receipt with owner sign-off. Our marketing is
   falsifiable on purpose.
 - **Behavior contracts.** Stated UX expectations become typed contracts
@@ -194,7 +194,7 @@ Every vendor says "trust us." Our position is stronger and stranger:
   perf budgets — and publish the verdicts. Then we sell the same swarm.
 
 This posture exists because the market told us to build it. The operators
-already burned by the ecosystem's slop have one settled instinct: *don't
+already burned by the ecosystem's slop have one settled instinct: *do not
 trust anybody.* We are the vendor built for people with that instinct.
 
 ## Why businesses should care
@@ -212,7 +212,7 @@ subscription, non-expiring. Or buy the outcome itself: a fixed-scope
 delivered, verified, accepted piece of work — our services ladder runs
 from four-figure quick wins to standing retainers, fulfilled by the same
 fleet, with the same receipts. Bring your own model subscription and the
-model cost of your agent's work drops to zero; you pay for the machine
+model cost of your agent's work drops to zero. You pay for the machine
 time.
 
 **Your knowledge compounds in a substrate you own.** The enterprise
@@ -225,10 +225,10 @@ switch models per task, per policy, per price, without losing anything.
 
 **Sovereignty when you need it, not as a rebuild.** Start hosted for
 convenience. The day a client, a regulator, or a board says "this data
-doesn't leave our walls" — same employees, same brain, same receipts, on
+does not leave our walls" — same employees, same brain, same receipts, on
 your hardware. The migration is a placement decision, not a re-platform.
 
-**A vendor that can't quietly become your competitor.** Open weights you
+**A vendor that cannot quietly become your competitor.** Open weights you
 can hold, exportable data, exit-friendly by architecture, and a business
 model that makes money on metered work and outcomes — not on harvesting
 your operations into a training set.
@@ -236,25 +236,25 @@ your operations into a training set.
 ## Why us, why now
 
 Because we built the unfashionable parts first. Anyone can wrap a model
-in a chat window; nobody catches up quickly on: an exact-accounting
-ledger battle-tested across billions of tokens; a promise registry wired
-to refuse dishonest marketing; a Blueprint governance kernel that was
+in a chat window. Nobody catches up quickly on: an exact-accounting
+ledger battle-tested across billions of tokens. A promise registry wired
+to refuse dishonest marketing. A Blueprint governance kernel that was
 modeling typed business operations before the industry discovered the
-vocabulary; per-work microVM isolation on owned infrastructure; a
-payments stack that settles in fiat *and* Bitcoin/Lightning; and a
+vocabulary. Per-work microVM isolation on owned infrastructure. A
+payments stack that settles in fiat *and* Bitcoin/Lightning. And a
 nightly QA swarm that files issues against us when we regress. The
 glamorous layer — the phone app, the employee templates, the dashboards —
 is being assembled *on top of* the trust machine, not in place of it.
 
 The window is now because the market's education is complete and its
-infrastructure isn't. The operators are assembled, convinced, spending,
+infrastructure is not. The operators are assembled, convinced, spending,
 and unserved. The sovereignty argument is being broadcast at the top of
 the market by companies structurally unable to go down-market. Every
 month of delay, another million businesses duct-tape a stack they'll
 regret — or hand their books to a platform that will feed on them.
 
 Agents that work. Receipts that prove it. Machines you can own.
-That's OpenAgents.
+That is OpenAgents.
 
 ---
 
@@ -265,22 +265,22 @@ That's OpenAgents.
 - **10 seconds:** OpenAgents gives businesses AI agents that actually do
   work — coding from your phone, AI employees for your repeatable ops —
   with a receipt for everything they do.
-- **20 seconds:** We're the front door to the agentic economy. Start with
-  a coding agent in your pocket; hire AI employees that run around the
-  clock on isolated machines we meter to the token; when the work gets
+- **20 seconds:** We are the front door to the agentic economy. Start with
+  a coding agent in your pocket. Hire AI employees that run around the
+  clock on isolated machines we meter to the token. When the work gets
   sensitive, we install the models inside your own walls. Every claim we
   make ships with a receipt.
 - **The category line:** Institutional-grade AI sovereignty and AI
   employees, priced and packaged for the 30M businesses the enterprise
-  vendors can't reach. *(Internal shorthand: "Palantir for SMB" — never
+  vendors cannot reach. *(Internal shorthand: "Palantir for SMB" — never
   public copy.)*
-- **The trust line:** Don't trust us — check the receipt.
+- **The trust line:** Do not trust us — check the receipt.
 
 ## What we offer (the products)
 
 - **Khala Code (mobile)** — the phone-first coding agent: App Store →
   GitHub sign-in → pick a repo → agent does the work → pull request +
-  push notification. $10 free credit; buy more in-app. No desktop needed,
+  push notification. $10 free credit. Buy more in-app. No desktop needed,
   ever.
 - **Khala Code (desktop)** — the operator console: fleets of agents, an
   approvals inbox, multi-model orchestration, and editor tooling pulled
@@ -297,13 +297,13 @@ That's OpenAgents.
   content engine, ops triage, knowledge concierge), grounded in a
   governed knowledge object where every fact knows its source. Powered by
   our **Blueprint** system. Promotion ladder: observe → draft →
-  act-with-approval → act-within-policy; every promotion receipted.
+  act-with-approval → act-within-policy. Every promotion receipted.
 - **Reactor** — private open-model deployment: curated open weights on
   the customer's hardware behind our gateway, governed by a typed
   model-provenance policy (e.g. "US-origin only"), enforced structurally.
   We run our own production on it (Reactor Zero) *(external claims
   gated)*.
-- **QA Swarm** — point a swarm of QA agents at your product; get
+- **QA Swarm** — point a swarm of QA agents at your product. Get
   confirmed/refuted verdicts, videos, distilled regression tests, and a
   shareable proof page.
 - **Services** — accepted outcomes, delivered: fixed-scope quick wins →
@@ -316,11 +316,11 @@ That's OpenAgents.
   five- and six-figure outcomes — the failure points are babysitting and
   trust, and those are exactly what we sell: always-on isolated machines
   with budgets/auto-pause + a typed authority ladder with receipts.
-- **Pay for work, not seats.** Usage credits that never expire; no
+- **Pay for work, not seats.** Usage credits that never expire. No
   per-seat subscription. Bring your own Codex/Claude subscription and
   your agent's model cost drops to ~zero — you pay machine time.
 - **Approve from your phone.** Every escalation is one tap. An employee
-  you can't cheaply supervise is one you'll over-trust or turn off; ours
+  you cannot cheaply supervise is one you'll over-trust or turn off. Ours
   are built for one-keystroke management.
 - **Your knowhow stays yours.** The company brain is a governed object
   you own and can export — not prompts trapped in a vendor's weights.
@@ -328,7 +328,7 @@ That's OpenAgents.
   policy).
 - **Grow into sovereignty without a rebuild:** hosted → bring-your-own
   model → private placement → Reactor on your hardware. Same employees,
-  same receipts; where the machine lives is a menu choice.
+  same receipts. Where the machine lives is a menu choice.
 - **Regulated-work ready by design:** draft-only defaults,
   human-approval gates on client-facing output, redaction before
   inference, professional-review lanes for legal/health *(compliance
@@ -340,9 +340,9 @@ That's OpenAgents.
 ## Differentiators (vs. the field)
 
 - **vs. harness/model vendors (Cursor, Codex, Claude Code):** they sell
-  the worker; we sell the *workforce* — always-on hosting, multi-agent
+  the worker. We sell the *workforce* — always-on hosting, multi-agent
   management, budgets, approvals, receipts, payments. We wrap harnesses
-  rather than compete with them; theirs churn, our layer compounds.
+  rather than compete with them. Theirs churn, our layer compounds.
 - **vs. enterprise agent deployers (Palantir, FDE shops):** same
   sovereignty program — ours is automated, self-serve at the bottom,
   four-figure entry instead of six, and we *operate our own product on
@@ -356,23 +356,23 @@ That's OpenAgents.
   Bitcoin/Lightning settlement + a nightly public QA swarm on our own
   product + verification-by-replay research (Tassadar).
 
-## Proof points (all receipt-backed; check labels before public use)
+## Proof points (all receipt-backed, check labels before public use)
 
 - Billions of tokens served through the public counter, reconciled to
   exact per-turn usage rows — accounting discipline in production, not
   slideware.
 - Payments live in production: card + crypto + Lightning.
 - Firecracker microVM agent computers on owned GCP: placement transport
-  proven live; money gates (single-charge, exact reasoning/cache
+  proven live. Money gates (single-charge, exact reasoning/cache
   accounting) landed *(full end-to-end proof bundle in flight — #8503)*.
 - Reactor Zero internal dogfood receipt: open-weight serving under a
   strict US-only provenance policy, including a structurally **refused**
-  nonconforming model pull *(internal receipt; external claims gated)*.
+  nonconforming model pull *(internal receipt, external claims gated)*.
 - Nightly QA swarm on Khala Code desktop: seeded monkeys, visual
   baselines, perf budgets, auto-filed issues — verdicts published, green
   earned.
-- Services revenue exists *(private; owner-reported — not for public
-  copy)*; the productized ladder and live checkout links are built.
+- Services revenue exists *(private, owner-reported — not for public
+  copy)*. The productized ladder and live checkout links are built.
 - Field evidence: the Agentic Society mastermind (2026-07-03) — the
   buyer persona, the demand, and the trust gap, observed first-hand.
 
@@ -383,10 +383,10 @@ That's OpenAgents.
 - **AI employee** — a named, permissioned, budgeted standing agent.
 - **Company brain** — your governed business knowledge object.
 - **Blueprint** — our typed business-operations and governance system
-  (never "ontology" — that is Palantir's word; we say Blueprint).
+  (never "ontology" — that is Palantir's word, we say Blueprint).
 - **Reactor / Reactor Zero** — private open-model deployment / our own.
 - **Receipts / promises / behavior contracts** — the trust stack.
 - **Credits** — the ledger unit ("minerals" as consumer-facing brand is
   owner-gated, undecided).
 - **QA Swarm, Aiur, Artanis, Pylon, Arbiter, Khala Sync** — the named
-  system family; one StarCraft-blue identity across every surface.
+  system family. One StarCraft-blue identity across every surface.

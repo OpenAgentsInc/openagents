@@ -1,7 +1,7 @@
 # Pi terminal-agent tool layer study
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-28
@@ -18,18 +18,18 @@ Bun + Effect + Effect Schema implementation.
 Pi's strongest pattern is a small, model-legible built-in tool catalog backed by
 one definition module per tool. Each tool definition includes:
 
-- a stable model-facing name such as `read`, `bash`, `edit`, or `write`;
-- a TypeBox parameter schema with per-field descriptions;
-- a short natural-language description;
+- a stable model-facing name such as `read`, `bash`, `edit`, or `write`.
+- a TypeBox parameter schema with per-field descriptions.
+- a short natural-language description.
 - optional prompt snippets and prompt guidelines used in the default system
-  prompt;
+  prompt.
 - an `execute` implementation returning typed content plus optional tool-specific
-  details;
+  details.
 - optional terminal renderers for compact or expanded UI output.
 
 The design is minimal but not toy-like. Search and shell output are aggressively
-bounded; reads include continuation hints; edits use exact replacements with
-diff previews; bash output streams partial updates and preserves full truncated
+bounded. Reads include continuation hints. Edits use exact replacements with
+diff previews. Bash output streams partial updates and preserves full truncated
 output in temp files.
 
 The major gap for Khala is authority. Pi explicitly says it runs with the
@@ -78,7 +78,7 @@ Pi uses TypeBox schemas inside each tool module. Examples:
 - `packages/coding-agent/src/core/tools/bash.ts` defines `bashSchema` with
   `command` and optional `timeout`.
 - `packages/coding-agent/src/core/tools/edit.ts` defines `editSchema` with
-  `path` and an `edits` array of `{ oldText, newText }`; `additionalProperties:
+  `path` and an `edits` array of `{ oldText, newText }`. `additionalProperties:
   false` is set on the edit object and top-level schema.
 - `packages/coding-agent/src/core/tools/write.ts` defines `writeSchema` with
   `path` and `content`.
@@ -124,7 +124,7 @@ The high-level flow:
 1. Stream an assistant message from the model.
 2. Extract `toolCall` content blocks from the assistant message.
 3. Choose sequential execution when the global mode is sequential or any target
-   tool declares `executionMode: "sequential"`; otherwise prepare calls in source
+   tool declares `executionMode: "sequential"`. Otherwise prepare calls in source
    order and execute allowed calls concurrently.
 4. For each call, find the named tool in `currentContext.tools`.
 5. Run `prepareArguments` if present.
@@ -158,12 +158,12 @@ callers flexible without giving up a definition-first registry internally.
 types. For text files it:
 
 - resolves paths relative to the current working directory through
-  `resolveReadPathAsync`;
-- checks readability;
-- treats `offset` as 1-indexed;
-- applies a user `limit` before default truncation;
-- truncates from the head with `truncateHead`;
-- returns continuation hints such as the next `offset` when more content remains;
+  `resolveReadPathAsync`.
+- checks readability.
+- treats `offset` as 1-indexed.
+- applies a user `limit` before default truncation.
+- truncates from the head with `truncateHead`.
+- returns continuation hints such as the next `offset` when more content remains.
 - handles the edge case where the first line alone exceeds the byte limit by
   pointing the model at a targeted `bash` fallback.
 
@@ -179,12 +179,12 @@ terminal unless expanded.
 `packages/coding-agent/src/core/tools/bash.ts` executes shell commands through a
 pluggable `BashOperations` interface. The default backend:
 
-- verifies the working directory exists;
-- uses Pi's shell config and environment;
-- spawns a detached process group on non-Windows systems;
-- streams stdout and stderr into one output accumulator;
-- supports an optional timeout;
-- kills the process tree on abort or timeout;
+- verifies the working directory exists.
+- uses Pi's shell config and environment.
+- spawns a detached process group on non-Windows systems.
+- streams stdout and stderr into one output accumulator.
+- supports an optional timeout.
+- kills the process tree on abort or timeout.
 - tracks detached child PIDs.
 
 The tool definition says output is truncated to the last default line/byte limit
@@ -237,21 +237,21 @@ filesystem operation so the mutation queue is not released while a write may
 still complete.
 
 The prompt guideline says to use `write` only for new files or complete rewrites.
-That is a useful model-facing division: targeted changes should use `edit`;
+That is a useful model-facing division: targeted changes should use `edit`.
 whole-file creation/replacement should use `write`.
 
 ### grep
 
 `packages/coding-agent/src/core/tools/grep.ts` wraps ripgrep:
 
-- ensures `rg` is available via `ensureTool("rg", true)`;
-- runs `rg --json --line-number --color=never --hidden`;
+- ensures `rg` is available via `ensureTool("rg", true)`.
+- runs `rg --json --line-number --color=never --hidden`.
 - supports `ignoreCase`, fixed-string mode, globs, context lines, and a match
-  limit;
-- respects `.gitignore`;
-- uses custom operations for path checks and file reads when injected;
-- truncates long matching lines to `GREP_MAX_LINE_LENGTH`;
-- truncates total output by bytes;
+  limit.
+- respects `.gitignore`.
+- uses custom operations for path checks and file reads when injected.
+- truncates long matching lines to `GREP_MAX_LINE_LENGTH`.
+- truncates total output by bytes.
 - returns notices when match limits, byte limits, or line truncation occur.
 
 No-match is a successful tool result with "No matches found", while rg errors
@@ -262,26 +262,26 @@ other than normal no-match become error tool results.
 `packages/coding-agent/src/core/tools/find.ts` wraps `fd` by default and supports
 a custom `glob` operation for alternate backends. It:
 
-- resolves the search path under the current working directory;
-- returns relative POSIX-style paths;
-- respects `.gitignore`;
-- applies a result limit;
+- resolves the search path under the current working directory.
+- returns relative POSIX-style paths.
+- respects `.gitignore`.
+- applies a result limit.
 - detects whether it is inside a git repo to decide whether `fd` should require
-  git ignore behavior;
+  git ignore behavior.
 - uses `--full-path` and rewrites path-containing patterns with `**/` when
-  needed;
+  needed.
 - returns "No files found matching pattern" as a successful empty result.
 
 ### ls
 
 `packages/coding-agent/src/core/tools/ls.ts` is intentionally simple:
 
-- optional `path`, optional `limit`;
-- verifies path exists and is a directory;
-- sorts entries case-insensitively;
-- appends `/` to directories;
-- includes dotfiles;
-- caps entries and byte output;
+- optional `path`, optional `limit`.
+- verifies path exists and is a directory.
+- sorts entries case-insensitively.
+- appends `/` to directories.
+- includes dotfiles.
+- caps entries and byte output.
 - returns "(empty directory)" for empty directories.
 
 This is a good example of a tool that avoids forcing the model to spend a shell
@@ -308,8 +308,8 @@ The explicit containerization guide at
 permissions by default and recommends three isolation patterns:
 
 - route built-in tools and user `!` commands into the Gondolin local micro-VM
-  extension;
-- run the whole Pi process in Docker;
+  extension.
+- run the whole Pi process in Docker.
 - run the whole Pi process in NVIDIA OpenShell.
 
 This is the main design point Khala should not copy as-is. Khala needs a typed
@@ -336,10 +336,10 @@ failures all become `toolResult` messages with `isError: true` and text content.
 Output limits are centralized in
 `packages/coding-agent/src/core/tools/truncate.ts`:
 
-- default max lines: 2000;
-- default max bytes: 50 KiB;
-- grep max match line length: 500 characters;
-- read/find/grep/ls usually keep the head;
+- default max lines: 2000.
+- default max bytes: 50 KiB.
+- grep max match line length: 500 characters.
+- read/find/grep/ls usually keep the head.
 - bash keeps the tail.
 
 This head-vs-tail distinction is exactly right for a coding agent: file reads
@@ -426,7 +426,7 @@ Avoid:
 - Treating regex command guards as sufficient approval/sandboxing.
 - Letting raw shell output, temp paths, private prompts, credentials, or local
   repo paths enter public traces or product proofs.
-- Making `bash` the model's only way to search/list/read; dedicated read-only
+- Making `bash` the model's only way to search/list/read. Dedicated read-only
   tools are safer and produce cleaner context.
 - Allowing prompt text to drift from the tool registry.
 - Exposing write/overwrite tools in read-only or untrusted sessions.

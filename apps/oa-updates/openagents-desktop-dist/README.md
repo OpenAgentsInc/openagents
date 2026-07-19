@@ -12,7 +12,7 @@ node --import tsx apps/openagents-desktop/scripts/publish-release.ts \
 ```
 
 That script writes the bounded `openagents-desktop-release.json` descriptor
-(`{ "releases": [...] }`, one latest entry per channel; the original flat
+(`{ "releases": [...] }`, one latest entry per channel, the original flat
 single-release shape is still accepted on read) plus the versioned signed
 manifest bytes and detached ed25519 signature files it references. It enforces
 version monotonicity and channel rules via the desktop update contract and
@@ -20,6 +20,6 @@ self-verifies every signature through the client verification seam before
 staging — hand-editing files here bypasses those gates and will be rejected at
 seed/client verification.
 
-Artifact bytes are NOT stored here; they live behind the credential-free HTTPS
+Artifact bytes are NOT stored here. They live behind the credential-free HTTPS
 `artifactUrl` (GCS) named in the descriptor, and clients gate the download on
 the SIGNED sha256/byteLength.

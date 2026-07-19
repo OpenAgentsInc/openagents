@@ -13,14 +13,14 @@ state into Nexus/Treasury payout-intent creation:
 The route is not a public checkout action. It requires an OpenAgents admin API
 token plus `Idempotency-Key`, and it uses only server-side durable evidence:
 
-- Site checkout intent record;
-- buyer payment receipt;
-- matched MDK reconciliation event;
-- current Pylon/Nexus release-gate evidence;
-- accepted-work refs;
-- payout target approval ref;
-- wallet readiness;
-- amount; and
+- Site checkout intent record.
+- buyer payment receipt.
+- matched MDK reconciliation event.
+- current Pylon/Nexus release-gate evidence.
+- accepted-work refs.
+- payout target approval ref.
+- wallet readiness.
+- amount. And
 - spend cap.
 
 Checkout return URLs, client-side success pages, raw provider events, and public
@@ -31,10 +31,10 @@ agent claims are never payout authority.
 When all gates pass, the route creates one Nexus/Treasury payout intent after
 the same Treasury authority policy gates pass:
 
-- accepted-work evidence is required;
-- payout target approval is required;
-- wallet readiness must be fresh;
-- amount must fit within spend cap; and
+- accepted-work evidence is required.
+- payout target approval is required.
+- wallet readiness must be fresh.
+- amount must fit within spend cap. And
 - replay and duplicate funding are rejected.
 
 The bridge also checks buyer-payment duplicate state before authority creation.
@@ -57,46 +57,46 @@ readiness only.
 
 Request body fields include:
 
-- `checkoutIntentRef`;
-- `acceptedWorkRefs`;
-- `payoutTargetApprovalRef`;
-- `payoutTargetRef`;
-- `policySnapshotRef`;
-- `amount`;
-- `spendCap`;
-- `walletReadiness`;
-- optional `adapterKind`;
-- optional `assignmentRef`;
-- optional `pylonJobRef`;
-- optional `artanisDispatchRef`; and
+- `checkoutIntentRef`.
+- `acceptedWorkRefs`.
+- `payoutTargetApprovalRef`.
+- `payoutTargetRef`.
+- `policySnapshotRef`.
+- `amount`.
+- `spendCap`.
+- `walletReadiness`.
+- optional `adapterKind`.
+- optional `assignmentRef`.
+- optional `pylonJobRef`.
+- optional `artanisDispatchRef`. And
 - optional public-safe metadata/projection refs.
 
 Responses use the existing Site commerce envelope with:
 
-- `action: "payout_bridge_create"`;
-- `bridge`;
-- `payoutIntent` on success; and
+- `action: "payout_bridge_create"`.
+- `bridge`.
+- `payoutIntent` on success. And
 - redaction metadata.
 
 Blocked responses use HTTP 409 and include blocker refs such as:
 
-- `missing_verified_buyer_payment`;
-- `checkout_return_not_authority`;
-- `duplicate_buyer_payment_ref`;
-- `missing_accepted_work_ref`;
-- `missing_payout_target_approval`;
-- `stale_or_absent_wallet_readiness`;
-- `spend_cap_exceeded`;
-- `release_gate_not_ready`; and
+- `missing_verified_buyer_payment`.
+- `checkout_return_not_authority`.
+- `duplicate_buyer_payment_ref`.
+- `missing_accepted_work_ref`.
+- `missing_payout_target_approval`.
+- `stale_or_absent_wallet_readiness`.
+- `spend_cap_exceeded`.
+- `release_gate_not_ready`. And
 - `missing_real_movement_gate`.
 
 ## Verification
 
 Covered tests:
 
-- `workers/api/src/site-payment-to-payout-bridge.test.ts`;
-- `workers/api/src/site-commerce-routes.test.ts`;
-- `workers/api/src/treasury-payment-authority.test.ts`;
-- `workers/api/src/pylon-marketplace-payout-flow.test.ts`;
-- `workers/api/src/artanis-nexus-pylon-adapters.test.ts`; and
+- `workers/api/src/site-payment-to-payout-bridge.test.ts`.
+- `workers/api/src/site-commerce-routes.test.ts`.
+- `workers/api/src/treasury-payment-authority.test.ts`.
+- `workers/api/src/pylon-marketplace-payout-flow.test.ts`.
+- `workers/api/src/artanis-nexus-pylon-adapters.test.ts`. And
 - `workers/api/src/treasury-payment-mdk-agent-wallet-adapter.test.ts`.

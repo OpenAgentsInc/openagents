@@ -22,8 +22,8 @@ From `docs/transcripts/238.md`:
 
 1. "The first AI model training run paid in **Bitcoin**. Specifically, to
    **consumer compute**. Anybody can plug in a computer and get paid Bitcoin
-   for helping with this." (Worker runs a job; a validator on the network
-   replays it; once verified, both worker and verifier get paid in sats.)
+   for helping with this." (Worker runs a job, a validator on the network
+   replays it. Once verified, both worker and verifier get paid in sats.)
 
 2. "The first **public LLM-computer** (Percepta-class) **training run**."
    LLM-computer = programs compiled directly into transformer weights, executed
@@ -34,19 +34,19 @@ From `docs/transcripts/238.md`:
 The claim is only a "first" if **all** of these hold *together*:
 
 - paid in **Bitcoin** — the asset/sats, not a project token, not fiat, not
-  off-platform credits;
+  off-platform credits.
 - for **training / execution compute** — not data collection, labeling,
-  annotation, or inference/hosting;
+  annotation, or inference/hosting.
 - on contributors' **own consumer devices** — decentralized, not rented
-  datacenter GPU;
+  datacenter GPU.
 - **verified** — replay-verified work, not trust-me self-reporting.
 
 ### Distinguishing conjunction for Claim 2
 
 - the **compiled-program-in-weights** ("LLM-computer" / Percepta-class)
-  paradigm;
+  paradigm.
 - run as a **public, open contributor network** (anyone can join), not a
-  single-org closed research artifact;
+  single-org closed research artifact.
 - as an actual **training run** with paid + verified contribution.
 
 ---
@@ -77,23 +77,23 @@ These are the strongest "decentralized training + pay for compute" precedents.
 Every one pays a **project token**, not Bitcoin:
 
 - **Bittensor / Templar (Subnet 3)** — miners contribute commodity/home GPU
-  compute and gradients; validators score; rewards paid in **TAO** (and subnet
+  compute and gradients. Validators score. Rewards paid in **TAO** (and subnet
   alpha token). Templar completed "Covenant-72B," the largest decentralized
   LLM pretraining run, ~70 contributors on home internet. Pays TAO, not BTC.
   - https://www.ainvest.com/news/bittensor-tao-surges-subnet-3-templar-completes-largest-decentralized-llm-pretraining-2603/ ,
     https://blockeden.xyz/blog/2026/03/13/templar-covenant-72b-bittensor-largest-decentralized-llm-pretraining/
-- **Gensyn** — verifiable-compute training marketplace; nodes earn the **$AI**
+- **Gensyn** — verifiable-compute training marketplace. Nodes earn the **$AI**
   token for executing training tasks. Pays $AI, not BTC.
   - https://www.gensyn.ai/ ,
     https://www.gate.com/learn/articles/gensyn-ai-tokenomics-analysis-compute-incentives-fee-mechanism-and-ai-value-logic
 - **Prime Intellect** — trustless training network with verifiable rewards
-  (PRIME-RL / TOPLOC / SHARDCAST); aggregates idle GPUs; rewards in protocol
+  (PRIME-RL / TOPLOC / SHARDCAST). Aggregates idle GPUs. Rewards in protocol
   token/credits, not BTC. First to train a 10B-param distributed LLM (2024).
   - https://www.gate.com/learn/articles/open-ai-founding-members-invest-a-quick-dive-into-the-decentralized-ai-breakthrough-prime-intellect/7323
 - **Nous Research / Psyche (DisTrO)** — decentralized training on idle GPUs,
   incentivized via a **token mechanism on Solana**. Not BTC.
   - https://nousresearch.com/nous-psyche , https://psyche.network/
-- **Pluralis** — collaborative/protocol-learning decentralized training;
+- **Pluralis** — collaborative/protocol-learning decentralized training.
   ecosystem/token framing, not BTC payment for compute.
   - (covered in the Nous/Psyche ecosystem coverage above)
 
@@ -109,14 +109,14 @@ asset qualifier is the discriminator and it holds.
   be careful about.
   - Why it does **not** defeat Claim 1: (a) the unit of account is **Salad
     Balance** (an off-platform credit), with crypto only as one redemption
-    off-ramp — it is not "paid in Bitcoin"; (b) the work is **renter-supplied
+    off-ramp — it is not "paid in Bitcoin". (B) the work is **renter-supplied
     jobs on a compute marketplace**, not a single coordinated, verified
-    **training run** where contributions are **replay-verified**; (c) there is
+    **training run** where contributions are **replay-verified**. (C) there is
     no per-task replay-verification settlement in sats. It is GPU-rental
     earnings, not Bitcoin-for-verified-training-compute.
   - https://salad.com/ , https://community.salad.com/sell-gpu-power/
 - **Akash / Render (RNDR) / Vast.ai / RunPod** — compute or GPU-rental
-  marketplaces. Akash/Render use their own tokens; Vast.ai/RunPod are fiat
+  marketplaces. Akash/Render use their own tokens. Vast.ai/RunPod are fiat
   rental. None pay BTC for verified training compute.
   - https://www.kucoin.com/blog/top-ai-depin-projects-2025-2026-decentralized-infrastructure
 
@@ -137,7 +137,7 @@ Verdict: **none defeat Claim 1.**
 ### Older "Bitcoin mining rigs pivot to AI"
 
 Hardware-utilization pivots (miners renting GPUs to AI) earn fiat or token
-rental income for *inference/rendering*; none constitute a verified
+rental income for *inference/rendering*. None constitute a verified
 training-run paid in BTC to consumer devices. No counterexample found.
 
 ---
@@ -153,7 +153,7 @@ training-run paid in BTC to consumer devices. No counterexample found.
 - Why it does **not** defeat Claim 2: it is a **single-organization research
   artifact** — a paper plus a repo. There is **no public contributor network,
   no payment, no Bitcoin, no distributed/verified training run**. Percepta
-  *defined and demonstrated the paradigm*; it did not run an open paid public
+  *defined and demonstrated the paradigm*. It did not run an open paid public
   training network on it. (The transcript itself credits Percepta as the
   paradigm's origin — the claim is about being the first *public network* on
   it, not the first to invent it.)
@@ -188,7 +188,7 @@ network on this paradigm was found.**
 
 No prior project satisfies all four qualifiers together. The decisive
 discriminators are:
-- **asset = Bitcoin** (every decentralized-training peer pays a token; Spirit
+- **asset = Bitcoin** (every decentralized-training peer pays a token, Spirit
   of Satoshi paid BTC but for *data*, not compute), and
 - **verified training compute on consumer devices** (Salad pays credits for
   uncoordinated marketplace jobs, not replay-verified contributions to a run).
@@ -219,7 +219,7 @@ Avoid the over-broad phrasing "first to pay Bitcoin for AI" — Spirit of Satosh
 doing the work — and with Percepta explicitly credited as the paradigm's
 originator.**
 
-Percepta invented and demonstrated the paradigm but ran no public paid network;
+Percepta invented and demonstrated the paradigm but ran no public paid network.
 Tracr is an interpretability tool. So "first **public** LLM-computer training
 run / open contributor network" holds — but only if "public/open contributor
 network" is kept in the sentence and Percepta is credited (which the script
@@ -233,7 +233,7 @@ Recommended on-camera phrasing:
 
 Guardrails:
 - Do **not** say "first LLM-computer" or "we invented the LLM-computer" —
-  Percepta did (March 2026). Credit them; the firstness is the **public paid
+  Percepta did (March 2026). Credit them. The firstness is the **public paid
   run**, not the paradigm.
 - Keep "public" / "open contributor network" explicit — that is what
   distinguishes it from Percepta's closed research artifact.
@@ -248,7 +248,7 @@ Guardrails:
   open contributor network," with Percepta credited as paradigm originator.
 
 Both are safe to crow on camera **as worded above**. They are not safe in their
-loosest form ("first to pay Bitcoin for AI"; "first LLM-computer").
+loosest form ("first to pay Bitcoin for AI", "first LLM-computer").
 
 ---
 

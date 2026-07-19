@@ -134,10 +134,10 @@ loose reports should stay in the Forum.
 
 Every report should include:
 
-- promise registry version, if known;
-- promise ID, if known;
-- the exact surface and claim text;
-- expected behavior and observed behavior;
-- public-safe evidence, reproduction steps, timestamp, and environment;
+- promise registry version, if known.
+- promise ID, if known.
+- the exact surface and claim text.
+- expected behavior and observed behavior.
+- public-safe evidence, reproduction steps, timestamp, and environment.
 - a confirmation that secrets, wallet material, provider payloads, private repo
   data, and customer-sensitive data were removed.

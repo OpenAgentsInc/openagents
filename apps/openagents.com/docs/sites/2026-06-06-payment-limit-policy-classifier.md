@@ -25,8 +25,8 @@ actions, Site checkout, agent API, and runner routes can reuse.
 | `private_authority` | `blocked` | No. Payment cannot replace owner consent, scoped grants, auth, or private-data authority. |
 | `provider_capacity` | `manual_review` | No automatic recovery. Operators must decide whether capacity exists. |
 | `manual_review` | `manual_review` | No automatic recovery. The route is intentionally waiting on a human/operator decision. |
-| `free_beta_allowance` | `allow` when allowance exists, otherwise `recoverable` or `manual_review` | Free allowance can allow the action; otherwise the action may move to credits or L402 when configured. |
-| `credits` | `allow` when credit balance exists, otherwise `recoverable` or `manual_review` | Credit balance can allow the action; missing credits can point to recoverable products. |
+| `free_beta_allowance` | `allow` when allowance exists, otherwise `recoverable` or `manual_review` | Free allowance can allow the action. Otherwise the action may move to credits or L402 when configured. |
+| `credits` | `allow` when credit balance exists, otherwise `recoverable` or `manual_review` | Credit balance can allow the action. Missing credits can point to recoverable products. |
 | `economic_usage` | `recoverable` when credits or L402/MDK are configured | Yes. This is the normal paid recovery path. |
 | `l402_mdk_recoverable` | `recoverable` when credits or L402/MDK are configured | Yes. This marks a route that is intended to return a payment challenge once the credential service exists. |
 
@@ -60,7 +60,7 @@ The redaction guard rejects refs that look like:
 - bearer tokens, cookies, OAuth material, API keys, GitHub tokens, provider
   grants, callback tokens, wallet material, mnemonics, raw invoices, raw
   preimages, raw payment material, raw prompts, raw runner logs, source
-  archives, customer emails, or secret-shaped strings;
+  archives, customer emails, or secret-shaped strings.
 - runner gateway payloads that already fail the runner private-material guard.
 
 This keeps payment-policy projections usable by public proof, customer order

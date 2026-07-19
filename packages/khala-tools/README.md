@@ -8,7 +8,7 @@ registries, invocation/result/event contracts, permission requests, output lanes
 and model-provider adapter helpers.
 
 The local tool runtime does not choose model authority. Hosted OpenAgents cloud
-is the only real model backend for Khala Code desktop; request-specific
+is the only real model backend for Khala Code desktop. Request-specific
 OpenRouter BYOK metadata may be forwarded to hosted Khala, but the desktop
 runtime must not call OpenRouter directly. Tests use the mock backend with no
 network or spend.
@@ -37,7 +37,7 @@ missing/revoked accounts, stale heartbeat, duplicate active assignment,
 Admitted GEPA candidates feed the program through
 `openagents.khala.fleet_delegation.parameters.v0`. Hosts can pass that parameter
 set directly or set
-`OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON`; invalid or missing
+`OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON`. Invalid or missing
 admission falls back to the package defaults. The bounded knobs cover capacity
 advertisement, account-ranking heuristic, duplicate retry/backoff, objective
 template rendering, and default verifier criteria.
@@ -53,7 +53,7 @@ Blueprint registry to exist.
 `read` reads text files only. It accepts a workspace-relative or explicitly
 approved absolute/external path plus optional 1-indexed `offset` and `limit`
 arguments. It returns numbered, bounded model output and structured UI line
-metadata. Image-like files are not read as text; the tool returns a `view_image`
+metadata. Image-like files are not read as text. The tool returns a `view_image`
 hint instead. Credential-shaped paths, device files, sockets, pipes, directories,
 and denied workspace escapes are blocked before bytes are returned.
 
@@ -63,7 +63,7 @@ and denied workspace escapes are blocked before bytes are returned.
 approved absolute/external `path` and optional `limit`. Entries are sorted
 case-insensitively, dotfiles are included, directories end in `/`, and empty
 directories are successful results. The tool returns bounded model output plus
-structured UI entries; denied workspace escapes and credential-shaped directory
+structured UI entries. Denied workspace escapes and credential-shaped directory
 paths are blocked before listing.
 
 ### `glob`
@@ -90,7 +90,7 @@ and no-match searches succeed with structured empty results.
 `edits` array of `old_text`/`new_text` pairs, with optional `replace_all`.
 Matches are normalized to LF for comparison and written back with the original
 line-ending style and BOM preserved. Ambiguous, missing, stale, whole-file, and
-credential-path edits fail closed; successful edits produce a bounded diff
+credential-path edits fail closed. Successful edits produce a bounded diff
 preview and request scoped write approval before bytes are changed.
 
 ### `write`
@@ -108,7 +108,7 @@ before bytes are changed.
 Patch` / `*** End Patch` markers and add, update, or delete file operations.
 The whole patch is parsed, paths are resolved, and update hunks are matched
 before any side effect. One scoped patch approval covers all touched resources.
-V1 application is sequential and explicitly non-atomic; partial failures return
+V1 application is sequential and explicitly non-atomic. Partial failures return
 a structured receipt with the number of applied operations.
 
 ### `exec_command`
@@ -120,7 +120,7 @@ the workspace cwd, require scoped shell approval, request extra approval for
 external cwd or network-looking commands, stream stdout/stderr events for
 terminal renderers, and return a tail-oriented model preview. On macOS, the
 default local service runs commands through a Seatbelt profile that limits writes
-to the workspace and reports `sandbox.enforced=true`; other platforms continue
+to the workspace and reports `sandbox.enforced=true`. Other platforms continue
 to honestly report that no process sandbox is enforced.
 
 ### `write_stdin`
@@ -138,7 +138,7 @@ private artifact refs.
 preference input. It accepts `prompt`, optional `choices`, `allow_freeform`,
 `non_blocking`, `timeout_ms`, `default_answer`, and `public_safe`. It is
 separate from permission prompts and cannot grant filesystem, shell, network, or
-credential authority. Non-interactive hosts return typed unavailable results;
+credential authority. Non-interactive hosts return typed unavailable results.
 hosts that support pending prompts emit `user_input_*` events for desktop and
 CLI renderers.
 
@@ -160,7 +160,7 @@ path and external-directory approval boundary as text reads. It validates image
 magic bytes, dimensions, file type, and size before returning a structured UI
 preview with dimensions, media type, private artifact ref, and redaction
 classification. When the active backend supports vision, hosts can pass through
-the private image content part; non-vision backends receive the same safe
+the private image content part. Non-vision backends receive the same safe
 preview metadata without image bytes in public summaries.
 
 ### `web_fetch`
@@ -168,7 +168,7 @@ preview metadata without image bytes in public summaries.
 `web_fetch` is part of the optional `network` preset, not the offline coding
 core. It fetches one HTTP(S) URL only after explicit `network` permission, with
 bounded redirects, timeout, and response bytes. It rejects caller-supplied
-headers, credentials, tokens, and authority flags; use local `read`, `glob`, and
+headers, credentials, tokens, and authority flags. Use local `read`, `glob`, and
 `grep` for repository navigation. Results include source URL, final URL, status,
 content type, fetched-at timestamp, redirect metadata, bounded private
 model-visible text, and private artifacts for truncated or binary bodies.
@@ -176,7 +176,7 @@ model-visible text, and private artifacts for truncated or binary bodies.
 ### `web_search`
 
 `web_search` is also part of the optional `network` preset. It requires explicit
-network permission and a configured host search provider; the default service
+network permission and a configured host search provider. The default service
 fails closed as unconfigured. It accepts `query`, optional `domains`,
 `recency_days`, and `limit`, but never provider credentials or request headers.
 Results are bounded, source-attributed, timestamped, and kept out of public
@@ -188,7 +188,7 @@ tools for code navigation.
 `browser_navigate`, `browser_click`, `browser_type`, `browser_read_text`,
 `browser_read_dom`, `browser_wait_for`, and `browser_screenshot` are part of the
 optional `browser` preset, not the default coding or inspect profiles. They use
-the distinct `browser` authority and require explicit browser-surface approval;
+the distinct `browser` authority and require explicit browser-surface approval.
 network, shell, filesystem, credential, and owner-local danger authority do not
 flow through these tool arguments.
 
@@ -200,7 +200,7 @@ fails closed with `browser_unavailable`.
 
 Browser text, URLs, titles, DOM, typed text, selectors, and screenshots are
 treated as private local state. Visible text and DOM outputs are bounded for
-model context; truncated visible text spills to a private artifact, raw DOM is
+model context. Truncated visible text spills to a private artifact, raw DOM is
 always stored as a private `text/html` artifact, and screenshots are returned as
 private image artifacts. Public summaries contain only action/result metadata.
 

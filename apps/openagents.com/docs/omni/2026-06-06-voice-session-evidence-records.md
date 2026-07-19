@@ -18,27 +18,27 @@ Implementation:
 
 The session report records:
 
-- provider kind and provider ref;
-- capture state;
-- language ref;
-- transcript segment refs;
-- command proposal refs;
-- source refs;
-- evidence refs;
-- receipt refs;
-- redaction policy refs;
-- approval receipt refs;
-- caveat refs; and
+- provider kind and provider ref.
+- capture state.
+- language ref.
+- transcript segment refs.
+- command proposal refs.
+- source refs.
+- evidence refs.
+- receipt refs.
+- redaction policy refs.
+- approval receipt refs.
+- caveat refs. And
 - workroom ref.
 
 Projection labels use friendly time strings, not raw timestamps.
 
 Supported capture states:
 
-- `not_recorded`;
-- `recorded`;
-- `transcribed`;
-- `redacted`; and
+- `not_recorded`.
+- `recorded`.
+- `transcribed`.
+- `redacted`. And
 - `discarded`.
 
 Transcribed or redacted sessions require transcript segments.
@@ -47,7 +47,7 @@ Transcribed or redacted sessions require transcript segments.
 
 Transcript segments record speaker role, segment ref, text ref, source refs,
 evidence refs, redaction policy refs, start offset, duration, and confidence in
-basis points. The contract stores transcript evidence as refs only; it rejects
+basis points. The contract stores transcript evidence as refs only. It rejects
 raw transcript text, raw audio, provider payloads, private names, contact
 information, secrets, payment/wallet material, and raw timestamps.
 
@@ -55,27 +55,27 @@ information, secrets, payment/wallet material, and raw timestamps.
 
 Command proposals support these route kinds:
 
-- `site_revision_feedback`;
-- `forum_post`;
-- `customer_order`;
-- `crm_send`;
-- `coding_write`;
-- `runner_launch`;
-- `payment`;
-- `provider_action`;
-- `public_claim`;
-- `pylon_setup`; and
+- `site_revision_feedback`.
+- `forum_post`.
+- `customer_order`.
+- `crm_send`.
+- `coding_write`.
+- `runner_launch`.
+- `payment`.
+- `provider_action`.
+- `public_claim`.
+- `pylon_setup`. And
 - `unknown`.
 
 Proposal states are:
 
-- `draft`;
-- `proposed`;
-- `needs_approval`;
-- `approved`;
-- `rejected`;
-- `executed`;
-- `blocked`; and
+- `draft`.
+- `proposed`.
+- `needs_approval`.
+- `approved`.
+- `rejected`.
+- `executed`.
+- `blocked`. And
 - `expired`.
 
 Proposed, approval-needed, approved, and executed commands require source
@@ -84,21 +84,21 @@ at transcript segments in the same session report.
 
 Writes, sends, payments, provider actions, public claims, Pylon setup, and
 runner launches require approval. High and critical risk proposals also require
-approval. Approved or executed proposals require approval receipt refs;
-executed proposals require execution receipt refs; blocked proposals require
-blocked reason refs; and expired proposals require an expiry timestamp.
+approval. Approved or executed proposals require approval receipt refs.
+executed proposals require execution receipt refs. Blocked proposals require
+blocked reason refs. And expired proposals require an expiry timestamp.
 
 ## Authority Boundaries
 
 Voice session evidence is read-only. It cannot:
 
-- capture audio;
-- mutate transcripts;
-- mutate proposals;
-- approve work;
-- execute commands;
-- spend wallets;
-- mutate provider accounts; or
+- capture audio.
+- mutate transcripts.
+- mutate proposals.
+- approve work.
+- execute commands.
+- spend wallets.
+- mutate provider accounts. Or
 - upgrade public claims.
 
 Any actual command execution must go through a separate server-authoritative
@@ -108,10 +108,10 @@ route with scoped grants, idempotency, approval policy, and receipts.
 
 Supported projection audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public, agent, and customer projections redact private provider, idempotency,
@@ -125,12 +125,12 @@ timestamps.
 
 Coverage includes:
 
-- voice session projection and counts;
-- transcript/source validation;
-- confidence and duration validation;
-- proposal state transition requirements;
-- approval and execution receipt requirements;
-- blocked and expired proposal requirements;
-- public redaction; and
+- voice session projection and counts.
+- transcript/source validation.
+- confidence and duration validation.
+- proposal state transition requirements.
+- approval and execution receipt requirements.
+- blocked and expired proposal requirements.
+- public redaction. And
 - hard false audio capture, transcript, proposal, approval, execution,
   payment, provider, and public-claim mutation authority.

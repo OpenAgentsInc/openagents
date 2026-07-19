@@ -20,15 +20,15 @@ Implementation:
 
 The record carries:
 
-- artifact identity and kind;
-- model family ref;
+- artifact identity and kind.
+- model family ref.
 - provider, source, storage, training run, retained failure, eval,
-  benchmark, adapter validation, promotion gate, and Model Lab loop refs;
-- digest records with evidence refs and explicit no-raw-weight-copy posture;
-- rights and license caveats;
-- safety review and redaction policy refs;
-- rollback refs and prior artifact refs;
-- state and storage state; and
+  benchmark, adapter validation, promotion gate, and Model Lab loop refs.
+- digest records with evidence refs and explicit no-raw-weight-copy posture.
+- rights and license caveats.
+- safety review and redaction policy refs.
+- rollback refs and prior artifact refs.
+- state and storage state. And
 - read-only authority.
 
 Projection timestamps use friendly labels and do not expose raw ISO strings.
@@ -37,13 +37,13 @@ Projection timestamps use friendly labels and do not expose raw ISO strings.
 
 Model artifacts cannot:
 
-- start model training;
-- install adapters;
-- copy raw weights;
-- promote runtime behavior;
-- mutate routing;
-- mutate payouts;
-- mutate settlement; or
+- start model training.
+- install adapters.
+- copy raw weights.
+- promote runtime behavior.
+- mutate routing.
+- mutate payouts.
+- mutate settlement. Or
 - upgrade public claims.
 
 Those actions require separate server-authoritative workflows, approvals, and
@@ -65,10 +65,10 @@ reuse.
 
 Supported audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public/customer/agent projections redact private artifact, digest, benchmark,
@@ -83,9 +83,9 @@ timestamps.
 
 Coverage includes:
 
-- reviewed artifact projection;
-- readiness, rollback, storage, and rights labels;
-- source, digest, eval, safety, benchmark, rights, and rollback validation;
-- public redaction; and
+- reviewed artifact projection.
+- readiness, rollback, storage, and rights labels.
+- source, digest, eval, safety, benchmark, rights, and rollback validation.
+- public redaction. And
 - hard false training, adapter-install, raw-weight-copy, runtime-promotion,
   routing, payout, settlement, and public-claim mutation authority.

@@ -1,14 +1,14 @@
 # Forge Linear Adaptation Playbook
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
 
 
 Date: 2026-06-28
-Status: Product and implementation adaptation notes. Public-safe; no secrets,
+Status: Product and implementation adaptation notes. Public-safe. No secrets,
 tokens, private repo contents, raw patches, transcripts, or customer-private
 material.
 
@@ -90,7 +90,7 @@ authority:
 - D1 coordination rows and canonical refs are the authority.
 - Blueprint gates, verification receipts, and promotion receipts decide whether
   a change can move.
-- `apps/forge/` owns the Forge UI; the historical logged-in
+- `apps/forge/` owns the Forge UI. The historical logged-in
   `openagents.com` Forge page remains source material only.
 
 ## 2. Current Forge Pieces To Build On
@@ -135,7 +135,7 @@ The older software-factory docs define the product semantics:
 The synthesis doc already states the key composition:
 
 - the coordination layer answers how code moves safely at arbitrary agent
-  counts;
+  counts.
 - the factory layer answers what the work is, who it is for, and whether it is
   trustworthy.
 
@@ -395,7 +395,7 @@ Implementation direction:
   and persistent filters.
 - Optimize for scanning, review, and repeated action.
 - Avoid marketing-copy hero treatment inside the operator shell. The landing
-  page can be distinctive; the work surfaces should be fast.
+  page can be distinctive. The work surfaces should be fast.
 
 SU tie:
 
@@ -452,7 +452,7 @@ Implementation direction:
 
 - Start with refs-only context snapshots.
 - Record what source refs and artifact refs were included in a run.
-- Use permissioned retrieval; do not mix tenant data.
+- Use permissioned retrieval. Do not mix tenant data.
 - Keep generated context stale-aware when refs advance.
 - For confidential work, record route posture and refuse unsupported private
   paths instead of silently downgrading.
@@ -646,7 +646,7 @@ to evolve separately.
 3. Forge owns work/change/status/verification/promotion truth.
 4. The factory layer is a read/write product system over that truth.
 5. Every agent action needs bounded authority and durable receipts.
-6. Review guides orient humans; verification receipts and gates decide
+6. Review guides orient humans. Verification receipts and gates decide
    readiness.
 7. Metrics are only trusted when derived from live coordination records or
    clearly labeled as seeded.

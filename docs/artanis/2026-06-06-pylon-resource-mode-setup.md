@@ -9,9 +9,9 @@ Status: implemented in #399 / `ARTANIS-014` and extended in #409 /
 
 Pylon should be configurable for different owner-selected resource levels:
 
-- light background use while the owner is working;
-- balanced use;
-- fuller overnight operation;
+- light background use while the owner is working.
+- balanced use.
+- fuller overnight operation.
 - dedicated machine operation.
 
 Artanis may recommend these modes, and a local coding agent may help set them
@@ -43,33 +43,33 @@ The implemented modes are:
 
 Every mode records:
 
-- CPU/GPU/memory ceilings;
-- disk and network budget refs;
-- schedule window ref;
-- pause/resume policy ref;
-- owner approval refs;
-- setup command refs;
-- work-routing refs;
+- CPU/GPU/memory ceilings.
+- disk and network budget refs.
+- schedule window ref.
+- pause/resume policy ref.
+- owner approval refs.
+- setup command refs.
+- work-routing refs.
 - eligibility caveats.
 
 ## Setup Commands
 
 The command records are public-safe refs, not raw shell output:
 
-- install launcher;
-- launch Pylon;
-- set resource mode;
-- version check;
-- runtime status;
-- training status;
-- balance check;
+- install launcher.
+- launch Pylon.
+- set resource mode.
+- version check.
+- runtime status.
+- training status.
+- balance check.
 - history check.
 
 Each command requires:
 
-- explicit owner approval refs;
-- private evidence refs for command output;
-- `evidence_handling.private_by_default`;
+- explicit owner approval refs.
+- private evidence refs for command output.
+- `evidence_handling.private_by_default`.
 - public receipt refs for safe completion markers.
 
 Public projections show command refs, state, caveats, public receipts, and safe
@@ -83,15 +83,15 @@ Pylon on a machine.
 
 Every packet starts as `dry_run_ready` and includes:
 
-- resource intent for CPU/GPU/memory/network/storage;
-- owner approval prompt and owner approval refs;
-- dry-run command refs;
-- private dry-run evidence refs;
-- telemetry refs;
-- pause/resume expectations;
-- checkpoint expectations;
-- public receipt refs;
-- safe instruction refs;
+- resource intent for CPU/GPU/memory/network/storage.
+- owner approval prompt and owner approval refs.
+- dry-run command refs.
+- private dry-run evidence refs.
+- telemetry refs.
+- pause/resume expectations.
+- checkpoint expectations.
+- public receipt refs.
+- safe instruction refs.
 - earning caveats that keep online status separate from eligibility,
   accepted work, payout, and settlement.
 
@@ -104,13 +104,13 @@ unless an owner-approved path marks the packet
 
 Public projections do not expose:
 
-- raw command output;
-- local filesystem paths;
-- provider credentials;
-- wallet material;
-- node secrets;
-- private evidence refs;
-- private customer data;
+- raw command output.
+- local filesystem paths.
+- provider credentials.
+- wallet material.
+- node secrets.
+- private evidence refs.
+- private customer data.
 - raw timestamps.
 
 The projection also keeps resource mode separate from paid-work eligibility.
@@ -124,14 +124,14 @@ Coverage lives in `workers/api/src/pylon-resource-mode-setup.test.ts`.
 The tests cover:
 
 - public-safe projection of background, balanced, overnight, and dedicated
-  modes;
-- private-by-default command evidence;
-- operator-only private evidence visibility;
-- work-routing refs and eligibility caveats;
-- owner approval requirement;
-- required mode and command coverage;
-- local-agent command packet generation for every mode;
-- dry-run evidence redaction and execution-before-approval rejection;
+  modes.
+- private-by-default command evidence.
+- operator-only private evidence visibility.
+- work-routing refs and eligibility caveats.
+- owner approval requirement.
+- required mode and command coverage.
+- local-agent command packet generation for every mode.
+- dry-run evidence redaction and execution-before-approval rejection.
 - rejection of raw local paths, wallet material, node secrets, provider
   credentials, raw command output refs, raw timestamps, and unconditional
   earning claims.

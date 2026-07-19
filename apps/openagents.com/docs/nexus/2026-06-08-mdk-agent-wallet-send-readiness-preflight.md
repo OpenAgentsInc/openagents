@@ -26,9 +26,9 @@ The helper blocks restore/unknown mode before it runs `balance` and before any
 
 The adapter now distinguishes:
 
-- `insufficient_balance`;
-- `insufficient_outbound_capacity`;
-- `mnemonic_restore_not_send_ready`;
+- `insufficient_balance`.
+- `insufficient_outbound_capacity`.
+- `mnemonic_restore_not_send_ready`.
 - `send_readiness_unknown`.
 
 `insufficient_outbound_capacity`, restore-mode blocks, and unknown-home blocks
@@ -39,13 +39,13 @@ normalize to the treasury authority rejection reason
 
 The preflight returns only stable refs:
 
-- `wallet_home.mdk_agent_wallet.original_funded_wallet_home`;
-- `wallet_home.mdk_agent_wallet.mnemonic_restore`;
-- `wallet_home.mdk_agent_wallet.unknown`;
-- `balance.mdk_agent_wallet.minimum_satisfied`;
-- `balance.mdk_agent_wallet.minimum_not_satisfied`;
-- `balance.mdk_agent_wallet.not_checked`;
-- `blocker.mdk_agent_wallet.mnemonic_restore_not_send_ready`;
+- `wallet_home.mdk_agent_wallet.original_funded_wallet_home`.
+- `wallet_home.mdk_agent_wallet.mnemonic_restore`.
+- `wallet_home.mdk_agent_wallet.unknown`.
+- `balance.mdk_agent_wallet.minimum_satisfied`.
+- `balance.mdk_agent_wallet.minimum_not_satisfied`.
+- `balance.mdk_agent_wallet.not_checked`.
+- `blocker.mdk_agent_wallet.mnemonic_restore_not_send_ready`.
 - `blocker.mdk_agent_wallet.original_wallet_home_unverified`.
 
 It never returns raw wallet paths, mnemonics, raw invoices, payment hashes,

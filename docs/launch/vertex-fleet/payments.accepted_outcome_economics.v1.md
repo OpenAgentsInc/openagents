@@ -1,7 +1,7 @@
 # payments.accepted_outcome_economics.v1 — gross-margin receipt builder
 
 Promise state: **red** (unchanged by this work). This note records one
-agent-claimable increment toward the roadmap gate; it does not flip any state.
+agent-claimable increment toward the roadmap gate. It does not flip any state.
 
 ## What this change adds
 
@@ -51,14 +51,14 @@ margin to the contributors who produced it, as ACCOUNTING-ONLY ACCRUALS.
 
 Honesty discipline mirrors the gross-margin receipt:
 
-- Shares must sum to exactly `10000` basis points; contributor ids must be safe
-  refs and unique; a non-positive gross margin (loss) accrues `0` to everyone
+- Shares must sum to exactly `10000` basis points. Contributor ids must be safe
+  refs and unique. A non-positive gross margin (loss) accrues `0` to everyone
   rather than a negative "owed" balance.
 - Accrued cents are distributed by the **largest-remainder method** with a
   stable tie-break by input order, so per-contributor parts sum *exactly* to the
   distributable pool — no margin is invented or lost in attribution, and the
   builder is fully deterministic.
-- Each entry is labelled `accrual_derived`; its `payableEvidenceState` and
+- Each entry is labelled `accrual_derived`. Its `payableEvidenceState` and
   `settlementEvidenceState` are forced to `not_yet_evidenced` while the source
   row carries `noSettlementImplication = true`, with a defensive invariant
   (`OmniContributorAccrualLedgerInvariantError`) rejecting any payable/settled
@@ -86,17 +86,17 @@ listed in the registry.
 deterministic policy that answers the *upstream* half of
 `blocker.product_promises.contributor_ledger_missing` that the accrual ledger
 left to the caller: WHO the contributors are and at WHAT split. Given the
-identified parties for one accepted outcome (`runnerId` always; `reviewerId`,
-`originatorId`, `referrerId` optional; platform always retains a share),
+identified parties for one accepted outcome (`runnerId` always, `reviewerId`,
+`originatorId`, `referrerId` optional. Platform always retains a share),
 `resolveOmniContributorShares` emits a canonical `OmniContributorAccrualShare[]`
 that:
 
 - assigns roles fixed relative weights (runner 60, reviewer/originator 10,
-  referrer 5, platform 15) and includes only roles with an identified party;
+  referrer 5, platform 15) and includes only roles with an identified party.
 - renormalizes the participating weights to sum to **exactly 10000 basis points**
   by the same largest-remainder + input-order tie-break the ledger uses, so the
   output never trips the ledger's share-sum invariant and the whole pipeline is
-  deterministic;
+  deterministic.
 - rejects unsafe contributor refs and any id reused across roles
   (`OmniContributorSharePolicyError`).
 
@@ -113,7 +113,7 @@ the error type.
 
 `blocker.product_promises.contributor_ledger_missing` remains **partially
 advanced, NOT cleared.** This closes the "who/what split" gap with a real,
-testable default policy; what still remains for this blocker is a persisted/
+testable default policy. What still remains for this blocker is a persisted/
 queryable ledger record + read route to dereference accruals by accepted-outcome
 id, real per-outcome party sourcing (which workroom/contract event names each
 runner/reviewer/originator/referrer), and the `not_yet_evidenced`
@@ -130,12 +130,12 @@ receipt from the same economics record, and returns a single
 `OmniContributorAccrualBundle` keyed by accepted-outcome id.
 
 Its purpose is the missing *seam* between the two parallel views. Before this,
-nothing proved the receipt and the ledger agreed; the builder now enforces a
+nothing proved the receipt and the ledger agreed. The builder now enforces a
 cross-view reconciliation invariant (`OmniContributorAccrualBundleInvariantError`):
 same `economicsId`, the same single gross-margin figure across the receipt, its
-`gross_margin` lifecycle line, and the ledger; the ledger's distributable pool =
+`gross_margin` lifecycle line, and the ledger. The ledger's distributable pool =
 `max(0, grossMargin)` with accruals summing to it exactly (no margin invented or
-lost between receipt and attribution); and both halves agreeing that settlement
+lost between receipt and attribution). And both halves agreeing that settlement
 is disclaimed. `publicOmniContributorAccrualBundleProjection` composes the two
 existing public projections and likewise drops monetary figures.
 
@@ -160,18 +160,18 @@ payable/settlement evidence that depends on the untouched
 `apps/openagents.com/workers/api/src/omni-contributor-party-sourcing.ts` — a
 pure, deterministic resolver that closes the "real per-outcome party sourcing"
 gap the share policy left to its caller. Every prior call site had to invent the
-contributor ids; this reads them from a CANONICAL location on a persisted
+contributor ids. This reads them from a CANONICAL location on a persisted
 economics record (`metadata.contributors` →
 `{ runnerId, reviewerId?, originatorId?, referrerId?, platformId? }`) and returns
 the exact `OmniContributorSharePolicyInput` the share policy consumes.
 
 Honesty discipline mirrors the rest of the pipeline:
 
-- `metadata.contributors` must be an OBJECT and must name a `runnerId`; a missing
+- `metadata.contributors` must be an OBJECT and must name a `runnerId`. A missing
   block, a non-object value, or an unnamed runner FAILS
   (`OmniContributorPartySourcingError`) rather than fabricating a contributor —
   the absence of party provenance can never be silently papered over.
-- Present ids must be non-empty strings; safe-ref shape and cross-role
+- Present ids must be non-empty strings. Safe-ref shape and cross-role
   uniqueness stay enforced downstream by the share policy, so a sourced input
   plugs straight into `resolveOmniContributorShares`.
 - Absent optional roles are omitted (no `undefined`-valued keys), keeping the
@@ -207,7 +207,7 @@ listed in the registry.
 the step that goes from an accepted-outcome **id** to its reconciled bundle. The
 pure pipeline already turned ONE record into the receipt + accrual ledger
 (`buildOmniContributorAccrualBundleFromRecord`), but every caller had to already
-hold the record; nothing read it from storage by id. This closes that gap:
+hold the record. Nothing read it from storage by id. This closes that gap:
 
 - `readOmniAcceptedOutcomeEconomicsById(db, id)` is added to
   `omni-accepted-outcome-economics.ts` (previously only `readByIdempotencyKey`
@@ -219,7 +219,7 @@ hold the record; nothing read it from storage by id. This closes that gap:
   tagged `OmniContributorAccrualBundleDereferenceError` when a record EXISTS but
   cannot be attributed (e.g. it names no contributor parties) — the absence of
   provenance is surfaced honestly, never papered over. It writes nothing and moves
-  no money; it is a query path only, and the no-collapse / settlement-disclaimed
+  no money. It is a query path only, and the no-collapse / settlement-disclaimed
   discipline is preserved by the underlying builders.
 
 Tests: `apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-store.test.ts`
@@ -231,8 +231,8 @@ This advances `blocker.product_promises.contributor_ledger_missing` —
 **partially advanced, NOT cleared.** It closes the "queryable by accepted-outcome
 id" half of the persisted-dereference gap. What STILL remains: an HTTP read route
 that exposes this seam over the wire (the dereference is an Effect, not yet wired
-into a Worker route); the producer side that WRITES `metadata.contributors` from
-real workroom/contract events; and the `not_yet_evidenced` payable/settlement
+into a Worker route). The producer side that WRITES `metadata.contributors` from
+real workroom/contract events. And the `not_yet_evidenced` payable/settlement
 evidence that depends on the untouched `settlement_state_machine_incomplete`
 blocker. The blocker stays listed in the registry.
 
@@ -248,10 +248,10 @@ is wired in `index.ts` at `GET /api/public/payments/contributor-accrual-bundle?e
 - read-only and money-free — it writes nothing, moves nothing, and serves the
   PUBLIC projection only (`publicOmniContributorAccrualBundleProjection`), so
   lifecycle + evidence labels stay visible while internal monetary cents are
-  dropped;
+  dropped.
 - preserves the no-collapse discipline end to end: every returned contributor
   entry keeps its payable/settlement state honestly `not_yet_evidenced` while the
-  source record disclaims settlement;
+  source record disclaims settlement.
 - maps the seam's outcomes to honest HTTP status: `400 economics_id_required`
   (missing/blank id), `404 accepted_outcome_not_found` (unknown or archived
   outcome), `422 contributor_provenance_incomplete` (a record exists but names no

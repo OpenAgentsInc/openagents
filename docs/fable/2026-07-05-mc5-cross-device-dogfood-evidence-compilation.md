@@ -107,7 +107,7 @@ thread id, turn id, or build id, never a message body.
    the owner's real production chat scope — that scope is the owner's actual
    personal Khala Code chat history, and creating test data there without
    being asked crosses from "compile existing evidence" into "generate new
-   production side effects the owner didn't request." The correct place to
+   production side effects the owner did not request." The correct place to
    capture a real, meaningful latency number is the owner's own device run,
    which will naturally produce one.
 
@@ -167,7 +167,7 @@ still needs to do" above — the web leg is now a real sync consumer, so
 "phone <-> desktop <-> web" has a real web leg to test. It does NOT by
 itself satisfy #8354's remaining physical-device requirements (items 1 and 3
 in "What is honestly NOT proven yet" are unrelated to the web leg and remain
-open); it only removes "web has no real sync wiring" as a reason to treat
+open). It only removes "web has no real sync wiring" as a reason to treat
 that leg as an explicit known gap.
 
 ## Second pass (2026-07-05, same session): code-level scope/mutator compatibility trace, plus one new honest gap
@@ -189,7 +189,7 @@ gap.
 Ground truth is the server mutator/entity schema:
 `packages/khala-sync-server/src/chat-mutators.ts` (scope layout comment,
 lines 27-29: `scope.user.<owner>` for `chat_thread` metadata,
-`scope.thread.<threadId>` for both `chat_thread` and `chat_message`;
+`scope.thread.<threadId>` for both `chat_thread` and `chat_message`.
 `CreateThreadArgs{threadId,title}` / `AppendMessageArgs{threadId,messageId,body}`
 at lines 55-66) and `packages/khala-sync/src/chat.ts` (`ChatThreadEntity` /
 `ChatMessageEntity` field lists, lines 35-58).
@@ -218,8 +218,8 @@ at lines 55-66) and `packages/khala-sync/src/chat.ts` (`ChatThreadEntity` /
   type mismatch was found anywhere (no stray `syncThreadId`/`thread_id`
   variant on any surface).
 - **ID generation intentionally differs per surface** (mobile/web mint
-  `` `thread.<ts><hex>` `` via a shared `makeSafeRef`/push-core helper; iOS
-  mints `` `ios.thread.<uuid>` ``; desktop reuses the underlying session's own
+  `` `thread.<ts><hex>` `` via a shared `makeSafeRef`/push-core helper. IOS
+  mints `` `ios.thread.<uuid>` ``. Desktop reuses the underlying session's own
   thread id) but this does not break cross-surface visibility: every surface
   discovers a thread via `scope.user.<owner>` bootstrap (reading back
   whichever id the creating surface picked), not by independently deriving a
@@ -267,7 +267,7 @@ then real `POST /api/khala-sync/session` -> `bootstrap` -> `push`
 `DeltaFrame` for the new thread within an approximate ~500ms of the push, then
 a second `chat.appendMessage` over the already-open socket producing another
 real-time `DeltaFrame`. This is the one qualitative-but-measured latency data
-point that exists this session; it is a different account/scope than the
+point that exists this session. It is a different account/scope than the
 owner's real device run and does not substitute for one (see the refined
 latency gap below).
 
@@ -305,6 +305,6 @@ bun scripts/validate-khala-sync-cross-device-evidence.ts docs/khala-sync/receipt
 bun test scripts/validate-khala-sync-cross-device-evidence.test.ts
 ```
 
-Both pass. This pass changed only the JSON evidence bundle and this doc; no
+Both pass. This pass changed only the JSON evidence bundle and this doc. No
 application code was touched (the code-level scope/mutator trace above found
 no bug needing a fix).

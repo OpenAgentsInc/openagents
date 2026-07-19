@@ -1,6 +1,6 @@
 ## Executive take
 
-Kickbacks.ai is an opportunistic **developer-attention ad exchange**. It does not really “advertise to agents” yet; it advertises to **humans while agents are thinking**. The cleverness is inventory discovery: the idle/wait line in Claude Code, Codex, and terminal workflows is a high-frequency, low-clutter surface that already has developer attention. The risk is that the product depends on patching third-party AI coding tools and could be broken or banned by Anthropic, Microsoft, OpenAI, VS Code Marketplace policy, enterprise security policy, or user backlash.
+Kickbacks.ai is an opportunistic **developer-attention ad exchange**. It does not really “advertise to agents” yet. It advertises to **humans while agents are thinking**. The cleverness is inventory discovery: the idle/wait line in Claude Code, Codex, and terminal workflows is a high-frequency, low-clutter surface that already has developer attention. The risk is that the product depends on patching third-party AI coding tools and could be broken or banned by Anthropic, Microsoft, OpenAI, VS Code Marketplace policy, enterprise security policy, or user backlash.
 
 For our own “advertise to agents” idea, I would **not clone the Claude spinner patching model**. I would use OpenAgents/OpenAgents-like infrastructure to build an owned, opt-in, clearly labeled **sponsored agent-tool discovery network**: sponsored cards, sponsored tool suggestions, and paid task handoffs inside agent workspaces and agent execution logs. That gives us the good part of Kickbacks—new ad inventory around AI workflows—without relying on brittle modification of someone else’s UI.
 
@@ -8,11 +8,11 @@ For our own “advertise to agents” idea, I would **not clone the Claude spinn
 
 ## 1. What Kickbacks is
 
-Kickbacks is a VS Code extension plus ad marketplace. Its promise is: install the extension, sign in, and while Claude Code or similar tools are “thinking,” the little status/spinner line becomes a sponsored line; the developer gets a share of ad revenue. The homepage says “50% of the revenue goes to you,” and the advertiser section says each block buys **1,000 five-second impressions**, clicks are billed at **50× the impression rate**, and the highest bid serves first. ([Kickbacks.ai][1])
+Kickbacks is a VS Code extension plus ad marketplace. Its promise is: install the extension, sign in, and while Claude Code or similar tools are “thinking,” the little status/spinner line becomes a sponsored line. The developer gets a share of ad revenue. The homepage says “50% of the revenue goes to you,” and the advertiser section says each block buys **1,000 five-second impressions**, clicks are billed at **50× the impression rate**, and the highest bid serves first. ([Kickbacks.ai][1])
 
 The current public distribution is real: the VS Code Marketplace listing showed **18,965 installs**, a free extension, and the description “subtle, clickable ads in the Claude Code and Codex spinners — 50/50 revenue split to users.” ([Visual Studio Marketplace][2]) The GitHub mirror describes it as selling the “thinking…” word inside Claude Code and Codex spinners, with “up to 50%” of ad revenue paid to the developer whose machine showed the ad. ([GitHub][3])
 
-The important nuance: Kickbacks is not open source. Its GitHub repo is a public, read-only mirror of the client extension; the README says the backend, advertiser portal, auction engine, and marketing site live in a separate private repository, and the license is proprietary/source-available. ([GitHub][3])
+The important nuance: Kickbacks is not open source. Its GitHub repo is a public, read-only mirror of the client extension. The README says the backend, advertiser portal, auction engine, and marketing site live in a separate private repository, and the license is proprietary/source-available. ([GitHub][3])
 
 ---
 
@@ -20,35 +20,35 @@ The important nuance: Kickbacks is not open source. Its GitHub repo is a public,
 
 ### Supply side: developer wait-state inventory
 
-Kickbacks turns AI coding wait states into inventory. Its supported surfaces include Claude Code in VS Code, Codex in VS Code, Claude Code terminal status lines, and newer Claude Code terminal spinner verbs. The Marketplace listing says the extension works with Claude Code and Codex VS Code extensions and with the Claude Code terminal CLI; the README lists four surfaces: Claude Code VS Code spinner overlay, Codex thinking shimmer, Claude Code terminal status-bar line, and Claude Code terminal spinner verb. ([Visual Studio Marketplace][2])
+Kickbacks turns AI coding wait states into inventory. Its supported surfaces include Claude Code in VS Code, Codex in VS Code, Claude Code terminal status lines, and newer Claude Code terminal spinner verbs. The Marketplace listing says the extension works with Claude Code and Codex VS Code extensions and with the Claude Code terminal CLI. The README lists four surfaces: Claude Code VS Code spinner overlay, Codex thinking shimmer, Claude Code terminal status-bar line, and Claude Code terminal spinner verb. ([Visual Studio Marketplace][2])
 
-The extension patches local tools. The Marketplace listing says VS Code patching modifies Claude Code’s `webview/index.js` and the Codex webview bundle, while terminal support edits `~/.claude/settings.json` to add a status-line script and spinner-verb override; it also says these edits are reversible. ([Visual Studio Marketplace][2])
+The extension patches local tools. The Marketplace listing says VS Code patching modifies Claude Code’s `webview/index.js` and the Codex webview bundle, while terminal support edits `~/.claude/settings.json` to add a status-line script and spinner-verb override. It also says these edits are reversible. ([Visual Studio Marketplace][2])
 
 ### Demand side: auctioned developer attention
 
 Advertisers buy blocks. One block equals **1,000 five-second impressions**. Bids are CPM-style, higher bids receive placement priority, and clicks cost a multiple of the per-impression price—currently 50×. The terms describe real-time bidding, dynamic auction pricing, descending priority by effective value, and non-refundability once impressions/clicks are served. ([Kickbacks.ai][1])
 
-This is closer to a tiny programmatic exchange than a flat sponsorship. The advertiser buys priority in a queue, not a fixed tenancy. The public form says a higher bid moves a campaign up the queue so views deliver sooner; it does not add extra views. ([Kickbacks][1])
+This is closer to a tiny programmatic exchange than a flat sponsorship. The advertiser buys priority in a queue, not a fixed tenancy. The public form says a higher bid moves a campaign up the queue so views deliver sooner. It does not add extra views. ([Kickbacks][1])
 
 ### Revenue share
 
 The headline is “50%,” but the legal wording is softer. Kickbacks says earning users accumulate credit based on qualifying impressions and clicks, with an **estimated 50% of attributable net advertising revenue after operational expenses**, not guaranteed, paid monthly subject to threshold and conditions. ([Kickbacks][4])
 
-Payouts are via Stripe Connect once the user passes the current **$10 threshold**, completes onboarding and any tax forms, and passes fraud review. Stripe country coverage matters; the FAQ says some countries cannot receive payouts yet. ([Kickbacks.ai][5])
+Payouts are via Stripe Connect once the user passes the current **$10 threshold**, completes onboarding and any tax forms, and passes fraud review. Stripe country coverage matters. The FAQ says some countries cannot receive payouts yet. ([Kickbacks.ai][5])
 
 ### What counts as billable
 
 Kickbacks has strict qualification rules: the ad must be visible on screen for at least five seconds during a real wait state, the wait state must come from a human-initiated coding request, the user must be signed in and connected, and the user must be under activity caps. ([kickbacks.ai][5])
 
-This is necessary because the obvious attack is “farm spinner impressions.” Their FAQ prohibits bots, scripted prompts, click farms, multiple accounts, collusion, telemetry tampering, cap circumvention, and proxy/VPN rotation; it also says they use automated systems and human review. ([Kickbacks.ai][5])
+This is necessary because the obvious attack is “farm spinner impressions.” Their FAQ prohibits bots, scripted prompts, click farms, multiple accounts, collusion, telemetry tampering, cap circumvention, and proxy/VPN rotation. It also says they use automated systems and human review. ([Kickbacks.ai][5])
 
 ### Telemetry and privacy posture
 
 Kickbacks says it does not collect code, prompts, AI responses, file contents, file names, project structure, or chat history. It does collect account info, a per-install device ID, ad interaction events, timestamps, surface IDs, visibility metrics, extension/host versions, and transient IP address processing for fraud and rate-limiting. ([Kickbacks.ai][6])
 
-Important detail: the privacy policy says the extension locally reads Claude Code transcript files at `~/.claude/projects/**/*.jsonl` to detect active sessions, but claims it parses only the entrypoint tag, the most recent tool invocation name, and whether the current turn has finished; it says this local processing is not transmitted. ([Kickbacks.ai][6])
+Important detail: the privacy policy says the extension locally reads Claude Code transcript files at `~/.claude/projects/**/*.jsonl` to detect active sessions, but claims it parses only the entrypoint tag, the most recent tool invocation name, and whether the current turn has finished. It says this local processing is not transmitted. ([Kickbacks.ai][6])
 
-A notable source-code finding: the client comments describe a signed-out “demo” route where real ads render and metrics go to `/v1/metrics/demo`; the comments say this charges the advertiser but credits no user. That is not necessarily wrong—preview inventory is a legitimate product choice—but it is something advertisers and users would want disclosed cleanly. ([GitHub][7])
+A notable source-code finding: the client comments describe a signed-out “demo” route where real ads render and metrics go to `/v1/metrics/demo`. The comments say this charges the advertiser but credits no user. That is not necessarily wrong—preview inventory is a legitimate product choice—but it is something advertisers and users would want disclosed cleanly. ([GitHub][7])
 
 ---
 
@@ -88,11 +88,11 @@ For Kickbacks, the near-term revenue opportunity is less “millions of passive 
 
 Kickbacks is early and viral, but the idea is copyable. The durable moat is not the spinner text. The moat would be:
 
-1. trusted distribution across AI dev environments;
-2. advertiser demand and campaign liquidity;
-3. fraud-resistant measurement;
-4. payout and compliance infrastructure;
-5. first-party relationships with agent/workspace owners;
+1. trusted distribution across AI dev environments.
+2. advertiser demand and campaign liquidity.
+3. fraud-resistant measurement.
+4. payout and compliance infrastructure.
+5. first-party relationships with agent/workspace owners.
 6. a policy posture users trust.
 
 Their current implementation is strong on novelty and speed, weaker on durable platform control.
@@ -102,7 +102,7 @@ Their current implementation is strong on novelty and speed, weaker on durable p
 # How we should build our own “advertise to agents” idea
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -117,10 +117,10 @@ The phrase “advertise to agents” can mean two very different things:
 
 We should build the good version. The unit of monetization should not be “an LLM read an ad.” It should be one of:
 
-* a human-visible sponsored card;
-* a human click;
-* a human-approved tool install;
-* a human-approved task handoff;
+* a human-visible sponsored card.
+* a human click.
+* a human-approved tool install.
+* a human-approved task handoff.
 * a verified conversion or API activation.
 
 That preserves trust and avoids contaminating agent reasoning.
@@ -135,7 +135,7 @@ Assuming you mean the OpenAgents Workspace/Launcher project, it is almost purpos
 
 The GitHub README says OpenAgents can connect Claude Code, OpenClaw, Codex CLI, Cursor, OpenCode, and other agent runtimes into the same workspace. ([GitHub][10]) That gives us a cross-agent surface without patching each proprietary app.
 
-Most importantly, OpenAgents has extension points. Its docs say the workspace is built on the OpenAgents Network Model and can be extended with custom mods, event hooks, and integrations; it supports self-hosted workspaces; and custom mods can listen to workspace events like channel posts and file uploads. ([OpenAgents][11]) It also exposes workspace resources as MCP tools, letting external LLM clients interact with channels, messages, and files. ([OpenAgents][11])
+Most importantly, OpenAgents has extension points. Its docs say the workspace is built on the OpenAgents Network Model and can be extended with custom mods, event hooks, and integrations. It supports self-hosted workspaces. And custom mods can listen to workspace events like channel posts and file uploads. ([OpenAgents][11]) It also exposes workspace resources as MCP tools, letting external LLM clients interact with channels, messages, and files. ([OpenAgents][11])
 
 That means our first product should be an **OpenAgents Ad Mod** rather than a Claude Code patch.
 
@@ -248,13 +248,13 @@ Then filters by policy: sensitive topics, user opt-out, frequency caps, workspac
 
 Track:
 
-* viewable impression;
-* click;
-* human approval;
-* tool install;
-* tool call;
-* conversion callback;
-* fraud score;
+* viewable impression.
+* click.
+* human approval.
+* tool install.
+* tool call.
+* conversion callback.
+* fraud score.
 * revenue share ledger.
 
 Kickbacks’ measurement model is directionally right: event UUIDs, visibility metrics, session nonces, dedupe, caps, and server-side fraud checks. Its client code sends events such as impression rendered, viewable, view ticks, threshold met, click, and error impression. ([GitHub][12])
@@ -265,10 +265,10 @@ Kickbacks’ measurement model is directionally right: event UUIDs, visibility m
 
 I would not start with “50% to users” as the only split. OpenAgents-style ecosystems have more parties:
 
-* workspace owner / end user;
-* agent developer;
-* runtime/publisher surface;
-* our ad network;
+* workspace owner / end user.
+* agent developer.
+* runtime/publisher surface.
+* our ad network.
 * advertiser.
 
 A sane initial split:
@@ -298,17 +298,17 @@ Do not bill “agent-only impressions” at launch. It is hard to prove value an
 
 Best early advertisers:
 
-* developer tools: CI, observability, issue tracking, code review, testing;
-* cloud/dev infra: hosting, databases, serverless, GPU/compute;
-* AI infra: evals, tracing, vector DBs, model routers, prompt management;
-* security: SAST, secrets scanning, dependency scanning;
-* productivity: docs, diagramming, project management;
+* developer tools: CI, observability, issue tracking, code review, testing.
+* cloud/dev infra: hosting, databases, serverless, GPU/compute.
+* AI infra: evals, tracing, vector DBs, model routers, prompt management.
+* security: SAST, secrets scanning, dependency scanning.
+* productivity: docs, diagramming, project management.
 * hiring/dev education only if not spammy.
 
 Avoid at launch:
 
-* gambling, adult, crypto speculation, political, medical, financial advice;
-* anything that asks the agent to make claims it cannot verify;
+* gambling, adult, crypto speculation, political, medical, financial advice.
+* anything that asks the agent to make claims it cannot verify.
 * anything that requires collecting sensitive repo or employee data.
 
 Kickbacks’ own ad terms prohibit illegal products, malware/phishing, misleading claims, many sensitive categories, and reserve the right to reject ads. We should be at least that strict. ([Kickbacks][4])
@@ -383,15 +383,15 @@ Run with 5–10 advertisers and 50–200 developers. Sell manually. Do not build
 
 Core metrics:
 
-* daily active workspaces;
-* viewable impressions per active workspace;
-* CTR;
-* approved tool/action rate;
-* advertiser conversion rate;
-* revenue per active workspace;
-* opt-out rate;
-* complaint rate;
-* uninstall rate;
+* daily active workspaces.
+* viewable impressions per active workspace.
+* CTR.
+* approved tool/action rate.
+* advertiser conversion rate.
+* revenue per active workspace.
+* opt-out rate.
+* complaint rate.
+* uninstall rate.
 * repeat advertiser spend.
 
 ---
@@ -410,7 +410,7 @@ Core metrics:
 
 **Fraud controls.** One account per person/workspace, caps, signed event receipts, viewability thresholds, human-presence signals, bot-loop detection, advertiser refund logic.
 
-**Clear payout terms.** Use Stripe Connect or equivalent; define threshold, tax handling, supported countries, holds, and forfeiture rules up front. Kickbacks has already had to cover these mechanics in detail. ([Kickbacks.ai][4])
+**Clear payout terms.** Use Stripe Connect or equivalent. Define threshold, tax handling, supported countries, holds, and forfeiture rules up front. Kickbacks has already had to cover these mechanics in detail. ([Kickbacks.ai][4])
 
 **Platform compliance.** Do not route Claude requests through consumer OAuth credentials or build products on top of users’ Free/Pro/Max credentials. Anthropic’s Claude Code docs say third-party developers building products that interact with Claude capabilities should use API keys and that Anthropic does not permit routing requests through Free/Pro/Max credentials on behalf of users. ([Claude Code][13])
 
@@ -420,23 +420,23 @@ Core metrics:
 
 Copy these:
 
-* tiny native units;
-* opt-in monetization;
-* fast advertiser onboarding;
-* auctioned priority;
-* 1,000-impression blocks;
-* click multiplier or CPC overlay;
-* live ledger;
-* caps and anti-fraud from day one;
-* kill switch;
+* tiny native units.
+* opt-in monetization.
+* fast advertiser onboarding.
+* auctioned priority.
+* 1,000-impression blocks.
+* click multiplier or CPC overlay.
+* live ledger.
+* caps and anti-fraud from day one.
+* kill switch.
 * public client code or at least auditable client.
 
 Do not copy these:
 
-* patching third-party proprietary UI as the primary surface;
-* making user earnings the only value proposition;
-* ambiguous “agent saw it” billing;
-* anything that reads local agent transcripts unless absolutely necessary;
+* patching third-party proprietary UI as the primary surface.
+* making user earnings the only value proposition.
+* ambiguous “agent saw it” billing.
+* anything that reads local agent transcripts unless absolutely necessary.
 * any hidden influence on agent answers.
 
 ---

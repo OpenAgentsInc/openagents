@@ -4,7 +4,7 @@ This package is the version-bound protocol authority for OpenAgents' Codex
 app-server client. It generates Effect schemas and method maps from two exact
 upstream identities:
 
-- current source commit `1bbdb32789e1f79932df44941236ea3658f6e965`;
+- current source commit `1bbdb32789e1f79932df44941236ea3658f6e965`.
 - Desktop's bundled Codex `0.144.1` source commit
   `44918ea10c0f99151c6710411b4322c2f5c96bea`.
 
@@ -15,10 +15,10 @@ Run `pnpm generate` to refresh generated artifacts from the pinned commits and
 `pnpm check:generated` to fail on drift. The generator follows the
 programmatic JSON Schema → Effect Schema architecture studied in T3 Code's
 `effect-codex-app-server` package. Portions of the generator are adapted from
-that MIT-licensed implementation; see `THIRD_PARTY_NOTICES.md`.
+that MIT-licensed implementation. See `THIRD_PARTY_NOTICES.md`.
 
 Generation also emits compact runtime JSON Schema documents from the reviewed
-Effect schemas. Import the small `./decode` API at application boundaries;
+Effect schemas. Import the small `./decode` API at application boundaries.
 application packages should not import the multi-megabyte generated schema
 modules directly. The decoder covers every response, reverse request, and
 notification independently for each lane and returns a classified failure for

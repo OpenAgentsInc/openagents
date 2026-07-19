@@ -18,23 +18,23 @@ The implementation lives in
 
 The v1 trust tiers are:
 
-- `public`;
-- `private`;
-- `sensitive`;
-- `infra`;
-- `legal_sensitive`;
-- `payment_sensitive`;
-- `regulated`;
+- `public`.
+- `private`.
+- `sensitive`.
+- `infra`.
+- `legal_sensitive`.
+- `payment_sensitive`.
+- `regulated`.
 - `unknown`.
 
 ## Placement Decisions
 
 The policy returns one of:
 
-- `eligible`;
-- `needs_customer_grant`;
-- `needs_operator_approval`;
-- `needs_provider_grant`;
+- `eligible`.
+- `needs_customer_grant`.
+- `needs_operator_approval`.
+- `needs_provider_grant`.
 - `blocked`.
 
 `legal_sensitive`, `payment_sensitive`, and `regulated` contexts are SHC-only
@@ -68,9 +68,9 @@ material, and secrets are rejected before projection.
 
 `workers/api/src/coding-autopilot-repo-placement.test.ts` covers:
 
-- public repo eligibility and public-claim allowance;
-- private repo customer-grant gating;
-- legal/payment backend restrictions;
-- payment provider-grant gating;
-- unknown and secret-bearing blocking;
+- public repo eligibility and public-claim allowance.
+- private repo customer-grant gating.
+- legal/payment backend restrictions.
+- payment provider-grant gating.
+- unknown and secret-bearing blocking.
 - unsafe repo, grant, provider, runner, and customer ref rejection.

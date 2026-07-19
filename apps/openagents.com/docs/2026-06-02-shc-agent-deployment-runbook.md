@@ -112,14 +112,14 @@ with GCP before use.
 
 The root cloud docs record that `oa-shc-katy-01` has passed:
 
-- host inventory;
-- Rust/Node/Codex bootstrap;
-- Cloud bootstrap verification;
-- fake-Codex `oa-workroomd` runner test;
-- `oa-node` lifecycle and quarantine smoke;
-- KVM probe after provider-side configuration change;
-- manual Firecracker guest boot smoke;
-- real account-backed Codex run through `oa-workroomd codex run`;
+- host inventory.
+- Rust/Node/Codex bootstrap.
+- Cloud bootstrap verification.
+- fake-Codex `oa-workroomd` runner test.
+- `oa-node` lifecycle and quarantine smoke.
+- KVM probe after provider-side configuration change.
+- manual Firecracker guest boot smoke.
+- real account-backed Codex run through `oa-workroomd codex run`.
 - control API and Codex App Server broker installation.
 
 Important qualification: Firecracker has only manual smoke evidence. The first
@@ -413,7 +413,7 @@ That returns the current OAuth JSON from Worker KV only in the bearer-protected
 runner response. `oa-codex-control` writes that JSON to a run-scoped
 `codex-auth-material.json`, passes it to `oa-workroomd`, and then relies on the
 existing session auth scrub. Do not fall back to a long-lived account-scoped
-local `auth.json` when current material is available; that causes browser
+local `auth.json` when current material is available. That causes browser
 reconnects to be ignored by SHC.
 
 Do not log, callback, store in D1, or place raw OAuth/OpenCode auth JSON in
@@ -433,7 +433,7 @@ GET /api/github-write/connections
 
 The connection must belong to the same GitHub identity as the signed-in
 OpenAgents user and must include the required repo/workflow scopes. D1 stores
-connection metadata and a secret ref only; the raw OAuth token stays in the
+connection metadata and a secret ref only. The raw OAuth token stays in the
 Worker-side secret store.
 
 Before dispatch, the Worker issues a short-lived GitHub write grant for the
@@ -451,7 +451,7 @@ artifacts, callback events, D1, shell logs, or tracked files.
 For GitHub issue, pull request, and comment bodies with Markdown or multiple
 paragraphs, the SHC runner should write the body to a temporary file and pass it
 through `gh` with `--body-file`, or pipe it with `--body-file -`. Do not build
-multiline bodies with shell-escaped `\n` strings passed to `--body`; that path
+multiline bodies with shell-escaped `\n` strings passed to `--body`. That path
 is easy to render incorrectly across shells and agent wrappers. After creating
 or editing a GitHub artifact, verify the rendered body with `gh issue view`,
 `gh pr view`, or the matching JSON/template read before reporting success.
@@ -706,14 +706,14 @@ Recommended SHC release layout:
 
 Recommended service posture:
 
-- run the app as a non-root service user;
-- bind the app to localhost unless an explicit reverse proxy is configured;
-- terminate public TLS at Cloudflare or a hardened edge proxy;
+- run the app as a non-root service user.
+- bind the app to localhost unless an explicit reverse proxy is configured.
+- terminate public TLS at Cloudflare or a hardened edge proxy.
 - keep service environment in a protected systemd environment file or secret
-  manager;
-- keep deployment secrets out of the repository checkout;
-- write deploy receipts before and after restart;
-- keep the previous release for rollback;
+  manager.
+- keep deployment secrets out of the repository checkout.
+- write deploy receipts before and after restart.
+- keep the previous release for rollback.
 - smoke `/healthz` before promotion.
 
 Operator bootstrap commands for a future direct install should follow this
@@ -782,18 +782,18 @@ deploy.failed
 
 Rules:
 
-- events are append-only;
-- callbacks are idempotent by `(runId, sequence)` or external event id;
-- all payloads are decoded with Effect Schema;
+- events are append-only.
+- callbacks are idempotent by `(runId, sequence)` or external event id.
+- all payloads are decoded with Effect Schema.
 - raw logs, terminal output, diffs, screenshots, transcripts, and tarballs
-  should be object refs with digests;
-- Convex/D1-visible event rows store bounded excerpts and metadata;
-- credential-looking payloads fail closed;
+  should be object refs with digests.
+- Convex/D1-visible event rows store bounded excerpts and metadata.
+- credential-looking payloads fail closed.
 - callback delivery or accounting failures are tracked separately from runner
   terminal state. If SHC retained a completed run but callback delivery to
   Cloudflare returned HTTP 500, the product run should show the runner state
   and a degraded `callbackDelivery` state instead of collapsing the run into
-  `runner_failed`;
+  `runner_failed`.
 - missing usage/resource facts must become explicit `usage_unavailable` or
   `resource_unavailable` receipts.
 
@@ -821,28 +821,28 @@ GCS or GCP-managed durable artifact path
 
 Every artifact ref should include:
 
-- object ref;
-- digest;
-- size if available;
-- artifact kind;
-- source run/deploy id;
-- runner id;
-- visibility;
-- redaction state;
+- object ref.
+- digest.
+- size if available.
+- artifact kind.
+- source run/deploy id.
+- runner id.
+- visibility.
+- redaction state.
 - retention policy.
 
 Every closeout should include receipts for:
 
-- assignment accepted;
-- provider-account grant resolved or intentionally absent;
-- workspace created;
-- sandbox profile;
-- commands or tool calls summarized;
-- artifact manifest;
-- redaction scan;
-- resource usage or unavailable reason;
-- model usage or unavailable reason;
-- cleanup or retention decision;
+- assignment accepted.
+- provider-account grant resolved or intentionally absent.
+- workspace created.
+- sandbox profile.
+- commands or tool calls summarized.
+- artifact manifest.
+- redaction scan.
+- resource usage or unavailable reason.
+- model usage or unavailable reason.
+- cleanup or retention decision.
 - final status.
 
 ## Retention Modes
@@ -887,11 +887,11 @@ Fallback must be tested regularly. A stale fallback is not a fallback.
 
 Use GCP for:
 
-- SHC outage;
-- sensitive/customer workloads not yet trusted on SHC;
-- canonical grading or reference reruns;
-- artifact durability comparison;
-- KVM/Firecracker profile comparison;
+- SHC outage.
+- sensitive/customer workloads not yet trusted on SHC.
+- canonical grading or reference reruns.
+- artifact durability comparison.
+- KVM/Firecracker profile comparison.
 - economic comparison receipts.
 
 Do not fork the product protocol for GCP. Only the backend adapter changes.
@@ -900,14 +900,14 @@ Do not fork the product protocol for GCP. Only the backend adapter changes.
 
 Cloudflare is the correct home for:
 
-- OpenAuth Worker;
-- Cloudflare Worker API;
-- D1 product authority in this repo;
-- Durable Objects for realtime sync rooms or future run fanout;
-- R2 artifacts;
-- Queues for callback retry and fanout;
-- Workflows for durable multi-step orchestration;
-- DNS/WAF/Access/routing;
+- OpenAuth Worker.
+- Cloudflare Worker API.
+- D1 product authority in this repo.
+- Durable Objects for realtime sync rooms or future run fanout.
+- R2 artifacts.
+- Queues for callback retry and fanout.
+- Workflows for durable multi-step orchestration.
+- DNS/WAF/Access/routing.
 - future Cloudflare Container runner gateway after SHC/GCP parity.
 
 Cloudflare Workers are not the first home for OpenCode or Codex execution.
@@ -920,30 +920,30 @@ assignment/event/artifact contract is stable.
 
 Hard rules:
 
-- no wallet authority in workrooms;
-- no broad GCP credentials in workrooms;
-- no Cloudflare account tokens in workrooms;
+- no wallet authority in workrooms.
+- no broad GCP credentials in workrooms.
+- no Cloudflare account tokens in workrooms.
 - no raw ChatGPT/Codex `auth.json` in product logs, docs, screenshots, D1,
-  Convex, receipts, artifacts, or browser state;
+  Convex, receipts, artifacts, or browser state.
 - no raw OpenCode `auth.json` or `OPENCODE_AUTH_CONTENT` in product-visible
-  state;
-- no browser-direct calls to SHC control APIs;
-- no browser-direct calls to OpenCode server APIs;
-- no arbitrary shell text from browser to runner;
-- no API-key fallback for user-connected ChatGPT/Codex workrooms;
-- no customer-sensitive work on SHC until the trust tier supports it;
+  state.
+- no browser-direct calls to SHC control APIs.
+- no browser-direct calls to OpenCode server APIs.
+- no arbitrary shell text from browser to runner.
+- no API-key fallback for user-connected ChatGPT/Codex workrooms.
+- no customer-sensitive work on SHC until the trust tier supports it.
 - no public proof claims from local-only or unredacted run data.
 
 Runner callbacks must require:
 
-- bearer token or signed request;
-- known runner id;
-- known run/deploy id;
-- idempotency key or sequence;
-- Effect Schema payload validation;
-- credential-shaped payload rejection;
-- size limits;
-- artifact count limits;
+- bearer token or signed request.
+- known runner id.
+- known run/deploy id.
+- idempotency key or sequence.
+- Effect Schema payload validation.
+- credential-shaped payload rejection.
+- size limits.
+- artifact count limits.
 - redaction state.
 
 ## Troubleshooting
@@ -1013,11 +1013,11 @@ If SHC is down or degraded, route the same assignment to GCP fallback.
 
 Likely causes:
 
-- runner callback token mismatch;
-- callback URL wrong;
-- event sequence rejected as duplicate or out of order;
-- payload failed schema or secret-shape validation;
-- runner completed synchronously but product expects async callbacks;
+- runner callback token mismatch.
+- callback URL wrong.
+- event sequence rejected as duplicate or out of order.
+- payload failed schema or secret-shape validation.
+- runner completed synchronously but product expects async callbacks.
 - Durable Object/SSE fanout issue while D1/Convex ingestion succeeded.
 
 Use the product operator path before SSH:
@@ -1045,7 +1045,7 @@ curl -fsS -X POST \
 
 The run detail includes `operationalState.runner` and
 `operationalState.callbackDelivery`. `callbackDelivery.status=failed` means the
-runner callback delivery or post-ingest accounting path degraded; it does not by
+runner callback delivery or post-ingest accounting path degraded. It does not by
 itself mean the runner failed. If SHC retained a completed run, retry callbacks
 so Cloudflare catches up and inspect the runner state separately.
 
@@ -1060,9 +1060,9 @@ Likely cause: multiple accounts logged into one `~/.codex` home.
 
 Fix:
 
-- keep one account-scoped home per provider account;
-- materialize a fresh session-scoped `CODEX_HOME` per run/turn;
-- serialize or cap concurrency per account home;
+- keep one account-scoped home per provider account.
+- materialize a fresh session-scoped `CODEX_HOME` per run/turn.
+- serialize or cap concurrency per account home.
 - reissue grants per run/turn.
 
 ### Workroom cannot continue
@@ -1070,8 +1070,8 @@ Fix:
 Current one-shot `oa-workroomd codex run` cleans up workspaces after closeout.
 Continuation needs one of:
 
-- product-level continuation with transcript/artifact/diff restoration;
-- workspace-level continuation with retained workspace refs and TTL;
+- product-level continuation with transcript/artifact/diff restoration.
+- workspace-level continuation with retained workspace refs and TTL.
 - native Codex App Server thread continuation.
 
 Do not assume a deleted one-shot workspace can be resumed.
@@ -1111,37 +1111,37 @@ Build this in order:
 
 Before a live SHC agent run:
 
-- confirm the user/session is authorized;
-- confirm target repo/ref and task scope are bounded;
-- confirm provider-account grant exists if Codex/ChatGPT auth is needed;
-- confirm no raw auth material appears in request payloads;
-- confirm SHC health;
-- confirm GCP fallback health if the run matters;
-- confirm artifact storage target;
-- confirm callback token and ingest URL;
-- confirm retention mode and training-use mode;
-- confirm sandbox profile and no-wallet posture;
+- confirm the user/session is authorized.
+- confirm target repo/ref and task scope are bounded.
+- confirm provider-account grant exists if Codex/ChatGPT auth is needed.
+- confirm no raw auth material appears in request payloads.
+- confirm SHC health.
+- confirm GCP fallback health if the run matters.
+- confirm artifact storage target.
+- confirm callback token and ingest URL.
+- confirm retention mode and training-use mode.
+- confirm sandbox profile and no-wallet posture.
 - start the run through product API, not SSH.
 
 Before a live SHC deploy:
 
-- confirm approved repo/ref;
-- confirm deploy assignment schema;
-- confirm build/test/smoke commands;
-- confirm service name and health URL;
-- confirm rollback target exists or previous release will be retained;
-- confirm SHC deploy runner health;
-- confirm GCP fallback deploy lane is available for high-risk changes;
+- confirm approved repo/ref.
+- confirm deploy assignment schema.
+- confirm build/test/smoke commands.
+- confirm service name and health URL.
+- confirm rollback target exists or previous release will be retained.
+- confirm SHC deploy runner health.
+- confirm GCP fallback deploy lane is available for high-risk changes.
 - start the deploy through deploy API, not manual shell.
 
 After the run/deploy:
 
-- verify terminal event;
-- verify artifact manifest;
-- verify receipt manifest;
-- verify redaction state;
-- verify usage/resource receipts or unavailable receipts;
-- verify cleanup or retention decision;
+- verify terminal event.
+- verify artifact manifest.
+- verify receipt manifest.
+- verify redaction state.
+- verify usage/resource receipts or unavailable receipts.
+- verify cleanup or retention decision.
 - if accepted, record product acceptance separately from runner completion.
 
 ## Open Issues
@@ -1151,7 +1151,7 @@ After the run/deploy:
   actions to candidate `codex-runs/cancel` routes when billing credits are
   exhausted, but SHC should provide an explicit cancellation contract and
   receipt for environment teardown.
-- The current Codex control API is still mostly a synchronous wrapper; long-run
+- The current Codex control API is still mostly a synchronous wrapper. Long-run
   async supervision should be implemented.
 - `oa-workroomd` needs explicit session lifecycle commands before true
   workspace-level continuation.

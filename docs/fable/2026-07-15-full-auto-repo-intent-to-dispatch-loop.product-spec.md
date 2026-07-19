@@ -39,7 +39,7 @@ This design shipped in issue #8852. The authoritative as-built ProductSpec is
 `packages/product-spec` and `packages/assurance-spec` CLIs and covered by new
 tests in `codex-local-runtime.test.ts`, `react-composer.test.tsx`, and
 `shell.test.ts`. This file remains as the historical strategy/design record
-per `docs/fable`'s convention; read the adopted spec for exact current scope.
+per `docs/fable`'s convention. Read the adopted spec for exact current scope.
 One narrowing emerged during implementation that this file's rev 2 body below
 did not anticipate: the auto-continuation loop lives in the renderer
 (`shell.ts`'s `runNoteSubmission`), not a main-process durable goal-state
@@ -61,7 +61,7 @@ review UI, a criterion board, a proposal-admission gate, a signed permission
 envelope with excluded-path lists and budgets. That was wrong on two counts.
 First, OpenAgents Desktop does not have, and is not getting, standalone
 ProductSpec/AssuranceSpec app surfaces — the product is anchored on Codex
-chat and messages, full stop; any spec or plan Codex produces is just a file
+chat and messages, full stop. Any spec or plan Codex produces is just a file
 in the repo, read the same way any other file is. Second, every other
 delegated-Codex path in this workspace (Pylon fleet dispatch, in particular)
 already runs agents at full trust by default — same posture as T3 Code — and
@@ -132,7 +132,7 @@ how to run:
    so a renderer reload or app restart resumes the loop instead of losing or
    duplicating it.
 5. **Stop is always one button away.** Turning Full Auto off halts the next
-   turn from starting; the current turn finishes or stops cleanly. That is
+   turn from starting. The current turn finishes or stops cleanly. That is
    the entire autonomy policy for this first version -- not a budget system,
    not a permission tier, just an off switch that actually works.
 
@@ -161,7 +161,7 @@ human steering it. That is the test. Everything past that is premature.
   starts automatically without the user clicking continue. A renderer reload
   or app restart resumes the same loop rather than duplicating or dropping a
   turn.
-- **FA-AC-05:** Turning Full Auto off stops the next turn from starting; the
+- **FA-AC-05:** Turning Full Auto off stops the next turn from starting. The
   currently running turn reaches a clean stop rather than being killed
   mid-write.
 - **FA-AC-06:** Anything Codex writes as part of Full Auto (a plan, notes, a
@@ -203,16 +203,16 @@ human steering it. That is the test. Everything past that is premature.
   directly, and the stop control actually stops the next turn -- there is no
   permission system standing between a wrong guess and a real change.
 - The skill may repeatedly pick shallow or wrong "next actions" on a given
-  repo. There is no way to know this in advance; it is exactly what running
+  repo. There is no way to know this in advance. It is exactly what running
   the basic loop on a real repo is meant to reveal.
 - "Full Auto" is the same name already sitting in the promise registry as a
   red, unbuilt entry (`autopilot.desktop_full_auto_guidance.v1`) tied to a
   deleted app. Shipping this feature does not make that entry green by
-  itself; a separate registry pass would be needed once real use exists.
+  itself. A separate registry pass would be needed once real use exists.
 - Automatic next-turn continuation is new territory even outside Full Auto --
   the roadmap already treats "autonomous next-turn work" as a distinct,
   not-yet-proven capability with its own durability requirements. Full Auto
-  should not be the first place that gets proven; it should reuse whatever
+  should not be the first place that gets proven. It should reuse whatever
   already-proven mechanism exists for it, or wait until one does.
 
 ## Rollout
@@ -222,7 +222,7 @@ the first several turns happen. Judge from that whether Codex reliably picks
 real work from the repo's own docs/issues, whether unattended continuation
 holds up across a reload or restart, and whether stop actually stops. Nothing
 past that -- a second repo, any adjustment to the full-trust default, any
-review affordance beyond "it's a normal Codex turn" -- is worth deciding until
+review affordance beyond "it is a normal Codex turn" -- is worth deciding until
 that first watch has happened.
 
 Adopting this document does not change the `autopilot.desktop_full_auto_guidance.v1`

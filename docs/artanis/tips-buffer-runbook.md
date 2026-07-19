@@ -2,7 +2,7 @@
 
 Status: **retired by VP-1 on 2026-07-14**. The tips-buffer daemon, sweeps,
 reconciliation jobs, routes, and active balance claims are deleted. The
-database records and private archive remain recovery evidence; this historical
+database records and private archive remain recovery evidence. This historical
 runbook grants no authority to restart the wallet or replay a payment.
 
 ## What the buffer is
@@ -16,7 +16,7 @@ exists for exactly two jobs:
    on this wallet, including labor escrow holds in `held_msat`. The
    backing invariant — sum of agent balances ≤ buffer balance — is
    checked every cron tick
-   (`TipsBuffer.backingInvariant`); a violation raises loudly in the
+   (`TipsBuffer.backingInvariant`). A violation raises loudly in the
    scheduled observer, never silently.
 2. **Paying**: the sweep worker (#4707) and the tip ladder's direct
    BOLT 12 rung (#4706) pay recipients from this wallet via its `/pay`
@@ -36,7 +36,7 @@ The mnemonic backup lives in the workspace-root secrets convention
 (`.secrets/openagents-mdk-tips-buffer.env`: `MDK_TIPS_BUFFER_MNEMONIC`,
 `MDK_TIPS_BUFFER_ACCESS_TOKEN`, `MDK_TIPS_BUFFER_SERVICE_TOKEN`). The
 production container is the ONLY node allowed on that mnemonic — never
-start a local daemon on it; concurrent nodes corrupt LDK/VSS state.
+start a local daemon on it. Concurrent nodes corrupt LDK/VSS state.
 
 ## Surfaces
 
@@ -60,8 +60,8 @@ Operator routes require the worker admin API token as bearer.
   recipient's credited balance 1:1), and the operator may float the
   buffer via the funding destination (e.g. from the treasury or
   revenue, recorded as `buffer_funding` pay-ins when ledger-tracked).
-- **Held**: credited balances live in `agent_balances`; labor escrow
-  can reserve part of a balance in `held_msat`; the buffer holds the
+- **Held**: credited balances live in `agent_balances`. Labor escrow
+  can reserve part of a balance in `held_msat`. The buffer holds the
   sats that back both available and held claims.
 - **Out**: the sweep worker pushes balances above each agent's
   threshold to their REGISTERED offer (fee-capped, 100-sat minimum,
@@ -81,7 +81,7 @@ Operator routes require the worker admin API token as bearer.
   payout path records settlement.
 - Only a settled sweep/direct receipt makes credited value "settled
   bitcoin" (the promise's authority boundary).
-- Raw offers are used for payment only; ledger rows carry claim refs.
+- Raw offers are used for payment only. Ledger rows carry claim refs.
 - Never print the mnemonic, access token, or service token into
   tracked files, commit messages, issues, or terminal output.
 

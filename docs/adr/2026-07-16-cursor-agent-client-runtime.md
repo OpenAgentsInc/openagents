@@ -1,6 +1,6 @@
 # Cursor Agent Client Protocol peer runtime
 
-Status: accepted for implementation; release claims gated by #8897.
+Status: accepted for implementation. Release claims gated by #8897.
 
 ## Decision
 
@@ -17,12 +17,12 @@ profile revision, stable schema release, platform, and launch arguments. The
 installation-closure digest is recomputed immediately before every spawn, so a
 changed sibling Node binary, JavaScript chunk, or native module fails closed. The
 child receives only the authorized workspace, `HOME`, and a fixed system PATH
-needed by Cursor's launcher; caller PATH entries are never forwarded.
+needed by Cursor's launcher. Caller PATH entries are never forwarded.
 
 Authentication selects `cursor_login` only when initialize advertises it and
 only after the owner accepts a typed external-browser interaction. No ambient
 API key or unconditional Cursor call is inferred. A peer with no advertised
-auth method proceeds without authentication; cancellation returns
+auth method proceeds without authentication. Cancellation returns
 `auth_required`, while transport/auth failures remain typed `auth_lost`.
 
 Stable `session/set_mode` and `session/set_config_option` operate only on the
@@ -38,13 +38,13 @@ the extension surface. Reverse filesystem/terminal capabilities similarly
 remain false unless the complete broker handler set is installed. Both groups,
 model discovery, and Cursor's parameterized-model-picker metadata require
 fresh live evidence matching the admitted version and executable digest. The
-observed build remains `experimental`; #8897 must explicitly promote a version
+observed build remains `experimental`. #8897 Must explicitly promote a version
 only after the complete named matrix passes.
 
 ## Evidence boundary
 
 The observed Darwin arm64 CLI reports
-`2026.06.24-00-45-58-9f61de7`; admission classifies it as `2026.6.24` while
+`2026.06.24-00-45-58-9f61de7`. Admission classifies it as `2026.6.24` while
 retaining the full report in probe evidence. An initialize-only diagnostic
 confirmed wire version 1, `cursor_login`, load support, session listing, and
 the official `agent acp` command. It does not prove prompt, load repair,

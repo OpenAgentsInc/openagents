@@ -112,9 +112,9 @@ Core exports:
 
 The tests prove:
 
-- operator projections expose the lifecycle commands and approval decisions;
+- operator projections expose the lifecycle commands and approval decisions.
 - public Artanis and Forum projections omit private evidence, raw workroom
-  refs, operator endpoints, and operator receipts;
-- public update refs are emitted only from accepted or completed commands;
+  refs, operator endpoints, and operator receipts.
+- public update refs are emitted only from accepted or completed commands.
 - non-Artanis targets, incomplete lifecycle support, and unsafe refs are
   rejected.

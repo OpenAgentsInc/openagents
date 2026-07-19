@@ -2,18 +2,18 @@
 
 > Status: architecture essay + direction note, 2026-06-24. Companion to
 > [`../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md`](../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md)
-> ("The Store We Built Twice"). The audit sections cite live code; the
+> ("The Store We Built Twice"). The audit sections cite live code. The
 > ecosystem sections are labeled speculative and claim nothing. **Nothing here
 > is a product promise, a served capability, or public‑claim copy.** There is no
-> public plugin/skills marketplace today; the starter‑plugin catalog boundary
+> public plugin/skills marketplace today. The starter‑plugin catalog boundary
 > ("does not imply public plugin publication, arbitrary external plugin
 > admission, or a public plugin marketplace", psionic
 > `docs/TASSADAR_STARTER_PLUGIN_CATALOG.md`), the Tassadar disclosure flow, the
 > product‑promise registry, the evidence‑only Blueprint boundary, the Khala
 > identity guard, and the INERT accepted‑outcome settlement machine all hold
-> throughout. **FUTURE** marks speculation; **OWNER‑GATED** marks owner‑gated steps.
+> throughout. **FUTURE** marks speculation. **OWNER‑GATED** marks owner‑gated steps.
 
-## I. The thesis: the audit built the shelf; Khala is the register and the shopper
+## I. The thesis: the audit built the shelf. Khala is the register and the shopper
 
 ["The Store We Built Twice"](../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md)
 tells the marketplace's history from the **supply side**. It catalogs the goods
@@ -23,20 +23,20 @@ and the factory (the Tassadar workstreams) — and it is emphatic that the
 storefront stays *closed* until the goods exist: "the store is the last thing
 built this time, not the first."
 
-This doc is the other half. A store is not only a shelf; it is a **register and a
+This doc is the other half. A store is not only a shelf. It is a **register and a
 shopper**. Someone has to walk in, decide what they need, pick the right item off
 the right shelf, ring it up, and pay — and in a machine‑work economy that
 someone is an agent, calling an API. **Khala is that surface.** Khala is the one
 OpenAI‑compatible endpoint (`openagents/khala`, base `https://openagents.com/api/v1`)
-that agents already call; it is therefore the natural place where demand for
+that agents already call. It is therefore the natural place where demand for
 machine capability lands, where capabilities are *selected and composed* into an
 answer, where execution produces the receipts the audit's floor requires, and
 where the per‑message revenue split actually fires. The fusion in one line:
 
 > **Khala = Blueprint program execution × the Tassadar verification floor ×
 > capability‑marketplace consumption.** Blueprint gives the typed program and the
-> governance; Tassadar gives the proof that a purchased capability did what it
-> claimed; Khala is the surface where a request becomes a program that *buys,
+> governance. Tassadar gives the proof that a purchased capability did what it
+> claimed. Khala is the surface where a request becomes a program that *buys,
 > composes, runs, and meters* those capabilities — and pays their authors in
 > Bitcoin from the trace.
 
@@ -63,7 +63,7 @@ Every Khala turn that needs an exact computation it should not hallucinate is a
 **purchase waiting to happen**: instead of emitting a plausible‑but‑unverified
 number, Khala routes the sub‑task to a Tier‑E module whose answer ships its own
 replay receipt. The marketplace's demand aggregator is not a new storefront to
-build; it is the inference surface we already run, taught to *shop* instead of
+build. It is the inference surface we already run, taught to *shop* instead of
 *guess*.
 
 This is also why Khala must stop being a model‑alias router (the argument in the
@@ -82,7 +82,7 @@ Discover → Buy → Compose → Settle — and each step has a real Blueprint s
 1. **Request → typed program.** A Khala turn becomes a typed Blueprint program
    call, not a raw prompt. *(The contract layer is LIVE —
    `apps/openagents.com/workers/api/src/blueprint/` — and the turn runtime
-   `blueprint/services/chat-program-runtime.ts` exists; routing the Khala request
+   `blueprint/services/chat-program-runtime.ts` exists. Routing the Khala request
    path through it is the first integration milestone, still FUTURE.)*
 2. **Discover by meaning, never by string.** The program's plan selects
    capabilities via the **typed semantic selector**
@@ -91,31 +91,31 @@ Discover → Buy → Compose → Settle — and each step has a real Blueprint s
    surface, backend kind — so it finds "exact fixed‑point ledger transition,
    profile `core_i32.v0.3`" by meaning, satisfying the workspace no‑keyword‑routing
    rule. This is the same selector the audit's §V step 4 ("selection done
-   semantically … not string match") describes. *(Selector LIVE; capability
+   semantically … not string match") describes. *(Selector LIVE, capability
    discovery riding it is FUTURE.)*
 3. **Buy = replay before settlement (for Tier E).** The audit's §V step 5 is the
    purchase protocol: the buyer (or a validator they hire for dust) replays the
-   conformance trace; the digest matches or it does not. Khala is the buyer here.
+   conformance trace. The digest matches or it does not. Khala is the buyer here.
    The kernel already carries the binding to do this: `schemas/program.ts` exposes
    `BlueprintTassadarModuleStepBinding` and `BlueprintReplayModuleBinding` on a
    program tool scope, with executors `blueprint/services/tassadar-module-step.ts`
    and `blueprint/services/replay-module.ts` and a
    `blueprint/repositories/tassadar-module-registry.ts`. *(Bindings + executors
-   LIVE in the kernel; wired into a Khala turn — FUTURE.)*
+   LIVE in the kernel. Wired into a Khala turn — FUTURE.)*
 4. **Compose = the organ market.** A program plan that routes across several
    conformance‑tested, digest‑pinned modules is the audit's §V "Composition, and
    the organ market": a planner around frozen exact cores behind explicit ABI
    tokens (psionic `tassadar_module_linker.rs`). Khala is the planner's runtime
-   home. *(Composition is open research on the supply side; Khala as the composer
+   home. *(Composition is open research on the supply side, Khala as the composer
    is FUTURE.)*
-5. **Execute → decomposable receipt.** Tier‑E steps emit replayable traces; the
+5. **Execute → decomposable receipt.** Tier‑E steps emit replayable traces. The
    whole turn produces a `BlueprintProgramRunRecord` (`authorityBoundary:
    'evidence_only'`) — decision evidence that never writes. Effectful (Tier‑N)
-   steps do not act; they propose through approval‑gated Action Submissions. *(Run
+   steps do not act. They propose through approval‑gated Action Submissions. *(Run
    record + Action Submission LIVE‑in‑code.)*
 6. **Settle = the split, computed from the trace.** The audit's §V step 6 is the
    move that fixes generation one: episode 098's 60/20/20 was declared by
-   bookkeeping; in a trace‑native store the receipt *decomposes* — which module's
+   bookkeeping. In a trace‑native store the receipt *decomposes* — which module's
    steps ran in which spans — and the split is computed from the evidence. Khala is
    where that receipt is produced (it ran the message), so Khala is where the split
    is grounded. The money path rides the `omni-accepted-outcome-*` surfaces and the
@@ -123,19 +123,19 @@ Discover → Buy → Compose → Settle — and each step has a real Blueprint s
    Lightning. **OWNER‑GATED.**
 
 The point of the list: steps 1–5 are evidence‑only and already have live
-substrate; only step 6 moves money, and it stays behind the inert machine and the
+substrate. Only step 6 moves money, and it stays behind the inert machine and the
 promise registry. The marketplace can be *built and demonstrated* end‑to‑end
 without a single sat moving — which is exactly the discipline the audit insists on.
 
 ## IV. The shelf Khala shops on is its routing policy
 
 The audit's deepest design move (§V) is that **the marketplace's shelf structure
-is the verification ladder itself**. For Khala that ladder is not a catalog; it is a
+is the verification ladder itself**. For Khala that ladder is not a catalog. It is a
 **routing‑and‑honesty policy**. When a program plan needs a sub‑task done, the tier
 it picks *is* the claim it is allowed to make to the user:
 
 - **Tier E — exact.** Compiled weight modules, replay‑verified. When Khala routes
-  here, the answer *carries its own receipt*; Khala may say "this is exact" because
+  here, the answer *carries its own receipt*. Khala may say "this is exact" because
   a digest comparison backs it. This is the tier that fixes the constitutional
   buyer problem.
 - **Tier D — deterministic.** The live `capability_free_local_deterministic`
@@ -149,7 +149,7 @@ it picks *is* the claim it is allowed to make to the user:
   one's trust problem at the demand surface.
 - **Tier N — effectful.** Networked/writing capabilities under full Blueprint
   governance — Source Authority, Action Submission, approval policy, receipts.
-  Khala proposes; it does not act.
+  Khala proposes. It does not act.
 
 So the refusal‑posture work in the brain audit and the marketplace meet here:
 Khala's honesty about *what it can do* and Khala's honesty about *the proof grade
@@ -167,7 +167,7 @@ through Khala:
   refusing, Khala offers to be guided.
 - The guided session is captured as a deterministic trace (the executor‑trace loop,
   `apps/openagents.com/workers/api/src/artanis-scheduled-runner.ts`, already records
-  replay‑verified traces; one paid Lightning closeout settled 2026‑06‑10,
+  replay‑verified traces. One paid Lightning closeout settled 2026‑06‑10,
   `compute.tassadar_executor_poc.v1`).
 - The trace is distilled into a candidate typed signature + Module Version, enters
   Blueprint as an `optimizer_candidate`, is refined by GEPA, and is promoted only
@@ -193,20 +193,20 @@ The substrate is unusually far along for something with no storefront:
 - **The typed selector (LIVE):** `packages/probe/packages/runtime/src/blueprint/signature-lookup.ts`.
 - **Tassadar ↔ Blueprint bindings (LIVE in the kernel):**
   `BlueprintTassadarModuleStepBinding` / `BlueprintReplayModuleBinding` on
-  `schemas/program.ts`; executors `services/tassadar-module-step.ts`,
-  `services/replay-module.ts`; registry `repositories/tassadar-module-registry.ts`.
+  `schemas/program.ts`. Executors `services/tassadar-module-step.ts`,
+  `services/replay-module.ts`. Registry `repositories/tassadar-module-registry.ts`.
 - **The Khala turn runtime (LIVE but unwired):** `services/chat-program-runtime.ts`
   — exists, not yet called from the Khala request path.
 - **Supply‑side honesty layer (FILED):** the `TassadarCapabilityEnvelope` consumer
   in Pylon (W4.1, openagents#4750) — capability advertised only with self‑test
   receipts.
 - **Settlement (LIVE but INERT):** `omni-accepted-outcome-*` contracts/economics +
-  the 8‑state settlement state machine; NIP‑SKL/NIP‑AC rails specced
+  the 8‑state settlement state machine. NIP‑SKL/NIP‑AC rails specced
   (`docs/nips/SKL.md`, `docs/nips/AC.md`).
 
 The honest gap is the connective tissue: **no Khala turn is yet expressed as a
 Blueprint program that selects a Tassadar capability and settles a decomposed
-split.** Every brick exists; the building is not assembled. That assembly — not
+split.** Every brick exists. The building is not assembled. That assembly — not
 new primitives — is the marketplace work on the Khala side.
 
 ## VII. What would kill it (from the demand side)
@@ -216,7 +216,7 @@ Mirroring the audit's §VI, the Khala‑specific failure modes:
 - **Khala stays a model‑alias router.** If a turn never becomes a capability‑selecting
   program, there is no demand surface and no split to compute — just a model talking
   to itself. This is the default failure and the one to fight first.
-- **The shelf is empty.** Khala can only shop a catalog that exists; the audit's "the
+- **The shelf is empty.** Khala can only shop a catalog that exists. The audit's "the
   shelf is nearly empty today" is the binding constraint. No Tier‑E inventory, no
   exact routing, no constitutional‑buyer product. Demand cannot precede supply here.
 - **Keyword routing creeps in.** The instant capability selection degrades into a
@@ -228,7 +228,7 @@ Mirroring the audit's §VI, the Khala‑specific failure modes:
   door — with worse blast radius, because now a price is attached.
 - **The split reverts to bookkeeping.** If the revenue decomposition is asserted by
   accounting rather than computed from the trace, generation one's "payments without
-  proofs" returns. The receipt must decompose; the split must be arithmetic.
+  proofs" returns. The receipt must decompose. The split must be arithmetic.
 - **The sequencing trap, demand‑side edition.** The audit's deepest warning —
   building the storefront before the goods — has a Khala twin: building a Khala
   "marketplace UI" or charging for capability routing before a conformance‑tested
@@ -242,15 +242,15 @@ This filings nothing and widens nothing. The build order, demand‑side:
 
 1. **Route one Khala turn through `chat-program-runtime.ts`** and emit an
    evidence‑only `BlueprintProgramRunRecord`. The first Khala‑on‑Blueprint call.
-   *(Evidence‑only; no money.)*
+   *(Evidence‑only, no money.)*
 2. **Turn discovery onto `signature-lookup.ts`** so a Khala program selects a
    capability by typed selector — start with one Tier‑E/Tier‑D capability already in
    the starter catalog. *(No keyword routing.)*
 3. **Wire one Tassadar replay step** (`tassadar-module-step.ts` /
    `replay-module.ts`) into that turn so the sub‑task's answer carries a replay
-   receipt; surface the proof grade honestly to the user.
+   receipt. Surface the proof grade honestly to the user.
 4. **Produce a decomposed receipt** — a `BlueprintProgramRunRecord` whose trace
-   shows which capability's steps ran in which spans. *(Still evidence‑only; this is
+   shows which capability's steps ran in which spans. *(Still evidence‑only, this is
    the split's input, not the split.)*
 5. **Close the supply on‑ramp:** capture one Khala‑guided session into a candidate
    capability (the brain audit's loop), through GEPA + a Release Gate. *(FUTURE.)*
@@ -276,10 +276,10 @@ honestly: **receipts or it did not happen.**
   — Khala on the Blueprint/DSPy program system + Tassadar plugin extensibility.
 - Live fusion code: `apps/openagents.com/workers/api/src/blueprint/` (schemas
   incl. the Tassadar module bindings, `services/{chat-program-runtime,tassadar-module-step,replay-module}.ts`,
-  `repositories/tassadar-module-registry.ts`); selector
+  `repositories/tassadar-module-registry.ts`). Selector
   `packages/probe/packages/runtime/src/blueprint/signature-lookup.ts`.
-- Settlement + rails: `apps/openagents.com/workers/api/src/omni-accepted-outcome-*.ts`;
-  `docs/nips/SKL.md`, `docs/nips/AC.md`; promises `docs/promises/registry.md`.
-- Supply‑side capability honesty: `TassadarCapabilityEnvelope` (W4.1, openagents#4750);
+- Settlement + rails: `apps/openagents.com/workers/api/src/omni-accepted-outcome-*.ts`.
+  `docs/nips/SKL.md`, `docs/nips/AC.md`. Promises `docs/promises/registry.md`.
+- Supply‑side capability honesty: `TassadarCapabilityEnvelope` (W4.1, openagents#4750).
   psionic `docs/TASSADAR_STARTER_PLUGIN_{AUTHORING,CATALOG,RUNTIME}.md`.
 </content>

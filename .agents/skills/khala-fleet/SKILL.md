@@ -27,5 +27,5 @@ Quick orientation while you open those:
   (`fleet_run_start` / `fleet_run_status` / `fleet_run_control`).
 - Done = closeout checklist ok + exact `token_usage_events` rows. Counter
   movement alone is NEVER completion evidence.
-- Never run login flows against `~/.codex` or the owner's live `~/.claude`;
+- Never run login flows against `~/.codex` or the owner's live `~/.claude`.
   worker auth uses isolated per-account homes only.

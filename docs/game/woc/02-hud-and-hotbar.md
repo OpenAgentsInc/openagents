@@ -1,7 +1,7 @@
 # WoC HUD, Hotbar, and Icon System
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -16,7 +16,7 @@ methods), implemented in **raw imperative DOM with no UI framework**. It is a re
 renderer of `IWorld` state, called once per frame after the sim tick. Three properties
 make it fast and worth studying:
 
-- **`IWorld`-only.** It never imports `Sim` or `ClientWorld`; it reads through the
+- **`IWorld`-only.** It never imports `Sim` or `ClientWorld`. It reads through the
   interface (`src/world_api.ts`). Runs identically offline and online.
 - **Hot-write dedup cache.** A `Map<HTMLElement,string>` gates every DOM write through
   `setText` / `setDisplay` / `setTransform` / `setWidth`. A write is skipped if the value
@@ -24,7 +24,7 @@ make it fast and worth studying:
   is the dominant cost in a browser MMO HUD, and elision is what keeps it cheap.
 - **Three throttle tiers.** Per-frame core (HP/resource/cast/auras/action-bar/nameplates),
   ~100 ms (minimap), ~250 ms (party/quest/trade/arena/map), ~500 ms (social/market). The
-  per-frame core stays imperative with no allocations; windows recompute only on a changed
+  per-frame core stays imperative with no allocations. Windows recompute only on a changed
   "signature" string.
 
 There is an active modularization program (`docs/ui-architecture-hud-modularization/`,
@@ -32,7 +32,7 @@ There is an active modularization program (`docs/ui-architecture-hud-modularizat
 character, bags, market, social, trade, options, quest log, arena) into per-window modules
 behind a shared `HudContext` (one hot-write gate, a window manager, an icon service,
 formatters, the `IWorld`, keybinds, `t`). The locked decision is to keep the game HUD
-framework-free; the admin SPA is the one place a framework may be piloted.
+framework-free. The admin SPA is the one place a framework may be piloted.
 
 ### Relevance to us
 
@@ -40,7 +40,7 @@ We use Foldkit, not raw DOM, so we **diverge on the framework choice** and do no
 `hud.ts` literally. What we take is the *discipline*: read-only projection, a single
 state seam, recompute-on-signature for panels, and the pure-logic-split that makes every
 sub-system below testable without a DOM. Our `verse-scene-graph-vs-react-three-fiber`
-audit already argues for an Effect-native frame clock and scoped resources; WoC's
+audit already argues for an Effect-native frame clock and scoped resources. WoC's
 hot-write gate and signature pattern are the DOM-side analog of the same on-demand idea.
 
 ## Hotbar / action bar
@@ -55,7 +55,7 @@ type HotbarAction = { type: 'ability'; id: string } | { type: 'item'; id: string
 A 12-slot bar keyed by index, mapped to keys `1`-`9`, `0`, `-`, `=`, serialized to
 `localStorage`. Pure functions:
 
-- `parseHotbarAction()` validates against known ability/item ids; **each ability appears at
+- `parseHotbarAction()` validates against known ability/item ids. **Each ability appears at
   most once per bar** (dedup via a `seenAbilities` set).
 - `placeAbilityOnSlot()` / `swapHotbarSlots()` return new arrays (no mutation): place into
   empty, swap when occupied.
@@ -64,7 +64,7 @@ A 12-slot bar keyed by index, mapped to keys `1`-`9`, `0`, `-`, `=`, serialized 
 - `syncHotbarActions()` removes now-invalid ids on ability change and auto-places new
   high-priority abilities into empty slots.
 
-GCD is **not** in the hotbar; it is a sim-level constraint. The HUD reads
+GCD is **not** in the hotbar. It is a sim-level constraint. The HUD reads
 `player.gcdRemaining` and per-frame computes a cooldown sweep via
 `remainingCooldown(now, started, duration)` to paint the slot overlay. Drag/drop between
 spellbook, bags, and bar is HUD plumbing on top of the pure model.
@@ -113,7 +113,7 @@ cleanly and port well:
   emblem's bevel lands outside a circular clip, and `crestIdForEntity(kind, family)` to
   resolve an entity to an emblem. One shared painter instance serves both player and
   target frames.
-- **Absorb bar** (`absorb_bar.ts`, pure): models shields as absorb auras;
+- **Absorb bar** (`absorb_bar.ts`, pure): models shields as absorb auras.
   `absorbBarView()` returns fill fraction + overshield flag.
 - **XP / progress bar** (`xp_bar.ts`, pure, snapshot-tested): pre-cap fill with rested
   overlay, at-cap lifetime total, and a post-cap virtual-level overflow ("prestige") mode.
@@ -126,7 +126,7 @@ cleanly and port well:
 circular avatar chip (a Pylon's agent face in the Verse HUD). The cast/progress bar maps
 naturally onto a Tassadar run's per-step lifecycle (assignment -> trace -> replay ->
 verdict -> settle), which already wants a progress affordance per #5822. The absorb/
-resource meter math is only worth it if the Verse gives entities depletable resources;
+resource meter math is only worth it if the Verse gives entities depletable resources.
 otherwise skip. Reuse the pure-core + thin-consumer split so our versions are Vitest-able.
 
 ## Tooltips, item compare, settings, perf overlay
@@ -135,18 +135,18 @@ otherwise skip. Reuse the pure-core + thin-consumer split so our versions are Vi
   whose coefficients mirror the sim's `recalcPlayerStats()`, cross-checked in tests. The
   view receives `t` and `formatNumber` injected, so it is DOM-testable.
 - **Item compare** (`item_compare.ts`, ~33 lines pure): stat deltas vs equipped, thresholded
-  so same-for-same swaps yield nothing; HUD colors upgrades/downgrades.
+  so same-for-same swaps yield nothing. HUD colors upgrades/downgrades.
 - **Settings controls** (`settings_controls.ts`): generic DOM builders (`settingRow`,
   `toggleControl`) that take plain callbacks + localized strings, no app coupling.
 - **Performance overlay** (`perf_overlay_model.ts` pure + `perf_overlay.ts` consumer):
-  frame-time sparkline, FPS, p95/max, draw calls, entity/memory counts, DPS/HPS meters;
+  frame-time sparkline, FPS, p95/max, draw calls, entity/memory counts, DPS/HPS meters.
   drag-to-place, persisted to localStorage. Metric math is DOM-free and testable.
 
 ### Relevance to us
 
 **Adapt selectively.** Tooltips + item-compare are worth it only if the Verse exposes
 inspectable entities with comparable stats (for example inspecting a Pylon's capabilities
-or a run's parameters); the pure-core pattern is the part to copy. The **perf overlay is
+or a run's parameters). The pure-core pattern is the part to copy. The **perf overlay is
 genuinely valuable** for a `three-effect`/WebGL Verse: a frame-time sparkline + draw-call
 counter we can toggle is exactly the kind of diagnostic the desktop world will want, and
 the model/consumer split means the metric math ports without the DOM. Settings builders

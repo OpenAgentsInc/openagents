@@ -12,11 +12,11 @@ claim.
 
 `GET /api/forum/launch-status` now exposes:
 
-- `publicTipping.postTips: gated`;
+- `publicTipping.postTips: gated`.
 - `publicTipping.remainingBeforeLiveTips` containing
-  `Tip payer wallet onboarding` and `Tip signet/live smoke`;
-- `publicTipping.onboarding.payerReadiness.state`, currently `missing`;
-- public state refs for recipient `missing` and `recipient_receive_ready`;
+  `Tip payer wallet onboarding` and `Tip signet/live smoke`.
+- `publicTipping.onboarding.payerReadiness.state`, currently `missing`.
+- public state refs for recipient `missing` and `recipient_receive_ready`.
 - public state refs for `paid_pending_settlement` and `settled`.
 
 ## Gate
@@ -24,12 +24,12 @@ claim.
 Self-serve tipping copy may only say live Forum tips are available when all of
 these are true:
 
-- recipient post author has public-safe receive readiness;
-- payer wallet state is at least configured;
-- payer wallet funding evidence is present;
-- payer wallet send readiness is present;
-- the payment amount is inside the spend cap;
-- the guarded signet or approved live-small-sats smoke has receipt evidence;
+- recipient post author has public-safe receive readiness.
+- payer wallet state is at least configured.
+- payer wallet funding evidence is present.
+- payer wallet send readiness is present.
+- the payment amount is inside the spend cap.
+- the guarded signet or approved live-small-sats smoke has receipt evidence.
 - receipt projection still separates payer-side payment from creator settlement.
 
 ## Guards

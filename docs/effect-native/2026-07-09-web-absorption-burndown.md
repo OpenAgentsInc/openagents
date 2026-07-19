@@ -3,7 +3,7 @@
 > **RETIRED / HISTORICAL AS OF 2026-07-14.** The former Foldkit `apps/web`
 > application was deleted in #8813 and `apps/start` now owns the retained web
 > documents and production build. The conversion sequencing, live-app split,
-> TODO rows, and recommendations below record the July 9 state; they are not a
+> TODO rows, and recommendations below record the July 9 state. They are not a
 > current work queue. Current Sol policy closes broad route conversion,
 > landing, Forum expansion, portal, CRM, sales, and outbound product work unless
 > separately reauthorized. For the remaining renderer seam, use the
@@ -14,7 +14,7 @@ this was the **first-slice** inventory + burn-down table for converting every
 `apps/openagents.com` web route onto the Effect Native DOM renderer, following
 the EN-1 `/stage1` pattern
 (`docs/fable/2026-07-08-en-1-stage1-effect-native-receipt.md`). Retain it as a
-point-in-time sizing record; do not update its statuses or dispatch work from
+point-in-time sizing record. Do not update its statuses or dispatch work from
 it.
 
 ## Architecture context (read this before converting anything)
@@ -47,10 +47,10 @@ proves the pattern, keeps pace with the eventual root cutover), while
 -risk program** that needs an explicit per-route serving-cutover plan (most
 likely: `apps/start` becomes the live app route-by-route, or `apps/web` pages
 are replaced in place with `ssr:false` CSR mounts of the same Effect Native
-page — CLAUDE.md documents both directions as "the plan" in different places;
+page — CLAUDE.md documents both directions as "the plan" in different places.
 this needs an owner-level decision before large-scale `apps/web` deletion
 starts). This burn-down inventories both, but **only `apps/start` rows are
-safe to convert-and-delete under today's guardrails**; `apps/web` rows are
+safe to convert-and-delete under today's guardrails**. `apps/web` rows are
 listed for visibility and sizing, not for immediate action.
 
 ## Part A — `apps/start` (interim React + Effect Native), the safe near-term lane
@@ -64,7 +64,7 @@ component only (the conversion unit), not the thin route file.
 | --- | --- | --- | --- | --- | --- |
 | `/khala` | `-khala-effect-native-page.tsx` | **Effect Native** | 281 | Public info page, one live counter (`khala-tokens-served`). | **DONE (this session)** |
 | `/tassadar` | `-tassadar-effect-native-page.tsx` | **Effect Native** | 326 | Public info page, one client interaction (clipboard copy intent). | **DONE (this session)** |
-| `/stage1` | `-stage1-effect-native-page.tsx` | **Effect Native** | 719 | EN-1 pattern-setter; unlinked staging route, not a real nav target. | DONE (EN-1, prior session) |
+| `/stage1` | `-stage1-effect-native-page.tsx` | **Effect Native** | 719 | EN-1 pattern-setter. Unlinked staging route, not a real nav target. | DONE (EN-1, prior session) |
 | `/workspaces/$workspaceId` | `-workspace-invite-page.tsx` | React | 35 | Smallest remaining page file. Auth-adjacent (workspace invite) — check gating before converting. | TODO |
 | `/run` | `-run-page.tsx` | React | 37 | Public Terminal-Bench run visualizer entry. | TODO |
 | `/training/runs`, `/training/runs/$runId` | `-training-runs-deprecated-page.tsx` | React | 43 | Filename says "deprecated" — confirm with `route-table.ts`/owner whether this should convert or just delete outright. | TODO (confirm scope first) |
@@ -76,8 +76,8 @@ component only (the conversion unit), not the thin route file.
 | `/pylon/codex/assignments/$assignmentRef` | `-pylon-codex-assignment-status-page.tsx` | React | 108 | Public, live data (assignment status). | TODO |
 | `preview/landing` | `-landing-preview-page.tsx` | React | 127 | Internal preview route, not linked from nav. | TODO |
 | `/activity` | `-activity-page.tsx` | React | 146 | `clientOnly` in the Foldkit table (not server-admitted there either). | TODO |
-| `/download` | `-download-effect-native-page.tsx` | **Effect Native** | ~370 | Public, static-ish info page. Converted with typed ViewProgram (Stack/Card/Text/Link); one-click auto-onboarding remains gated. | **DONE** |
-| `/privacy` | `-privacy-effect-native-page.tsx` | **Effect Native** | 443 | **Canonical public surface**. Static legal prose converted via structural rework (one Text/Link view per run under Stack — no new catalog components). Copy preserved verbatim; PENDING OWNER / LEGAL REVIEW unchanged. | **DONE** |
+| `/download` | `-download-effect-native-page.tsx` | **Effect Native** | ~370 | Public, static-ish info page. Converted with typed ViewProgram (Stack/Card/Text/Link). One-click auto-onboarding remains gated. | **DONE** |
+| `/privacy` | `-privacy-effect-native-page.tsx` | **Effect Native** | 443 | **Canonical public surface**. Static legal prose converted via structural rework (one Text/Link view per run under Stack — no new catalog components). Copy preserved verbatim. PENDING OWNER / LEGAL REVIEW unchanged. | **DONE** |
 | `/clients-preview` | `-clients-preview-page.tsx` | React | 202 | Internal/preview. | TODO |
 | `/business/kpi/$engagementRef` | `-business-kpi-page.tsx` | React | 214 | Public. | TODO |
 | `/artanis/traces` | `-artanis-traces-page.tsx` | React | 215 | Public. | TODO |
@@ -87,7 +87,7 @@ component only (the conversion unit), not the thin route file.
 | `/pylons` | `-pylons-page.tsx` | React | 278 | Public Pylon scene entry. | TODO |
 | `/sites/demo-checkout`, `/sites/demo-checkout/$returnAction` | `-site-checkout-demo-page.tsx` | React | 285 | **Payment-adjacent (checkout demo). Explicitly excluded from this session's guardrails — do not convert without an explicit payment-flow review.** | DEFER |
 | `/mirrorcode` | `-mirrorcode-page.tsx` | React | 290 | Public. | TODO |
-| `/promises` | `-promises-page.tsx` | React | 300 | **Promise registry surface — handle carefully per the issue guardrail. Coordinate with `docs/promises/` conventions before converting; do not change copy or gating semantics.** | DEFER (careful pass) |
+| `/promises` | `-promises-page.tsx` | React | 300 | **Promise registry surface — handle carefully per the issue guardrail. Coordinate with `docs/promises/` conventions before converting. Do not change copy or gating semantics.** | DEFER (careful pass) |
 | `/code`, `/code/download` | `-code-page.tsx` | React | 376 | Uses shared `SceneLayer` from `-app-shell-routes.tsx` (kept after this session's cleanup). | TODO |
 | `/stats` | `-stats-page.tsx` | React | 487 | **Canonical public surface**, live data-heavy (multiple public counters/feeds). | TODO |
 | `/share/$shareId` | `-share-page.tsx` | React | 640 | Public, live data. | TODO |
@@ -100,10 +100,10 @@ Not listed (internal-preview / non-primary, lower priority): `preview/sales-land
 
 This is a single large Foldkit SPA (Model/View/Update), not N independent
 files. Route dispatch lives in `apps/openagents.com/apps/web/src/page/loggedOut/view.ts`
-and `.../loggedIn/view.ts`; the path/gating source of truth is
+and `.../loggedIn/view.ts`. The path/gating source of truth is
 `route-table.ts` (~70 route tags, deduped to ~55 server-document patterns).
 LOC below is the primary page-implementation file for each area (excluding
-`.test.ts`); several areas have large sub-trees of transition/model files not
+`.test.ts`). Several areas have large sub-trees of transition/model files not
 counted here.
 
 **Everything in this section is live production.** Do not convert-and-delete
@@ -147,11 +147,11 @@ until a serving-cutover plan exists (see Architecture context above).
 | `/qa/{runRef}` | `page/qa-swarm.ts` | 830 | public | |
 | `/forum*` | `page/forum.ts` | 928 | public | |
 | `/blog`, `/blog/{slug}` | `page/blog.ts` | 937 | public | |
-| `/khala` (Foldkit original) | `loggedOut/page/khalaTokensServed*` + shared scene | — | public | Foldkit counterpart of this session's converted `/khala` in `apps/start`. Still live; unaffected by this session (only the `apps/start` copy changed). |
-| `/trace/{uuid}` | `page/trace.ts` | 1,434 | public | Largest logged-out single page; this is the route with the 2026-06-24 302 prod-bug history (`route-table.ts` comments) — extra care warranted. |
+| `/khala` (Foldkit original) | `loggedOut/page/khalaTokensServed*` + shared scene | — | public | Foldkit counterpart of this session's converted `/khala` in `apps/start`. Still live. Unaffected by this session (only the `apps/start` copy changed). |
+| `/trace/{uuid}` | `page/trace.ts` | 1,434 | public | Largest logged-out single page. This is the route with the 2026-06-24 302 prod-bug history (`route-table.ts` comments) — extra care warranted. |
 | `/agents/{ref}`, `/artanis`, `/adjutant` | `loggedOut/page/publicAgent.ts` | 2,700 | public | |
 | root home scene | `loggedOut/page/home.ts` | 2,341 | public | **Owner-gated with `/new` (#8565) — do not touch.** |
-| `/dashboard`, `/billing`, `/usage`, `/pro`, admin/gym-oss/mullet/artanis-gym | `loggedIn/page/*.ts` (dashboard 169, billing 152, usage 68, pro 91, artanisGym 253, gymOss 47 + 1,261 controller/runner, mullet 2,641 across model/transitions/view/workbench) | ~4,600 | **admin / logged-in gated** | Operator-only surfaces; lowest external-user risk but highest internal-tooling risk. Defer behind Part A. |
+| `/dashboard`, `/billing`, `/usage`, `/pro`, admin/gym-oss/mullet/artanis-gym | `loggedIn/page/*.ts` (dashboard 169, billing 152, usage 68, pro 91, artanisGym 253, gymOss 47 + 1,261 controller/runner, mullet 2,641 across model/transitions/view/workbench) | ~4,600 | **admin / logged-in gated** | Operator-only surfaces. Lowest external-user risk but highest internal-tooling risk. Defer behind Part A. |
 | `/settings*` | `loggedIn/page/settings.ts` | 971 | logged-in | |
 | `/files/{id}`, `/teams/*` | `loggedIn/page/files.ts` + team-chat/files transitions | 501 + more | logged-in, workroom gate | |
 | `/t/{id}`, chat | `loggedIn/page/chat.ts` + `chatDom.ts`/`chatState.ts` | 605 + more | logged-in, workroom gate | |
@@ -168,11 +168,11 @@ until a serving-cutover plan exists (see Architecture context above).
    for flat `Text` proved out on privacy). Next good candidates:
    `/pylon/codex/assignments/{ref}`, `/artanis/accounts`, `/gym`, `/pylons`,
    `/artanis/traces`, `/business/kpi/{ref}`, `/clients-preview`, `/mirrorcode`
-   roughly in LOC order; `/terms` can follow the same privacy structural
+   roughly in LOC order. `/terms` can follow the same privacy structural
    rework pattern (one Text/Link per run).
 2. `/terms` uses the same legal-prose structural rework as `/privacy` (flat
    `Text` + Stack + Link runs). No new catalog component is required for the
-   conversion; optional EN-2 rich-text remains a polish item, not a blocker.
+   conversion. Optional EN-2 rich-text remains a polish item, not a blocker.
 3. `/promises` (`apps/start` and, later, the live Foldkit `/promises`) needs
    an explicit pass coordinated with `docs/promises/` conventions — not a
    drive-by conversion. Treat as its own small task.
@@ -217,7 +217,7 @@ Two mechanical guards keep the snapshot honest:
   `bun run --cwd apps/openagents.com check:effect-native-vendor` compares the
   manifest commit to the sibling `~/work/effect-native` `origin/main` tip and
   prints how many commits behind the vendor is. Upstream moves fast, so
-  staleness is a warning, not a failure; only mismatch/partial-vendor is hard.
+  staleness is a warning, not a failure. Only mismatch/partial-vendor is hard.
 
 `@effect-native/render-canvas` (upstream's Three.js scene-graph renderer) is
 intentionally NOT vendored yet — no monorepo consumer imports it. When a surface

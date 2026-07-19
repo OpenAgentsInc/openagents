@@ -15,25 +15,25 @@ change payout targets, or claim settlement.
 
 The record captures:
 
-- provider refs;
-- settlement rail refs and rail kind;
-- readiness state;
-- balance evidence refs;
-- channel posture refs;
-- failed-route and no-route counts;
-- failed-route refs;
-- operator action refs;
+- provider refs.
+- settlement rail refs and rail kind.
+- readiness state.
+- balance evidence refs.
+- channel posture refs.
+- failed-route and no-route counts.
+- failed-route refs.
+- operator action refs.
 - caveats, blockers, evidence refs, and source refs.
 
 ## States
 
 `PylonLdkSettlementReadinessState` is:
 
-- `ready`;
-- `degraded`;
-- `attention_required`;
-- `blocked`;
-- `stale`;
+- `ready`.
+- `degraded`.
+- `attention_required`.
+- `blocked`.
+- `stale`.
 - `unknown`.
 
 Ready states require balance, channel, evidence, and source refs. Blocked
@@ -45,14 +45,14 @@ caveat or operator-action refs. No-route counts require failed-route refs.
 `PYLON_LDK_READINESS_READ_ONLY_AUTHORITY` is the only valid authority shape for
 this contract. It explicitly denies:
 
-- buyer charge mutation;
-- live wallet spend;
-- channel-open mutation;
-- Nexus mutation;
-- Treasury mutation;
-- payout dispatch;
-- payout target disclosure;
-- payout target mutation;
+- buyer charge mutation.
+- live wallet spend.
+- channel-open mutation.
+- Nexus mutation.
+- Treasury mutation.
+- payout dispatch.
+- payout target disclosure.
+- payout target mutation.
 - settlement mutation.
 
 `pylonLdkReadinessCanMutateSettlement` returns false for conforming records.
@@ -77,13 +77,13 @@ material.
 
 `workers/api/src/pylon-ldk-readiness-projections.test.ts` covers:
 
-- fixture decoding;
-- read-only authority and no-spend/no-mutation flags;
-- operator projection shape;
+- fixture decoding.
+- read-only authority and no-spend/no-mutation flags.
+- operator projection shape.
 - public redaction of private provider, rail, balance, channel, failed-route,
-  and operator refs;
+  and operator refs.
 - evidence requirements for ready, blocked, degraded, stale, and
-  attention-required states;
-- route count validation; and
+  attention-required states.
+- route count validation. And
 - rejection of raw wallet, payment, payout, channel, provider, and timestamp
   material.

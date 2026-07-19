@@ -226,7 +226,7 @@ It should not perform:
 * AI inference
 * Long synchronous filesystem operations
 
-The main process houses critical UI responsibilities; blocking it can freeze interactions across the application. Electron recommends asynchronous I/O and moving CPU-heavy work to workers or separate processes. ([Electron][1])
+The main process houses critical UI responsibilities. Blocking it can freeze interactions across the application. Electron recommends asynchronous I/O and moving CPU-heavy work to workers or separate processes. ([Electron][1])
 
 For isolated Node workloads, use:
 
@@ -827,7 +827,7 @@ When a window is hidden or inactive:
 * Lower worker priority conceptually through your own scheduler
 * Stop rendering logs that nobody can see
 
-Do not globally disable background throttling unless you genuinely need continuous rendering; doing so can waste considerable CPU and battery.
+Do not globally disable background throttling unless you genuinely need continuous rendering. Doing so can waste considerable CPU and battery.
 
 For live systems, separate:
 
@@ -1131,7 +1131,7 @@ milestone chain (process start → whenReady → window → first paint → inte
 
 Landed 2026-07-11, proven with a drift-controlled interleaved A/B:
 
-- **Minify all build artifacts** (§2 above; `scripts/build.ts`): renderer
+- **Minify all build artifacts** (§2 above, `scripts/build.ts`): renderer
   3.56 → 2.20 MB, main 2.22 → 1.12 MB, preload 1.34 → 0.64 MB. First paint
   **−19 ms (−4.3%)**, interactive **−17 ms (−3.3%)**, capability-ready
   **−19.8 ms (−3.8%)** median.

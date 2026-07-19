@@ -47,7 +47,7 @@ If a task spans several branches, read all matching files before editing.
 - Use `Stream` for effectful sources that emit many values over time and need pull, backpressure, interruption, or transformation.
 - Prefer Effect HTTP client modules for outgoing HTTP in Effect applications when their typed errors, layers, and client transforms are useful.
 - Prefer Effect-aware tests, explicit layers, and deterministic synchronization over sleeps.
-- Prefer decoders and `schema.makeEffect(...)` at untrusted boundaries; reserve throwing `schema.make(...)` for trusted construction, and never use casts to skip validation.
+- Prefer decoders and `schema.makeEffect(...)` at untrusted boundaries. Reserve throwing `schema.make(...)` for trusted construction, and never use casts to skip validation.
 
 ## Quick Selection Guide
 
@@ -61,7 +61,7 @@ If a task spans several branches, read all matching files before editing.
 - Unknown boundary payload: `Schema.decodeUnknownEffect(...)`.
 - Service boundary: `Context.Service<Service, Interface>()(...)` plus `Layer.effect(...)` plus `Service.of(...)`.
 - Public or non-trivial internal service method: `Effect.fn("Domain.operation")`.
-- Runtime configuration: `Config` recipes read in layers; override with `ConfigProvider` in tests.
+- Runtime configuration: `Config` recipes read in layers. Override with `ConfigProvider` in tests.
 - Event source: `Stream` consumed with `Stream.runForEach(...)` and forked with `Effect.forkScoped` in the owning layer.
 - Queue-backed event source: `Queue` for the producer boundary, `Stream.fromQueue(...)` for consumers.
 - Broadcast event source: `PubSub` / `Stream.fromPubSub(...)` or `SubscriptionRef` for latest-value state.

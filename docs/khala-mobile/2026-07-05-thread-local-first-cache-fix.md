@@ -67,7 +67,7 @@ screens.
    `useKhalaSyncCollection` calls (`chat_message`, `runtime_event`,
    `runtime_turn`) with `useKhalaSyncScopeEntities` backed by the shared
    runtime. Revisiting a thread now shows its cached transcript/messages
-   immediately; only the entries new since the last visit come over the
+   immediately. Only the entries new since the last visit come over the
    wire.
 4. **`src/screens/thread-list-screen.tsx`**: same fix for the thread list
    (`chat_thread` in the owner's personal scope) — it no longer
@@ -80,10 +80,10 @@ screens.
 
 Delta sync reuses the exact durable-cursor/at-least-once-apply contract
 already covered by `packages/khala-sync-client`'s own test suite (idempotent
-apply by `(scope, version, entityType, entityId)`; `must_refetch`/`denied`
+apply by `(scope, version, entityType, entityId)`. `must_refetch`/`denied`
 surfaced as `status: "error"`, never silently stale). Message composition
 still goes through the existing `useKhalaSyncPush` raw-push path unchanged
-(pre-existing, not part of this fix); its server-confirmed result reaches
+(pre-existing, not part of this fix). Its server-confirmed result reaches
 the screen via the SAME live-tail delta socket the new hook already
 maintains for that scope.
 
@@ -95,14 +95,14 @@ transport/server, same fixture shape as
 `tests/khala-mobile-sync-runtime.test.ts`):
 
 - opens a runtime, creates a thread, appends one message (one real
-  bootstrap for that thread scope);
+  bootstrap for that thread scope).
 - closes it and reopens a SECOND runtime instance against the SAME
-  on-device SQLite database (simulating "closed and reopened the app");
+  on-device SQLite database (simulating "closed and reopened the app").
 - mounts `useKhalaSyncScopeEntities` for that thread scope and asserts the
   cached message renders after a single microtask flush, with
   `bootstrapCallsByScope` for that scope still at exactly 1 (no
   re-bootstrap on reopen) while `logPageCallsByScope` shows the catch-up
-  call;
+  call.
 - commits a new message on the fake server after the reopen and asserts it
   arrives via the live delta path, with both the old cached message and the
   new one present (no lost/clobbered data).
@@ -115,6 +115,6 @@ transport/server, same fixture shape as
 - The web `/khala/chat-sync` Start staging route has the identical
   bootstrap-every-time pattern (`-use-khala-sync-collection.ts`,
   `apps/openagents.com/apps/start`). It is a demo/staging harness, not the
-  production chat surface, so it was left alone; a future pass should either
+  production chat surface, so it was left alone. A future pass should either
   delete it or wire it to the same local-first pattern if it becomes a real
   surface.

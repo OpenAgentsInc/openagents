@@ -1,7 +1,7 @@
 # Proof Replay Theater System Plan
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -53,10 +53,10 @@ and `docs/launch/JUNE17_ROADMAP.md`.
 - 2026-06-17: #5302 added the secondary launch-recognition replay bundle at
   `/api/public/proof-replays?ref=launch-recognition-payments`, launchable on the
   website as `/tassadar/replay/launch-recognition-payments`. The bundle creates
-  separate Trigger, Whitefang, and Orrery lanes; records intended 50,000-sat
-  rewards separately from confirmed receipt/recipient-confirmation events;
-  renders Whitefang and Orrery snapshot disagreements as replay gaps; keeps
-  pending, failed, timeout, and pre-dispatch rows as non-payment ledger cards;
+  separate Trigger, Whitefang, and Orrery lanes. Records intended 50,000-sat
+  rewards separately from confirmed receipt/recipient-confirmation events.
+  renders Whitefang and Orrery snapshot disagreements as replay gaps. Keeps
+  pending, failed, timeout, and pre-dispatch rows as non-payment ledger cards.
   and shows Orrery's overpayment as a hazard-pay exception lane rather than
   original payout intent.
 - 2026-06-17: #5303 added the shared replay shipment gate in
@@ -90,7 +90,7 @@ and `docs/launch/JUNE17_ROADMAP.md`.
   renderers. The permanent replay theater renderer must be promoted through
   `@openagentsinc/three-effect` and the existing `/animations` visual taxonomy:
   `@openagentsinc/proof-replay` owns bundle normalization, source gates, clocks,
-  and timeline planning only; `three-effect` owns stages, avatars, payment zaps,
+  and timeline planning only. `three-effect` owns stages, avatars, payment zaps,
   camera language, particles, and world motion.
 
 ## Thesis
@@ -151,23 +151,23 @@ must resolve through public-safe OpenAgents authority surfaces.
 
 Accepted source refs:
 
-- public proof, challenge, trace, receipt, registry, or verdict refs;
-- public settlement refs, including `movementMode` and `realBitcoinMoved`;
-- public training run refs and pylon refs;
+- public proof, challenge, trace, receipt, registry, or verdict refs.
+- public settlement refs, including `movementMode` and `realBitcoinMoved`.
+- public training run refs and pylon refs.
 - public SpacetimeDB `world_event`, `proof_ref`, `settlement_ref`,
   `pylon_station`, `agent_avatar`, `avatar_position`, `local_chat_message`, and
-  `chat_bubble` rows;
+  `chat_bubble` rows.
 - public product-promise or accepted-work refs when the replay needs to show a
-  claim boundary;
+  claim boundary.
 - public artifact refs that already passed existing projection/redaction rules.
 
 Rejected inputs:
 
 - raw prompts, private runtime logs, private repo contents, provider payloads,
   shell transcripts, customer data, wallet mnemonics, service tokens, payment
-  preimages, or internal operator-only packets;
-- anonymous client-authored proof or settlement claims;
-- generated narration that claims beyond cited source refs;
+  preimages, or internal operator-only packets.
+- anonymous client-authored proof or settlement claims.
+- generated narration that claims beyond cited source refs.
 - fixture chatter or demo payment motion presented as live evidence.
 
 If a proof set is incomplete, the replay should render an explicit gap rather
@@ -267,7 +267,7 @@ visual treatment.
 7. Plan a stage layout from source refs: run core in the center, pylon stations
    around it, proof gates near relevant actors, settlement terminals near payment
    flows, and registry markers at evidence boundaries.
-8. Generate default camera cues. The cues are presentation metadata only; they
+8. Generate default camera cues. The cues are presentation metadata only. They
    must not reorder events or hide gaps.
 9. Render through `three-effect` with replay time as the clock. Live
    SpacetimeDB presence can show co-viewers, but cannot mutate the bundle.
@@ -304,48 +304,48 @@ The default replay should be understandable without reading a dashboard.
 Agents:
 
 - pylon agents, service agents, verifiers, contributors, and guests appear as
-  avatars or procedural role glyphs;
+  avatars or procedural role glyphs.
 - avatars walk, face targets, idle, inspect, talk, verify, settle, or show
-  blocked/stale states using the shared animation FSM vocabulary;
+  blocked/stale states using the shared animation FSM vocabulary.
 - pylon ownership or capability adornments must come from public pylon,
   reputation, or asset-catalog refs.
 
 Proof:
 
 - a proof submission appears as an actor carrying or projecting an artifact to a
-  proof gate;
-- verification appears as a short evidence-backed burst or gate transition;
+  proof gate.
+- verification appears as a short evidence-backed burst or gate transition.
 - rejected, blocked, stale, or incomplete proofs use static warning states and
-  captions rather than exciting success motion;
+  captions rather than exciting success motion.
 - clicking any proof object opens the existing public proof/receipt/trace
   inspector path.
 
 Payments:
 
 - confirmed sats movement appears as a zap from payer, treasury, escrow, or
-  settlement terminal to the receiving actor or pylon;
+  settlement terminal to the receiving actor or pylon.
 - the zap label should show amount, rail when public, timestamp, and receipt
-  link;
+  link.
 - Spark-native, Lightning, MDK, or future rails can share the zap grammar but
-  must keep their public receipt fields distinct;
+  must keep their public receipt fields distinct.
 - simulated, pending, deferred, owner-gated, or scaffolded settlement uses a
   muted non-zap path and an explicit label. It must never look like confirmed
   money movement.
 
 Chat and local world signals:
 
-- public-safe chat rows render as speech bubbles and transcript entries;
+- public-safe chat rows render as speech bubbles and transcript entries.
 - pylon-targeted messages can anchor to both speaker and station when backed by
-  one public row;
+  one public row.
 - private DMs, prompts, operator notes, and raw logs stay out of replay.
 
 Camera:
 
-- `overview`: show the whole proof set and all actors;
-- `follow_actor`: follow one avatar through the evidence chain;
-- `orbit_proof`: circle a proof gate while the inspector highlights source refs;
-- `zap_focus`: brief slow camera move around a confirmed payment zap;
-- `free_camera`: viewer-controlled movement, with replay time still authoritative;
+- `overview`: show the whole proof set and all actors.
+- `follow_actor`: follow one avatar through the evidence chain.
+- `orbit_proof`: circle a proof gate while the inspector highlights source refs.
+- `zap_focus`: brief slow camera move around a confirmed payment zap.
+- `free_camera`: viewer-controlled movement, with replay time still authoritative.
 - `director_track`: deterministic authored path stored with bundle/version.
 
 Every replay screen should include a persistent replay label, bundle ref,
@@ -374,41 +374,41 @@ controls stay in compact top/HUD surfaces.
 
 Worker/D1 public authority:
 
-- resolve arbitrary proof sets into public source records;
-- expose a public-safe replay bundle endpoint;
-- preserve receipt-first settlement fields;
+- resolve arbitrary proof sets into public source records.
+- expose a public-safe replay bundle endpoint.
+- preserve receipt-first settlement fields.
 - enforce redaction and claim-boundary tests.
 
 the deleted legacy world module:
 
 - optionally store replay watch-party interaction state: viewers, co-viewer
-  avatars, reactions, camera-follow intent, and local public chat;
-- optionally project public `world_event` refs that help replay context;
+  avatars, reactions, camera-follow intent, and local public chat.
+- optionally project public `world_event` refs that help replay context.
 - never own proof validity, settlement truth, accepted work, payout, or product
   promise state.
 
 `@openagentsinc/three-effect`:
 
-- replay timeline player and deterministic clock;
-- actor interpolation and route planning against static replay events;
-- camera director primitives and camera preset switching;
+- replay timeline player and deterministic clock.
+- actor interpolation and route planning against static replay events.
+- camera director primitives and camera preset switching.
 - approved payment zap, proof gate, settlement terminal, registry marker, and
-  replay gap VFX primitives;
+  replay gap VFX primitives.
 - billboard captions, speech bubbles, nameplates, and hit-target inspection.
 
 `apps/openagents.com`:
 
-- proof-set builder UI from selected entities;
-- replay player and route integration;
-- source inspector and transcript mirror;
-- fallback behavior when SpacetimeDB is down;
+- proof-set builder UI from selected entities.
+- replay player and route integration.
+- source inspector and transcript mirror.
+- fallback behavior when SpacetimeDB is down.
 - deploy-facing browser smoke for nonblank canvas, controls, and proof links.
 
 Docs and registry:
 
 - update asset catalog when new replay props, avatars, zap textures, or camera
-  markers become production assets;
-- update product-promise docs only if replay becomes a public claim surface;
+  markers become production assets.
+- update product-promise docs only if replay becomes a public claim surface.
 - keep runbooks clear that replay bundles are public-safe snapshots.
 
 ## Phased Plan
@@ -469,18 +469,18 @@ P5: asset and export polish
 Before shipping a replay feature:
 
 - redaction tests prove no private prompts, raw logs, wallet material, service
-  tokens, provider payloads, or operator-only rows enter bundles;
-- bundle snapshot tests prove deterministic output for the same source refs;
-- ordering tests cover timestamped and sequence-indexed events;
+  tokens, provider payloads, or operator-only rows enter bundles.
+- bundle snapshot tests prove deterministic output for the same source refs.
+- ordering tests cover timestamped and sequence-indexed events.
 - payment tests prove only confirmed receipt-first movement produces
-  `payment_zap_confirmed`;
+  `payment_zap_confirmed`.
 - source coverage tests prove every event, flow, caption, burst, and zap has at
-  least one dereferenceable source ref or a replay-gap caveat;
+  least one dereferenceable source ref or a replay-gap caveat.
 - app tests prove SpacetimeDB outage falls back to static public bundle
-  rendering when possible;
+  rendering when possible.
 - browser smoke proves the canvas is nonblank, replay controls work, camera
   modes switch, proof inspector links open, labels do not overlap, and mobile
-  layout keeps controls readable;
+  layout keeps controls readable.
 - asset checks prove production replay assets are approved-owned or explicitly
   production-eligible.
 
@@ -511,13 +511,13 @@ The first replay should be the first confirmed real Bitcoin Tassadar
 run-settlement. This is the first example worth building toward because it has
 the entire story shape the replay system exists to show:
 
-- independent exact-trace verification;
-- owner-gated settlement authorization;
+- independent exact-trace verification.
+- owner-gated settlement authorization.
 - the prior simulation-only settlement promise state, explicitly shown as a
-  rehearsal/projection proof rather than the first real money movement;
-- two failed-closed real-dispatch bugs that moved no sats;
+  rehearsal/projection proof rather than the first real money movement.
+- two failed-closed real-dispatch bugs that moved no sats.
 - durable payout intent, Spark treasury dispatch, reconciliation, and public
-  receipt;
+  receipt.
 - a public Forum announcement asking the recipient pylon operator to verify the
   wallet-side arrival.
 
@@ -570,13 +570,13 @@ contributorRef: pylon.448ba824b5fc879f3a59
 
 The public run summary currently carries this real row in `settlementRows`,
 alongside the older 5-sat simulation row. The replay resolver must select the
-real row by receipt ref or by `realBitcoinMoved:true`; it must not turn the
+real row by receipt ref or by `realBitcoinMoved:true`. It must not turn the
 simulation row into a zap.
 
 The product-promise context matters for the story: the training launch gate had
 already been treated as green for the simulation-backed settlement-record path.
 This replay must make the distinction visible. The 5-sat simulated receipt is a
-ghost rehearsal, the gate/copy caveat; the 1,000-sat Spark receipt is the first
+ghost rehearsal, the gate/copy caveat. The 1,000-sat Spark receipt is the first
 real sats movement.
 
 ### Code Surfaces Already In Place
@@ -621,7 +621,7 @@ matters.
    its station to the proof gate. The validator avatar is already at the gate or
    enters from the opposite side. The stage labels the run and window refs.
 3. **Exact replay verification:** the proof gate projects the verified challenge
-   ref. The validator checks it; a short verification burst fires only because
+   ref. The validator checks it. A short verification burst fires only because
    the challenge is `Verified` and `exact_trace_replay`.
 4. **Owner gate opens:** a narrow gate or seal appears above the settlement
    terminal for the bounded approval. It should say the branch is authorized,
@@ -657,7 +657,7 @@ Twitter/X without requiring the viewer to understand the whole HUD.
 
 Target format:
 
-- 45-60 seconds, 16:9 landscape first; later add square and vertical crops.
+- 45-60 seconds, 16:9 landscape first. Later add square and vertical crops.
 - title card: `Tassadar Run 1: first real Bitcoin settlement`.
 - subtitle: `Verified work -> owner gate -> Spark zap -> public receipt`.
 - hero timestamp: `8:38pm, June 17`.
@@ -697,10 +697,10 @@ Recording/export runbook for the first Twitter/X artifact:
 
 Before exporting a clip, browser smoke should verify:
 
-- the canvas is nonblank in the social camera mode;
-- labels and captions fit at 1920x1080 and 1280x720;
-- the zap is absent until `payment_zap_confirmed`;
-- the receipt link/end card resolves;
+- the canvas is nonblank in the social camera mode.
+- labels and captions fit at 1920x1080 and 1280x720.
+- the zap is absent until `payment_zap_confirmed`.
+- the receipt link/end card resolves.
 - no private refs, raw addresses, payment hashes, preimages, keys, or prompts
   appear in any frame.
 
@@ -750,7 +750,7 @@ The second replay target should visualize the launch-recognition payouts:
 50,000-sat rewards to the public agent recipients, plus the accidental overpay
 story around the contributor who received more than intended. This should be a
 separate replay from the run-settlement canary because its authority and meaning
-are different: recognition payouts thank launch contributors; they are not proof
+are different: recognition payouts thank launch contributors. They are not proof
 that the training run can settle arbitrary accepted work at scale.
 
 Public display-name lanes to resolve from the current public-safe refs:
@@ -835,7 +835,7 @@ Implementation notes:
   before-dispatch rows, pending/orphaned rows as non-payment accounting, and a
   109,239-sat overage meter from the latest recipient-visible 159,239-sat
   roadmap closeout value.
-- The replay uses public docs and public-safe recipient-confirmation refs only;
+- The replay uses public docs and public-safe recipient-confirmation refs only.
   raw payment ids, addresses, invoices, hashes, preimages, wallet paths, and
   service credentials stay out of the bundle.
 
@@ -889,13 +889,13 @@ Cross-surface replay checks:
 
 The shared shipment gate must pass before browser rendering. It rejects:
 
-- bundle schema or claim-boundary drift;
-- missing source refs on events, flows, captions, or gaps;
+- bundle schema or claim-boundary drift.
+- missing source refs on events, flows, captions, or gaps.
 - raw private prompts, logs, provider payloads, customer data, wallet paths,
   mnemonics, service tokens, payment hashes/preimages, raw BOLT11/Lightning,
-  Spark, or on-chain address-looking values;
-- confirmed zaps without public receipt or recipient-confirmation evidence;
-- blocked settlement rows carrying moving sats;
+  Spark, or on-chain address-looking values.
+- confirmed zaps without public receipt or recipient-confirmation evidence.
+- blocked settlement rows carrying moving sats.
 - simulated payment rows claiming `realBitcoinMoved:true`.
 
 Operator-only visual smoke, when a browser is available:
@@ -903,9 +903,9 @@ Operator-only visual smoke, when a browser is available:
 1. Open `/tassadar/replay/first-real-settlement`.
 2. Open `/tassadar/replay/first-real-settlement?camera=social&duration=60&hud=social`.
 3. Open `/tassadar/replay/launch-recognition-payments`.
-4. Check 1920x1080 and 1280x720. The stage/canvas must be nonblank; labels must
-   not overlap; early first-settlement frames must have no confirmed zap; late
-   settlement and recognition frames must show only source-backed zaps; source
+4. Check 1920x1080 and 1280x720. The stage/canvas must be nonblank. Labels must
+   not overlap. Early first-settlement frames must have no confirmed zap. Late
+   settlement and recognition frames must show only source-backed zaps. Source
    inspector links must open public refs.
 5. Scan visible text for private/payment/operator material before capturing or
    posting social video.

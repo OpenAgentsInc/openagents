@@ -15,26 +15,26 @@ identifiers, invoices, preimages, provider secrets, or credentials.
 
 Each row exposes:
 
-- payout class;
-- payout basis;
-- work class;
-- progress class;
-- settlement state;
-- accepted-work refs;
-- link refs;
-- surface refs;
-- evidence refs; and
+- payout class.
+- payout basis.
+- work class.
+- progress class.
+- settlement state.
+- accepted-work refs.
+- link refs.
+- surface refs.
+- evidence refs. And
 - source refs.
 
 ## Claim Separation
 
 The projection keeps these claims separate:
 
-- modeled reward;
-- payout eligibility;
-- payout dispatch;
-- payout confirmation;
-- payout verification; and
+- modeled reward.
+- payout eligibility.
+- payout dispatch.
+- payout confirmation.
+- payout verification. And
 - settled payout.
 
 A row can be linkable before settlement, but `settlementClaimAllowed` is true
@@ -44,11 +44,11 @@ only when the row is settled and has both verification and settlement refs.
 
 `PYLON_ACCEPTED_WORK_PAYOUT_ROW_READ_ONLY_AUTHORITY` denies:
 
-- buyer charge mutation;
-- live wallet spend;
-- payout dispatch;
-- payout target mutation;
-- public claim upgrade; and
+- buyer charge mutation.
+- live wallet spend.
+- payout dispatch.
+- payout target mutation.
+- public claim upgrade. And
 - settlement mutation.
 
 The row projection can describe a claim state. It cannot create or upgrade the
@@ -68,10 +68,10 @@ credentials, private repo refs, customer data, and raw timestamps.
 
 `workers/api/src/pylon-accepted-work-payout-rows.test.ts` covers:
 
-- settled row projection;
-- public-safe links;
-- private ref redaction;
-- modeled, eligibility, dispatch, verification, and settlement separation;
-- evidence requirements for progress states; and
+- settled row projection.
+- public-safe links.
+- private ref redaction.
+- modeled, eligibility, dispatch, verification, and settlement separation.
+- evidence requirements for progress states. And
 - unsafe payment, payout target, wallet, provider, credential, customer, and
   timestamp material rejection.

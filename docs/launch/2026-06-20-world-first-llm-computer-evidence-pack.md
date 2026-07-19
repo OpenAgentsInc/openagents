@@ -5,7 +5,7 @@
 - Blocker advanced: `blocker.product_promises.world_first_evidence_pack_missing`
 - Companion docs:
   - `docs/launch/2026-06-18-world-firsts-verification.md` (prior-art search, Claim 2)
-  - `docs/launch/2026-06-18-evidence-pack.md` (broad Episode 238 pack; §3 + §7)
+  - `docs/launch/2026-06-18-evidence-pack.md` (broad Episode 238 pack, §3 + §7)
   - `docs/launch/2026-06-20-llm-computer-training-run-definition.md` (claim boundary)
   - `docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md` (claim-by-claim gate)
 - Related promises: `compute.tassadar_executor_poc.v1` (green),
@@ -25,7 +25,7 @@ requires:
 This document is that focused pack. It restates the **owner-final defensible
 wording** for Claim 2, then maps each load-bearing qualifier to a public,
 dereferenceable ref a critic can check. It does **not** flip the promise (still
-**red**); it clears the *evidence-pack-missing* blocker and leaves the
+**red**). It clears the *evidence-pack-missing* blocker and leaves the
 owner-signed-upgrade blocker standing.
 
 > Honest-scope note: this document is public-safe. It contains no secrets, no
@@ -45,7 +45,7 @@ owner-signed-upgrade blocker standing.
 > first time as a public network anyone can join and get paid (in Bitcoin) for
 > **replay-verified** executor work."
 
-Three load-bearing qualifiers carry the firstness; none may ever be dropped.
+Three load-bearing qualifiers carry the firstness. None may ever be dropped.
 This pack proves each one in turn.
 
 ## Qualifier 1 — "public / open-contributor network" (where the firstness lives)
@@ -122,9 +122,9 @@ rejections) is proven end-to-end. "Training run" is defensible only in sense B.
 - ❌ Bare "world first" with no qualifiers.
 - ❌ "first LLM-computer" / "we invented the LLM-computer" — Percepta did.
 - ❌ Bare "training run" implying gradient-descent model training — sense A is
-  not happening here; the core has no gradient descent.
+  not happening here. The core has no gradient descent.
 - ❌ "first decentralized training run" — token-paid decentralized training
-  predates us; the Bitcoin discriminator belongs to Claim 1, not Claim 2.
+  predates us. The Bitcoin discriminator belongs to Claim 1, not Claim 2.
 - ❌ General LLM-computer capability, performance parity vs CPUs, or
   transformers-as-a-served-product — all gated separately.
 - ❌ Network-scale framing from a bounded two-contributor PoC.
@@ -151,7 +151,7 @@ curl -s https://openagents.com/api/public/product-promises \
   | grep -o 'claims.world_first_public_llm_computer_training_run.v1'
 ```
 
-(Public endpoints in the broad pack were curl-checked on 2026-06-18; this focused
+(Public endpoints in the broad pack were curl-checked on 2026-06-18, this focused
 pack reuses those same already-verified refs and adds no new unverified URLs.)
 
 ## What this resolves vs. what remains
@@ -165,7 +165,7 @@ with a skeptic-runnable verification recipe and an explicit refuse-list.
 - `blocker.product_promises.world_first_owner_signed_upgrade_missing` — the
   receipt-first, owner-signed upgrade required by `proof.claim_upgrade_receipts.v1`
   before any green flip.
-- Scale: the public paid loop is bounded (two contributors); network-scale
+- Scale: the public paid loop is bounded (two contributors). Network-scale
   framing remains out of scope.
 
 The promise stays **red**. This document changes only the evidence backing, not

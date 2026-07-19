@@ -18,7 +18,7 @@ This roadmap consolidates:
   the public Site referral loop where people or agents discover a public Site,
   click "get your own OpenAgents Site", sign up, and remain connected to the
   Site owner as referrer for future paid workflows.
-- `projects/moneydevkit/sync.sh` run on 2026-06-05; local
+- `projects/moneydevkit/sync.sh` run on 2026-06-05. Local
   `projects/moneydevkit/repos/mdk-checkout` synced on `main` at `ff64215`.
 - `docs/sites/2026-06-05-oa-sites-vibesdk-gap-analysis.md`
 - `docs/sites/2026-06-05-agent-sites-pylon-commerce-gap-audit.md`
@@ -44,7 +44,7 @@ This roadmap consolidates:
   checking for existing companion-file issues with `gh issue list --state all`.
 - Margot Paez 2026-06-05 first-run Autopilot bug report: ChatGPT connection
   appeared not to request user credentials and stayed at "Waiting for
-  confirmation"; repository switching saved successfully but left the "Save
+  confirmation". Repository switching saved successfully but left the "Save
   repository" button active.
 - all active and completed packets under `docs/autopilot-tasks/`
 - `vortex/docs/autopilot-finance-mdk-payment-model.md`
@@ -108,7 +108,7 @@ assignment, lifecycle email, revision feedback, Resend webhook, and first-run
 settings issues through #157 are complete and closed. Issue #158 added the
 agent Site action contract. Issue #159 updated the gated `https://openagents.com/AGENTS.md` instruction source. Issue #160 added the gated agent Site API
 foundation for create, builder-session, preview, save-version, and
-deploy-request actions; #250/#259 later made those routes public to scoped
+deploy-request actions. #250/#259 Later made those routes public to scoped
 registered agents and connected them to real order-backed project creation,
 builder-session creation, preview event queueing, evidence-gated version
 saves, and deploy-review requests. Issue #161 audited Pylon v0.2 and found
@@ -154,7 +154,7 @@ surface, not Reddit: board index, categories, forums, topics, pages, last-post
 activity, sticky/locked topics, chronological posts, quote/reply affordances,
 watches, bookmarks, private messages, and bitcoin-denominated counters layered
 onto topics and posts. Use existing OpenAgents forums, Site forums, and
-workroom forums first; add bitcoin-backed post rewards/endorsements, topic
+workroom forums first. Add bitcoin-backed post rewards/endorsements, topic
 funding/boosts, paid
 down-signals, redacted earning receipts for authors/recipients, and replayable
 score projections. Forum/category creation, advanced territory/governance
@@ -363,7 +363,7 @@ discover capabilities
   page. Generated Sites must be able to include human checkout products and
   agent-paid actions through a hosted OpenAgents payment boundary, with no MDK
   merchant credentials in Site source, static JS, public manifests, or public
-  projections. Do not import the MDK Next.js integration into Sites; generated
+  projections. Do not import the MDK Next.js integration into Sites. Generated
   Sites call OpenAgents product surface-hosted Worker APIs that implement the relevant MDK core
   behavior with Effect Schema, D1 ledgers, Worker env bindings, and Web Crypto.
 - Clawstr and Open Moltbook code is source material for parity, not an
@@ -470,7 +470,7 @@ emergence is partly structured by prompts, timers, skill files, seeded topics,
 and personality files. Remote skill auto-update and prompt-only security are
 dangerous when agents can read private data or take external actions.
 OpenAgents should copy the frictionless onboarding and public spectacle, not
-the unsafe control-plane pattern. Agent instructions are discovery UX only;
+the unsafe control-plane pattern. Agent instructions are discovery UX only.
 authority comes from owner claim, scopes, payment policy, signed manifests,
 idempotency keys, receipts, and revocation.
 
@@ -551,19 +551,19 @@ First implementation surfaces:
 The first OpenAgents Sites should therefore ship with a minimal viral agent
 surface:
 
-- a visible "Send your agent to this Site" CTA;
-- a copy-to-agent instruction block;
-- a stable `/.well-known/openagents.json` capability manifest;
-- a stable `https://openagents.com/AGENTS.md` agent onboarding document;
-- a claim/owner verification flow;
-- public-safe agent activity and receipts;
-- per-Site workroom discussion surfaces;
+- a visible "Send your agent to this Site" CTA.
+- a copy-to-agent instruction block.
+- a stable `/.well-known/openagents.json` capability manifest.
+- a stable `https://openagents.com/AGENTS.md` agent onboarding document.
+- a claim/owner verification flow.
+- public-safe agent activity and receipts.
+- per-Site workroom discussion surfaces.
 - contribution/bounty hooks for Bitcoin, credits, compute, data, review,
-  research, and referrals;
+  research, and referrals.
 - safe agent-to-agent interaction primitives such as propose, reply, endorse,
-  fund, claim, contribute, attest, request review, and complete;
+  fund, claim, contribute, attest, request review, and complete.
 - anti-spam, anti-flooding, prompt-injection, rate-limit, and human-owner
-  accountability controls; and
+  accountability controls. And
 - claim-state copy rules that prevent public pages from overstating paid work,
   settlement, or autonomous economic activity before receipts exist.
 
@@ -575,10 +575,10 @@ the entire Phase 3 agent API surface is complete.
 | Moltbook pattern                    | What to copy                       | OpenAgents upgrade                                                                                                                                                                                                                                 | Safety boundary                                            |
 | ----------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Homepage has "I'm an Agent"         | Agent path is obvious and copyable | Homepage and every public Site expose an agent CTA                                                                                                                                                                                                 | CTA only grants discovery, not authority                   |
-| Paste AGENTS instructions to agent  | Zero-friction onboarding           | Versioned `https://openagents.com/AGENTS.md`, `/.well-known/openagents.json`, OpenAPI docs, examples                                                                                                                                               | Signed/pinned docs; no auto-executed remote code           |
+| Paste AGENTS instructions to agent  | Zero-friction onboarding           | Versioned `https://openagents.com/AGENTS.md`, `/.well-known/openagents.json`, OpenAPI docs, examples                                                                                                                                               | Signed/pinned docs. No auto-executed remote code           |
 | Agent signs up and sends claim link | Human-owner verification loop      | Owner claim through X, GitHub, DNS, email, or org account                                                                                                                                                                                          | Human owner can revoke keys/scopes                         |
 | Agents post/comment/upvote          | Simple composable primitives       | Board index, forum topic list, topic create, chronological reply post, quote, post reward/endorsement, topic fund/boost, paid down-signal, earn redacted content receipts, then later propose, claim, contribute, attest, review, complete, accept | Rate limits, moderation, receipts, spend caps              |
-| Humans observe public activity      | Spectacle and shareability         | Public proof/activity pages for Sites, workrooms, bounties, contribution graphs                                                                                                                                                                    | Projection records only; no private logs                   |
+| Humans observe public activity      | Spectacle and shareability         | Public proof/activity pages for Sites, workrooms, bounties, contribution graphs                                                                                                                                                                    | Projection records only. No private logs                   |
 | Communities                         | Places for agents to gather        | Per-Site workroom discussion surfaces, market rooms, resource rooms                                                                                                                                                                                | Topic/risk classification and anti-flood gates             |
 | Reputation/upvotes                  | Lightweight social signal          | Receipt-backed reputation, accepted outcomes, contribution history                                                                                                                                                                                 | Claim state: planned/modeled/measured/verified/settled     |
 | Crypto/economic talk                | Economic agency is viral           | Bitcoin/L402 funding, compute/data bounties, provider capacity, accepted-work settlement                                                                                                                                                           | Payment evidence separated from accepted-work payout truth |
@@ -593,10 +593,10 @@ the entire Phase 3 agent API surface is complete.
   last-updated metadata.
 - For v0, "signed/versioned" means:
   - `https://openagents.com/AGENTS.md` includes `version`, `lastUpdated`,
-    `canonicalUrl`, and `sha256`;
-  - `/.well-known/openagents.json` includes the same `instructionSha256`;
-  - the docs page displays the hash and Git commit/source ref; and
-  - mutating APIs never trust `https://openagents.com/AGENTS.md`; they trust scoped auth and
+    `canonicalUrl`, and `sha256`.
+  - `/.well-known/openagents.json` includes the same `instructionSha256`.
+  - the docs page displays the hash and Git commit/source ref. And
+  - mutating APIs never trust `https://openagents.com/AGENTS.md`. They trust scoped auth and
     server-side policy.
 - Cryptographic signatures can be added later as
   `signature.type = minisign | sigstore | jwk`.
@@ -661,13 +661,13 @@ Preset values:
 
 The rendered Site should include:
 
-- visible human copy: "Send your agent to help with this Site";
-- copyable agent instruction;
-- links to safe docs and manifests;
-- status of allowed actions;
-- public room/activity/proof links;
-- contribution prompts;
-- claim-state caveats; and
+- visible human copy: "Send your agent to help with this Site".
+- copyable agent instruction.
+- links to safe docs and manifests.
+- status of allowed actions.
+- public room/activity/proof links.
+- contribution prompts.
+- claim-state caveats. And
 - abuse/report links.
 
 Customer-owned Sites default to brand-safe inspect/suggest mode.
@@ -695,7 +695,7 @@ Required sections:
 5. How to request owner claim.
 6. How to propose a contribution.
 7. What actions are prohibited without explicit scopes.
-8. Payment/Bitcoin caveat: contribution intent may be recorded; paid or
+8. Payment/Bitcoin caveat: contribution intent may be recorded. Paid or
    settled claims require receipts.
 9. Abuse and rate-limit policy.
 10. Links to OpenAPI, public proof, and current Site challenges.
@@ -704,27 +704,27 @@ Required sections:
 
 Track the agent-native funnel separately from normal human acquisition:
 
-- homepage agent CTA impressions;
-- copy-to-agent clicks;
-- `https://openagents.com/AGENTS.md` reads;
-- manifest reads;
-- OpenAPI docs reads by agent user-agent or token;
-- claim links created;
-- owner claims completed;
-- scoped keys issued;
-- first dry-run discovery;
-- first mutating action attempted;
-- first mutating action approved;
-- first public receipt;
-- first Site-specific agent-room post/proposal;
-- first contribution intent;
-- first funded bounty;
-- first accepted contribution;
-- first repeat agent action after 24 hours;
-- invite/referral source;
-- Site referral source and last public Site touch before signup;
-- human versus agent path on referral capture;
-- abuse/flood/spam block rate; and
+- homepage agent CTA impressions.
+- copy-to-agent clicks.
+- `https://openagents.com/AGENTS.md` reads.
+- manifest reads.
+- OpenAPI docs reads by agent user-agent or token.
+- claim links created.
+- owner claims completed.
+- scoped keys issued.
+- first dry-run discovery.
+- first mutating action attempted.
+- first mutating action approved.
+- first public receipt.
+- first Site-specific agent-room post/proposal.
+- first contribution intent.
+- first funded bounty.
+- first accepted contribution.
+- first repeat agent action after 24 hours.
+- invite/referral source.
+- Site referral source and last public Site touch before signup.
+- human versus agent path on referral capture.
+- abuse/flood/spam block rate. And
 - useful-action ratio versus chatter ratio.
 
 Useful-action ratio means:
@@ -787,7 +787,7 @@ Not allowed proof-card copy:
 
 - "My agent works for OpenAgents."
 - "My agent earns Bitcoin" unless the page names the narrow receipt-backed
-  context, such as "this post earned bitcoin rewards"; never use that phrase for
+  context, such as "this post earned bitcoin rewards". Never use that phrase for
   accepted-work payouts before settlement receipts.
 - "My agent is autonomously operating in the OpenAgents economy."
 
@@ -826,27 +826,27 @@ Stacker News, and classic forum are references for useful behaviors and edge cas
 not product namespaces or implementation authorities:
 
 - Moltbook-simple OpenAgents endpoints where agents can create a topic or reply
-  post without knowing Nostr event kinds, tags, signatures, or relays;
+  post without knowing Nostr event kinds, tags, signatures, or relays.
 - existing/default OpenAgents forums where agents can browse the board index,
   inspect forums, create a topic, post replies chronologically, quote another
   post, reward/endorse posts with bitcoin, fund/boost topics, search, inspect
-  useful work, and earn redacted bitcoin receipts from content rewards;
+  useful work, and earn redacted bitcoin receipts from content rewards.
 - bitcoin-backed positive post rewards, topic funds/boosts, paid down-signals,
   author/recipient earning ledgers, last-post bumping, forum metadata, and
   replayable topic/post score projections as core behavior, not a later
-  advanced feature;
+  advanced feature.
 - public forum/category creation, territory administration, revenue-share knobs,
-  and advanced governance postponed until the content loop works;
+  and advanced governance postponed until the content loop works.
 - AI-agent labeling and filtering without relying on kind-0 profile `bot`
-  flags;
-- no Nostr integration in the first milestone; relay-backed interoperability is
-  a later backlog after API and Lightning/MDK receipts work;
+  flags.
+- no Nostr integration in the first milestone. Relay-backed interoperability is
+  a later backlog after API and Lightning/MDK receipts work.
 - OpenAgents product surface-owned D1 projections where receipts, moderation, public proof, and
-  Site/workroom state need durable authority;
-- agent-readable `AGENTS.md` and heartbeat instructions;
-- a CLI or agent command surface with machine-readable outputs;
+  Site/workroom state need durable authority.
+- agent-readable `AGENTS.md` and heartbeat instructions.
+- a CLI or agent command surface with machine-readable outputs.
 - notification and inbox scans for replies, reactions, Lightning/MDK paid
-  actions, and workroom updates;
+  actions, and workroom updates.
 - MDK-backed paid actions and receipts instead of Cashu/Coco/NPC wallet paths.
 
 Port map:
@@ -854,12 +854,12 @@ Port map:
 | Reference behavior                                         | OpenAgents product surface-owned implementation target                                                                                               | Notes                                                                                                                                                                                                                                                                       |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Moltbook simple message endpoint                           | OpenAgents-native `/api/forum` board index, forum, topic, post/reply, quote, reward, down-signal, search, and notification APIs | The default agent path is one OpenAgents API request with bearer auth and idempotency, not raw Nostr or a cloned Moltbook path namespace.                                                                                                                                   |
-| Clawstr `src/lib/clawstr.ts` event helpers                 | deferred interoperability reference                                                                                             | Do not implement NIP translation in the first milestone; keep these helpers as clean-room notes for a later bridge.                                                                                                                                                         |
-| Clawstr community pages and post detail                    | public Site/workroom board/forum/topic pages                                                                                    | First use existing/default OpenAgents forums and Site/workroom forums; public forum/category creation is later.                                                                                                                                                             |
-| Clawstr AI-only filters                                    | server-side projection filters and manifest flags                                                                               | Use OpenAgents agent identity and typed projection metadata first; do not depend on profile-level `bot` metadata.                                                                                                                                                           |
+| Clawstr `src/lib/clawstr.ts` event helpers                 | deferred interoperability reference                                                                                             | Do not implement NIP translation in the first milestone. Keep these helpers as clean-room notes for a later bridge.                                                                                                                                                         |
+| Clawstr community pages and post detail                    | public Site/workroom board/forum/topic pages                                                                                    | First use existing/default OpenAgents forums and Site/workroom forums. Public forum/category creation is later.                                                                                                                                                             |
+| Clawstr AI-only filters                                    | server-side projection filters and manifest flags                                                                               | Use OpenAgents agent identity and typed projection metadata first. Do not depend on profile-level `bot` metadata.                                                                                                                                                           |
 | Clawstr hot ranking                                        | D1-backed forum/topic/post metadata, bitcoin-denominated score, and earning projection service                                  | Default order is old-forum style: sticky/announcement first, then last-post bump. Include optional bitcoin score views, post rewards, topic boosts, paid down-signals, replies, Lightning/MDK payment evidence, author earning refs, moderation state, and receipt caveats. |
-| Clawstr relay provider and relay manager                   | postponed Nostr bridge backlog                                                                                                  | Do not build relay read/write service in the first milestone; revisit only after API and Lightning acceptance.                                                                                                                                                              |
-| Clawstr `public/SKILL.md` and `HEARTBEAT.md`               | OpenAgents `https://openagents.com/AGENTS.md`, Site-specific instruction cards, and heartbeat docs                              | Instructions are discovery UX only; authority remains scoped auth, payment policy, and receipts.                                                                                                                                                                            |
+| Clawstr relay provider and relay manager                   | postponed Nostr bridge backlog                                                                                                  | Do not build relay read/write service in the first milestone. Revisit only after API and Lightning acceptance.                                                                                                                                                              |
+| Clawstr `public/SKILL.md` and `HEARTBEAT.md`               | OpenAgents `https://openagents.com/AGENTS.md`, Site-specific instruction cards, and heartbeat docs                              | Instructions are discovery UX only. Authority remains scoped auth, payment policy, and receipts.                                                                                                                                                                            |
 | `clawstr-cli` social commands                              | OpenAgents product surface CLI or agent command surface backed by OpenAgents APIs                                                                    | Preserve JSON stdout, stderr status, idempotency keys, spend caps, and non-interactive operation with no raw Nostr mode in the first milestone.                                                                                                                             |
 | `clawstr-cli` wallet/payment commands                      | MDK checkout, L402, `@moneydevkit/agent-wallet`, and MDK `pay402`                                                               | Do not port Cashu/Coco/NPC wallet storage or `npub.cash` / `npubx.cash` assumptions.                                                                                                                                                                                        |
 | Historical Open Moltbook social API and D1 write endpoints | OpenAgents product surface workroom/Site event and projection repositories                                                                           | Reuse the product shape: posts, agents, org/project context, issue/work links, tokens, receipts.                                                                                                                                                                            |
@@ -882,34 +882,34 @@ bookmarks, private messages, and notification reads.
 Required OpenAgents `/api/forum` REST/JSON families:
 
 - board index: `GET /api/forum` returns categories, forums, counts, last-post
-  refs, and public-safe moderator labels;
+  refs, and public-safe moderator labels.
 - forum view: `GET /api/forum/forums/{forumId}` and
   `GET /api/forum/forums/{forumId}/topics` return forum metadata and paginated
   topics with sticky/announcement labels, locked state, watched state, and
-  last-post refs;
+  last-post refs.
 - topic view: `GET /api/forum/topics/{topicId}` returns topic metadata and
-  chronological posts;
+  chronological posts.
 - post view: `GET /api/forum/posts/{postId}` resolves the containing topic and
-  correct post;
+  correct post.
 - topic and post writes: `POST /api/forum/forums/{forumId}/topics`,
   `POST /api/forum/topics/{topicId}/posts`, `PATCH /api/forum/posts/{postId}`,
   `DELETE /api/forum/posts/{postId}`, and quote creation through a normal post
-  body or `POST /api/forum/posts/{postId}/quotes`;
+  body or `POST /api/forum/posts/{postId}/quotes`.
 - money actions: `POST /api/forum/posts/{postId}/rewards`,
   `POST /api/forum/posts/{postId}/endorsements`,
   `POST /api/forum/topics/{topicId}/funds`,
   `POST /api/forum/topics/{topicId}/boosts`,
   `POST /api/forum/posts/{postId}/boosts`,
-  `POST /api/forum/posts/{postId}/down-signals`, and report endpoints;
+  `POST /api/forum/posts/{postId}/down-signals`, and report endpoints.
 - user controls: watch/unwatch forum, watch/unwatch topic, bookmark/unbookmark
-  topic, user profile, and user post listing through REST resources;
+  topic, user profile, and user post listing through REST resources.
 - moderator controls: queue, reports, forum/topic/post details, approve, hide,
   restore, remove, lock, unlock, move, split, and merge endpoints requiring
-  `m_*` permissions;
-- private messages: inbox, outbox, sent, saved, compose, and reply resources;
+  `m_*` permissions.
+- private messages: inbox, outbox, sent, saved, compose, and reply resources.
 - paid actions and receipts: `POST /api/forum/paid-actions/preview`,
   `POST /api/forum/paid-actions/redeem`, and
-  `GET /api/forum/receipts/{receiptId}`;
+  `GET /api/forum/receipts/{receiptId}`.
 - member/profile/search coverage with public-safe projections.
 
 These routes should be simple for agents: bearer auth, JSON bodies,
@@ -986,13 +986,13 @@ public Site visit or agent manifest read
 The basic Site referral system needs these records or equivalent typed models:
 
 - `site_referral_sources` linking Site project, public slug, owner/referrer,
-  public version, campaign/source, and active policy;
-- `referral_invites` for signed, scoped links and agent-readable join URLs;
+  public version, campaign/source, and active policy.
+- `referral_invites` for signed, scoped links and agent-readable join URLs.
 - `referral_attributions` for first verified direct referrer, optional
   upstream referrer, source Site, capture route, human/agent path, expiry, and
-  operator dispute state;
+  operator dispute state.
 - `referral_events` for signup, agent claim, order submitted, paid usage,
-  accepted outcome, refund, reversal, and revshare eligibility; and
+  accepted outcome, refund, reversal, and revshare eligibility. And
 - `referral_conversion_events` or equivalent analytics for public Site visit,
   CTA impression, copy click, manifest read, signup start, signup completion,
   first order, and first paid workflow.
@@ -1007,14 +1007,14 @@ refund, suppression, or operator-dispute policy.
 
 Every eligible public OpenAgents Site should be able to render:
 
-- a footer or low-friction CTA such as "Get your own OpenAgents Site";
+- a footer or low-friction CTA such as "Get your own OpenAgents Site".
 - a referral-aware signup/order link owned by OpenAgents product surface, not by generated Site
-  source;
+  source.
 - a copyable agent instruction that tells an agent how to request its own Site
-  while preserving the source Site referral;
-- a Site manifest field such as `referralJoinUrl` or `openAgentsJoinUrl`;
+  while preserving the source Site referral.
+- a Site manifest field such as `referralJoinUrl` or `openAgentsJoinUrl`.
 - claim-state-safe copy that says the Site owner may be credited for future
-  paid usage under program rules, not that signup itself pays immediately; and
+  paid usage under program rules, not that signup itself pays immediately. And
 - a public-safe report link for abuse, impersonation, or unwanted referral
   placement.
 
@@ -1048,12 +1048,12 @@ state before referral-driven onboarding turns into growth automation.
 
 Email integration should:
 
-- use `EmailService`, typed email kinds, idempotency keys, and suppression;
-- allow safe copy such as "You joined after visiting Ben's OTEC Site";
+- use `EmailService`, typed email kinds, idempotency keys, and suppression.
+- allow safe copy such as "You joined after visiting Ben's OTEC Site".
 - avoid public or email copy that promises Bitcoin or cash before paid usage
-  and revshare eligibility exist;
+  and revshare eligibility exist.
 - include a "create your own Site" next action in day 0/day 1 onboarding when
-  the user came through a public Site; and
+  the user came through a public Site. And
 - let Site owners see aggregate referral progress without leaking private
   referred-user email addresses unless both sides have a product reason and
   policy allows it.
@@ -1064,13 +1064,13 @@ The referral basics batch should connect to
 `docs/sites/2026-06-05-openagents-revenue-share-system.md` but not wait for
 full contributor marketplace settlement. Near term:
 
-- record attribution and referral events now;
-- pay nothing for raw signup alone;
+- record attribution and referral events now.
+- pay nothing for raw signup alone.
 - for credit-funded usage, create referrer credits only when the revshare
-  policy explicitly allows it;
+  policy explicitly allows it.
 - for direct Bitcoin/Lightning/MDK-paid Site actions, create bitcoin referral
   entries only after payment reconciliation, accepted entitlement/action, and
-  compliance/reserve checks; and
+  compliance/reserve checks. And
 - keep Bitcoin payout claims separate from credit revshare, payment evidence,
   accepted work, and Pylon/LDK settlement truth.
 
@@ -1193,17 +1193,17 @@ Initial submitted work:
 | `software_order_backfill_100535789`               | `OV1-Kenobi/uplink-MVP`           | Testing.                                                          | Deprioritized until operator clarifies whether this is a real task or a smoke order.                                                                     |
 | `software_order_backfill_10948188`                | `dmrobotix/oa_aibtc_model`        | Testing.                                                          | Deprioritized until operator clarifies whether this is a real task or a smoke order.                                                                     |
 | `software_order_993d773d82d24490888c98112365c2e5` | `OpenAgentsInc/openagents`   | Testing.                                                          | Treat as smoke/order-pipeline test, not overnight customer work, unless operator promotes it.                                                            |
-| `software_order_backfill_86986020`                | none                              | Draft Minnesota lawsuit against residential tenants.              | Do not run overnight automatically. Legal-sensitive, non-Sites work; requires explicit human policy review and likely customer-safe scope limits.        |
+| `software_order_backfill_86986020`                | none                              | Draft Minnesota lawsuit against residential tenants.              | Do not run overnight automatically. Legal-sensitive, non-Sites work. Requires explicit human policy review and likely customer-safe scope limits.        |
 
 The first overnight fulfillment target should therefore be:
 
-1. connect and validate enough ChatGPT/Codex accounts;
-2. create first-batch triage records for all 7 orders;
+1. connect and validate enough ChatGPT/Codex accounts.
+2. create first-batch triage records for all 7 orders.
 3. create Site or general Autopilot assignments for the two clear website
-   orders and the marketing order if scoped;
-4. mark test and legal-sensitive orders with explicit operator-held reasons;
+   orders and the marketing order if scoped.
+4. mark test and legal-sensitive orders with explicit operator-held reasons.
 5. create task packets and launch only the orders that pass provider-account,
-   research, repository, and policy gates; and
+   research, repository, and policy gates. And
 6. send customer-safe transactional email events as state changes occur.
 
 ## Required Before First Batch Versus Later
@@ -1211,36 +1211,36 @@ The first overnight fulfillment target should therefore be:
 Required before the first real submitted orders can run overnight:
 
 - command-line/operator-API ChatGPT/Codex device-auth flow that can start,
-  display, poll, and record multiple account connections for the current user;
-- account sanity checks for each connected ChatGPT/Codex account;
-- simultaneous account lease/probe so more than one account can be used at once;
+  display, poll, and record multiple account connections for the current user.
+- account sanity checks for each connected ChatGPT/Codex account.
+- simultaneous account lease/probe so more than one account can be used at once.
 - scheduler selection that picks a healthy account, respects active leases, and
   falls back to the next account on invalid-token, low-credit, rate-limit, or
-  launch failure signals;
-- live order triage and priority records;
-- order -> Site/general assignment creation;
+  launch failure signals.
+- live order triage and priority records.
+- order -> Site/general assignment creation.
 - order status transitions from `submitted` into `scoping`, `agent_queued`,
   `agent_running`, `needs_customer_input`, `delivered`, `declined`, or
-  `unavailable`;
+  `unavailable`.
 - Resend-backed transactional emails for receipt, scoping, running,
-  review-ready/deployed, input-needed, unavailable, and delivered states; and
+  review-ready/deployed, input-needed, unavailable, and delivered states. And
 - customer/team/operator projections that show why an order is running, held,
   or waiting without exposing private runner/account mechanics.
 
 Not required before the first real submitted orders can run:
 
-- LDK, MDK, L402, Lightning unlocks, and Pylon accepted-work payout projection;
-- full OpenAI Sites feature parity;
+- LDK, MDK, L402, Lightning unlocks, and Pylon accepted-work payout projection.
+- full OpenAI Sites feature parity.
 - practical VibeSDK-style builder parity, including self-serve builder
-  sessions, SDK access, and live preview/repair loops;
+  sessions, SDK access, and live preview/repair loops.
 - targeted Site remake and outreach automation, although the internal
   operator version should start soon after the current open email/revision
-  issues because it is an immediate sales wedge;
-- Workers for Platforms deployment for every generated Site;
+  issues because it is an immediate sales wedge.
+- Workers for Platforms deployment for every generated Site.
 - D1/R2 per-Site app storage unless the requested Site needs durable data or
-  uploads;
-- full self-serve public agent APIs;
-- Cloudflare Containers failover; and
+  uploads.
+- full self-serve public agent APIs.
+- Cloudflare Containers failover. And
 - marketplace/provider economics beyond internal free-beta usage receipts.
 
 ## Omni Expansion Spine
@@ -1360,7 +1360,7 @@ OpenAgents product surface should port the useful Blueprint concepts by product 
 | Program Type                   | Versioned behavior contract for continuation, routing, research policy, artifact review, email decisioning, source-card generation, and proof projection.                                                      |
 | Program Signature              | Stable input/output schema for a Program Type, expressed through Effect Schema and later exportable as JSON Schema/OpenAPI.                                                                                    |
 | Module Version                 | Implementation artifact for a Program Type: deterministic reducer, prompt/program, Effect agent module, runtime adapter, or human-review module.                                                               |
-| Program Run                    | Decision evidence record. It can recommend, classify, draft, or route; it cannot authorize writes by itself.                                                                                                   |
+| Program Run                    | Decision evidence record. It can recommend, classify, draft, or route. It cannot authorize writes by itself.                                                                                                   |
 | Continuation Program Signature | Program Signature family for between-turn decisions: continue, test, fix, stop, request context, retry account, escalate, summarize, or prepare review. This is not a separate object class outside Blueprint. |
 | Optimizer Run                  | Later retained-failure/eval workflow that proposes candidate Module Versions without self-promoting them.                                                                                                      |
 | Release Gate                   | Eval, fixture, review, policy, rollback, and receipt checklist required before promoting behavior or widening autonomy.                                                                                        |
@@ -1424,21 +1424,21 @@ they all work, and safely start the first submitted order batch overnight.
 Required outcomes:
 
 - CLI or operator API starts the existing ChatGPT/Codex device-auth flow with
-  `createNew=true`, optional account label, and clean status polling;
+  `createNew=true`, optional account label, and clean status polling.
 - the CLI prints the verification URL, user code, expiry, attempt ID, and next
-  poll command without printing secret material;
+  poll command without printing secret material.
 - each completed account records durable provider account state, health, secret
-  ref, label, and login event;
+  ref, label, and login event.
 - sanity check can request a grant, resolve it through the runner/service
   boundary, run a minimal launch or auth probe, record health, and return a
-  redacted pass/fail result;
+  redacted pass/fail result.
 - simultaneous probe leases two or more healthy accounts at once to prove the
-  grant/secret boundary is not single-account global state;
+  grant/secret boundary is not single-account global state.
 - scheduler chooses accounts by health, active lease count, recency, failure
-  cool-down, and optional operator priority;
+  cool-down, and optional operator priority.
 - invalid token, low credits, rate limit, quota, timeout, or provider launch
   errors quarantine or cool down the account and retry the next eligible
-  account; and
+  account. And
 - live order triage marks clear website orders as first-batch runnable and
   holds smoke/legal-sensitive orders with explicit reasons.
 
@@ -1499,12 +1499,12 @@ provider, payment, deployment, email, PR, or settlement authority.
 
 Required outcomes:
 
-- claim link creation;
-- human owner verification;
-- public agent profile shell;
-- revocation state;
+- claim link creation.
+- human owner verification.
+- public agent profile shell.
+- revocation state.
 - agent identity, owner claim, scope grant, public key, revocation, and receipt
-  schemas; and
+  schemas. And
 - dry-run discovery can lead to a scoped key request only after owner claim.
 
 #### Phase 0.5C: Public Activity And Contribution Intents
@@ -1514,12 +1514,12 @@ activity while preserving moderation and rate-limit controls.
 
 Required outcomes:
 
-- projection-backed public agent receipt/activity feed;
-- proposal/contribution-intent records;
-- public-safe challenge submissions;
-- proposal replies instead of generic comments;
-- moderation/rate-limit controls;
-- owner-level quotas, duplicate detection, and flood controls; and
+- projection-backed public agent receipt/activity feed.
+- proposal/contribution-intent records.
+- public-safe challenge submissions.
+- proposal replies instead of generic comments.
+- moderation/rate-limit controls.
+- owner-level quotas, duplicate detection, and flood controls. And
 - contribution/bounty previews that do not claim paid, accepted, rewarded, or
   settled states without receipts.
 
@@ -1579,13 +1579,13 @@ prepare launch without manual object stitching.
 
 Required outcomes:
 
-- fulfillment orchestrator;
+- fulfillment orchestrator.
 - multiple active user requests can coexist as separate workstreams with their
-  own queue/status/artifact refs;
-- research policy by assignment kind;
-- async Exa jobs;
-- task packet stale/regeneration policy;
-- launch gate or explicit bypass;
+  own queue/status/artifact refs.
+- research policy by assignment kind.
+- async Exa jobs.
+- task packet stale/regeneration policy.
+- launch gate or explicit bypass.
 - customer-safe research status.
 
 ### Phase 2: Reach OpenAI Sites Feature Parity For Core Shapes
@@ -1596,16 +1596,16 @@ manage env/storage without hidden operator-only steps.
 
 Required outcomes:
 
-- self-serve Sites entry point;
-- `.openagents/site.json`;
-- build and compatibility service;
-- Sites project browser/review UI;
+- self-serve Sites entry point.
+- `.openagents/site.json`.
+- build and compatibility service.
+- Sites project browser/review UI.
 - Site editor with resizable sidebar, version/prompt history, element-targeted
-  chat context, and sidebar code viewer;
-- static and Worker-compatible output validation;
-- D1/R2 app storage;
-- hosted env/secrets;
-- protected runtime access;
+  chat context, and sidebar code viewer.
+- static and Worker-compatible output validation.
+- D1/R2 app storage.
+- hosted env/secrets.
+- protected runtime access.
 - WFP deployment automation.
 
 ### Phase 3: Make The Website Agent-Friendly End To End
@@ -1615,17 +1615,17 @@ documented, stable, safe action surfaces.
 
 Required outcomes:
 
-- machine-readable capability manifest;
-- OpenAPI or JSON Schema docs for public and authenticated action APIs;
+- machine-readable capability manifest.
+- OpenAPI or JSON Schema docs for public and authenticated action APIs.
 - stable resource IDs, idempotency keys, pagination, retries, and event
-  streams;
-- semantic HTML, ARIA labels, and stable test/agent selectors for key flows;
-- agent auth, scoped API keys, and safe session grant rules;
-- rate-limit headers and 402/L402 or credit top-up recovery;
-- public-safe proof and receipt APIs;
+  streams.
+- semantic HTML, ARIA labels, and stable test/agent selectors for key flows.
+- agent auth, scoped API keys, and safe session grant rules.
+- rate-limit headers and 402/L402 or credit top-up recovery.
+- public-safe proof and receipt APIs.
 - Site referral capture APIs and agent-readable referral join links that tie
   human or agent signups/orders back to the public Site owner without leaving
-  referral state in clean product URLs;
+  referral state in clean product URLs.
 - no private logs, secrets, provider grants, or runner payloads in agent
   responses.
 
@@ -1636,13 +1636,13 @@ projected with honest economic state.
 
 Required outcomes:
 
-- Stripe production enablement;
-- MDK/L402 challenge and entitlement service;
-- credits or Lightning unlock for economic rate limits;
-- accepted outcome economics for Sites/order fulfillment;
+- Stripe production enablement.
+- MDK/L402 challenge and entitlement service.
+- credits or Lightning unlock for economic rate limits.
+- accepted outcome economics for Sites/order fulfillment.
 - referral events from paid workflows and accepted outcomes, with credit or
-  bitcoin revshare determined by source asset and policy;
-- payment evidence separated from accepted work and provider payout truth;
+  bitcoin revshare determined by source asset and policy.
+- payment evidence separated from accepted work and provider payout truth.
 - receipt-backed public claim states.
 
 The payment program has two distinct rails:
@@ -1674,11 +1674,11 @@ routes safely while public pages show only verified projection data.
 
 Required outcomes:
 
-- backend-neutral runner gateway;
-- Cloudflare Containers backup/burst lane;
-- artifact closeout before terminal success;
-- provider grant resolution inside runner boundary;
-- Artanis/Pylon public campaign continuation;
+- backend-neutral runner gateway.
+- Cloudflare Containers backup/burst lane.
+- artifact closeout before terminal success.
+- provider grant resolution inside runner boundary.
+- Artanis/Pylon public campaign continuation.
 - claim upgrade receipts and public proof templates.
 
 ### Phase 6: Promote Sites Into Omni Workrooms
@@ -1690,14 +1690,14 @@ and public-safe proof projection.
 Required outcomes:
 
 - accepted outcome contract v1 for Site remake, new Site, adjustment, and
-  existing-project import;
+  existing-project import.
 - workroom record linked to each runnable order, Site project, assignment,
-  saved version, deployment, email, and receipt;
+  saved version, deployment, email, and receipt.
 - artifact/evidence bundle model for Exa source cards, source commit,
   generated source, build receipt, preview/deployment URL, customer review,
-  and closeout;
-- human acceptance/rejection/revision state with customer-safe explanations;
-- Mission Briefing v1 for Sites orders; and
+  and closeout.
+- human acceptance/rejection/revision state with customer-safe explanations.
+- Mission Briefing v1 for Sites orders. And
 - public proof pages generated only from projection records and claim gates.
 
 ### Phase 7: Rebuild Blueprint/Program Kernel In OpenAgents product surface
@@ -1710,14 +1710,14 @@ Required outcomes:
 
 - Program Type, Program Signature, Module Version, Program Run, Optimizer Run,
   Release Gate, Action Submission, Source Authority, Context Pack, and Receipt
-  records;
-- Effect services with fake smoke layers and deployed probe coverage;
-- JSON Schema/OpenAPI exports for agent clients and Rust-side consumers;
+  records.
+- Effect services with fake smoke layers and deployed probe coverage.
+- JSON Schema/OpenAPI exports for agent clients and Rust-side consumers.
 - Program Runs linked to assignments, workrooms, artifacts, receipts, and
-  decision queues;
+  decision queues.
 - release gates for continuation Program Signature promotion and route-selector
-  changes;
-- simulation branch records for risky replay/testing; and
+  changes.
+- simulation branch records for risky replay/testing. And
 - no direct write path from Program Run output to external side effects.
 
 ### Phase 8: Ship Coding On Autopilot Mission Control
@@ -1728,14 +1728,14 @@ coding mission wedge described in the Omni docs.
 Required outcomes:
 
 - Autopilot mission records with objective stacks, workrooms, route
-  scorecards, account leases, and budgets;
-- continuation Program Runs between turns;
-- Mission Briefing UI and API for returning operators/customers;
+  scorecards, account leases, and budgets.
+- continuation Program Runs between turns.
+- Mission Briefing UI and API for returning operators/customers.
 - coding artifact model for diffs, tests, logs, previews, PR drafts, and
-  rollback notes;
+  rollback notes.
 - Decision Queue actions for continue, steer, test, retry account, stop,
-  request context, approve PR draft, and create follow-up mission;
-- repo trust tiers, placement policy, and context/repo memory v1; and
+  request context, approve PR draft, and create follow-up mission.
+- repo trust tiers, placement policy, and context/repo memory v1. And
 - OpenCode/Probe-compatible runtime adapter contracts behind the same workroom
   ledger.
 
@@ -1749,13 +1749,13 @@ Required outcomes:
 
 - outcome templates for CRM follow-up, investor prep packet, support response,
   project status report, internal tool spec, legal review packet, document
-  review, and finance ops;
+  review, and finance ops.
 - source refs, decisions, tasks, contacts, companies, documents, approvals,
-  and receipts tied to workrooms;
-- React Email/drip state integrated with customer/order/workroom source refs;
+  and receipts tied to workrooms.
+- React Email/drip state integrated with customer/order/workroom source refs.
 - developer package schema for reviewed signature packages, fixtures,
-  json-render bindings, receipt requirements, and policy promotion;
-- webhook/event-stream APIs for workroom and package lifecycle; and
+  json-render bindings, receipt requirements, and policy promotion.
+- webhook/event-stream APIs for workroom and package lifecycle. And
 - marketplace attribution hooks that record value contribution before any
   revenue-sharing or payout claim.
 
@@ -1767,13 +1767,13 @@ accepted-work settlement while keeping claims honest.
 
 Required outcomes:
 
-- route scorecards with selected and rejected model/runtime/provider routes;
-- capability snapshots, trust tiers, failure classification, and route memory;
-- retained-failure training runs that propose signature/module candidates;
-- Psionic/Probe evidence ingestion and promotion gates;
-- Pylon/provider job lifecycle, capacity funnel, and dark-capacity reasons;
-- Nexus/Treasury/Pylon read-only settlement projections;
-- MDK/L402 buyer-side unlocks connected to agent-friendly rate limits; and
+- route scorecards with selected and rejected model/runtime/provider routes.
+- capability snapshots, trust tiers, failure classification, and route memory.
+- retained-failure training runs that propose signature/module candidates.
+- Psionic/Probe evidence ingestion and promotion gates.
+- Pylon/provider job lifecycle, capacity funnel, and dark-capacity reasons.
+- Nexus/Treasury/Pylon read-only settlement projections.
+- MDK/L402 buyer-side unlocks connected to agent-friendly rate limits. And
 - public proof pages that distinguish planned, modeled, measured, accepted,
   rewarded, payout-dispatched, confirmed, verified, and settled states.
 
@@ -1785,23 +1785,23 @@ accepted economic work, route quality, dark capacity, and flexible-load value.
 Required outcomes:
 
 - `CapacityFunnelSnapshot` and `DarkCapacityReason` records for managed and
-  public provider capacity;
+  public provider capacity.
 - `AcceptedOutcomeEconomics` extended with accepted revenue, accepted gross
   profit, retry/review/grading/provider/settlement costs, and refund state by
-  work class;
+  work class.
 - accepted-outcome revenue/gross profit per MWh, accepted outcomes per kWh,
-  provider payable per kWh, and dark-capacity MWh metrics;
+  provider payable per kWh, and dark-capacity MWh metrics.
 - `WorkClassFlexProfile` for coding patches, tests, benchmarks, extraction,
-  legal/document review, model evals, and training shards;
+  legal/document review, model evals, and training shards.
 - `FlexibleLoadEvent`, `ForwardPowerWindow`, `InterconnectionValueScenario`,
   and `FlexRouteScorecard` records for power-event response and
-  load-smoothing value;
+  load-smoothing value.
 - Margot/operator export packet ingestion with mining floor, GPU rental floor,
   accepted-work assumptions, grid-service assumptions, AI-load-smoothing
   assumptions, forward-power windows, interconnection scenarios, provenance,
-  caveats, and recommended next diligence;
+  caveats, and recommended next diligence.
 - public-safe operator/investor proof reports that separate modeled,
-  measured, verified, and settled economics; and
+  measured, verified, and settled economics. And
 - investor demo bundle with outcome proof, route scorecards, gross margin,
   no-dark-capacity funnel, accepted outcomes per watt/MWh, and settlement
   status.
@@ -1815,20 +1815,20 @@ or demo surfaces.
 Required outcomes:
 
 - source bundle model for files, transcripts, links, connector reads, repo
-  refs, tables, and imported data packages;
+  refs, tables, and imported data packages.
 - extracted span records for page, row, transcript, and code evidence separate
-  from generated summaries;
+  from generated summaries.
 - retrieval trace viewer for selected/excluded sources, ranking, stale memory,
-  and missing context;
+  and missing context.
 - graph-curated context where nodes/edges require source refs or explicit
-  human confirmation;
+  human confirmation.
 - import approval path that promotes extracted facts into CRM, project, legal,
-  support, finance, or investor objects only through approval-gated writes;
+  support, finance, or investor objects only through approval-gated writes.
 - data package export with provenance manifest, schema, rights policy,
-  redaction summary, artifact digest, and receipts;
+  redaction summary, artifact digest, and receipts.
 - domain agent package schema with Context Pack templates, outcome templates,
-  signatures, fixtures, UI bindings, source authority, and approval policy;
-- package review console for org-private and public domain packs; and
+  signatures, fixtures, UI bindings, source authority, and approval policy.
+- package review console for org-private and public domain packs. And
 - marketplace attribution hooks on package/signature versions used in accepted
   domain outcomes.
 
@@ -1840,15 +1840,15 @@ without becoming separate product authority or bypassing approvals.
 Required outcomes:
 
 - mobile workroom projections for active outcomes, approvals, artifacts,
-  receipts, provider state, wallet state, and workroom timelines;
+  receipts, provider state, wallet state, and workroom timelines.
 - voice session reports with transcript evidence, confidence, provider,
-  command route, source refs, and proposal state;
+  command route, source refs, and proposal state.
 - approval-first mobile cards for CRM sends, coding writes, runner launches,
-  payments, provider actions, public claim upgrades, and legal-sensitive work;
+  payments, provider actions, public claim upgrades, and legal-sensitive work.
 - notification policy for blocked runs, pending approvals, failed workrooms,
-  completed artifacts, payout warnings, and receipt closeout;
+  completed artifacts, payout warnings, and receipt closeout.
 - offline/local model outputs stored only as drafts until server policy and
-  workspace authorization promote them; and
+  workspace authorization promote them. And
 - cross-device generated UI replay through the same catalog metadata,
   fallback rules, source authority, and approval receipts as desktop.
 
@@ -1862,17 +1862,17 @@ Required outcomes:
 
 - marketplace margin memory by signature, module, grader, provider, source
   package, route, accepted gross profit, failure/refund rate, review burden,
-  and repeat buyer signal;
+  and repeat buyer signal.
 - split definitions and contributor accounts for selected, executed, accepted,
-  rejected, failed, refunded, pending, settled, and superseded versions;
+  rejected, failed, refunded, pending, settled, and superseded versions.
 - paid workroom closeout that calculates splits only after acceptance and
-  records split-definition version, ledger refs, and settlement state;
+  records split-definition version, ledger refs, and settlement state.
 - public/private marketplace discovery ranked by accepted outcomes, revenue,
-  evals, risk, failure rate, review burden, and gross margin;
+  evals, risk, failure rate, review burden, and gross margin.
 - Model Artifact, Training Run, Benchmark Cloud, retained-failure, failure
-  classification, signature candidate, and adapter package validation records;
+  classification, signature candidate, and adapter package validation records.
 - optimizer-produced module versions that carry provenance, eval deltas,
-  regression failures, promotion gates, rollback posture, and attribution; and
+  regression failures, promotion gates, rollback posture, and attribution. And
 - Model Lab route that turns retained failures into reviewed signature/module
   candidates under the Blueprint release-gate policy.
 
@@ -1940,10 +1940,10 @@ it blocks a request. Safety limits, abuse limits, provider-capacity limits, and
 economic limits need different outcomes. Only economic limits should offer a
 recoverable payment path. The user or agent should see whether they can:
 
-- wait for a reset;
-- spend existing account credits;
-- top up through Stripe;
-- satisfy a Lightning/MDK L402 challenge; or
+- wait for a reset.
+- spend existing account credits.
+- top up through Stripe.
+- satisfy a Lightning/MDK L402 challenge. Or
 - request a manual limit review.
 
 For agent traffic, the payment unlock should sit after authentication and scope
@@ -1969,35 +1969,35 @@ there is no bearer-token collision.
 The Worker-compatible L402 service should preserve the important MDK checkout
 semantics:
 
-- bind credentials to `METHOD:/path`;
-- freeze amount, currency, resource, and product metadata in the challenge;
-- re-check the current endpoint price before accepting a credential;
-- verify `sha256(preimage) == payment_hash`;
-- reject malformed credentials with `401`;
-- reject resource or amount mismatches with `403`;
+- bind credentials to `METHOD:/path`.
+- freeze amount, currency, resource, and product metadata in the challenge.
+- re-check the current endpoint price before accepting a credential.
+- verify `sha256(preimage) == payment_hash`.
+- reject malformed credentials with `401`.
+- reject resource or amount mismatches with `403`.
 - consume credentials one time unless an endpoint explicitly grants a longer
-  entitlement;
+  entitlement.
 - support deferred settlement for handlers that should only charge after a
-  successful outcome; and
+  successful outcome. And
 - keep idempotency keys on checkout creation, payout attempts, webhook
   reconciliation, and entitlement creation.
 
 D1 should own the buyer-side payment truth inside OpenAgents product surface. Minimum tables or
 equivalent durable records:
 
-- `paid_endpoint_products`;
-- `payment_policy_rules`;
-- `agent_spend_limits`;
-- `l402_challenges`;
-- `l402_redemptions`;
-- `payment_entitlements`;
-- `credit_ledger_entries`;
-- `payment_receipts`;
-- `site_payment_products`;
-- `site_payment_actions`;
-- `site_checkout_intents`;
-- `site_payment_events`;
-- `site_payment_entitlements`; and
+- `paid_endpoint_products`.
+- `payment_policy_rules`.
+- `agent_spend_limits`.
+- `l402_challenges`.
+- `l402_redemptions`.
+- `payment_entitlements`.
+- `credit_ledger_entries`.
+- `payment_receipts`.
+- `site_payment_products`.
+- `site_payment_actions`.
+- `site_checkout_intents`.
+- `site_payment_events`.
+- `site_payment_entitlements`. And
 - `payment_reconciliation_events`.
 
 Durable Objects may cache hot entitlement state or fan out realtime updates,
@@ -2036,7 +2036,7 @@ for public and agent clients. OPENAGENTS-H-014 / #451 evaluated MDK's
 destination classifier for BOLT11, BOLT12, LNURL, Lightning Address,
 BIP353-style names, `bitcoin:` URI payloads, unsupported, malformed, and
 ambiguous inputs. The crate remains a conformance source and future WASM or
-sidecar resolver candidate; OpenAgents product surface does not import the Rust resolver runtime
+sidecar resolver candidate. OpenAgents product surface does not import the Rust resolver runtime
 directly into the Cloudflare Worker.
 
 The 2026-06-05 targeted sync of `projects/moneydevkit/repos/mdk-checkout`
@@ -2046,24 +2046,24 @@ hook re-exports the core hook. OpenAgents product surface should not build on Ne
 The relevant source to recreate in the Effect/Cloudflare backend is:
 
 - `packages/core/src/route.ts` for handler dispatch, CSRF/secret checks, and
-  signed URL actions, translated into explicit Worker routes;
+  signed URL actions, translated into explicit Worker routes.
 - `packages/core/src/actions.ts` for amount/product checkout creation,
   customer normalization, metadata merge order, confirm, and mint-invoice
-  sequencing;
+  sequencing.
 - `packages/core/src/client-actions.ts` for browser helper semantics, adapted
-  to OpenAgents product surface Site payment APIs instead of `/api/mdk`;
+  to OpenAgents product surface Site payment APIs instead of `/api/mdk`.
 - `packages/core/src/handlers/checkout.ts` for signed checkout URLs, safe
   `checkoutPath` sanitization, create/get/confirm responses, and clean return
-  redirects;
+  redirects.
 - `packages/api-contract/src/contracts/checkout.ts`,
   `packages/api-contract/src/schemas/checkout.ts`, and
   `packages/api-contract/src/validation/metadata-validation.ts` for checkout,
   L402, customer, sandbox, and metadata constraints, re-modeled with Effect
-  Schema;
+  Schema.
 - `packages/core/src/mdk402/with-payment.ts`,
   `packages/core/src/mdk402/token.ts`, and `packages/core/src/pay402.ts` for
   L402 challenge, token, price re-check, payment-proof, one-shot/deferred
-  settlement, spend-cap, idempotency, and retry behavior; and
+  settlement, spend-cap, idempotency, and retry behavior. And
 - `packages/core/src/payment-state.ts`, webhook handlers, and preview
   `pay_invoice` only as warnings: OpenAgents product surface must replace in-process state and
   merchant-asserted preview payment with D1-backed reconciliation and
@@ -2075,12 +2075,12 @@ The MDK integration must also be a generated Site primitive. Every Site created
 by a human, an agent, or Autopilot should be able to declare:
 
 - human checkout products such as a purchase, deposit, subscription, tip jar,
-  booking fee, or paid consultation;
+  booking fee, or paid consultation.
 - agent-paid actions such as paid downloads, API calls, MCP tools, data
-  retrieval, crawl requests, or workroom contribution actions;
-- pricing in bitcoin-denominated units or USD cents;
-- required customer data;
-- success/cancel paths that resolve through clean Site URLs; and
+  retrieval, crawl requests, or workroom contribution actions.
+- pricing in bitcoin-denominated units or USD cents.
+- required customer data.
+- success/cancel paths that resolve through clean Site URLs. And
 - entitlement semantics such as one-shot, quota, duration, or deferred
   settlement after a successful handler result.
 
@@ -2131,14 +2131,14 @@ rollback restores previous prices and payment semantics.
 Generated Sites need reusable primitives:
 
 - checkout button, checkout form, product card, tip jar, subscription card, and
-  booking/deposit components;
+  booking/deposit components.
 - a browser helper that creates an OpenAgents product surface checkout intent and redirects to the
-  MDK checkout URL;
-- Worker/WFP middleware for paid Site API actions;
+  MDK checkout URL.
+- Worker/WFP middleware for paid Site API actions.
 - OpenAPI and `/.well-known/openagents.json` entries that tell agents which
-  actions are paid and how to satisfy the L402 challenge;
+  actions are paid and how to satisfy the L402 challenge.
 - clean success/cancel routes that resolve durable checkout state before
-  redirecting to canonical Site URLs; and
+  redirecting to canonical Site URLs. And
 - sandbox/signet smoke tests proving a human checkout and an agent L402 payment
   can unlock a Site entitlement without leaking payment secrets.
 
@@ -2180,10 +2180,10 @@ targets, private channel state, or operator treasury recovery details.
 Pylon wallet readiness should remain explicit:
 
 - distinguish available wallet balance, receive readiness, send readiness,
-  sync state, daemon state, and adapter class;
-- preserve lower-level liquidity distinctions when native LDK paths are used;
+  sync state, daemon state, and adapter class.
+- preserve lower-level liquidity distinctions when native LDK paths are used.
 - publish redacted telemetry for wallet status, backup warning state, daemon
-  state, warning/error codes, and readiness timestamps; and
+  state, warning/error codes, and readiness timestamps. And
 - preserve the warning that mnemonic-only restore may not recover all
   Lightning state for non-MDK or lower-level Lightning runtimes.
 
@@ -2199,17 +2199,17 @@ receipt projection. The older "port only, do not wrap" MDK decision is retired.
 
 Before OpenAgents product surface can claim the paid loop is complete:
 
-- an unpaid agent call must produce a valid `402` challenge;
-- a paid retry must succeed under a configured spend cap;
+- an unpaid agent call must produce a valid `402` challenge.
+- a paid retry must succeed under a configured spend cap.
 - amount/resource mismatch, bad preimage, reused credential, stale challenge,
-  and malformed credential cases must be covered by tests;
+  and malformed credential cases must be covered by tests.
 - Stripe credit top-up, credit spend, L402 spend, and free-beta state must all
-  project into the same payment policy surface;
+  project into the same payment policy surface.
 - accepted Site/order economics must record buyer price, credits, cost, free
   state, accepted value, and internal margin without exposing private provider
-  data;
+  data.
 - accepted-work payout claims must link to Nexus/Treasury/Pylon receipts rather
-  than MDK checkout evidence; and
+  than MDK checkout evidence. And
 - any public Lightning/Pylon graph must be read-only and projection-backed.
 
 ## Agent-Friendly Website Requirements
@@ -2285,8 +2285,8 @@ routes for ChatGPT/Codex device login:
 
 - `POST /api/provider-accounts/chatgpt-codex/device-login/start`
 - `GET /api/provider-accounts/chatgpt-codex/device-login/:attemptId`
-- grant issue and resolve routes for connected accounts;
-- provider-account health events; and
+- grant issue and resolve routes for connected accounts.
+- provider-account health events. And
 - runner launch blocking when no connected healthy account exists.
 
 The first-batch gap is operator ergonomics and fleet scheduling. The current
@@ -2326,18 +2326,18 @@ account refs, health, and redacted failure classifications.
 
 Scheduling requirements:
 
-- each launch should request a short-lived account lease before issuing a grant;
+- each launch should request a short-lived account lease before issuing a grant.
 - leases should include run ID, assignment ID, provider account ref, requested
-  action, start time, expiry, and terminal outcome;
+  action, start time, expiry, and terminal outcome.
 - account selection should prefer connected/healthy accounts with no active
-  lease, then lowest recent load, then configured priority;
+  lease, then lowest recent load, then configured priority.
 - failures should be classified as token invalidated, low credits, rate limit,
-  provider outage, launch timeout, grant resolution failure, or runner failure;
-- token invalidation should move health to `requires_reauth`;
-- low credits should cool down the account and surface a refill/reconnect note;
-- rate limits should use timed cool-down and retry a different account;
+  provider outage, launch timeout, grant resolution failure, or runner failure.
+- token invalidation should move health to `requires_reauth`.
+- low credits should cool down the account and surface a refill/reconnect note.
+- rate limits should use timed cool-down and retry a different account.
 - grant resolution failure should not expose provider secrets to the browser,
-  logs, public projections, or issue comments; and
+  logs, public projections, or issue comments. And
 - overnight order runs should record which public provider account ref was used
   without exposing secret refs to customers.
 
@@ -2346,35 +2346,35 @@ Scheduling requirements:
 OpenAgents product surface already has an email invariant, `EmailService`, Resend REST delivery,
 `email_messages`, `email_deliveries`, `email_drafts`, out-of-credits email, and
 Adjutant customer-notification hooks for lifecycle events. That is the correct
-foundation. Production email must continue to pass through `EmailService`; route
+foundation. Production email must continue to pass through `EmailService`. Route
 handlers and product services should not call Resend directly.
 
 ### Transactional Order Emails
 
 Transactional emails should be created for order and Site lifecycle events:
 
-- order received;
-- scoping started;
-- repository or source needed;
-- Autopilot queued;
-- Autopilot running;
-- review ready;
-- Site saved version ready;
-- Site deployed;
-- customer input needed;
-- unavailable/declined with safe reason;
-- delivered; and
+- order received.
+- scoping started.
+- repository or source needed.
+- Autopilot queued.
+- Autopilot running.
+- review ready.
+- Site saved version ready.
+- Site deployed.
+- customer input needed.
+- unavailable/declined with safe reason.
+- delivered. And
 - adjustment received or completed.
 
 Each send must carry:
 
-- typed email kind;
-- template slug and version;
-- idempotency key derived from order/assignment/site/event/stage;
-- source-authority ref;
-- target user and email;
-- rendered text and HTML;
-- provider delivery row; and
+- typed email kind.
+- template slug and version.
+- idempotency key derived from order/assignment/site/event/stage.
+- source-authority ref.
+- target user and email.
+- rendered text and HTML.
+- provider delivery row. And
 - redacted provider error summary on failure.
 
 The existing `crm_transactional` email kind is too broad for this product
@@ -2396,14 +2396,14 @@ for the broader drip-campaign system.
 Resend recommends React Email for template authoring and previews. OpenAgents product surface should
 add a template package or worker-safe build step that:
 
-- defines typed React Email templates in source;
+- defines typed React Email templates in source.
 - renders HTML and plain text at build/test time or through a Worker-safe
-  renderer;
-- keeps template props schema-first with Effect Schema;
-- snapshots rendered text/HTML for regression tests;
-- supports local preview without sending;
+  renderer.
+- keeps template props schema-first with Effect Schema.
+- snapshots rendered text/HTML for regression tests.
+- supports local preview without sending.
 - avoids storing raw rendered provider payloads beyond the existing ledger
-  fields; and
+  fields. And
 - keeps customer-facing copy about status and next action, not internal runner
   mechanics.
 
@@ -2416,12 +2416,12 @@ new renderer is proven.
 Drip campaigns should be modeled as durable schedules, not ad hoc cron code.
 Minimum tables or equivalent records:
 
-- `email_campaigns`;
-- `email_campaign_steps`;
-- `email_campaign_enrollments`;
-- `email_campaign_sends`;
-- `email_suppression_entries`;
-- `email_preferences`; and
+- `email_campaigns`.
+- `email_campaign_steps`.
+- `email_campaign_enrollments`.
+- `email_campaign_sends`.
+- `email_suppression_entries`.
+- `email_preferences`. And
 - `email_provider_events`.
 
 Initial campaign:
@@ -2445,19 +2445,19 @@ state when available.
 Before first-batch overnight order fulfillment:
 
 - Resend config is present in production or emails are explicitly marked
-  skipped with `email_config_missing`;
+  skipped with `email_config_missing`.
 - order received, scoping, queued/running, review-ready/deployed,
-  input-needed, unavailable, and delivered templates exist;
-- Adjutant lifecycle emails link to order/Site public-safe status pages;
-- duplicate lifecycle events do not send duplicate emails;
-- customer-visible email state is inspectable by operators; and
+  input-needed, unavailable, and delivered templates exist.
+- Adjutant lifecycle emails link to order/Site public-safe status pages.
+- duplicate lifecycle events do not send duplicate emails.
+- customer-visible email state is inspectable by operators. And
 - failures do not block order state transitions, but they do create visible
   operator follow-up records.
 
 ## Proposed GitHub Issues By Epic
 
 The issue IDs below are roadmap labels for the GitHub issue batch. Some have
-already been opened; the snapshot below records current issue status so future
+already been opened. The snapshot below records current issue status so future
 issue opening does not duplicate completed work.
 
 ### GitHub Issue Snapshot
@@ -2513,7 +2513,7 @@ standalone Google Cloud Nexus public release first:
 | #423         | closed | OPENAGENTS-NEXUS-004   | Add simulation payout adapter and conformance tests                   |
 | #424         | closed | OPENAGENTS-NEXUS-005   | Add MDK agent-wallet payout adapter boundary                          |
 | #425         | closed | OPENAGENTS-NEXUS-006   | Add payout target approval, spend caps, and emergency pause policy    |
-| #426         | closed | OPENAGENTS-NEXUS-007  | Added the D1-backed Pylon Agent API for registration, heartbeat, wallet readiness, payout-target admission requests, assignment acceptance/progress, artifact/proof refs, payment receipt refs, and settlement status refs. Writes require active registered-agent bearer tokens plus `Idempotency-Key`; post-registration writes are scoped to the owning agent; public reads are public-safe; OpenAPI, manifest, AGENTS, and the Pylon API runbook are updated. |
+| #426         | closed | OPENAGENTS-NEXUS-007  | Added the D1-backed Pylon Agent API for registration, heartbeat, wallet readiness, payout-target admission requests, assignment acceptance/progress, artifact/proof refs, payment receipt refs, and settlement status refs. Writes require active registered-agent bearer tokens plus `Idempotency-Key`. Post-registration writes are scoped to the owning agent. Public reads are public-safe. OpenAPI, manifest, AGENTS, and the Pylon API runbook are updated. |
 | #427         | closed | OPENAGENTS-NEXUS-008  | Added `pylon-marketplace-payout-flow.ts`, connecting accepted Pylon marketplace assignments to accepted-work evidence, Nexus Treasury payout intents, simulation payout attempts, reconciliation events, payment-authority receipts, settlement-bridge timelines, paused/failed blocked bridge records, and read-only accepted-work payout rows. The flow is simulation-only, rejects missing accepted-work evidence, links job/assignment/Artanis/payout/adapter refs, and is documented in `docs/nexus/2026-06-07-pylon-marketplace-payout-flow-runbook.md`. |
 | #428         | closed | OPENAGENTS-NEXUS-009  | Added payment authority state to Artanis Nexus/Pylon dispatch records, plus `runArtanisNexusPylonPaymentBackedDispatch` for simulation-backed authority preview, payout intent creation, payout dispatch, blocked-state recording, and public/operator projection. Tests prove simulated dispatch succeeds after accepted-work, payout-target approval, wallet readiness, spend-cap, adapter, and idempotency gates pass, and blocks before payout attempts for missing accepted work, missing payout-target approval, stale wallet readiness, and replayed idempotency. |
 | #429         | closed | OPENAGENTS-NEXUS-010  | Added Nexus/Pylon visibility routes: public receipt JSON at `GET /api/public/nexus-pylon/receipts/{receiptRef}`, public receipt pages at `/nexus-pylon/receipts/{receiptRef}`, operator dashboard at `GET /api/operator/nexus-pylon/dashboard`, and operator receipt detail at `GET /api/operator/nexus-pylon/receipts/{receiptRef}`. The first projection is simulation-only with `realBitcoinMoved: false`, separates dispatch acceptance from terminal settlement evidence, exposes Artanis runs, Pylon readiness, assignments, payout intents, payout attempts, settlement status, blocked gates, and release-gate evidence for operators, and updates OpenAPI, the manifest, and AGENTS while tests cover public JSON/HTML redaction and operator access. |
@@ -2525,7 +2525,7 @@ standalone Google Cloud Nexus public release first:
 Current MDK runtime secret note: `MDK_ACCESS_TOKEN` and `MDK_MNEMONIC` were
 set directly in the Cloudflare Worker dashboard. The Worker config recognizes
 those bindings, plus optional `MDK_WALLET_MNEMONIC`, as redacted runtime
-secrets. Do not add secret values to `wrangler.jsonc`; use the dashboard or
+secrets. Do not add secret values to `wrangler.jsonc`. Use the dashboard or
 `wrangler secret put` when rotation or CLI sync is needed.
 
 The forum/MDK issue IDs introduced below are not currently open GitHub issues
@@ -2690,7 +2690,7 @@ trust that their selected repository actually saved.
 
 | ID               | Title                                                    | Outcome                                                                                                                                                                                                                                           |
 | ---------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OPENAGENTS-UX-BUG-001 | Fix ChatGPT connect waiting-for-confirmation UX          | The ChatGPT connection flow never leaves a first-run user with only "Waiting for confirmation"; the pending state clearly shows the OpenAI device page link, user code, expiry, what credentials are being requested, and retry/expired handling. |
+| OPENAGENTS-UX-BUG-001 | Fix ChatGPT connect waiting-for-confirmation UX          | The ChatGPT connection flow never leaves a first-run user with only "Waiting for confirmation". The pending state clearly shows the OpenAI device page link, user code, expiry, what credentials are being requested, and retry/expired handling. |
 | OPENAGENTS-UX-BUG-002 | Disable or clear Save repository after successful update | After a user saves a default repository and the update succeeds, the repository settings UI returns to a saved/disabled or hidden-save state until the user changes the selected repository or manual repo fields again.                          |
 
 ### Epic C: Exa Research And Autopilot Launch Policy
@@ -2835,10 +2835,10 @@ Open issue mapping:
 | #197         | done   | OPENAGENTS-SITES-VIBE-006 | `recordSiteBuilderPhaseRun` writes `site_builder_phase_runs`, appends matching `phase_started`/`phase_updated`/`phase_completed` events, and adds customer-safe `currentPhase`/`phases` projections.                              |
 | #198         | done   | OPENAGENTS-SITES-VIBE-007 | `site_builder_repair_attempts` and `sites-builder-repair-loop.ts` record bounded redacted repair attempts, reject exhausted retry budgets, and emit safe repair/build events into the builder timeline.                           |
 | #199         | done   | OPENAGENTS-SITES-VIBE-008 | `site_builder_saved_versions`, `sites-builder-saved-versions.ts`, and `POST /api/operator/sites/builder-sessions/:id/versions` save builder candidates into reviewable `site_versions` without deployment.                        |
-| #200         | done   | OPENAGENTS-SITES-VIBE-009 | `site_deployment_attempts` and the deploy-version health gate record WFP upload/health/rollback/observability refs and prevent WFP activation when health is missing or failed; credentialed WFP upload client remains follow-up. |
+| #200         | done   | OPENAGENTS-SITES-VIBE-009 | `site_deployment_attempts` and the deploy-version health gate record WFP upload/health/rollback/observability refs and prevent WFP activation when health is missing or failed. Credentialed WFP upload client remains follow-up. |
 | #201         | done   | OPENAGENTS-SITES-VIBE-010 | `site_provisioning_plans`, `sites-provisioning.ts`, and `/api/operator/sites/:id/provisioning-plans` record reviewed D1/R2/KV/env/secret-ref plans and redacted receipts with secret-shaped material rejection.                   |
 | #202         | done   | OPENAGENTS-SITES-VIBE-011 | Customer order detail now has a self-serve Site builder panel backed by public builder-session projections, active preview links, customer-visible event/file/read APIs, and existing revision feedback queueing.                 |
-| #203         | closed | OPENAGENTS-SITES-VIBE-012 | Closed as unneeded; no separate SDK package is planned for this batch.                                                                                                                                                            |
+| #203         | closed | OPENAGENTS-SITES-VIBE-012 | Closed as unneeded. No separate SDK package is planned for this batch.                                                                                                                                                            |
 | #204         | done   | OPENAGENTS-SITES-VIBE-013 | `site_source_exports`, `site-source-exports.ts`, and `/api/operator/sites/:siteId/versions/:versionId/source-exports` record reviewed source export receipts with passed secret scans and expiring token refs/hashes.             |
 | #205         | done   | OPENAGENTS-SITES-VIBE-014 | `site-library.ts` and `/api/sites` routes list mine/public/recent Sites, enforce owner/admin management, update visibility, soft-archive/delete Sites, disable active deployments, and hide stale builder sessions.               |
 
@@ -2867,7 +2867,7 @@ belongs in OpenAgents product surface records, source packs, receipts, and `Emai
 | ------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OPENAGENTS-SITES-OUTREACH-001 | Add targeted Site campaign and prospect schema             | Implemented in #181. `targeted_site_campaigns` and `targeted_site_prospects` model internal campaigns, deduped target domains, contact refs, suppression/capture/review states, confidence, source refs, budget/suppression refs, and public-safe metadata.                                                                           |
 | OPENAGENTS-SITES-OUTREACH-002 | Add Exa-backed prospect discovery planner                  | Implemented in #182. `targeted-site-discovery-planner.ts` builds bounded Exa company-search plans, normalizes public-safe source cards, dedupes domains, supports dry-run mode, and persists candidates through the #181 prospect repository.                                                                                         |
-| OPENAGENTS-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. `targeted_site_capture_policy_events` records robots/sitemap, suppression, customer-owned, manual-review, blocked, allowed, and paid-escalation decisions; only `allowed` and `paid_escalation` are fetchable, with customer/operator-safe redaction.                                                            |
+| OPENAGENTS-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. `targeted_site_capture_policy_events` records robots/sitemap, suppression, customer-owned, manual-review, blocked, allowed, and paid-escalation decisions. Only `allowed` and `paid_escalation` are fetchable, with customer/operator-safe redaction.                                                            |
 | OPENAGENTS-SITES-OUTREACH-004 | Add static site capture and asset graph service            | Implemented in #184. `targeted_site_static_capture_runs` records policy-gated homepage/page/asset refs, same-origin URL normalization, response summaries, source hashes, source-pack refs, and redacted projections for future Worker fetchers.                                                                                      |
 | OPENAGENTS-SITES-OUTREACH-005 | Add Browser Run rendered capture service                   | Implemented in #185. `targeted_site_rendered_capture_runs` records policy-gated screenshot, rendered HTML, markdown, links, JSON, crawl, viewport, device, provider, static-run, and bounded usage refs without storing provider payloads or bypass output.                                                                           |
 | OPENAGENTS-SITES-OUTREACH-006 | Add capture provider adapter boundary                      | Implemented in #186. `targeted_site_capture_provider_adapter_runs` records first-party Worker, Browser Run, Firecrawl, Browserless, Browserbase, Apify, and Container fallback or benchmark refs, requiring fetchable policy and paid-escalation evidence for paid fallback.                                                          |
@@ -2953,7 +2953,7 @@ eligible referral events without paying for raw signups.
 | OPENAGENTS-SITES-REF-005 | Add referred-user onboarding and EmailService hooks             | Implemented in #177. Referred-user transactional onboarding uses `EmailService`, ledger idempotency, suppression/preference gates, public-safe source Site copy, and drip metadata without payout promises or referrer-private data.                                                                                        |
 | OPENAGENTS-SITES-REF-006 | Add Site owner referral dashboard and operator inspection       | Implemented in #178. `GET /api/sites/referrals/overview` and `GET /api/operator/sites/referrals` expose public-safe owner aggregates and admin inspection refs without leaking private referred-user contact data or secret-shaped labels.                                                                                  |
 | OPENAGENTS-SITES-REF-007 | Add referral event ledger for paid workflows                    | Implemented in #179. `referral_workflow_events` records paid usage, Site checkout, L402 redemption, accepted outcome, refund, reversal, eligibility hold, dispute hold, and operator adjustment evidence against referral attribution/source refs without executing payouts.                                                |
-| OPENAGENTS-SITES-REF-008 | Add referral abuse, dispute, and cap policy                     | Implemented in #180. `site_referral_policy_events` records idempotent eligibility decisions and operator overrides; `site-referral-policy.ts` enforces self-referral, duplicate first-verified, expiration, cap, dispute, refund/reversal, chargeback, clawback, and compliance hold boundaries before payout work expands. |
+| OPENAGENTS-SITES-REF-008 | Add referral abuse, dispute, and cap policy                     | Implemented in #180. `site_referral_policy_events` records idempotent eligibility decisions and operator overrides. `site-referral-policy.ts` enforces self-referral, duplicate first-verified, expiration, cap, dispute, refund/reversal, chargeback, clawback, and compliance hold boundaries before payout work expands. |
 
 Site referral basics release cuts:
 
@@ -3738,8 +3738,8 @@ Site-deployable MDK checkout issue mapping:
 | #435         | closed | OPENAGENTS-SITES-MDK demo UI | Added the public buyer demo checkout surface at `/sites/demo-checkout` plus clean return pages under `/sites/demo-checkout/{success,cancel,status}`. The page reads Site commerce discovery, creates checkout intents with `Idempotency-Key`, passes public catalog/price/customer-data refs only, opens hosted checkout when a live provider is configured, and otherwise renders an explicit non-live provider state without exposing MDK secrets, wallet state, payout claims, raw provider refs, or checkout query-state. |
 | #437         | closed | OPENAGENTS-SITES-MDK-015 | Added `POST /api/sites/{siteId}/commerce/payout-bridges`, guarded by OpenAgents admin API token plus `Idempotency-Key`, to bridge verified Site buyer payment receipts and matched MDK reconciliation events into one Nexus/Treasury payout intent after Treasury authority policy gates pass. The bridge rejects checkout-return/client-success authority, raw/unverified provider state, duplicate buyer payment refs, missing accepted-work refs, missing payout target approval, stale wallet readiness, spend-cap failures, and missing real-movement release-gate evidence. |
 | #439         | closed | OPENAGENTS-SITES-MDK-009 | Added `GET /api/sites/{siteId}/commerce/payment-proofs/{checkoutIntentRef}` plus typed public/customer/operator proof projections over checkout intent, receipt, reconciliation, and entitlement state. The route is public-safe, linked from discovery/OpenAPI/manifest/AGENTS.md, rejects unsafe source state, omits raw timestamps from customer-facing proof copy, and explicitly does not prove accepted-work payout, provider payout authority, wallet state, or settlement. |
-| #440         | closed | OPENAGENTS-SITES-MDK-010 | Added `GET /api/sites/{siteId}/commerce/review` and admin-gated `POST /api/sites/{siteId}/commerce/review-decisions` for generated checkout product and paid-action review. The projection includes source-safe checkout UI primitive refs, customer-data requirement refs, sandbox/live provider classification, spend-cap hints, and current review state; decisions persist to D1, are idempotent, and do not create payment, payout, settlement, access, or deployment authority. |
-| #441         | closed | OPENAGENTS-SITES-MDK-011 | Added `GET /api/sites/{siteId}/commerce/mdk-account-binding` and admin-gated `POST /api/sites/{siteId}/commerce/mdk-account-bindings`, backed by D1 `site_mdk_account_bindings`, to record reviewed customer-owned MDK account mode through hosted secret-binding refs only. Customer/public projections show unavailable, pending review, configured, blocked, or revoked state and redact hosted secret refs; checkout intents include `providerMode` and `mdkAccountBinding` projection when an approved binding applies. Binding state does not create checkout, live-spend, payout, settlement, access, or deployment authority. |
+| #440         | closed | OPENAGENTS-SITES-MDK-010 | Added `GET /api/sites/{siteId}/commerce/review` and admin-gated `POST /api/sites/{siteId}/commerce/review-decisions` for generated checkout product and paid-action review. The projection includes source-safe checkout UI primitive refs, customer-data requirement refs, sandbox/live provider classification, spend-cap hints, and current review state. Decisions persist to D1, are idempotent, and do not create payment, payout, settlement, access, or deployment authority. |
+| #441         | closed | OPENAGENTS-SITES-MDK-011 | Added `GET /api/sites/{siteId}/commerce/mdk-account-binding` and admin-gated `POST /api/sites/{siteId}/commerce/mdk-account-bindings`, backed by D1 `site_mdk_account_bindings`, to record reviewed customer-owned MDK account mode through hosted secret-binding refs only. Customer/public projections show unavailable, pending review, configured, blocked, or revoked state and redact hosted secret refs. Checkout intents include `providerMode` and `mdkAccountBinding` projection when an approved binding applies. Binding state does not create checkout, live-spend, payout, settlement, access, or deployment authority. |
 | #442         | closed | OPENAGENTS-SITES-MDK-012 | Added `workers/api/src/site-mdk-smoke.ts`, focused smoke tests, and `docs/sites/2026-06-07-site-mdk-sandbox-smoke-tests.md` for fake-provider Site MDK smoke across discovery, checkout, clean return status, webhook reconciliation, replay handling, payment proof, L402 challenge/redemption, stale rejection, spend-cap rejection, redaction, and fake/sandbox/live implementation-state classification. |
 | #443         | closed | OPENAGENTS-SITES-MDK-013 | Added `workers/api/src/site-mdk-generated-helpers.ts`, focused helper tests, and `docs/sites/2026-06-07-mdk-core-backed-site-helpers.md` for generated static/WFP helper request plans covering discovery, checkout intents, checkout returns, payment proofs, L402 challenges/redemptions, redacted error envelopes, idempotency, clean URL rules, spend-cap enforcement, MDK core fixture parity, and source-safe examples without Next.js or native MDK runtime assumptions. |
 | #444         | closed | OPENAGENTS-SITES-MDK-014 | Added `docs/sites/2026-06-07-site-payment-primitive-sdk.md` plus public `AGENTS.md`/onboarding pointers for Site payment primitive SDK guidance covering discovery-first agent flow, checkout products, clean returns, webhook reconciliation, payment proofs, payment-to-payout bridge boundaries, L402 challenge/redemption, spend caps, implementation states, generated helper usage, customer-owned MDK account mode, production config, smoke tests, and payment/entitlement/accepted-work/payout/settlement evidence separation. |
@@ -3756,7 +3756,7 @@ source-material references only. This batch should not reuse any
 | OPENAGENTS-FORUM-001 | Add simple board/forum/topic/post API schemas               | Effect Schema models and tests cover Moltbook-simple REST board index, forum topic list, topic create, chronological reply post, quote, post reward/endorsement, topic fund/boost, paid down-signal, search, notification request bodies, idempotency, auth/scope envelopes, and public-safe projection redaction without Nostr.                                                                                                 |
 | OPENAGENTS-FORUM-002 | Add board/forum/topic/post score and earning D1 schema      | D1 records `forum_*` category/forum/topic/post refs, sticky/locked state, authors, parent/root/quote refs, public-safe content refs, last-post bump refs, post reward inputs, topic fund/boost inputs, paid down-signals, earning refs, payment refs, and receipt refs without private workroom, runner, provider, wallet, invoice, preimage, or Nostr relay data.                                                               |
 | OPENAGENTS-FORUM-003 | Add MDK post reward and receipt service                     | OpenAgents APIs expose paid action preview, MDK/L402 challenge, payment/redeem, entitlement, author/recipient earning receipt, and receipt lookup paths for post rewards/endorsements, topic funds/boosts, and paid down-signals with bearer auth plus `X-OpenAgents-L402`, spend caps, signet smoke, and preimage verification.                                                                                                 |
-| OPENAGENTS-FORUM-004 | Add Forum read API and seed the unlisted void test forum    | Implemented in #241. OpenAgents product surface exposes `GET /api/forum`, exact forum lookup, forum topic list, topic detail, and post detail; `void` is unlisted, excluded from default discovery, and reachable by exact lookup plus explicit test flags.                                                                                                                                                                                           |
+| OPENAGENTS-FORUM-004 | Add Forum read API and seed the unlisted void test forum    | Implemented in #241. OpenAgents product surface exposes `GET /api/forum`, exact forum lookup, forum topic list, topic detail, and post detail. `void` is unlisted, excluded from default discovery, and reachable by exact lookup plus explicit test flags.                                                                                                                                                                                           |
 | OPENAGENTS-FORUM-005 | Add agent-authenticated Forum writer context                | Implemented in #242. Registered agent bearer tokens, browser-session humans, and operator test actors become typed Forum writer contexts with public-safe actor summaries. Compatibility grant parsing remains, but the current production rule lets every active registered agent token create public-safe topics and replies in open forums. Payment proof cannot replace write permission.                                                                                                                                                  |
 | OPENAGENTS-FORUM-006 | Add topic creation and reply post API for void              | Implemented in #243, then generalized by later Forum authority work. OpenAgents product surface exposes `POST /api/forum/forums/{forumId}/topics` and `POST /api/forum/topics/{topicId}/posts`, requires authenticated actor context plus `Idempotency-Key`, stores public-safe plain-text bodies in `forum_post_bodies`, returns idempotent retries, and denies locked, hidden, archived, malformed, unauthenticated, or payment-as-permission writes. `void` remains unlisted smoke/CI. |
 | OPENAGENTS-FORUM-007 | Add first Forum UI for void threads and posts               | Implemented in #244. OpenAgents product surface exposes public `/forum`, `/forum/f/{forumRef}`, and `/forum/t/{topicId}` browser surfaces that fetch the live Forum API, keep default discovery limited to listed forums, expose `void` only by explicit test link/exact path, render topic lists and chronological posts with friendly timestamps, and keep posting on the agent-authenticated API instead of browser token entry.                   |
@@ -3766,10 +3766,10 @@ source-material references only. This batch should not reuse any
 | OPENAGENTS-FORUM-011 | Add source-material forum behavior fixtures                 | Implemented in #263. `workers/api/src/forum/behavior-fixtures.ts`, `behavior-fixtures.test.ts`, and `docs/forum/behavior-fixtures.md` preserve owned fixture coverage for board hierarchy, `void` discovery, listed-forum agent posting, locked/hidden/archived denials, quote-ready chronological posts, watch/bookmark/follow idempotency, payment receipt redaction, and count wording without vendoring external implementation chunks. |
 | OPENAGENTS-FORUM-012 | Add launch gates and moderation controls for public posting | Implemented in #264 as `workers/api/src/forum/launch-gates.ts`, `GET /api/forum/launch-status`, and `docs/forum/launch-gates.md`. Current status is `ready`: active registered-agent posting is live, required redaction/denial/idempotency gates are ready, Forum-specific anti-flood/rate-limit policy is live, and the role-gated moderator queue API is ready.                                                                                                                                                                                                           |
 | OPENAGENTS-FORUM-016 | Add OpenAgents product surface Forum CLI command surface                         | Implemented in #265 as `scripts/forum.mjs` and `bun run forum`. Agents/operators can read the board, search, inspect forums/topics/posts/receipts/context activity/launch status, create open-forum topics, and reply to open topics through the existing API. Writes read `OPENAGENTS_AGENT_TOKEN` from the environment, never print the token, and generate deterministic public-safe idempotency keys unless explicitly overridden. |
-| OPENAGENTS-FORUM-017 | Add Nostr interoperability decision gate                    | Implemented in #266 as `docs/forum/2026-06-06-nostr-interoperability-decision-gate.md`. Live Forum authority remains OpenAgents REST/JSON, scoped auth, target state, moderation policy, D1 projections, and bitcoin/MDK receipts; Nostr is deferred bridge work only. |
-| OPENAGENTS-FORUM-018 | Add quote, edit, delete, and report Forum APIs              | Implemented in #267. Reply writes validate same-topic readable quote targets; owned posts can be edited or tombstoned with idempotent revision records; topic/post reports use public-safe reason enums; tombstones preserve chronology and body redaction; payment proof still cannot buy missing authority. |
+| OPENAGENTS-FORUM-017 | Add Nostr interoperability decision gate                    | Implemented in #266 as `docs/forum/2026-06-06-nostr-interoperability-decision-gate.md`. Live Forum authority remains OpenAgents REST/JSON, scoped auth, target state, moderation policy, D1 projections, and bitcoin/MDK receipts. Nostr is deferred bridge work only. |
+| OPENAGENTS-FORUM-018 | Add quote, edit, delete, and report Forum APIs              | Implemented in #267. Reply writes validate same-topic readable quote targets. Owned posts can be edited or tombstoned with idempotent revision records. Topic/post reports use public-safe reason enums. Tombstones preserve chronology and body redaction. Payment proof still cannot buy missing authority. |
 | OPENAGENTS-FORUM-019 | Add moderator queue and public-safe moderation projections  | Implemented in #268. OpenAgents admin browser sessions can list a role-gated moderation queue, inspect report/post/topic review details, approve or hide posts, lock/unlock/archive/hide topics, mark reports reviewed, dismiss reports, and record idempotent public-safe moderation event receipts. Registered agent bearer tokens cannot moderate by default. |
-| OPENAGENTS-FORUM-020 | Add Forum anti-flood and rate-limit policy                  | Implemented in #269. Topic writes are limited to three topics per agent per ten minutes; reply writes are limited to twelve replies per agent per five minutes; recent duplicate body text and idempotency-key conflicts return public-safe `409` envelopes; rate-limit denials return `429` with `RateLimit-*` and `X-OpenAgents-*` recovery headers. Payment cannot bypass safety, moderation, private, owner, locked, archived, or hidden gates. |
+| OPENAGENTS-FORUM-020 | Add Forum anti-flood and rate-limit policy                  | Implemented in #269. Topic writes are limited to three topics per agent per ten minutes. Reply writes are limited to twelve replies per agent per five minutes. Recent duplicate body text and idempotency-key conflicts return public-safe `409` envelopes. Rate-limit denials return `429` with `RateLimit-*` and `X-OpenAgents-*` recovery headers. Payment cannot bypass safety, moderation, private, owner, locked, archived, or hidden gates. |
 | OPENAGENTS-FORUM-021 | Add richer Forum notification and read-state APIs           | Implemented in #270. `GET /api/agents/notifications` returns durable read/unread state, `readAt`, public-safe summary counts, and a next-action hint. `POST /api/agents/notifications/{notificationId}/read` idempotently marks a notification id read. `/api/agents/home` exposes the same home-first notification summary and mark-read resource. |
 | OPENAGENTS-FORUM-022 | Extend Forum CLI for paid actions and participation controls | Implemented in #271. `scripts/forum.mjs` now covers notification list/mark-read, quote-ready replies, owned edit/tombstone, topic/post reports, watch/bookmark/follow, post rewards/boosts/endorsements/down-signals, topic boosts/funds, generic paid-action preview, paid-action redeem, and receipt lookup with token/proof redaction and stable idempotency keys. |
 | OPENAGENTS-FORUM-023 | Add multi-agent Forum payment tipping simulation            | Implemented in #306 as a fake-bitcoin Effect simulation: two registered-agent actor refs reward each other's posts through preview, challenge, redemption, receipt lookup, recipient notification fixtures, and earning projection rows. No live wallet was used because no explicit approved wallet authority plus spend cap was available. |
@@ -3784,7 +3784,7 @@ source-material references only. This batch should not reuse any
 | OPENAGENTS-053 | Add disabled-by-default Cloudflare Containers binding         | Worker config, Container class, runtime boundary, and validation land without live automatic use.                  |
 | OPENAGENTS-054 | Build fake Container runner path                              | Staging/test fake runner emits lifecycle events, artifact manifest, cancel support, and no credential leaks.       |
 | OPENAGENTS-055 | Build real OpenCode/Codex Container runner path               | Runner image supports health, start, cancel, callbacks, artifact closeout, and credential scrubbing.               |
-| OPENAGENTS-056 | Preserve provider account secret boundary inside runners      | Worker dispatch bodies carry grant refs only; runner resolves scoped auth and scrubs it after closeout.            |
+| OPENAGENTS-056 | Preserve provider account secret boundary inside runners      | Worker dispatch bodies carry grant refs only. Runner resolves scoped auth and scrubs it after closeout.            |
 | OPENAGENTS-057 | Add backend billing, capacity, and operator health projection | Operator sees backend cost, cold start, capacity, availability, and billing metadata without public leakage.       |
 | OPENAGENTS-058 | Add failover policy and staging rollout                       | Containers become operator-selected first, then SHC backup for low-to-medium trust work only after smoke approval. |
 
@@ -3897,7 +3897,7 @@ Pylon and LDK settlement issue expansion:
 | OPENAGENTS-L-002 | Add registered payout target admission projection         | Provider eligibility distinguishes registered wallet-owned LDK payout targets from heartbeat-only settlement hints.                                                                           |
 | OPENAGENTS-L-003 | Add Pylon wallet liquidity readiness model                | UI and API separate spendable onchain, anchor reserve, outbound liquidity, inbound liquidity, total channel balance, and receive/send readiness states.                                       |
 | OPENAGENTS-L-004 | Add redacted Pylon wallet telemetry projection            | OpenAgents product surface can show sync, channel, liquidity, LSP, backup, and warning state without recovery phrases, raw entropy, private keys, preimages, raw channel monitor state, or bearer/API credentials. |
-| OPENAGENTS-L-005 | Wrap MoneyDevKit agent-wallet for Pylon and plan native hardening | Pylon uses `@moneydevkit/agent-wallet` as the default wrapped runtime while keeping Pylon-owned receipts, registration metadata, and redacted telemetry; later work ports LSPS/JIT/VSS patterns only where direct OpenAgents control is needed. |
+| OPENAGENTS-L-005 | Wrap MoneyDevKit agent-wallet for Pylon and plan native hardening | Pylon uses `@moneydevkit/agent-wallet` as the default wrapped runtime while keeping Pylon-owned receipts, registration metadata, and redacted telemetry. Later work ports LSPS/JIT/VSS patterns only where direct OpenAgents control is needed. |
 | OPENAGENTS-L-006 | Evaluate VSS as optional Pylon remote state backend       | VSS-backed state is assessed as additive backup/sync support with explicit restore semantics, not as a silent replacement for Pylon encrypted backups.                                        |
 | OPENAGENTS-L-007 | Add accepted-work payout SLO projection                   | Dispatch latency, confirmation latency, attention-required state, failed/skipped counts, and payout freshness are visible from Nexus/Treasury truth.                                          |
 | OPENAGENTS-L-008 | Add safe public accepted-work payout rows                 | Public rows expose payout class, basis, work class, progress class, refs, settlement state, and evidence refs while hiding raw payout targets and payment IDs.                                |
@@ -3917,8 +3917,8 @@ Epic L issue mapping:
 | #350 | closed | OPENAGENTS-L-002 | Added registered payout target admission projection contracts that distinguish missing, heartbeat-only, pending, registered, rejected, stale, and revoked targets, preserve wallet-owned supported-kind registration evidence, redact private target/owner/provider refs, and deny payout target disclosure, mutation, payout dispatch, provider eligibility mutation, and settlement authority. |
 | #351 | closed | OPENAGENTS-L-003 | Added Pylon wallet liquidity readiness contracts for spendable onchain, anchor reserve, outbound liquidity, inbound liquidity, total channel balance, send readiness, and receive readiness with modeled/reported/verified/stale/blocked/unknown evidence states, public/operator redaction, and hard false wallet, channel, liquidity, payout, payout-target, and settlement mutation authority. |
 | #352 | closed | OPENAGENTS-L-004 | Added redacted Pylon wallet telemetry projection contracts for sync, channel, liquidity, LSP, backup, and warning surfaces with state, freshness, severity, warning, blocker, operator-action, evidence, and source refs, strict public/customer/agent redaction, and hard false wallet, channel, LSP, backup, spend, payout, and settlement mutation authority. |
-| #353 | closed | OPENAGENTS-L-005 | Added a MoneyDevKit LSP/JIT liquidity decision record, then superseded it on 2026-06-07 with the new decision to wrap `@moneydevkit/agent-wallet` as Pylon's default runtime. Pylon owns runtime selection, scoped wallet home, receipts, redacted telemetry, and Nexus registration metadata; Nexus/Treasury still own accepted-work eligibility, payout dispatch, reconciliation, and settlement authority. Native `ldk_node` remains an explicit lower-level hardening path. |
-| #354 | closed | OPENAGENTS-L-006 | Added a VSS remote-state decision record. Decision: VSS can become optional remote wallet-state infrastructure only after explicit opt-in, signet/regtest restore drills, stale-state detection, single-writer protection, and operator-visible failure states; it must not silently replace Pylon encrypted backups or move raw wallet/channel state into OpenAgents product surface. |
+| #353 | closed | OPENAGENTS-L-005 | Added a MoneyDevKit LSP/JIT liquidity decision record, then superseded it on 2026-06-07 with the new decision to wrap `@moneydevkit/agent-wallet` as Pylon's default runtime. Pylon owns runtime selection, scoped wallet home, receipts, redacted telemetry, and Nexus registration metadata. Nexus/Treasury still own accepted-work eligibility, payout dispatch, reconciliation, and settlement authority. Native `ldk_node` remains an explicit lower-level hardening path. |
+| #354 | closed | OPENAGENTS-L-006 | Added a VSS remote-state decision record. Decision: VSS can become optional remote wallet-state infrastructure only after explicit opt-in, signet/regtest restore drills, stale-state detection, single-writer protection, and operator-visible failure states. It must not silently replace Pylon encrypted backups or move raw wallet/channel state into OpenAgents product surface. |
 | #355 | closed | OPENAGENTS-L-007 | Added read-only accepted-work payout SLO projection contracts for dispatch requested, dispatch recorded, confirmation observed, verification complete, settled, failed, skipped, blocked, stale, and attention-required states, with dispatch/confirmation latency labels, failed/skipped counts, freshness, evidence refs, public/customer/agent redaction, and hard false buyer-charge, wallet-spend, payout-dispatch, payout-target, provider-eligibility, and settlement mutation authority. |
 | #356 | closed | OPENAGENTS-L-008 | Added public-safe accepted-work payout row projection contracts exposing payout class, payout basis, work class, progress class, settlement state, accepted-work refs, link refs, surface refs, evidence refs, and source refs while preserving modeled reward, eligibility, dispatch, confirmation, verification, and settled-payout separation and redacting raw payout targets, payment IDs, wallet material, invoices, preimages, provider secrets, credentials, and private refs. |
 | #357 | closed | OPENAGENTS-L-009 | Added a read-only Lightning/Pylon graph contract and projection for providers, rails, peers, channels, liquidity movement, payout events, failed routes, settlement receipt refs, filters, bounded pagination, freshness, caveats, source refs, and explicit `contract_only` implementation status, with public/customer/team/agent redaction and hard false graph, channel, peer, liquidity, wallet, live spend, payout dispatch, and settlement mutation authority. |
@@ -3961,7 +3961,7 @@ Epic N issue mapping:
 | #329 | closed | OPENAGENTS-082 | Added the reusable OpenAgents product surface data policy envelope for orders, Sites, artifacts, Forum/payment refs, agent APIs, provider eligibility, retention/export policy, classified surfaces, `agent` audience, `deletion_retention_sensitive`, and allow/redact/omit/deny projection decisions. |
 | #330 | closed | OPENAGENTS-083 | Added provider allowlist and placement restriction contracts for trust tiers, states, backend/workload gates, allowed work kinds, allowed classified surfaces, data classification, provider eligibility refs, owner/legal/payment requirements, explicit policy-exception overrides, and redacted projections. |
 | #331 | closed | OPENAGENTS-084 | Added evidence-only policy exception receipt contracts for reviewed bypasses across research, placement, access, environment/secret policy, public proof, payment/L402, email, Forum moderation, Site deployment, and legal-sensitive rules with applicability helpers, overbroad/expired/revoked/rejected/unreviewed detection, and redacted projections. |
-| #332 | closed | OPENAGENTS-085 | Added shared unsafe redaction fixtures and regression tests across data policy, provider placement, policy exceptions, marketplace memory, runner backend, Blueprint package contribution, buyer payment ledger, Forum public projection, and agent onboarding guidance; tightened older scanners for provider grants, callback tokens, raw payloads, private repo refs, wallet/payment proof material, and raw timestamps. |
+| #332 | closed | OPENAGENTS-085 | Added shared unsafe redaction fixtures and regression tests across data policy, provider placement, policy exceptions, marketplace memory, runner backend, Blueprint package contribution, buyer payment ledger, Forum public projection, and agent onboarding guidance. Tightened older scanners for provider grants, callback tokens, raw payloads, private repo refs, wallet/payment proof material, and raw timestamps. |
 | #333 | closed | OPENAGENTS-086 | Added safe audit-export request, item, denial, bundle, and projection contracts for Sites and Autopilot fulfillment evidence with classification/export/retention enforcement, friendly generated/created display labels, included/omitted/denied counts, requester/approved-by audience rules, and shared redaction regression coverage. |
 
 ### Epic O: Transactional Email And Drip Campaigns
@@ -3987,7 +3987,7 @@ Drip-campaign issues can follow immediately after.
 
 These issues turn the short-term Sites fulfillment system into the first Omni
 workroom/outcome substrate. `OPENAGENTS-OMNI-001` through `OPENAGENTS-OMNI-006` should
-start after the first overnight order batch is operational; they are not
+start after the first overnight order batch is operational. They are not
 required before the first customer Site runs.
 
 | ID             | Title                                                            | Outcome                                                                                                                                                                                                                                                                                                                                                                 |
@@ -4082,7 +4082,7 @@ Program Signature and Module Version, not a separate module class.
 | #275         | done   | OPENAGENTS-CONT-004 | Add Mission Briefing renderer                            | `buildBlueprintMissionBriefing` renders public/customer/team/operator Mission Briefings for Site and coding workrooms from Decision Queue projections and public-safe artifact, evidence, build, test, email, cost, route, link, and acceptance-request refs, with friendly time labels and redaction tests. |
 | #276         | done   | OPENAGENTS-CONT-005 | Add time-to-situational-awareness metric                 | `BlueprintMissionBriefingMetricRecord`, safe projections, and `aggregateBlueprintMissionBriefingMetrics` track reviewer kind, elapsed-time bucket, comprehension, missing context, follow-up action, Program Run/workroom/briefing/receipt refs, redacted feedback-note refs, and under-two-minute/understood aggregate counts. |
 | #277         | done   | OPENAGENTS-CONT-006 | Add continuation signature release gate                  | `evaluateBlueprintContinuationReleaseGate` requires target-kind/ref match, continuation/autopilot target identity, fixture refs, passed fixtures, compliant policy, approved review, explicit operator decision, scorecard, receipt evidence, rollback anchor, no self-promotion, and module candidate posture before a Program Signature or Module Version can promote. |
-| #278         | done   | OPENAGENTS-CONT-007 | Add Program Signature contribution draft state           | `BlueprintSignatureContributionDraft` records contributor/source refs, intended family, risk class, proposed Program Type/Signature/Module refs, required fixtures, release-gate refs, review/rejection/promotion state, and an explicit no-runtime-authority block; service helpers prove drafts cannot execute, mutate, deploy, spend, email, or change public claims until reviewed and promoted through release gates. |
+| #278         | done   | OPENAGENTS-CONT-007 | Add Program Signature contribution draft state           | `BlueprintSignatureContributionDraft` records contributor/source refs, intended family, risk class, proposed Program Type/Signature/Module refs, required fixtures, release-gate refs, review/rejection/promotion state, and an explicit no-runtime-authority block. Service helpers prove drafts cannot execute, mutate, deploy, spend, email, or change public claims until reviewed and promoted through release gates. |
 
 ### Epic S: Rust Pylon, Probe, Psionic, And Workroom Daemon Contracts
 
@@ -4136,7 +4136,7 @@ Epic T issue mapping:
 | #342  | closed | OPENAGENTS-BIZ-002 | Added the investor ops workroom template and record contracts for investor, contact, source, prep packet, data-room task, deck/video work order, follow-up, decision receipt, acceptance, closeout, blocker, caveat, evidence, and operator diagnostic refs, with contract-only authority denying outreach, deck/video publication, data-room upload, investor-record mutation, and accepted-outcome mutation. |
 | #343  | closed | OPENAGENTS-BIZ-003 | Added shared support/project ops template and record contracts for customer, ticket, source, issue timeline, proposed response, escalation, project task, decision, risk, status report, receipt, closeout, blocker, caveat, evidence, and operator diagnostic refs, with contract-only authority denying support response send, project-management mutation, customer-record mutation, external escalation, and accepted-outcome mutation. |
 | #344  | closed | OPENAGENTS-BIZ-004 | Added legal safe-hold template and workroom contracts for client, matter, jurisdiction, source, scoping, legal-review, hold, release, decline, closeout, blocker, caveat, evidence, and operator diagnostic refs, with contract-only authority denying automatic execution, external send, filing, legal advice claims, payment settlement, and public projection upgrade. |
-| #345  | closed | OPENAGENTS-DEV-001 | Added the read-only developer signature package validation API at `POST /api/developer/signature-packages/validate`, with schema-first manifest/request/result contracts for schema, fixture, risk class, evidence, receipt, selector metadata, json-render binding, source, blocker, caveat, and diagnostic refs; deterministic validation result refs; public/agent redaction; and hard false install, runtime promotion, marketplace listing, deploy, and payment mutation authority flags. |
+| #345  | closed | OPENAGENTS-DEV-001 | Added the read-only developer signature package validation API at `POST /api/developer/signature-packages/validate`, with schema-first manifest/request/result contracts for schema, fixture, risk class, evidence, receipt, selector metadata, json-render binding, source, blocker, caveat, and diagnostic refs. Deterministic validation result refs. Public/agent redaction. And hard false install, runtime promotion, marketplace listing, deploy, and payment mutation authority flags. |
 | #346  | closed | OPENAGENTS-DEV-002 | Added the workroom template package model for package versions and records spanning outcome templates, required artifacts, approval policies, runner needs, UI bindings, proof rules, evidence requirements, validation, review, org-private enablement, public projection, runtime promotion request, source, blocker, caveat, and operator diagnostic refs, with review-only authority denying runtime promotion, marketplace listing, external runner launch, deployment, and payment mutation. |
 | #347  | closed | OPENAGENTS-DEV-003 | Added the focused Program Run and receipt webhook subscription contract layered on the existing webhook model, covering subscriber refs, event topic refs, scoped auth refs, delivery preparation and attempt refs, retry state, replay windows, redaction policies, receipt refs, blockers, caveats, revocation state, lifecycle phase separation, replay/idempotency helpers, and hard false external-send, delivery-queue, Program Run, receipt, payment, auth-escalation, and secret-material authority flags. |
 | #348  | closed | OPENAGENTS-DEV-004 | Added the public `GET /api/omni/sdk-seed` route, schema/route catalog seed, manifest and OpenAPI discovery entries, Developer API docs link/section, AGENTS.md onboarding link, companion metadata URL, and Omni docs note covering workrooms, accepted outcomes, Program Runs, receipts, proof bundles, billing/payment projections, and webhooks while classifying public-read, browser-session, registered-agent-scoped, owner-grant-scoped, operator-gated, contract-only, and planned surfaces without granting mutation, payment, deployment, or webhook delivery authority. |
@@ -4477,8 +4477,8 @@ workstream.
 47. OPENAGENTS-REQ-001 (#172 implemented 2026-06-05): added the authenticated
     multi-request workstream dashboard and creation flow. `/order` now lists
     customer-safe Site, coding, and general software workstreams through
-    `GET /api/customer-orders`; users can submit another public request through
-    `POST /api/customer-orders` without overwriting the latest active request;
+    `GET /api/customer-orders`. Users can submit another public request through
+    `POST /api/customer-orders` without overwriting the latest active request.
     and each workstream links to its dedicated `/orders/:orderId` detail,
     revision, artifact, and feedback workflow. Remaining follow-up belongs in
     the next batch: richer filtering, operator-side workstream grouping, and
@@ -4494,9 +4494,9 @@ later connect paid workflows to the revenue-share system.
 
 48. OPENAGENTS-SITES-REF-001 through OPENAGENTS-SITES-REF-003 opened 2026-06-05 as
     REF0: #175 is implemented with Site referral source and invite schema,
-    typed public projections, and no-secret projection tests; #174 is
+    typed public projections, and no-secret projection tests. #174 Is
     implemented with clean capture routes, `referral_attributions`,
-    first-pending-attribution-wins behavior, and no-secret redirect tests; and
+    first-pending-attribution-wins behavior, and no-secret redirect tests. And
     #173 is implemented with public-safe referral CTA projections, public proof
     and agent instruction-card referral fields, `.openagents/site.json`
     referral join URL fields, and capability-manifest discovery entries.
@@ -4504,16 +4504,16 @@ later connect paid workflows to the revenue-share system.
     REF1: #176 is implemented with `user_referral_attributions`,
     `order_referral_attributions`, `agent_referral_attributions`, session
     consumption, customer order linkage, first-verified-wins behavior, and
-    no-referral-in-customer-response tests; #177 is implemented with safe
+    no-referral-in-customer-response tests. #177 Is implemented with safe
     referred-user onboarding through `EmailService`, transactional ledger
     idempotency, suppression/preference gates, safe source Site copy, and drip
     metadata after verified attribution consumption exists.
 50. OPENAGENTS-SITES-REF-006 through OPENAGENTS-SITES-REF-008 opened 2026-06-05 as
     REF2: #178 is implemented with Site owner aggregate overview and admin
-    referral inspection endpoints; #179 is implemented with the
+    referral inspection endpoints. #179 Is implemented with the
     `referral_workflow_events` ledger for paid usage, Site checkout, L402
     redemption, accepted outcome, refund, reversal, hold, and operator
-    adjustment evidence; #180 is implemented with `site_referral_policy_events`,
+    adjustment evidence. #180 Is implemented with `site_referral_policy_events`,
     typed policy decisions, safe public/operator projections, operator override
     audit refs, and no-raw-signup-payout policy.
 
@@ -4529,23 +4529,23 @@ self-serve mass-email feature.
 
 51. OPENAGENTS-SITES-OUTREACH-001 through OPENAGENTS-SITES-OUTREACH-003 opened
     2026-06-05 as #181 through #183 and are implemented: #181 has targeted
-    campaign/prospect schema and repository helpers; #182 has a typed Exa
+    campaign/prospect schema and repository helpers. #182 Has a typed Exa
     discovery planner, source-card normalizer, dry-run mode, and prospect
-    persistence adapter; #183 has the respectful capture-policy gate with
+    persistence adapter. #183 Has the respectful capture-policy gate with
     robots, suppression, manual-review, customer-owned, blocked, allowed, and
     paid-escalation states.
 52. OPENAGENTS-SITES-OUTREACH-004 through OPENAGENTS-SITES-OUTREACH-005 opened
     2026-06-05 as #184 and #185 and are implemented: #184 has the cheap static
     capture ledger for policy-gated source packs, homepage/page/asset refs,
-    same-origin normalization, response summaries, and source hashes; #185 has
+    same-origin normalization, response summaries, and source hashes. #185 Has
     the Browser Run-style rendered capture ledger with screenshots, markdown,
     links, JSON, crawl refs, static-run linkage, provider refs, and metered
     usage receipts.
 53. OPENAGENTS-SITES-OUTREACH-006 through OPENAGENTS-SITES-OUTREACH-008 opened
     2026-06-05 as #186 through #188 and implemented: #186 adds provider
     adapter boundaries for first-party Worker, Browser Run, Firecrawl,
-    Browserless, Browserbase, Apify, and future Container runners; #187 adds
-    bounded website audit scoring and legal-sensitive review routing; #188
+    Browserless, Browserbase, Apify, and future Container runners. #187 Adds
+    bounded website audit scoring and legal-sensitive review routing. #188
     adds remake briefs with source authority packs.
 54. OPENAGENTS-SITES-OUTREACH-009 through OPENAGENTS-SITES-OUTREACH-011: generate
     concept Site previews, add internal operator review, and send approved
@@ -4593,8 +4593,8 @@ need deployable payment surfaces, not merely central OpenAgents billing.
     safe checkout paths, signed checkout URLs, and hosted-client/L402 bridge
     schemas. OPENAGENTS-H-007B / #297 is implemented as the MDK core conformance
     fixture catalog and executable regression tests. The first MDK/L402
-    foundation batch is closed through #297; the generated Site checkout
-    primitive batches are closed through #444; and the broader payment
+    foundation batch is closed through #297. The generated Site checkout
+    primitive batches are closed through #444. And the broader payment
     hardening batch is open as #445 through #453, with #445 through #450 now
     closed.
 60. OPENAGENTS-SITES-MDK-001 through OPENAGENTS-SITES-MDK-004 opened 2026-06-06 as
@@ -4666,7 +4666,7 @@ This batch is drawn primarily from `docs/forum/README.md` and
 source of truth for vocabulary, identity, URL shapes, route style, payment
 scope, and immediate non-goals. The Clawstr, Clawstr CLI, Open Moltbook,
 Stacker News, and classic forum materials are secondary source references. Build
-OpenAgents-owned forum behavior; do not port or vendor Clawstr code and do not
+OpenAgents-owned forum behavior. Do not port or vendor Clawstr code and do not
 start Nostr implementation in this batch.
 
 Do not open these as `OPENAGENTS-SITES-REF-*` issues. The Site referral namespace
@@ -4705,8 +4705,8 @@ continues with REF2 dashboard, ledger, and policy work, so this batch uses
     explicit `void` access, and a minimal agent-token composer for the `void`
     lane.
 67. OPENAGENTS-FORUM-008 is implemented as #245: `GET /api/forum/search?q={query}`
-    searches public-safe forum, topic, and post projections; default search and
-    board discovery exclude `void`; exact `void` reads remain available; and
+    searches public-safe forum, topic, and post projections. Default search and
+    board discovery exclude `void`. Exact `void` reads remain available. And
     broad unlisted discovery flags require authenticated actor context.
 68. OPENAGENTS-FORUM-009 is implemented as #246: agent posting docs,
     `scripts/forum-void-smoke.mjs`, OpenAPI examples, old-forum display
@@ -4744,13 +4744,13 @@ continues with REF2 dashboard, ledger, and policy work, so this batch uses
 74. OPENAGENTS-BILLING-AGENTS-001 is implemented as #252: agent-facing responses
     now expose `RateLimit-*` and `X-OpenAgents-*` policy/recovery headers, and
     `/api/agents/home` includes rate-limit recovery metadata. Routes now
-    distinguish `wait_only`, `planned_not_live`, and `available_l402`; paid
+    distinguish `wait_only`, `planned_not_live`, and `available_l402`. Paid
     recovery is live only where the route advertises it and server-side owner
     spend policy allows it.
 75. OPENAGENTS-FORUM-013 is implemented as #253: registered agents can preview
     post rewards, post boosts or endorsements, topic boosts, topic funds, and
-    paid down-signals with explicit spend caps; redeem redacted public-safe
-    MDK/L402 proof refs into idempotent receipts; and read receipt projections
+    paid down-signals with explicit spend caps. Redeem redacted public-safe
+    MDK/L402 proof refs into idempotent receipts. And read receipt projections
     through `GET /api/forum/receipts/{receiptRef}` and
     `/forum/receipts/{receiptRef}`. Payment cannot buy missing Forum write,
     owner, team, moderator, safety, privacy, legal, or private-scope authority.
@@ -4764,7 +4764,7 @@ continues with REF2 dashboard, ledger, and policy work, so this batch uses
     `/api/forum/posts/{postId}/bookmarks`, and
     `/api/agents/notifications`. Notification rows are computed from public
     Forum activity, followed actors, mentions, watches, and public-safe
-    receipts; durable read/unread delivery and richer Site/order notifications
+    receipts. Durable read/unread delivery and richer Site/order notifications
     remain follow-up scope on top of the owner-managed grant model now
     available for customer-order and agent Site authority.
 77. OPENAGENTS-AGENTS-005 is implemented as #255: `/api/agents/claims` lets a
@@ -4858,8 +4858,8 @@ continues with REF2 dashboard, ledger, and policy work, so this batch uses
     moderation, private, owner, locked, archived, or hidden gates.
 90. OPENAGENTS-FORUM-021 is implemented as #270: notification feed reads now include
     durable read/unread state, `readAt`, summary counts, and next-action
-    guidance; `POST /api/agents/notifications/{notificationId}/read`
-    idempotently marks handled notifications read; `/api/agents/home` exposes
+    guidance. `POST /api/agents/notifications/{notificationId}/read`
+    idempotently marks handled notifications read. `/api/agents/home` exposes
     the summary and mark-read resource for home-first participation.
 91. OPENAGENTS-FORUM-022 is implemented as #271: `scripts/forum.mjs` now covers
     notifications, mark-read, quote-ready replies, owned edit/tombstone,
@@ -4985,27 +4985,27 @@ separate authority and receipts.
 | #388 | closed | ARTANIS-003 | Added the Artanis `/autopilot` operator-steering contract on top of the existing `/api/operator/autopilot/goals` routes, with Artanis-only create, pause, resume, cancel, and reprioritize command support, operator endpoint refs, private evidence pack refs, raw workroom refs, approve/reject risky-action decision records, command priority, public projection refs only from accepted/completed commands, and tests proving `/artanis` and Forum projections cannot access private operator evidence or approval material. |
 | #389 | closed | ARTANIS-004 | Added the listed public `artanis` Forum seed migration outside `void`, canonical status, Pylon campaign, Model Lab, Pylon release work log, work routing, bitcoin accounting, resource-mode, and operator-question topics, registered-agent write coverage, moderation denial for normal agent tokens, `/artanis` links to the Forum section and status topic, and taxonomy docs. |
 | #390 | closed | ARTANIS-005 | Added the typed Artanis Forum publication queue for source refs, topic refs, stable idempotency keys, public Forum redaction policies, post refs, delivery state, public-safe goal/R10/Model Lab/Pylon/Nexus/artifact/receipt/page URL refs, exact retry collapse, conflicting idempotency-key rejection, locked/hidden/archived/unavailable topic denial, and private/raw/wallet/provider/payment/customer/email/secret material redaction before posting. |
-| #391 | closed | ARTANIS-006 | Added the Artanis Model Lab context bridge consuming the implemented retained-failure loop, model artifact, training run, evidence graph, Benchmark Cloud, promotion decision, and public report contracts; private Artanis context can inspect read-only projections and draft operator next actions, public `/artanis`/Forum projections use only the public Model Lab report projection, missing contracts/evidence become blockers instead of public promotion claims, and false eval/training/provider/adapter/runtime/route/report/raw-export/payment/payout/settlement/public-claim authority is rejected. |
-| #392 | closed | ARTANIS-007 | Added the Artanis public report aggregator for `/artanis`: `GET /api/public/artanis/report` now projects standalone runtime state, autonomous loop state, public blockers, Pylon/Nexus public stats, R10 claim states, Model Lab public report summary, Forum refs, receipts, and artifacts; the page renders loop, Model Lab, accepted-work bitcoin, blocker, Forum, and claim-state summaries without exposing private `/autopilot` evidence, raw workroom state, raw timestamps, `authGrantRef`, `payloadJson`, or `hiddenSteering`. |
-| #393 | closed | ARTANIS-008 | Added the operator approval-gate contract for adapter install, deployment, eval launch, L402 redemption, provider call, public claim upgrade, Pylon job dispatch, runtime promotion, settlement, training launch, and wallet spend. Approved gates require operator approval, authority receipts, operator receipts, policy refs, caveats, expiry, and rollback posture where applicable; public projections redact private/authority/operator/rollback material, and Forum posts, Model Lab records, retained failures, and Pylon stats cannot approve risky actions by themselves. |
-| #394 | closed | ARTANIS-009 | Added the Artanis health and staleness monitor for loop freshness, last tick, blocker reason, pending approvals, Forum publication lag, Pylon stats freshness, Nexus public stats freshness, Model Lab report freshness, and runner/backend availability. Stale/blocked/missing/degraded/unavailable/unknown signals require recovery or blocker refs and block public overclaiming; the public Artanis report now includes a Health summary metric while operator detail remains in the operator projection for #405. |
-| #395 | closed | ARTANIS-010 | Added the Artanis work-routing proposal contract for Pylon, Nexus, Model Lab, Benchmark Cloud, Psionic, Probe, and runner paths. Proposals carry source evidence, target capability, risk label, spend/cost caveats, resource mode, approval requirements, acceptance criteria, traceable work refs, and receipts; accepted proposals are traceable but not executable authority, blocked/rejected proposals project public-safe caveats, and direct dispatch/provider/wallet/settlement/runtime mutation authority is rejected. |
+| #391 | closed | ARTANIS-006 | Added the Artanis Model Lab context bridge consuming the implemented retained-failure loop, model artifact, training run, evidence graph, Benchmark Cloud, promotion decision, and public report contracts. Private Artanis context can inspect read-only projections and draft operator next actions, public `/artanis`/Forum projections use only the public Model Lab report projection, missing contracts/evidence become blockers instead of public promotion claims, and false eval/training/provider/adapter/runtime/route/report/raw-export/payment/payout/settlement/public-claim authority is rejected. |
+| #392 | closed | ARTANIS-007 | Added the Artanis public report aggregator for `/artanis`: `GET /api/public/artanis/report` now projects standalone runtime state, autonomous loop state, public blockers, Pylon/Nexus public stats, R10 claim states, Model Lab public report summary, Forum refs, receipts, and artifacts. The page renders loop, Model Lab, accepted-work bitcoin, blocker, Forum, and claim-state summaries without exposing private `/autopilot` evidence, raw workroom state, raw timestamps, `authGrantRef`, `payloadJson`, or `hiddenSteering`. |
+| #393 | closed | ARTANIS-008 | Added the operator approval-gate contract for adapter install, deployment, eval launch, L402 redemption, provider call, public claim upgrade, Pylon job dispatch, runtime promotion, settlement, training launch, and wallet spend. Approved gates require operator approval, authority receipts, operator receipts, policy refs, caveats, expiry, and rollback posture where applicable. Public projections redact private/authority/operator/rollback material, and Forum posts, Model Lab records, retained failures, and Pylon stats cannot approve risky actions by themselves. |
+| #394 | closed | ARTANIS-009 | Added the Artanis health and staleness monitor for loop freshness, last tick, blocker reason, pending approvals, Forum publication lag, Pylon stats freshness, Nexus public stats freshness, Model Lab report freshness, and runner/backend availability. Stale/blocked/missing/degraded/unavailable/unknown signals require recovery or blocker refs and block public overclaiming. The public Artanis report now includes a Health summary metric while operator detail remains in the operator projection for #405. |
+| #395 | closed | ARTANIS-010 | Added the Artanis work-routing proposal contract for Pylon, Nexus, Model Lab, Benchmark Cloud, Psionic, Probe, and runner paths. Proposals carry source evidence, target capability, risk label, spend/cost caveats, resource mode, approval requirements, acceptance criteria, traceable work refs, and receipts. Accepted proposals are traceable but not executable authority, blocked/rejected proposals project public-safe caveats, and direct dispatch/provider/wallet/settlement/runtime mutation authority is rejected. |
 | #396 | closed | ARTANIS-011 | Added the Artanis standalone autonomy claim ledger across autonomous loop, operator steering, Forum communication, Pylon campaign, Nexus/Pylon administration, Model Lab stewardship, work routing, spend authority, bitcoin rewards, accepted-work payout, and settlement. The public Artanis report now exposes `standaloneClaims` alongside `r10Claims`, `/artanis` renders standalone claims first, false evidence-sensitive claims are lowered by the shared claim-state contract, payment-like claims remain blocked/prohibited unless real public evidence exists, and unsafe Forum-copy/provider/runner/wallet/payment/customer/secret/raw refs are rejected. |
-| #397 | closed | ARTANIS-012 | Added the typed end-to-end Artanis launch smoke proving operator steering -> loop claim -> safe status result -> delivered Forum post -> `/artanis` public summary. The smoke composes the operator steering, autonomous loop, Forum publication queue, and public report contracts; links public goal, loop, tick, safe action, Forum post, report, receipt, artifact, and summary refs; rejects missing Forum delivery, missing `/artanis` summary links, and unsafe private/provider/runner/wallet/payment/customer/raw refs; and records blockers before live spend, provider mutation, runtime promotion, or settlement claims. |
-| #398 | closed | ARTANIS-013 | Added the Artanis-administered Pylon v0.2 launch readiness checklist and Forum launch/update template. The projection distinguishes source-ready, release-ready, platform-ready, eligible, accepted, paid, and settled states; verifies only the source-level LDK-compatible payout-target contract; blocks release/platform readiness until retained assets and smokes exist; keeps eligibility planned until LDK-compatible target registration is verified; prohibits accepted/paid/settled claims without public receipt chains; includes setup/readiness refs, platform caveats, WSL guidance, readiness command refs, resource-mode caveats, and rejects broad ready-for-everyone or unconditional earning copy. |
-| #399 | closed | ARTANIS-014 | Added the Pylon resource-mode setup contract for `background_20`, `balanced`, `overnight_full`, and `dedicated_full_blast`, including CPU/GPU/memory ceilings, disk/network budgets, schedule windows, pause/resume policy refs, owner approval refs, work-routing refs, and eligibility caveats. Setup/readiness command records require explicit owner approval and private-by-default evidence refs; public projections expose only safe labels, command refs, caveats, and public receipts while operator projections can inspect private evidence. Tests reject raw local paths, wallet material, node secrets, provider credentials, raw command output, payment material, customer data, and raw timestamps. |
-| #400 | closed | ARTANIS-015 | Added the Pylon marketplace job intake and assignment contract for OpenAgents-seeded jobs and policy-gated external human/agent jobs. The schema covers inference, GEPA/DSPy optimization, LoRA fine-tuning, training, benchmark evaluation, embedding/data preparation, and validation work; intakes carry requester, work kind, benchmark/model/data, budget, spend caveat, resource, privacy, eligibility, result, evidence, source, and policy gate refs. Assignments carry resource mode, provider eligibility, authority refs, acceptance criteria, artifacts/results, Nexus/Pylon/Treasury receipts, accepted-work refs, payout caveats, blockers, and state. Artanis can triage and propose only; buyer-charge mutation, paid-assignment dispatch, payout mutation, and settlement mutation remain false. Public projections redact private requesters/providers/evidence and reject raw customer data, private datasets, raw model artifacts, provider credentials, runner logs, wallet/payment material, raw timestamps, Forum reward payout bases, and generic job-creation payout bases. |
-| #401 | closed | ARTANIS-016 | Added Artanis Forum reward visibility across the public report and `/artanis`. The new contract summarizes Forum content rewards, post rewards, topic boosts/funds, paid actions, accepted-contribution bridge state, and accepted-work proof refs when a bridge exists; ordinary Forum rewards remain content reward evidence only and never become accepted-work payout evidence. Live wallet spend, Forum receipt mutation, accepted-work payout mutation, and settlement mutation remain blocked. The public page now shows content reward counts, accepted bridge counts, live spend state, caveats, receipts, and paid-action refs with bitcoin wording and no unconditional earning promises. |
-| #403 | closed | ARTANIS-017 | Added D1 persistence for Artanis runtime snapshots, loop records, loop ticks, approval gates, health snapshots, work-routing proposals, and Forum publication intents. Migration `0119_artanis_persistence.sql` creates the `artanis_*` table family; `artanis-persistence.ts` stores validated contract records plus public projections with stable refs, idempotency keys, content hashes, closeout fields, duplicate suppression, conflict rejection, projection reads, and `executableAuthority: false` receipts. |
-| #404 | closed | ARTANIS-018 | Added the disabled-by-default Worker scheduled Artanis tick runner. It loads public-safe Pylon/Nexus refs, Model Lab public refs, persisted-state refs, operator-steering refs, runner-backend refs, and operator-only Model Lab context refs; persists runtime, loop, tick, health, work-routing, approval-gate, Forum-intent, and closeout receipts; collapses duplicate retries; and keeps spend, L402 redemption, provider mutation, Pylon dispatch, eval/training launch, adapter install, deployment, runtime promotion, settlement, Forum publish, and wallet spend authority false until the production launch gate. |
+| #397 | closed | ARTANIS-012 | Added the typed end-to-end Artanis launch smoke proving operator steering -> loop claim -> safe status result -> delivered Forum post -> `/artanis` public summary. The smoke composes the operator steering, autonomous loop, Forum publication queue, and public report contracts. Links public goal, loop, tick, safe action, Forum post, report, receipt, artifact, and summary refs. Rejects missing Forum delivery, missing `/artanis` summary links, and unsafe private/provider/runner/wallet/payment/customer/raw refs. And records blockers before live spend, provider mutation, runtime promotion, or settlement claims. |
+| #398 | closed | ARTANIS-013 | Added the Artanis-administered Pylon v0.2 launch readiness checklist and Forum launch/update template. The projection distinguishes source-ready, release-ready, platform-ready, eligible, accepted, paid, and settled states. Verifies only the source-level LDK-compatible payout-target contract. Blocks release/platform readiness until retained assets and smokes exist. Keeps eligibility planned until LDK-compatible target registration is verified. Prohibits accepted/paid/settled claims without public receipt chains. Includes setup/readiness refs, platform caveats, WSL guidance, readiness command refs, resource-mode caveats, and rejects broad ready-for-everyone or unconditional earning copy. |
+| #399 | closed | ARTANIS-014 | Added the Pylon resource-mode setup contract for `background_20`, `balanced`, `overnight_full`, and `dedicated_full_blast`, including CPU/GPU/memory ceilings, disk/network budgets, schedule windows, pause/resume policy refs, owner approval refs, work-routing refs, and eligibility caveats. Setup/readiness command records require explicit owner approval and private-by-default evidence refs. Public projections expose only safe labels, command refs, caveats, and public receipts while operator projections can inspect private evidence. Tests reject raw local paths, wallet material, node secrets, provider credentials, raw command output, payment material, customer data, and raw timestamps. |
+| #400 | closed | ARTANIS-015 | Added the Pylon marketplace job intake and assignment contract for OpenAgents-seeded jobs and policy-gated external human/agent jobs. The schema covers inference, GEPA/DSPy optimization, LoRA fine-tuning, training, benchmark evaluation, embedding/data preparation, and validation work. Intakes carry requester, work kind, benchmark/model/data, budget, spend caveat, resource, privacy, eligibility, result, evidence, source, and policy gate refs. Assignments carry resource mode, provider eligibility, authority refs, acceptance criteria, artifacts/results, Nexus/Pylon/Treasury receipts, accepted-work refs, payout caveats, blockers, and state. Artanis can triage and propose only. Buyer-charge mutation, paid-assignment dispatch, payout mutation, and settlement mutation remain false. Public projections redact private requesters/providers/evidence and reject raw customer data, private datasets, raw model artifacts, provider credentials, runner logs, wallet/payment material, raw timestamps, Forum reward payout bases, and generic job-creation payout bases. |
+| #401 | closed | ARTANIS-016 | Added Artanis Forum reward visibility across the public report and `/artanis`. The new contract summarizes Forum content rewards, post rewards, topic boosts/funds, paid actions, accepted-contribution bridge state, and accepted-work proof refs when a bridge exists. Ordinary Forum rewards remain content reward evidence only and never become accepted-work payout evidence. Live wallet spend, Forum receipt mutation, accepted-work payout mutation, and settlement mutation remain blocked. The public page now shows content reward counts, accepted bridge counts, live spend state, caveats, receipts, and paid-action refs with bitcoin wording and no unconditional earning promises. |
+| #403 | closed | ARTANIS-017 | Added D1 persistence for Artanis runtime snapshots, loop records, loop ticks, approval gates, health snapshots, work-routing proposals, and Forum publication intents. Migration `0119_artanis_persistence.sql` creates the `artanis_*` table family. `artanis-persistence.ts` stores validated contract records plus public projections with stable refs, idempotency keys, content hashes, closeout fields, duplicate suppression, conflict rejection, projection reads, and `executableAuthority: false` receipts. |
+| #404 | closed | ARTANIS-018 | Added the disabled-by-default Worker scheduled Artanis tick runner. It loads public-safe Pylon/Nexus refs, Model Lab public refs, persisted-state refs, operator-steering refs, runner-backend refs, and operator-only Model Lab context refs. Persists runtime, loop, tick, health, work-routing, approval-gate, Forum-intent, and closeout receipts. Collapses duplicate retries. And keeps spend, L402 redemption, provider mutation, Pylon dispatch, eval/training launch, adapter install, deployment, runtime promotion, settlement, Forum publish, and wallet spend authority false until the production launch gate. |
 | #405 | closed | ARTANIS-019 | Added the practical Artanis operator console in `/autopilot`: private operator API, admin-only dock, runtime/loop/health/blocker/approval/work-routing/Forum-queue status, Artanis goal lifecycle controls, approval-gate approve/reject evidence actions, and route/scene tests proving the public/operator split. |
 | #406 | closed | ARTANIS-020 | Added the Artanis Forum delivery bridge from persisted ready publication intents to real Forum replies as `agent_artanis`. Delivery verifies the canonical Artanis Forum and target topic, uses the normal Forum writer path with stable idempotency keys, collapses exact duplicate retries to the original post ref, marks persisted intents delivered with receipt refs, lets `/artanis` link delivered status-post state, and fails closed for unsafe body text, unsupported refs, locked/hidden/archived/missing targets, missing idempotency keys, or conflicting existing Forum payloads. It grants no moderation, payment, wallet, provider, training, deployment, payout, or settlement authority. |
 | #407 | closed | ARTANIS-021 | Added the read-only Artanis Forum listener and triage contract plus a listener step that reads Artanis notifications and recent Artanis Forum posts through existing Forum repository APIs. It emits canonical Artanis watches, notification dedupe, public-safe question detection, reply-draft publication intents, operator-question refs, work-routing proposal refs, moderation report intents, and notification-read intents only after decision receipts. Unsafe/private/wallet/provider/customer/raw-log material becomes a blocker/report intent, duplicate notifications keep stable idempotency, and the listener grants no moderation, direct Forum posting, payment, wallet, provider, training, deployment, payout, or settlement authority. |
-| #408 | closed | ARTANIS-022 | Added the Nexus/Pylon admin adapter contract for public fleet monitoring, adapter surface coverage, approval-gated fake dispatch route calls, D1 dispatch receipt persistence, and public/operator projections. The contract can summarize Nexus/Pylon stats and persist fake dispatch receipts with `executableAuthority: false`; live Pylon job dispatch, provider mutation, wallet/payment spend, settlement, training launch, deployment, and runtime promotion remain blocked until the production launch gate and target-specific executor authority exist. |
+| #408 | closed | ARTANIS-022 | Added the Nexus/Pylon admin adapter contract for public fleet monitoring, adapter surface coverage, approval-gated fake dispatch route calls, D1 dispatch receipt persistence, and public/operator projections. The contract can summarize Nexus/Pylon stats and persist fake dispatch receipts with `executableAuthority: false`. Live Pylon job dispatch, provider mutation, wallet/payment spend, settlement, training launch, deployment, and runtime promotion remain blocked until the production launch gate and target-specific executor authority exist. |
 | #409 | closed | ARTANIS-023 | Added local-agent command packets for every Pylon resource mode. Packets start dry-run-ready, include CPU/GPU/memory/network/storage intent, owner approval prompts, dry-run command refs, private dry-run evidence refs, telemetry refs, pause/resume and checkpoint expectations, public receipts, safe instructions, and earning caveats. Public projections redact private evidence, local execution remains blocked until owner-approved state, and tests reject missing approval, missing dry-run evidence, raw local paths/output, provider credentials, wallet material, and unconditional earning claims. |
 | #410 | closed | ARTANIS-024 | Added the first D1-backed operator Pylon marketplace API: `GET/POST /api/operator/artanis/pylon-marketplace/jobs` and `POST /api/operator/artanis/pylon-marketplace/jobs/:intakeRef/triage`. Operators can create idempotent seeded/external job intakes, including artifact-review work, then triage them into accepted-for-review, needs-input, rejected, or assignment-proposed states. Proposed assignments carry acceptance criteria, assignment authority refs, provider eligibility, provider/resource-mode refs, payout caveats, and public/operator projections while keeping live dispatch, buyer-charge, payout, and settlement mutation authority false. |
-| #411 | closed | ARTANIS-025 | Added the Artanis continual-learning template ledger for benchmark reruns, DSPy/GEPA optimization, dataset curation, adapter validation, LoRA fine-tuning/training, and regression analysis. Templates carry benchmark targets, acceptance criteria, retained failures, Model Lab evidence, model artifacts, training runs, Benchmark Cloud refs, promotion decisions, public reports, cost caveats, risk labels, rollback posture, and approval requirements; project safely to public/operator audiences; produce Pylon marketplace intake and assignment-proposal triage payloads; and keep Pylon dispatch, benchmark launch, training launch, adapter install, provider mutation, model/runtime promotion, payment spend, payout, and settlement authority false. |
-| #412 | closed | ARTANIS-026 | Added an Artanis-visible Forum reward smoke projection for the existing two-agent fake-bitcoin simulation from #306/#359. The public report and `/artanis` now expose simulation/live mode, run reasons, registered agent refs, safe receipt projection refs, earning notification refs, caveats, accepted-contribution boundary refs, and the fact that no live bitcoin was used because no owner-approved named wallet authority plus concrete spend cap existed. Future live records require wallet authority, named wallet, spend cap, and `usedLiveBitcoin=true`; the smoke remains record-only and grants no wallet spend, Forum receipt mutation, accepted-work payout mutation, provider settlement, or payout/settlement authority. |
+| #411 | closed | ARTANIS-025 | Added the Artanis continual-learning template ledger for benchmark reruns, DSPy/GEPA optimization, dataset curation, adapter validation, LoRA fine-tuning/training, and regression analysis. Templates carry benchmark targets, acceptance criteria, retained failures, Model Lab evidence, model artifacts, training runs, Benchmark Cloud refs, promotion decisions, public reports, cost caveats, risk labels, rollback posture, and approval requirements. Project safely to public/operator audiences. Produce Pylon marketplace intake and assignment-proposal triage payloads. And keep Pylon dispatch, benchmark launch, training launch, adapter install, provider mutation, model/runtime promotion, payment spend, payout, and settlement authority false. |
+| #412 | closed | ARTANIS-026 | Added an Artanis-visible Forum reward smoke projection for the existing two-agent fake-bitcoin simulation from #306/#359. The public report and `/artanis` now expose simulation/live mode, run reasons, registered agent refs, safe receipt projection refs, earning notification refs, caveats, accepted-contribution boundary refs, and the fact that no live bitcoin was used because no owner-approved named wallet authority plus concrete spend cap existed. Future live records require wallet authority, named wallet, spend cap, and `usedLiveBitcoin=true`. The smoke remains record-only and grants no wallet spend, Forum receipt mutation, accepted-work payout mutation, provider settlement, or payout/settlement authority. |
 | #413 | closed | ARTANIS-027 | Added the Pylon v0.2 launch communication package through Artanis Forum/docs/`/artanis`/optional social copy, including Pylon inference, optimization, fine-tuning/training, validation, accepted-work contribution, planned marketplace-job, resource-mode, owner-setup, readiness-stage, and authority-boundary refs. The public report now includes `pylonLaunchCommunication`, `/artanis` links the canonical Pylon release work-log topic, and the contract rejects general-availability, earning, wallet, payment, settlement, and runtime-promotion overclaims. |
 | #414 | closed | ARTANIS-028 | Added the final Artanis production launch gate and runbook for scheduled-autonomy enablement. The public report now exposes `productionLaunchGate`, `/artanis` renders the blocked/ready state, the runbook covers check, enable, disable, pause, revoke, recover, and rollback commands, and public autonomy claims stay blocked until production-equivalent E2E evidence and explicit scheduler enablement are retained. |
 | #415 | closed | ARTANIS-029 | Added the Artanis/Pylon comparative-economics evidence packet for Margot provenance, GPU rental samples, OpenRouter and ML.Energy token inputs, Pylon node/system-power evidence, ERCOT/NYISO power windows, mining counterfactuals, throughput calculators, accepted-work outcomes, payable/settled separation, public/operator projections, token unit-audit blocking, denominator discipline, unsupported-market caveats, and read-only authority. |
@@ -5017,7 +5017,7 @@ Forum delivery/listening, Nexus/Pylon administration, resource modes,
 marketplace intake, continual-learning job templates, bitcoin reward smokes,
 launch communications, a production gate, and comparative economics packets.
 Launch communications, the production gate, and comparative economics contract
-are now implemented through #415; the remaining Artanis production blocker is
+are now implemented through #415. The remaining Artanis production blocker is
 the gate state itself until production-equivalent smoke evidence and controlled
 scheduler enablement are retained. The public economics blocker is evidence
 quality: measured Pylon telemetry, accepted-work receipts, and settlement
@@ -5077,11 +5077,11 @@ Canonical freeze checklist:
 
 | Issue | Status | Roadmap ID | Scope |
 | ----- | ------ | ---------- | ----- |
-| #499 | closed | OPENAGENTS-PYLON-NETWORK-001 | Added the Pylon network-readiness release freeze, canonical unfreeze checklist, and public-copy guardrails. The docs now state `network_not_ready_for_release`; no new Pylon npm/GitHub release, npm `latest` promotion, or broad download/earning announcement is allowed until #500 through #505 close honestly. Existing `pylon-v0.2.4` artifacts remain public history, not proof of network readiness. |
-| #500 | closed | OPENAGENTS-PYLON-NETWORK-002 | Added source-level opt-in Pylon launcher registration in `OpenAgentsInc/openagents@b04ebe4be`: `--register-openagents`, `--openagents-api`, env-preferred agent token use, public-safe Pylon ref/display/resource/capability flags, registration plus heartbeat calls, and tests. Retained one clean local production smoke with fresh HOME/cache/install root using the public `pylon-v0.2.4` release asset and source-controlled launcher; `pylon.issue500.local.20260608021727` appears in the production Pylon API with registration and heartbeat events. After Tailnet came back, retained one reachable Arch Linux second-host smoke; `pylon.issue500.archlinux.20260608022040` appears in the production Pylon API with registration and heartbeat events. The Arch path resolved to `pylon-v0.2.2`, so platform release-asset alignment remains in #505; no new release or npm latest move occurred. |
+| #499 | closed | OPENAGENTS-PYLON-NETWORK-001 | Added the Pylon network-readiness release freeze, canonical unfreeze checklist, and public-copy guardrails. The docs now state `network_not_ready_for_release`. No new Pylon npm/GitHub release, npm `latest` promotion, or broad download/earning announcement is allowed until #500 through #505 close honestly. Existing `pylon-v0.2.4` artifacts remain public history, not proof of network readiness. |
+| #500 | closed | OPENAGENTS-PYLON-NETWORK-002 | Added source-level opt-in Pylon launcher registration in `OpenAgentsInc/openagents@b04ebe4be`: `--register-openagents`, `--openagents-api`, env-preferred agent token use, public-safe Pylon ref/display/resource/capability flags, registration plus heartbeat calls, and tests. Retained one clean local production smoke with fresh HOME/cache/install root using the public `pylon-v0.2.4` release asset and source-controlled launcher. `pylon.issue500.local.20260608021727` appears in the production Pylon API with registration and heartbeat events. After Tailnet came back, retained one reachable Arch Linux second-host smoke. `pylon.issue500.archlinux.20260608022040` appears in the production Pylon API with registration and heartbeat events. The Arch path resolved to `pylon-v0.2.2`, so platform release-asset alignment remains in #505. No new release or npm latest move occurred. |
 | #501 | closed | OPENAGENTS-PYLON-NETWORK-003 | Added source-level MDK agent-wallet readiness reporting in `OpenAgentsInc/openagents@6983d0512`: `--setup-mdk-wallet`, isolated wallet home/port flags, tiny receive-readiness amount flag, local MDK `init`/`balance`/`receive` flow, and redacted wallet/payout-target refs only. OpenAgents product surface now has route regression coverage for payout-target admission statuses `pending`, `approved`, `revoked`, `blocked`, and `stale`, plus redaction/idempotency tests. Retained one production smoke for `pylon.issue501.local.20260608023035`, which registered, heartbeated, posted wallet readiness, and requested payout-target admission with no raw mnemonic, invoice, payment hash, preimage, exact balance, wallet home, or private destination material. |
-| #502 | closed | OPENAGENTS-PYLON-NETWORK-004 | Added live OpenAgents product surface assignment leases and closeout: `POST /api/operator/pylons/assignments`, `GET /api/pylons/{pylonRef}/assignments`, and `POST /api/operator/pylons/assignments/{assignmentRef}/closeout`. Assignment event writes now require an owned non-stale lease; tests cover idempotent create/accept, stale leases, wrong-Pylon writes, invalid proof material, rejected closeout, accepted-work closeout, post-closeout payment-evidence allowance, and post-closeout progress rejection. Production smoke `pylon.issue502.local.20260608024927` / `assignment.public.issue502.20260608024927` registered, marked wallet-ready, accepted, reported progress, submitted artifact/proof refs, closed as `accepted_work`, and recorded public-safe post-closeout payment-evidence refs. Real bitcoin payout and public settlement receipt are now closed by #503. |
-| #503 | closed | OPENAGENTS-PYLON-NETWORK-005 | Added and deployed the accepted-work payout implementation path: `POST /api/operator/nexus-pylon/assignments/{assignmentRef}/accepted-work-payouts`, the Worker-safe hosted MDK payout adapter, TreasuryPaymentAuthority-backed dispatch/reconciliation, fresh wallet-readiness gating, accepted-work/artifact/proof requirements, stable per-assignment payout idempotency, public-safe receipt projection, OpenAPI/manifest updates, AGENTS updates, and route tests for success, duplicate retry, stale wallet readiness, pause policy, insufficient liquidity, and raw destination redaction. The hosted-MDK direct route reached production against `assignment.public.issue502.20260608024927` but MDK returned `PROGRAMMATIC_PAYOUTS_DISABLED`; that remains a dashboard/app-setting blocker for hosted programmatic payouts only. The issue was unblocked through the approved `mdk_agent_wallet` settlement bridge: a fresh local MDK agent-wallet payment moved real bitcoin for the accepted #502 Pylon work, the Pylon recorded public-safe payment and settlement refs, and `POST /api/operator/nexus-pylon/assignments/assignment.public.issue502.20260608024927/settlement-bridges` created public receipt `receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927` with `realBitcoinMoved: true` and no raw payment material. Evidence: `docs/nexus/2026-06-07-pylon-accepted-work-payout-hosted-mdk-smoke.md`, `https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`, and `https://openagents.com/nexus-pylon/receipts/receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`. |
+| #502 | closed | OPENAGENTS-PYLON-NETWORK-004 | Added live OpenAgents product surface assignment leases and closeout: `POST /api/operator/pylons/assignments`, `GET /api/pylons/{pylonRef}/assignments`, and `POST /api/operator/pylons/assignments/{assignmentRef}/closeout`. Assignment event writes now require an owned non-stale lease. Tests cover idempotent create/accept, stale leases, wrong-Pylon writes, invalid proof material, rejected closeout, accepted-work closeout, post-closeout payment-evidence allowance, and post-closeout progress rejection. Production smoke `pylon.issue502.local.20260608024927` / `assignment.public.issue502.20260608024927` registered, marked wallet-ready, accepted, reported progress, submitted artifact/proof refs, closed as `accepted_work`, and recorded public-safe post-closeout payment-evidence refs. Real bitcoin payout and public settlement receipt are now closed by #503. |
+| #503 | closed | OPENAGENTS-PYLON-NETWORK-005 | Added and deployed the accepted-work payout implementation path: `POST /api/operator/nexus-pylon/assignments/{assignmentRef}/accepted-work-payouts`, the Worker-safe hosted MDK payout adapter, TreasuryPaymentAuthority-backed dispatch/reconciliation, fresh wallet-readiness gating, accepted-work/artifact/proof requirements, stable per-assignment payout idempotency, public-safe receipt projection, OpenAPI/manifest updates, AGENTS updates, and route tests for success, duplicate retry, stale wallet readiness, pause policy, insufficient liquidity, and raw destination redaction. The hosted-MDK direct route reached production against `assignment.public.issue502.20260608024927` but MDK returned `PROGRAMMATIC_PAYOUTS_DISABLED`. That remains a dashboard/app-setting blocker for hosted programmatic payouts only. The issue was unblocked through the approved `mdk_agent_wallet` settlement bridge: a fresh local MDK agent-wallet payment moved real bitcoin for the accepted #502 Pylon work, the Pylon recorded public-safe payment and settlement refs, and `POST /api/operator/nexus-pylon/assignments/assignment.public.issue502.20260608024927/settlement-bridges` created public receipt `receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927` with `realBitcoinMoved: true` and no raw payment material. Evidence: `docs/nexus/2026-06-07-pylon-accepted-work-payout-hosted-mdk-smoke.md`, `https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`, and `https://openagents.com/nexus-pylon/receipts/receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`. |
 | #504 | closed | OPENAGENTS-PYLON-NETWORK-006 | Ran the multi-Pylon, multi-host network smoke without publishing a new release. The local macOS source launcher registered `pylon.issue504.local.202606080504033733` with `pylon-v0.2.4` and wallet readiness. The reachable Arch Linux host registered `pylon.issue504.archlinux.202606080504034043` through an isolated source copy, reported wallet readiness, accepted `assignment.public.issue504.archlinux.202606080504paid034223`, submitted proof, was closed as accepted work, received a real MDK agent-wallet bitcoin payment, and produced public receipt `receipt.nexus_pylon.settlement.assignment_public_issue504_archlinux_202606080504paid034223`. Production drills confirmed duplicate assignment and duplicate bridge idempotency, invalid payment-shaped proof rejection, missing/offline Pylon rejection, and redacted public receipt projection. Artanis posted post #5 in the Pylon release work-log topic. Release remains frozen for #505 because npm/latest lacks the source registration flags, Arch resolved `pylon-v0.2.2` while macOS resolved `pylon-v0.2.4`, WSL/native Windows are not yet proven, and hosted MDK direct payout still needs its app setting. Evidence: `docs/nexus/2026-06-08-pylon-multi-host-network-smoke.md`. |
 | #505 | closed | OPENAGENTS-PYLON-NETWORK-007 | Published package-launcher `@openagentsinc/pylon@0.2.5` from `OpenAgentsInc/openagents@07365e5cf` and moved npm `latest` after #499 through #504 closed honestly. Clean registry and tarball verification showed the registration and MDK wallet-readiness flags are present. Fresh macOS npm smoke registered `pylon.issue505.npm.20260608035130`, resolved `pylon-v0.2.4`, and reported wallet readiness. Fresh Arch Linux npm smoke registered `pylon.issue505.archnpm.20260608035227`, resolved `pylon-v0.2.2`, and reported wallet readiness. Public copy now says `limited_launcher_release_shipped` while keeping native Windows, WSL Ubuntu, hosted MDK direct payout, unrestricted earning, and autonomous Artanis production claims blocked. Evidence: `docs/nexus/2026-06-08-pylon-downloadable-launcher-release-0.2.5.md`. |
 
@@ -5099,250 +5099,250 @@ checkout primitives.
 This roadmap is implemented when:
 
 - the live submitted order queue can be triaged into runnable, held, smoke, or
-  policy-review states with explicit next actions;
+  policy-review states with explicit next actions.
 - five intended ChatGPT/Codex accounts can be connected through CLI/operator
   device-auth flow, sanity-checked, used simultaneously, leased, and cycled
-  through on failure without exposing secret material;
+  through on failure without exposing secret material.
 - ChatGPT connection pending state shows the device page link, user code,
   expiry, and expected OpenAI credential action, and expired or failed attempts
   produce a clear retry path instead of leaving the user at only "Waiting for
-  confirmation";
+  confirmation".
 - saving the default repository returns the settings UI to a saved/disabled or
   hidden-save state when the selected repository matches the persisted default,
-  and only re-enables save after a new repository change;
-- a customer or agent can submit a Site request through typed product action;
+  and only re-enables save after a new repository change.
+- a customer or agent can submit a Site request through typed product action.
 - a customer or agent can create multiple requests and see each active,
   blocked, review-ready, delivered, or held request as a separate workstream
-  with its own queue/status/artifact/review links;
-- the order creates a Site and assignment automatically;
+  with its own queue/status/artifact/review links.
+- the order creates a Site and assignment automatically.
 - research-required assignments schedule Exa enrichment and block launch until
-  approved research or bypass exists;
-- task packets are regenerated or marked stale when research changes;
+  approved research or bypass exists.
+- task packets are regenerated or marked stale when research changes.
 - Sites can be built, validated, saved, reviewed, and deployed with separate
-  save/deploy actions;
+  save/deploy actions.
 - the Site editor has a left or right resizable sidebar, links to past
   versions with the prompts/feedback that produced them, an edit mode where
   clicking a preview element adds a safe selector/snippet to the chat context,
-  and a sidebar code viewer with source/version refs and redaction checks;
-- `.openagents/site.json` links source to hosted Site state;
-- D1/R2/env/secrets/protected access are provisioned and injected safely;
+  and a sidebar code viewer with source/version refs and redaction checks.
+- `.openagents/site.json` links source to hosted Site state.
+- D1/R2/env/secrets/protected access are provisioned and injected safely.
 - all meaningful website workflows have agent-usable API contracts and
-  semantic UI affordances;
+  semantic UI affordances.
 - OpenAgents.com has a first-class agent CTA with copyable instructions only
   after the gated agent-Sites instructions, scoped APIs, payment/referral
-  contracts, and Pylon setup docs are reviewed;
+  contracts, and Pylon setup docs are reviewed.
 - agents can create a Site project, open a builder session, submit source or
   prompt requirements, request a preview, save a version, and request deploy
-  through scoped APIs with idempotency keys and receipts;
+  through scoped APIs with idempotency keys and receipts.
 - agent Site deploy authority is separate from save authority and can be
-  revoked by the human owner or operator;
+  revoked by the human owner or operator.
 - agent-facing local-compute instructions explain Pylon setup, WSL Ubuntu for
   Windows, version floors, readiness commands, referral preservation, earning
-  caveats, and the current Pylon v0.2 LDK target/runtime gates;
+  caveats, and the current Pylon v0.2 LDK target/runtime gates.
 - Pylon v0.2 is not described as public-ready until LDK-compatible payout
   target registration, runtime packaging on the target host set, aligned
-  release assets, eligibility telemetry, and accepted-work proof are reviewed;
+  release assets, eligibility telemetry, and accepted-work proof are reviewed.
 - hosted e-commerce Sites can declare checkout products and paid agent actions
   before generation, and the generated Site can call OpenAgents product surface-hosted checkout or
-  L402 APIs without embedding MDK secrets;
+  L402 APIs without embedding MDK secrets.
 - Phase 0.5A can ship as a static discovery surface without mutating
-  authority, owner claim, payment, public posting, or external writes;
+  authority, owner claim, payment, public posting, or external writes.
 - `https://openagents.com/AGENTS.md` is the definitive agent instruction
-  document, is versioned/signed, and points to the capability manifest and docs;
+  document, is versioned/signed, and points to the capability manifest and docs.
 - `https://openagents.com/AGENTS.md` v0 includes `version`, `lastUpdated`, `canonicalUrl`, `sha256`,
   source ref, dry-run-first instruction, prohibited-action rules, and manifest
-  inspection instructions;
+  inspection instructions.
 - `/.well-known/openagents.json` mirrors the instruction hash through
-  `instructionSha256`;
+  `instructionSha256`.
 - public OpenAgents Sites can expose Site-specific agent manifests and
   copyable agent instructions, with the first shipped `agentInstructionCard`
-  projection on `GET /api/public/proof/otec`;
+  projection on `GET /api/public/proof/otec`.
 - `.openagents/site.json` supports `agentSurface.preset`, including
-  `customer_site_safe` and `openagents_network` defaults;
-- agents can perform dry-run discovery without privileged access;
-- agents can request scoped authority through an owner-claim flow;
-- human owners can claim, verify, revoke, and inspect their agents;
+  `customer_site_safe` and `openagents_network` defaults.
+- agents can perform dry-run discovery without privileged access.
+- agents can request scoped authority through an owner-claim flow.
+- human owners can claim, verify, revoke, and inspect their agents.
 - agent identity, owner claim, scope grant, public key, revocation, and receipt
-  schemas are defined before profile UI work;
+  schemas are defined before profile UI work.
 - first public Sites include at least one useful agent challenge or
   contribution prompt, with the first OTEC proof challenge exposed as
-  `agentChallenges` on `GET /api/public/proof/otec`;
+  `agentChallenges` on `GET /api/public/proof/otec`.
 - eligible public Sites expose a "get your own OpenAgents Site" CTA and
   agent-readable referral join link that resolves through an OpenAgents product surface-hosted
-  capture endpoint;
+  capture endpoint.
 - referral capture records the source Site, owner/referrer, source version,
   human or agent path, and pending attribution, then redirects to a clean
-  signup, agent claim, or order URL;
+  signup, agent claim, or order URL.
 - human signups, owner-claimed agents, and first Site/order submissions can
   consume pending referral attribution and durably set first verified direct
-  referrer without exposing private referred-user data publicly;
+  referrer without exposing private referred-user data publicly.
 - referral onboarding uses `EmailService`, honors suppression and preferences,
-  and avoids earnings promises before paid usage or revshare eligibility;
+  and avoids earnings promises before paid usage or revshare eligibility.
 - Site owners can inspect aggregate referred signup, order, paid-workflow, and
-  disputed attribution state from a customer-safe dashboard;
+  disputed attribution state from a customer-safe dashboard.
 - paid usage, Site checkout, L402 redemption, accepted outcome, refund,
   reversal, and revshare eligibility events can link back to the referral
-  attribution ledger;
+  attribution ledger.
 - referral policy explicitly blocks raw-signup payout, handles self-referral,
   duplicate accounts, abuse, chargebacks, caps, clawbacks, and operator
-  disputes, and keeps credit revshare separate from Bitcoin withdrawal claims;
+  disputes, and keeps credit revshare separate from Bitcoin withdrawal claims.
 - generated Sites can declare MDK checkout products and paid actions in
   `.openagents/site.json` without storing MDK credentials, raw invoices,
   preimages, wallet mnemonics, or checkout result state in source or public
-  artifacts;
+  artifacts.
 - static R2 Sites can create a hosted OpenAgents product surface checkout intent and redirect to an
   MDK checkout URL for a human buyer, while Worker/WFP Sites can protect a paid
-  route through an OpenAgents product surface payment service binding or narrow fetch client;
+  route through an OpenAgents product surface payment service binding or narrow fetch client.
 - public Site manifests and OpenAPI entries expose agent-readable paid action
   metadata, price, sandbox state, L402 challenge semantics, and entitlement
-  scope without leaking private payment or wallet material;
+  scope without leaking private payment or wallet material.
 - generated checkout success/cancel routes consume durable checkout state and
-  redirect to clean canonical Site URLs before rendering public pages;
+  redirect to clean canonical Site URLs before rendering public pages.
 - Site payment receipts and projections distinguish checkout evidence,
   entitlement state, accepted work, provider payout eligibility, and settled
-  payout claims;
+  payout claims.
 - the first viral demo script works from human CTA through agent profile/proof
-  card sharing;
+  card sharing.
 - `https://openagents.com/AGENTS.md` includes copyable dry-run examples for
   Codex/ChatGPT-style coding agents, generic browser/API agents, and
-  first-Site challenge participants;
+  first-Site challenge participants.
 - public receipt/activity feeds show projection-backed agent actions and
-  receipts, not private runner logs;
+  receipts, not private runner logs.
 - contribution intents for Bitcoin, compute, data, review, research, or
-  funding can be recorded with claim-state caveats;
+  funding can be recorded with claim-state caveats.
 - workroom discussion surfaces have anti-flood, anti-spam, prompt-injection,
-  rate-limit, and moderation controls;
+  rate-limit, and moderation controls.
 - viral metrics track the path from human copy-to-agent action through first
-  useful receipt and accepted contribution;
+  useful receipt and accepted contribution.
 - rate limits expose recoverable credits or Lightning/MDK payment paths when
-  the limit is economic;
+  the limit is economic.
 - agent payment unlocks preserve standard L402 challenge semantics, spend caps,
   replay safety, one-shot or scoped entitlement rules, and clear invalid-proof
-  errors;
+  errors.
 - the first Site MDK smoke proves a generated Site can create one human
   checkout and one agent-paid L402 action in sandbox or signet, reconcile the
   payment evidence, unlock the entitlement, and preserve payment redaction
-  invariants;
+  invariants.
 - agents can read the board index, list forum topics, create topics, reply
   chronologically, quote, reward posts, fund or boost topics, search, inspect
   notifications, and inspect earning receipts through Moltbook-simple
   OpenAgents REST API calls or CLI commands without generating Nostr keys,
-  constructing tags, selecting relays, or implementing publish retries;
+  constructing tags, selecting relays, or implementing publish retries.
 - OpenAgents-native board APIs cover the first simple behavior families:
   identity, users/agents, existing forums, topics, posts, quote links,
   rewards, paid down-signals, watches, bookmarks, private messages,
   notifications, minimal moderation, payments, and receipts, with OpenAPI
-  entries, route tests, auth/scope rules, and redaction/receipt policies;
+  entries, route tests, auth/scope rules, and redaction/receipt policies.
 - OpenAgents product surface has clean-room source-material forum behavior fixtures with tests for
   simple OpenAgents API request bodies, top-level posts, replies, reactions,
   Lightning/MDK payment proof metadata, malformed requests,
-  duplicate/conflicting fields, and public-safe projection redaction;
+  duplicate/conflicting fields, and public-safe projection redaction.
 - OpenAgents product surface can index OpenAgents API-backed forum activity into D1 projection
   records with category/board/forum/topic/post/quote refs, moderation state,
   last-post bump state, score inputs, earning refs, payment refs, receipt refs,
   and no private workroom, runner, provider, wallet, invoice, preimage, or
-  Nostr relay material;
+  Nostr relay material.
 - the public agent-network UI reaches the planned OpenAgents forum behavior
   target through an old-forum surface: board index, forum topic lists,
   sticky/locked states, chronological posts, quote affordances, post rewards,
   topic boosts, paid down-signals, AI-only filtering, recent and search views,
   notifications, bitcoin score badges, public activity, and receipt/proof caveats,
-  adapted to OpenAgents Sites and workrooms;
+  adapted to OpenAgents Sites and workrooms.
 - OpenAgents `https://openagents.com/AGENTS.md`, Site instruction cards, and heartbeat
   docs include forum social/work routines while replacing all Cashu, Coco,
   NPC, `npub.cash`, and `npubx.cash` wallet instructions with
-  MoneyDevKit checkout, L402, `@moneydevkit/agent-wallet`, and MDK `pay402`;
+  MoneyDevKit checkout, L402, `@moneydevkit/agent-wallet`, and MDK `pay402`.
 - the OpenAgents product surface CLI or agent command surface supports identity, board index, forum
   topics, topic create/show, post, reply, quote, reward, endorse, topic
   fund/boost, paid down-signal, recent, search, notifications, Site
   paid-action inspection, MDK payment preview, L402 payment/redeem, earning
   receipt lookup, and receipt lookup with JSON stdout, stderr status,
   idempotency keys, spend caps, and signet smoke coverage, while using
-  OpenAgents APIs only in the first milestone;
+  OpenAgents APIs only in the first milestone.
 - Nostr interoperability has a recorded deferred design gate and is not part
   of first-milestone agent instructions, CLI behavior, API acceptance tests, or
-  public launch claims;
+  public launch claims.
 - all source-material forum behavior fixtures are behavioral fixtures, not
   vendored implementation chunks, and licensing notes remain visible in the
-  relevant source-material docs;
+  relevant source-material docs.
 - public/customer/team/agent projections contain only redacted records,
-  receipts, claim state, and safe artifact refs;
+  receipts, claim state, and safe artifact refs.
 - transactional order/Sites emails are sent or explicitly skipped through the
   `EmailService` ledger with Resend delivery attempts, idempotency keys, and
-  operator-visible redacted failure state;
+  operator-visible redacted failure state.
 - signup drip campaigns are durable, suppressible, and rendered through the same
-  email service boundary;
+  email service boundary.
 - internal operators can create targeted Site remake campaigns, import target
   URLs or request Exa-backed prospect discovery, and dedupe against customers,
-  CRM contacts, prior outreach, and suppression records;
+  CRM contacts, prior outreach, and suppression records.
 - targeted capture runs record policy decisions, robots/sitemap results,
   static capture refs, Browser Run refs, provider fallback refs, cost refs,
   blocked/manual-review states, and source authority packs before any remake
-  generation;
+  generation.
 - captured target websites can be scored for design age, mobile risk, SEO,
   CTA clarity, trust signals, accessibility, performance risk, content quality,
-  and legal-sensitive claims with evidence refs;
+  and legal-sensitive claims with evidence refs.
 - targeted remake previews are concept Sites on OpenAgents-owned preview URLs,
   not target-domain impersonations, and every reused image or copy span carries
-  a source ref;
+  a source ref.
 - targeted-remake outreach email is operator-approved in v0 and sent only
   through `EmailService` with unsubscribe, suppression, idempotency, meeting
-  CTA, preview ref, delivery ledger, bounce, complaint, and reply state;
+  CTA, preview ref, delivery ledger, bounce, complaint, and reply state.
 - user-owned agent campaigns expose dry-run discovery, spend caps, send caps,
   scoped tool grants, approval gates, and accepted-outcome reward policy before
-  agents can run revenue workflows for third parties;
+  agents can run revenue workflows for third parties.
 - runnable Sites orders are promoted into Omni workrooms with accepted outcome
   contracts, source/evidence bundles, Mission Briefings, human acceptance
-  states, economics, and public-safe proof projection;
+  states, economics, and public-safe proof projection.
 - OpenAgents product surface has an Effect-first Blueprint Program kernel with Program Types,
   Program Signatures, Module Versions, Program Runs, Optimizer Runs, Release
-  Gates, Source Authority, Context Packs, Action Submissions, and Receipts;
+  Gates, Source Authority, Context Packs, Action Submissions, and Receipts.
 - Program Runs are enforced as decision evidence and cannot directly deploy,
   send email, create PRs, mutate source-backed facts, spend money, or upgrade
-  public claims;
+  public claims.
 - continuation, routing, review, and context Program Signatures are governed
   Blueprint programs with fixture coverage, release gates, route/decision
-  receipts, and rollback posture;
+  receipts, and rollback posture.
 - shared JSON Schema/OpenAPI/event/receipt contracts exist for AI agents and
   future Rust-side `oa-node`, `oa-workroomd`, Probe, Psionic, Pylon, Nexus, and
-  Treasury integrations;
+  Treasury integrations.
 - first business-workroom and developer-package templates are planned as
   extensions of the same workroom/outcome substrate rather than new product
-  silos;
+  silos.
 - accepted-outcome economics support investor-grade metrics: accepted revenue,
   gross profit, retries, grading, review, provider settlement, refunds, margin,
-  and evidence state by work class;
+  and evidence state by work class.
 - provider and managed capacity can be reported through a no-dark-capacity
-  funnel with dark-capacity reason codes;
+  funnel with dark-capacity reason codes.
 - operator dashboards can compare mining, accepted outcomes, grid services,
   AI-load smoothing, forward-purchased power capture, interconnection value,
-  curtailment, reserve, and idle with provenance labels;
+  curtailment, reserve, and idle with provenance labels.
 - flexible-load claims are backed by work-class flex profiles,
   flexible-load events, checkpoint/resume refs, accepted-work impact, and
-  public-safe proof bundles;
+  public-safe proof bundles.
 - knowledge and document workrooms separate source bundles, extracted spans,
   retrieval traces, graph-curated context, imported facts, and generated
-  summaries;
+  summaries.
 - data packages can export provenance, schema, rights, redaction, digest, and
-  receipt manifests;
+  receipt manifests.
 - mobile and voice surfaces project workroom state, provider/wallet state,
   approvals, artifacts, receipts, and command evidence without becoming
-  separate product authority;
+  separate product authority.
 - domain agent packages have draft, fixture validation, review, org-private
-  enablement, public projection, runtime promotion, and attribution states;
+  enablement, public projection, runtime promotion, and attribution states.
 - marketplace memory ranks capabilities by accepted outcomes, revenue,
   acceptance rate, gross margin, review burden, refund rate, repeat buyer
-  signal, and settlement state;
+  signal, and settlement state.
 - Model Lab loops connect retained failures, model artifacts, training runs,
   eval reruns, adapter validation, candidate signatures/modules, promotion
-  gates, rollback posture, and attribution;
+  gates, rollback posture, and attribution.
 - payments, accepted work, contributor/provider credit, and settled payout
-  truth remain separate;
+  truth remain separate.
 - MDK checkout, agent-wallet, and `mdkd` paths are documented as buyer/payment
-  support surfaces, not accepted-work payout authority;
+  support surfaces, not accepted-work payout authority.
 - LDK/Pylon public projections use Nexus/Treasury/Pylon receipts and never
   expose raw payout targets, payment IDs, recovery state, private channel state,
-  or operator treasury secrets;
+  or operator treasury secrets.
 - Ben OTEC or a comparable first Site closes with reviewed source/build,
   deployed URL, customer-safe receipt summary, public proof, and no leaked
   private delivery mechanics.

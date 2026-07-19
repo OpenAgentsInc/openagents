@@ -18,19 +18,19 @@ needed to explain what happened next.
 
 `omni_workroom_lifecycle_decisions` records:
 
-- `id` and unique `idempotency_key`;
-- required `workroom_id`;
-- `work_kind`;
-- actor kind;
-- decision kind;
-- resulting lifecycle state;
-- customer-safe explanation ref;
-- receipt ref;
-- optional Site revision feedback ref;
-- optional non-Sites follow-up request ref;
-- optional artifact ref;
-- explicit `no_settlement_implication`;
-- bounded metadata;
+- `id` and unique `idempotency_key`.
+- required `workroom_id`.
+- `work_kind`.
+- actor kind.
+- decision kind.
+- resulting lifecycle state.
+- customer-safe explanation ref.
+- receipt ref.
+- optional Site revision feedback ref.
+- optional non-Sites follow-up request ref.
+- optional artifact ref.
+- explicit `no_settlement_implication`.
+- bounded metadata.
 - lifecycle timestamps.
 
 ## Decision Kinds
@@ -66,11 +66,11 @@ future follow-up queue.
 
 Public projection exposes:
 
-- workroom id;
-- work kind;
-- resulting state;
-- customer-safe explanation ref;
-- receipt ref;
+- workroom id.
+- work kind.
+- resulting state.
+- customer-safe explanation ref.
+- receipt ref.
 - no-settlement implication flag.
 
 Customer projection additionally exposes decision kind and customer-safe
@@ -82,26 +82,26 @@ Operator projection includes actor kind, idempotency key, and bounded metadata.
 
 `recordOmniWorkroomLifecycleDecision`:
 
-- records idempotently by `idempotency_key`;
-- requires an existing active workroom;
-- requires decision `workKind` to match the workroom;
-- requires a customer-safe explanation ref and receipt ref;
-- requires Site revision requests to carry a Site feedback ref;
-- requires non-Site revision requests to carry a follow-up request ref;
+- records idempotently by `idempotency_key`.
+- requires an existing active workroom.
+- requires decision `workKind` to match the workroom.
+- requires a customer-safe explanation ref and receipt ref.
+- requires Site revision requests to carry a Site feedback ref.
+- requires non-Site revision requests to carry a follow-up request ref.
 - rejects raw provider, run-log, email, payment, settlement, payout, wallet,
   token, invoice, preimage, customer-private, and secret-like material in refs
-  or metadata;
+  or metadata.
 - always records `noSettlementImplication: true`.
 
 ## Boundaries
 
 This slice does not:
 
-- send email;
-- mutate workroom status;
-- publish a proof page;
-- deploy a revision;
-- create payout eligibility;
+- send email.
+- mutate workroom status.
+- publish a proof page.
+- deploy a revision.
+- create payout eligibility.
 - mark any payment as settled.
 
 It creates the decision receipt layer that Mission Briefing, proof bundle, and

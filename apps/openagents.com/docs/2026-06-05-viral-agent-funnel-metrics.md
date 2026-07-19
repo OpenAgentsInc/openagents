@@ -17,13 +17,13 @@ Events are stored in `viral_agent_funnel_events`.
 
 The event row intentionally stores only bounded routing and class metadata:
 
-- event kind;
-- route;
+- event kind.
+- route.
 - actor class: public anonymous, possible signed-in browser, or possible
-  scoped agent;
-- user-agent class: agent/CLI, browser, crawler, or unknown;
-- optional Site/proof refs;
-- bounded metadata JSON;
+  scoped agent.
+- user-agent class: agent/CLI, browser, crawler, or unknown.
+- optional Site/proof refs.
+- bounded metadata JSON.
 - created timestamp.
 
 It does not store raw prompts, request bodies, bearer tokens, cookies, IP
@@ -49,10 +49,10 @@ material.
 
 Useful next events:
 
-- copy-to-agent CTA copied;
-- first owner-claim attempt;
-- first scoped action attempt;
-- contribution proposal submitted;
-- contribution accepted;
-- accepted outcome linked to a Site/order;
+- copy-to-agent CTA copied.
+- first owner-claim attempt.
+- first scoped action attempt.
+- contribution proposal submitted.
+- contribution accepted.
+- accepted outcome linked to a Site/order.
 - paid or credited referral event recorded.

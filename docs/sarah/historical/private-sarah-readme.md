@@ -8,7 +8,7 @@ registry, assembles packages from typed deal rules (never improvising a
 price), and closes with a real checkout link — every consequential act
 receipted.
 
-The full product spec, audit, and rollout plan live in the main repo:
+The full ProductSpec, audit, and rollout plan live in the main repo:
 `OpenAgentsInc/openagents` →
 `docs/fable/2026-07-07-sarah-sales-agent-spec.md`, sequenced as Phase P1
 of `docs/fable/MASTER_ROADMAP.md`.
@@ -21,7 +21,7 @@ can use the standard Vercel + AI SDK realtime stack unmodified — Next.js,
 Vercel at `sarah.openagents.com`, and know the newest voice-agent surface
 area works before wiring it into the monorepo's substrate (CRM, credits,
 receipts) over HTTP. It may be merged into `OpenAgentsInc/openagents`
-later; until then, treat the monorepo as the system of record Sarah talks
+later. Until then, treat the monorepo as the system of record Sarah talks
 to, not code she shares.
 
 ## Current state
@@ -37,7 +37,7 @@ durable transcript intake:
   Gateway key never reaches the browser. (Realtime models are swappable at
   this one line — `xai/grok-voice-think-fast-1.0` is the speech-to-speech
   alternative.)
-- `agent/instructions.md` — Sarah's Eve-owned persona and authority rules;
+- `agent/instructions.md` — Sarah's Eve-owned persona and authority rules.
   `src/app/api/realtime/session-config/route.ts` injects this file into the
   realtime session config so the browser loop and Eve share the same
   first-contact disclosure and one-question-at-a-time sales posture.
@@ -57,7 +57,7 @@ durable transcript intake:
   `sarah_prospect_ref` cookie, maps it to the Eve continuation token, and
   records a server-side operator projection with transcript text and audio
   event metadata only (no raw audio by default). Local dev discovers the Eve
-  sidecar from `.eve/next-dev-server.json`; production should set `EVE_HOST`
+  sidecar from `.eve/next-dev-server.json`. Production should set `EVE_HOST`
   if the custom channel is not exposed through the Next service origin.
 - `src/app/api/prospect/session/route.ts` — returning-browser probe for the
   prospect-backed thread id, so closing and reopening the tab resumes the
@@ -82,11 +82,11 @@ durable transcript intake:
   `SARAH_OPENAGENTS_LIVE_WRITES=1` arms OpenAgents API writes.
 - `agent/tools/{crm_contact_upsert,crm_activity_append}.ts` — OpenAgents CRM
   sync tools. Live mode calls the monorepo-owned `/api/mcp` CRM surface with a
-  scoped MCP bearer token; dry-run mode records only local Sarah receipts.
+  scoped MCP bearer token. Dry-run mode records only local Sarah receipts.
 - `agent/tools/deal_rules_evaluate.ts` and `src/lib/deal-rules.ts` — typed
   `sarah.deal_rules.v1` evaluator. Credit-volume tiers, Bitcoin discount, the
   default transaction cap, and the 3+ large-module bundle rule are compiled as
-  config refs; module prices and tactics stay owner-gated placeholders until
+  config refs. Module prices and tactics stay owner-gated placeholders until
   signed. `checkout_link_create` now requires a `quoteRef` and deal-rule refs.
 - `src/lib/gateway-realtime-browser.ts` — the browser-side realtime model
   shim (WebSocket config via subprotocol auth, passthrough event codec).
@@ -101,7 +101,7 @@ durable transcript intake:
   deployment.
 - `agent/schedules/follow-up.ts` and `src/lib/follow-up-scheduler.ts` —
   quiet-after-quote loop-back queue. Due follow-ups create email drafts in
-  the approval queue; closed, opted-out, or suppressed jobs do not send.
+  the approval queue. Closed, opted-out, or suppressed jobs do not send.
 - `src/app/api/operator/{follow-ups,ops}/route.ts` — protected operator JSON
   views/actions for follow-ups, sessions, approval queue, receipts, and
   realtime spend guard status.
@@ -201,7 +201,7 @@ returns 401 while minting a temporary CRM MCP grant. Provide a current scoped
 Sarah CRM MCP token or production admin bearer, then rerun the catalog preflight
 before the live smoke.
 `docs/evidence/2026-07-08-s7-mcp-catalog-gate.json` records the no-write
-catalog preflight and is rewritten on every run; its current state is blocked on
+catalog preflight and is rewritten on every run. Its current state is blocked on
 `Could not mint temporary CRM MCP grant: 401 unauthorized`.
 
 Stack: Next.js 16 / React 19 / Tailwind 4 / `ai@canary`,
@@ -259,13 +259,13 @@ Realtime token guard environment:
 - `SARAH_REALTIME_MAX_ACTIVE_SESSIONS_PER_IP`,
   `SARAH_REALTIME_MAX_ACTIVE_SESSIONS_PER_PROSPECT`,
   `SARAH_REALTIME_SESSION_TTL_MS`: active-session caps. The current AI
-  Gateway canary does not expose a Gateway-side realtime token TTL; the app
+  Gateway canary does not expose a Gateway-side realtime token TTL. The app
   enforces this local session-slot TTL before minting.
 - `SARAH_REALTIME_DAILY_TOKEN_CAP`,
   `SARAH_REALTIME_SPEND_ALERT_THRESHOLD`,
   `SARAH_REALTIME_SPEND_ALERT_FILE`,
   `SARAH_REALTIME_SPEND_ALERT_WEBHOOK_URL`: daily token-mint cap and alert
-  outputs. File alerts are for local smoke tests; production should use a
+  outputs. File alerts are for local smoke tests. Production should use a
   webhook plus Vercel/Gateway dashboard spend caps.
 - `SARAH_SESSION_INDEX_PATH`: optional filename under `.sarah/` for the
   local operator projection. Empty defaults to `.sarah/session-index.json`.
@@ -280,7 +280,7 @@ Realtime token guard environment:
   opt-out suppression state. Empty defaults to
   `.sarah/email-suppression-list.json`.
 - `SARAH_EMAIL_SEND_LIVE`: set to `1` only after the Sarah mailbox/domain is
-  armed. Approved drafts then send through Resend; otherwise approvals remain
+  armed. Approved drafts then send through Resend. Otherwise approvals remain
   `approved_pending_send`.
 - `SARAH_RESEND_API_KEY`, `SARAH_EMAIL_FROM_ADDRESS`,
   `SARAH_EMAIL_FROM_NAME`, `SARAH_EMAIL_REPLY_TO`: live outbound Resend
@@ -299,17 +299,17 @@ Realtime token guard environment:
 ## Path to deploy (sarah.openagents.com)
 
 Tracked in the main-repo roadmap (MASTER_ROADMAP P1 / lane SR-0) and as
-GitHub issues on this repo; the short version, in order:
+GitHub issues on this repo. The short version, in order:
 
 1. **Persona + honesty grounding** — Sarah's instructions (AI disclosure,
    one-question-at-a-time qualification, sales posture from the spec)
    injected via session config, with promise-registry state fetched
    server-side so capability claims stay registry-bound.
 2. **Token-route hardening** — the token endpoint currently mints gateway
-   client secrets unauthenticated; before public deploy it needs
+   client secrets unauthenticated. Before public deploy it needs
    origin/rate limits, session caps + TTLs, and gateway spend alerts.
 3. **Durable sessions + prospect ref** — persist transcripts server-side
-   and mint an opaque prospect ref (cookie) so conversations resume; sync
+   and mint an opaque prospect ref (cookie) so conversations resume. Sync
    summaries to the OpenAgents CRM over its API (CRM stays the system of
    record).
 4. **First tools** — wire the realtime session's tool channel (the token
@@ -338,7 +338,7 @@ framework). Owner decision — not a spike. The division of labor:
   `agent/schedules/` for follow-ups, and `agent/channels/` — the Chat
   SDK **Resend email adapter** for Sarah's inbound/outbound email
   continuity now, Twilio as a future phone lane.
-- **The bridge**: the realtime session's tool calls execute against eve;
+- **The bridge**: the realtime session's tool calls execute against eve.
   the transcript of each voice/text turn lands in the eve session so
   every channel shares one relationship thread.
 - eve ships its full docs in `node_modules/eve/docs` — read them there
@@ -361,8 +361,8 @@ Setup and integration work is tracked in this repo's GitHub issues.
 
 - Sarah discloses she's an AI on first contact, in every channel.
 - No improvised pricing — every price/discount traces to a deal-rules
-  config ref; absent a rule, escalate to a human.
+  config ref. Absent a rule, escalate to a human.
 - Capability claims are capped by the public promise registry.
 - Money-in only: checkout links, never spend/refund authority.
-- The monorepo owns money, CRM, credits, and receipts; this repo calls
+- The monorepo owns money, CRM, credits, and receipts. This repo calls
   its APIs and never re-implements them.

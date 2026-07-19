@@ -1,7 +1,7 @@
 # OpenAgents StudyBench Private Split Boundary
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-17
@@ -15,21 +15,21 @@ public repository.
 
 Committed public material may include:
 
-- public-retained StudyBench rows;
-- external calibration dataset refs;
-- private split refs;
-- private split checksum refs;
-- corpus manifest refs;
+- public-retained StudyBench rows.
+- external calibration dataset refs.
+- private split refs.
+- private split checksum refs.
+- corpus manifest refs.
 - scorer, packet, and closeout policy refs.
 
 Committed public material must not include:
 
-- private validation or private holdout task text;
-- private validation or private holdout `gold_answer` values;
-- private validation or private holdout rubric claim statements;
-- private validation or private holdout evidence excerpts;
-- raw candidate transcripts that reveal hidden task text;
-- raw judge rationales that reveal hidden rubric or evidence content;
+- private validation or private holdout task text.
+- private validation or private holdout `gold_answer` values.
+- private validation or private holdout rubric claim statements.
+- private validation or private holdout evidence excerpts.
+- raw candidate transcripts that reveal hidden task text.
+- raw judge rationales that reveal hidden rubric or evidence content.
 - private repo content, secrets, wallet material, provider payloads, or
   customer-private material.
 
@@ -85,11 +85,11 @@ Scorers may see the private task prompt, gold answer, rubric, and evidence spans
 needed to grade the candidate answer or patch. Scorer outputs that leave the
 private evaluation boundary must be refs-only:
 
-- candidate answer or patch artifact hash;
-- rubric score artifact ref;
-- claim ids and score values when public-safe;
-- redacted rationale refs;
-- source corpus manifest ref;
+- candidate answer or patch artifact hash.
+- rubric score artifact ref.
+- claim ids and score values when public-safe.
+- redacted rationale refs.
+- source corpus manifest ref.
 - private split ref and checksum ref.
 
 If a scorer rationale quotes hidden task text, hidden rubric text, or hidden
@@ -104,10 +104,10 @@ rubrics, or private evidence excerpts.
 
 Private holdout rows are stricter:
 
-- they cannot feed public-retained examples;
-- they cannot feed study packets;
+- they cannot feed public-retained examples.
+- they cannot feed study packets.
 - they cannot feed GEPA training, GEPA reflection, or candidate instruction
-  proposals;
+  proposals.
 - they cannot be used as launch-product proof once their hidden content has
   been exposed to a candidate optimizer.
 

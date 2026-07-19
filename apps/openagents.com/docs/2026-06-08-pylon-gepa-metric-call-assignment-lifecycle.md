@@ -23,11 +23,11 @@ not replace Benchmark Cloud manifests, Probe closeouts, or Psionic candidate
 frontier state. It records the assignment work slice and keeps the state machine
 compatible with the existing Pylon marketplace direction:
 
-1. assignment created;
-2. worker accepts and receives a lease ref;
-3. worker reports progress refs;
-4. worker submits artifact, proof, verifier, closeout, and resource refs;
-5. evaluator/operator closes as accepted or rejected work;
+1. assignment created.
+2. worker accepts and receives a lease ref.
+3. worker reports progress refs.
+4. worker submits artifact, proof, verifier, closeout, and resource refs.
+5. evaluator/operator closes as accepted or rejected work.
 6. GEPA coordinator imports the normalized public-safe result.
 
 ## Required Assignment Fields
@@ -78,12 +78,12 @@ input, not runtime promotion authority.
 
 `workers/api/src/pylon-gepa-metric-call-assignments.test.ts` covers:
 
-- explicit no-spend assignment creation and worker acceptance;
-- progress refs and result submission;
-- accepted and rejected operator closeout;
-- coordinator import shape;
-- refusal to close accepted work before refs are submitted;
-- refusal to attach settlement receipt refs without `settled_bitcoin`;
+- explicit no-spend assignment creation and worker acceptance.
+- progress refs and result submission.
+- accepted and rejected operator closeout.
+- coordinator import shape.
+- refusal to close accepted work before refs are submitted.
+- refusal to attach settlement receipt refs without `settled_bitcoin`.
 - public-safe ref validation for private, provider, raw log, wallet, and payment
   material.
 

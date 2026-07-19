@@ -3,7 +3,7 @@
 - Schema: `sarah-take-scoreboard.v1`
 - Take: `sarah-reply-v3` (2026-07-09)
 - Refs: #8610, #8618
-- **Advance: NO** — Measured smoothest take of all (jerk mean 0.15, beating even the original); current best MuseTalk-lane recipe. Owner playback pending — cannot advance on metrics alone.
+- **Advance: NO** — Measured smoothest take of all (jerk mean 0.15, beating even the original). Current best MuseTalk-lane recipe. Owner playback pending — cannot advance on metrics alone.
 
 ## Input refs
 
@@ -25,10 +25,10 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| STT round-trip (per-segment, per-segment STT) | PASS | all four 'A.I.' occurrences transcribe cleanly per-segment; whole-clip artifacts ('a AI', 'I.I.') were transcriber noise; 'coding agents' correct |
+| STT round-trip (per-segment, per-segment STT) | PASS | all four 'A.I.' occurrences transcribe cleanly per-segment. Whole-clip artifacts ('a AI', 'I.I.') were transcriber noise. 'Coding agents' correct |
 | Loudness / true peak | -18.4 LUFS / -3 dBTP | target ≈ -16 LUFS / ≤ -3 dBTP |
-| Pause timing | WATCH | improved rhythm via punctuation prosody; owner ear verdict pending |
-| Prosody (human verdict) | PENDING | punctuation-prosody 'A.I.' variant; owner ear verdict pending with the playback head-to-head |
+| Pause timing | WATCH | improved rhythm via punctuation prosody. Owner ear verdict pending |
+| Prosody (human verdict) | PENDING | punctuation-prosody 'A.I.' variant. Owner ear verdict pending with the playback head-to-head |
 | Prosody (LLM judge) | not run | — |
 | Initialism risk | — | punctuation form 'A.I.' — natural rhythm, verified per-segment |
 
@@ -37,7 +37,7 @@
 | Gate | Status | Notes |
 | --- | --- | --- |
 | **Owner playback verdict** | PENDING | head-to-head vs sarah_reply_latentsync on the owner's Desktop pending |
-| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured; frame inspection surfaced no offset |
+| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured. Frame inspection surfaced no offset |
 | Crop sharpness | PASS | teeth defined but natural — clearly between raw MuseTalk softness and plastic full-GFPGAN |
 | Temporal boil/flicker | PASS | consecutive frames at t=8 s smooth, no boil |
 | Chunk-boundary jerk | PASS | measures smoother than every other take INCLUDING the original — the EMA + 0.45 blend + feathered mask recipe delivered |

@@ -34,22 +34,22 @@ or upgrade public claims.
 Each packet records:
 
 - Margot provenance: repo ref, commit ref, normalized export refs, data
-  timestamp refs, source URL refs, and caveats;
+  timestamp refs, source URL refs, and caveats.
 - GPU rental evidence: Vast.ai-style sample timestamp, GPU model, sample size,
-  dollars per GPU-hour, TDP/source, and derived dollars per MWh;
+  dollars per GPU-hour, TDP/source, and derived dollars per MWh.
 - token economics evidence: OpenRouter model price timestamp, raw price unit,
   display unit, ML.Energy run/task/GPU/J-token/tokens-sec/stability fields,
-  and derived dollars per MWh;
+  and derived dollars per MWh.
 - throughput-calculator evidence as modeled-only refs for calculator URL,
-  query params, model, hardware, context, quantization, and caveats;
+  query params, model, hardware, context, quantization, and caveats.
 - Pylon capacity evidence: node/cohort, GPU count/model, VRAM, interconnect,
   runtime/framework, resource mode, system power, chip TDP, effective watts per
   GPU, PDU/IPMI/meter availability, PUE assumption, availability window, cost
-  term, and idle/dark-capacity refs;
+  term, and idle/dark-capacity refs.
 - ERCOT/NYISO or unsupported power-market windows with LMP, zone/settlement
-  point, refresh refs, missing-data flags, sources, and caveats;
+  point, refresh refs, missing-data flags, sources, and caveats.
 - mining counterfactuals with ASIC model, efficiency, capacity, revenue per
-  MWh, margin per MWh, pool/firmware/ops assumptions, and curtailment policy;
+  MWh, margin per MWh, pool/firmware/ops assumptions, and curtailment policy.
 - accepted-work evidence with assignment, run, artifact, grading, acceptance,
   rejection, retry, closeout, economics, payable, settled, and settlement refs.
 
@@ -67,16 +67,16 @@ Claim states stay separate:
 
 The public projection can show:
 
-- mining floor dollars per MWh;
-- GPU rental floor dollars per MWh;
-- token inference floor dollars per MWh only after unit audit verification;
+- mining floor dollars per MWh.
+- GPU rental floor dollars per MWh.
+- token inference floor dollars per MWh only after unit audit verification.
 - node-power-adjusted floor dollars per MWh only when the denominator is not
-  chip TDP;
-- accepted-outcome value dollars per MWh;
-- power cost dollars per MWh;
-- idle/dark-capacity refs;
-- denominator refs;
-- public blocker refs;
+  chip TDP.
+- accepted-outcome value dollars per MWh.
+- power cost dollars per MWh.
+- idle/dark-capacity refs.
+- denominator refs.
+- public blocker refs.
 - public caveats and source refs.
 
 The public projection redacts private repo access, raw meter/provider/customer/
@@ -123,13 +123,13 @@ dispatch payouts, charge buyers, or mutate accepted-work records.
 
 Focused tests cover:
 
-- valid modeled ERCOT and NYISO packets;
-- public redaction and operator private refs;
-- token unit-audit blocking and verified token projection;
-- unsupported-market caveats;
-- stale source blockers;
-- chip-TDP denominator blocking;
-- accepted-work payable versus settled separation;
+- valid modeled ERCOT and NYISO packets.
+- public redaction and operator private refs.
+- token unit-audit blocking and verified token projection.
+- unsupported-market caveats.
+- stale source blockers.
+- chip-TDP denominator blocking.
+- accepted-work payable versus settled separation.
 - unsafe refs, private URLs, raw material, mutable authority, and invalid
   numbers.
 

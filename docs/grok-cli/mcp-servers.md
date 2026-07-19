@@ -44,7 +44,7 @@ headers = { "x-mcp-session-id" = "{{session_id}}" }
 ```
 
 Grok expands `${VAR}` and `${VAR:-default}` in `url`, `command`, `args`,
-`env`, and `headers`. OAuth servers trigger a browser flow on first use;
+`env`, and `headers`. OAuth servers trigger a browser flow on first use.
 tokens land in `~/.grok/mcp_credentials.json`.
 
 ## Project scope

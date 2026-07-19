@@ -20,7 +20,7 @@ was added.
   `apps/openagents.com/workers/api/src/tassadar-trace-contribution-routes.ts`
   and wires it in `apps/openagents.com/workers/api/src/index.ts`.
 - The generated replay source refs still include
-  `operator_approval.tassadar.autostream.worker`; treat that as the owner/gate
+  `operator_approval.tassadar.autostream.worker`. Treat that as the owner/gate
   evidence for the real-money rail, not as a broader autonomous-spend claim.
 - Current source-lag rows still report stale source families. This capture
   records the visible public projection and its caveats.

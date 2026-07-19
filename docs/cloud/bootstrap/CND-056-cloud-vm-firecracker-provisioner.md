@@ -2,12 +2,12 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
-Status: code-complete in `cloud`; live boot is the deploy step on a Linux KVM
+Status: code-complete in `cloud`. Live boot is the deploy step on a Linux KVM
 host.
 
 Tracks: OpenAgentsInc/openagents issue #6200 (follow-up from #6186).
@@ -31,7 +31,7 @@ backed by **firecracker** microVMs (reference `projects/repos/firecracker` +
   - `FakeProvisioner` — deterministic, no KVM, materializes a public-safe
     artifact set. Used by unit tests and any no-KVM host.
   - `LiveFirecrackerProvisioner` — gated behind Linux + `/dev/kvm` + configured
-    binaries/images; boots firecracker under the jailer (seccomp/cgroup/chroot
+    binaries/images. Boots firecracker under the jailer (seccomp/cgroup/chroot
     isolation). Refuses honestly (never falls back to a local browser, never
     fakes a green) when KVM is unavailable or the OS tier has no host pool.
   - `run_cloud_vm_session()` — the one-shot
@@ -59,7 +59,7 @@ backed by **firecracker** microVMs (reference `projects/repos/firecracker` +
 | `CloudVmHandle.teardown()`           | response `cleanupReceipt.tornDown`           |
 | `CloudVmHandle.id` / `.os`           | response `vmId` / `os`                        |
 
-The qa-runner injects an HTTP-backed provisioner that POSTs to this route; the
+The qa-runner injects an HTTP-backed provisioner that POSTs to this route. The
 route runs the full one-shot session and returns the outcome. Because the host
 artifact dir is owned by the daemon (under its state root) and returned as
 `extractedTo`, the caller never supplies a host path.
@@ -98,7 +98,7 @@ Optional live env (with defaults):
 - No wallet authority: the VM/workroom boundary carries no wallet seeds, node
   entropy, preimages, or raw accounting credentials.
 - Degrade-or-refuse: a failed acquire / unhealthy boot tears down any partial
-  jail before refusing; teardown is idempotent and always runs (even on
+  jail before refusing. Teardown is idempotent and always runs (even on
   exec/copy_out failure) so a VM is never leaked.
 
 ## Verify locally (no KVM, deterministic)
@@ -146,9 +146,9 @@ KVM host:
 - Requires a Linux KVM host (deploy step): the actual firecracker boot, the
   guest control-channel transport (vsock/ssh) for `exec`/`copy_out`, and the
   built kernel/rootfs images. The live module is structurally complete and
-  gated; the guest-agent transport binary is wired per host image at deploy
+  gated. The guest-agent transport binary is wired per host image at deploy
   time, and the `#[ignore]` live proof + this runbook drive the on-hardware run.
-- macOS/Windows OS tiers: refuse honestly until a host pool exists; tracked as
+- macOS/Windows OS tiers: refuse honestly until a host pool exists. Tracked as
   they come online.
 
 ## Live host substrate proof (2026-07-07, openagents#8503)
@@ -156,7 +156,7 @@ KVM host:
 The Firecracker substrate is proven on the real GCE host (public host
 `agent-computer-gce-1`, project `openagentsgemini`, `us-central1-a`,
 `n2-standard-4`, nested-virt on, `/dev/kvm` present, host kernel
-`6.17.0-1020-gcp`). This is the substrate the Agent Computer flow needs; it does
+`6.17.0-1020-gcp`). This is the substrate the Agent Computer flow needs. It does
 not yet exercise `cloud_vm.rs`'s guest transport (still the deploy step below).
 
 Installed + staged on the host:
@@ -173,13 +173,13 @@ Proven lifecycle (tested working, tap + host NAT):
 - exec-in-guest: real commands ran inside the microVM over ssh-on-tap.
 - egress: HTTPS `200` from inside the microVM through host NAT
   (`iptables -t nat MASQUERADE` on the default iface + `ip_forward=1`), fetched
-  real bytes from a public repo. (Stock CI rootfs `curl` needs a CA bundle; the
+  real bytes from a public repo. (Stock CI rootfs `curl` needs a CA bundle, the
   TLS handshake reached without it, so routing is confirmed.)
 - copy-out: `result.json` copied microVM -> host.
 - reclaim: microVM killed, per-run scratch rootfs removed, tap deleted.
 
 Tested tap + boot recipe (the concrete reference for wiring `guest_exec` /
-`guest_copy_out` and `wait_guest_ready`; no secrets, standard demo IPs only):
+`guest_copy_out` and `wait_guest_ready`. No secrets, standard demo IPs only):
 
 ```bash
 TAP=fc0; TAP_IP=172.16.0.1; GUEST_IP=172.16.0.2
@@ -200,7 +200,7 @@ the Agent Computer image):
 1. The baseline rootfs is stock Ubuntu 22.04 CI — no `git`, `bun`, `node`,
    Pylon runtime, or guest agent. The Agent Computer rootfs must bake these in.
 2. `guest_exec` / `guest_copy_out` still return
-   `guest ... transport not wired on this host (deploy step)`; wire them to the
+   `guest ... transport not wired on this host (deploy step)`. Wire them to the
    proven ssh-on-tap (or vsock) bridge, and make `wait_guest_ready` poll a real
    guest readiness signal instead of a `v.sock` file check.
 3. For the Khala Code Agent Computer turn (openagents#8503 DoD), the
@@ -229,7 +229,7 @@ Progress toward a real in-microVM coding turn (increments 1-2):
   over the firecracker vsock UDS). Working host-side vsock client + boot recipe:
   scratchpad `vsock-turn-proof.py` on this Mac (connect the firecracker
   `uds_path` UNIX socket, send `CONNECT 1024\n`, then length-prefixed JSON
-  `{op:ping|exec|copyout}`; the guest agent is the reference protocol).
+  `{op:ping|exec|copyout}`. The guest agent is the reference protocol).
 - **BLOCKER**: in-guest git egress fails (`git fetch` -> `fetch_failed`). The
   debootstrap image enables `systemd-networkd` with no `.network` config, which
   likely clears the kernel `ip=` boot-arg address on `eth0`. Fix: drop the

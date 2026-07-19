@@ -8,12 +8,12 @@ For the first customer Sites batch, the stable Site URL follows the latest
 successful Adjutant-generated revision. When a saved Site artifact receipt is
 recorded for an Adjutant run, the lifecycle now:
 
-- saves the generated version;
-- marks that version `customer_review_ready`, not customer accepted;
-- creates or reuses a deployment for the same Site slug;
-- rolls back the previous active deployment without deleting it;
-- updates `site_projects.active_version_id` and `active_deployment_id`;
-- records `site_deployment.superseded` and `site_deployment.activated` events;
+- saves the generated version.
+- marks that version `customer_review_ready`, not customer accepted.
+- creates or reuses a deployment for the same Site slug.
+- rolls back the previous active deployment without deleting it.
+- updates `site_projects.active_version_id` and `active_deployment_id`.
+- records `site_deployment.superseded` and `site_deployment.activated` events.
 - marks linked customer feedback as `addressed`.
 
 The runtime at `https://sites.openagents.com/<slug>` already serves the

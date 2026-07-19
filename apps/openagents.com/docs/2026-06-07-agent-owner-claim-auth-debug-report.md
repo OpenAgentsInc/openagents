@@ -46,7 +46,7 @@ Live Worker tail confirmed the reported failure shape:
 
 - A manual unauthenticated `POST` to
   `/api/agents/claims/:claimId/approve` returned HTTP `401`.
-- The Worker execution outcome was `ok`; this was an auth-boundary response,
+- The Worker execution outcome was `ok`. This was an auth-boundary response,
   not a Worker crash.
 - No raw authorization header, raw pending token, cookie value, or request
   payload is recorded in this report.
@@ -73,7 +73,7 @@ Before the fix, the rendered page contained:
 ```
 
 But OpenAgents product surface's active auth policy deleted the old local `/login` route. The Worker
-now redirects `/login` to `/`; `/login/github` is the real OAuth start route.
+now redirects `/login` to `/`. `/login/github` is the real OAuth start route.
 Therefore the claim page's sign-in button could never start OAuth.
 
 Approval itself was not broken. `approveClaimResponse` correctly calls
@@ -111,12 +111,12 @@ Changed `workers/api/src/index.ts`:
 Changed tests:
 
 - `workers/api/src/agent-owner-claim-routes.test.ts`
-  - asserts the claim page links to `/login/github?returnTo=...`;
-  - asserts the page has `401` redirect handling;
+  - asserts the claim page links to `/login/github?returnTo=...`.
+  - asserts the page has `401` redirect handling.
   - asserts the deleted `/login` link does not return.
 - `workers/api/src/admin-access.test.ts`
-  - asserts the login start route stores a clean claim return target;
-  - asserts query params are not stored for claim return targets;
+  - asserts the login start route stores a clean claim return target.
+  - asserts query params are not stored for claim return targets.
   - asserts nested claim paths clear the return cookie instead of storing a
     malformed target.
 
@@ -215,9 +215,9 @@ curl -sS https://openagents.com/agents/claims/<claim-id> |
 
 Confirmed:
 
-- the page contains **Approve claim**;
+- the page contains **Approve claim**.
 - the page contains
-  `/login/github?returnTo=%2Fagents%2Fclaims%2F<claim-id>`;
+  `/login/github?returnTo=%2Fagents%2Fclaims%2F<claim-id>`.
 - the page redirects to login when approve returns `401`.
 
 Login return cookie smoke:
@@ -230,8 +230,8 @@ curl -sS -D - -o /dev/null \
 
 Confirmed:
 
-- response is HTTP `302`;
-- `oa_login_return_to` is set to the clean claim page path;
+- response is HTTP `302`.
+- `oa_login_return_to` is set to the clean claim page path.
 - query parameters on the claim path are stripped.
 
 Nested-path rejection smoke:
@@ -244,8 +244,8 @@ curl -sS -D - -o /dev/null \
 
 Confirmed:
 
-- response is HTTP `302`;
-- `oa_login_return_to` is cleared with `Max-Age=0`;
+- response is HTTP `302`.
+- `oa_login_return_to` is cleared with `Max-Age=0`.
 - nested claim paths are not stored as login return targets.
 
 ## Security And Boundary Notes
@@ -258,7 +258,7 @@ Confirmed:
 - This report intentionally omits raw tokens, bearer headers, cookie values,
   request payloads, and private logs.
 - The no-token public proposal path was not changed. Forum writes and most
-  agent actions still require an approved registered agent token; this fix
+  agent actions still require an approved registered agent token. This fix
   resolves the token-claim approval blocker.
 
 ## Operator Outcome

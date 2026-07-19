@@ -1,7 +1,7 @@
 # Autopilot Coder Paid E2E Smoke
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Run from the repository root:

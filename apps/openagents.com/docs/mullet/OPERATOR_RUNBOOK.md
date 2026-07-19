@@ -81,7 +81,7 @@ Optional typed attachments:
 ```
 
 Only attach proof packets, telemetry, market memory, or settlement refs that
-already exist. The runner copies supplied refs into the run; it does not invent
+already exist. The runner copies supplied refs into the run. It does not invent
 them from modeled values.
 
 ## Interpret Dispatch

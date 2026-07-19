@@ -14,9 +14,9 @@ The Worker job kind is `cs336_a4_data_refinery`, targeting Psionic lane
 
 No-spend dispatch contracts are defined for:
 
-- `pii_masking`;
-- `gopher_rules`;
-- `exact_line_dedup`;
+- `pii_masking`.
+- `gopher_rules`.
+- `exact_line_dedup`.
 - `minhash_dedup`.
 
 All four stages use `deterministic_recompute` verification: workers commit a
@@ -30,7 +30,7 @@ payload fields.
 Psionic `OpenAgentsInc/psionic#1102` landed the first tranche:
 
 - PII masking: partial, with heuristic scanners and assignment replacement
-  tokens; still needs conformance testing against Stanford fixtures before
+  tokens. Still needs conformance testing against Stanford fixtures before
   paid grading.
 - Gopher rules: landed with per-rule verdicts.
 - Exact-line dedup: landed.
@@ -39,23 +39,23 @@ Psionic `OpenAgentsInc/psionic#1102` landed the first tranche:
 
 Still external to this monorepo:
 
-- HTML/WARC extraction;
-- langid;
-- NSFW/toxic/quality classifiers;
+- HTML/WARC extraction.
+- langid.
+- NSFW/toxic/quality classifiers.
 - full adapter matrix conformance against `assignment4-data/tests/adapters.py`.
 
 ## Payment Policy
 
 Base payments are per verified shard:
 
-- policy ref: `policy.cs336_a4.pay_per_verified_shard_processed`;
-- pays only after deterministic recompute accepts the stage output;
+- policy ref: `policy.cs336_a4.pay_per_verified_shard_processed`.
+- pays only after deterministic recompute accepts the stage output.
 - pays for public-safe processing work, not raw data volume.
 
 Quality bonuses remain blocked until:
 
-- the fixed-trainer eval loop exists;
-- operator funding is approved;
+- the fixed-trainer eval loop exists.
+- operator funding is approved.
 - Psionic classifier adapters and conformance status are complete.
 
 Bonus policy ref: `policy.cs336_a4.eval_delta_quality_bonus_pending`.
@@ -96,7 +96,7 @@ previously missing for refinery output.
   `example.invalid` namespace and documentation-range IPv4s, so no real Common
   Crawl payload or contributor-sourced sensitive material is ever materialized
   or published. Each stage commits a SHA-256 digest over its exact output plus
-  public counts; re-running the stage on the same shard reproduces the digest,
+  public counts. Re-running the stage on the same shard reproduces the digest,
   any input perturbation changes it.
 - `scripts/cs336-a4-data-refinery-run.ts` is the contributor-side executor:
   no network, no secrets, no spend, public-safe counts and digests only.
@@ -104,8 +104,8 @@ previously missing for refinery output.
   before: `admitCs336A4DataRefineryEvidence` writes receipted refinery shards
   into a run's public projection (`a4DataRefinery`), and
   `publicDataRefineryProjection` builds the public feed. Unreceipted shards are
-  not admissible; a public-safety guard rejects wallet, payment, raw-shard, and
-  private-path material at admission time; `stages_verified` requires at least
+  not admissible. A public-safety guard rejects wallet, payment, raw-shard, and
+  private-path material at admission time. `stages_verified` requires at least
   three distinct stages with a verified `deterministic_recompute` challenge
   (acceptance criterion #1).
 - Routes: `POST /api/training/runs/{trainingRunRef}/data-refinery-evidence`
@@ -113,11 +113,11 @@ previously missing for refinery output.
   `GET /api/training/refinery/a4` (public, OpenAPI
   `readTrainingA4DataRefineryDashboard`).
 
-## Eval-Delta Bonus Design (parameters; no fabricated numbers)
+## Eval-Delta Bonus Design (parameters, no fabricated numbers)
 
 The eval-delta quality bonus is a **design** until a fixed-trainer eval loop
 and operator funding exist. It is recorded here with explicit parameters and
-modeled basis labels so it can be implemented honestly later; no eval-delta
+modeled basis labels so it can be implemented honestly later. No eval-delta
 score is admitted, projected, or paid by the surfaces above, and the
 `a4_eval_delta` leaderboard lane stays empty behind
 `blocker.training_leaderboard.a4_eval_delta.requires_verified_receipts`.
@@ -135,12 +135,12 @@ score is admitted, projected, or paid by the surfaces above, and the
   `bonus_rate_sats_per_unit` are operator-set funding parameters, unset until
   funding is approved.
 - Anti-gaming boundaries: the bonus pays measured downstream delta, never raw
-  volume (`boundary.cs336_a4.pay_quality_delta_not_raw_volume_or_private_data`);
-  the eval uses a held-out eval set the contributor does not control; and the
+  volume (`boundary.cs336_a4.pay_quality_delta_not_raw_volume_or_private_data`).
+  the eval uses a held-out eval set the contributor does not control. And the
   filtered output that earns a bonus must first pass deterministic-recompute
   verification of the stage that produced it.
 - Honest status tonight: **no real eval-delta measurement was run.** The
-  deterministic refinery stages are the live deliverable; the eval-delta bonus
+  deterministic refinery stages are the live deliverable. The eval-delta bonus
   is design + typed policy + blockers only. Blockers remain
   `blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus`,
   `blocker.cs336_a4.operator_funding_required_for_bonus_settlement`, and

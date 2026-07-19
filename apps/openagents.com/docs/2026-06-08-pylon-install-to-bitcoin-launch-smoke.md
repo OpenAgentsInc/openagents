@@ -27,25 +27,25 @@ The smoke is implemented in
 
 `ci_no_spend`
 
-- deterministic CI gate;
+- deterministic CI gate.
 - requires install, register, heartbeat, wallet, assignment, closeout, payout
-  readiness, and public projection refs;
-- keeps payment and settlement as `planned_no_spend`;
+  readiness, and public projection refs.
+- keeps payment and settlement as `planned_no_spend`.
 - never allows wallet spend or settled-bitcoin claims.
 
 `sandbox_fake_payment`
 
-- accepts fake payment and settlement refs for dry-run evidence retention;
-- may prove bundle wiring;
+- accepts fake payment and settlement refs for dry-run evidence retention.
+- may prove bundle wiring.
 - cannot claim settled bitcoin or real public earning.
 
 `live_small_sats`
 
-- requires an explicit operator approval ref;
-- requires `amountSats <= spendCapSats`;
-- requires original funded MDK wallet-home mode, not mnemonic-only restore;
+- requires an explicit operator approval ref.
+- requires `amountSats <= spendCapSats`.
+- requires original funded MDK wallet-home mode, not mnemonic-only restore.
 - requires payout readiness, payment receipt refs, settlement receipt refs,
-  and public projection refs;
+  and public projection refs.
 - is the only mode that may produce `live_settled_bitcoin_ready` and
   `settledBitcoinClaimAllowed: true`.
 
@@ -53,19 +53,19 @@ The smoke is implemented in
 
 The smoke blocks on:
 
-- missing fresh install ref;
-- missing Pylon registration or public Pylon ref;
-- missing heartbeat;
-- missing MDK wallet readiness;
-- missing assignment ref;
-- stale assignment lease;
-- missing accepted-work closeout;
-- missing payout readiness;
-- live spend without operator approval;
-- live spend above the explicit spend cap;
-- live spend from mnemonic-restore or unknown wallet-home mode;
-- missing payment receipt;
-- missing settlement receipt;
+- missing fresh install ref.
+- missing Pylon registration or public Pylon ref.
+- missing heartbeat.
+- missing MDK wallet readiness.
+- missing assignment ref.
+- stale assignment lease.
+- missing accepted-work closeout.
+- missing payout readiness.
+- live spend without operator approval.
+- live spend above the explicit spend cap.
+- live spend from mnemonic-restore or unknown wallet-home mode.
+- missing payment receipt.
+- missing settlement receipt.
 - missing public projection.
 
 The MDK command boundary is the existing local

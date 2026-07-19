@@ -1,7 +1,7 @@
 # Rampart Usage Guide
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 This guide uses the NPM runtime because it wraps the Hugging Face model in the
@@ -110,7 +110,7 @@ await persist({
 return guard.reveal(rawReply);
 ```
 
-The user-facing path can reveal placeholders; the persistence path should keep
+The user-facing path can reveal placeholders. The persistence path should keep
 the placeholdered form.
 
 ## Useful Options
@@ -118,7 +118,7 @@ the placeholdered form.
 | Option | Default | Use |
 | --- | --- | --- |
 | `model` | `nationaldesignstudio/rampart` | Hugging Face model id or local ONNX directory |
-| `device` | `"wasm"` | `"wasm"` or `"webgpu"` in browsers; `"cpu"` in Node-like runtimes |
+| `device` | `"wasm"` | `"wasm"` or `"webgpu"` in browsers. `"cpu"` in Node-like runtimes |
 | `worker` | unset | Worker script URL for off-main-thread inference |
 | `heuristicsOnly` | `false` | Skip the model and run deterministic recognizers only |
 | `keepLabels` | `CITY`, `STATE`, `ZIP_CODE` | Override the default-deny keep-set |
@@ -180,7 +180,7 @@ bundled transformers runtime. OpenAgents works around that in
 `@openagentsinc/khala-tools`: it keeps Rampart's guard/session-table API, but
 injects a Bun-compatible NER detector loaded from the explicit
 `@huggingface/transformers@3.7.5` dependency. The default Khala Code Desktop
-path reaches `rampart_model` mode under Bun; tests assert that names, email
+path reaches `rampart_model` mode under Bun. Tests assert that names, email
 addresses, and street addresses are placeholdered before hosted provider
 requests.
 

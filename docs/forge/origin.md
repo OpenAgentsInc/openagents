@@ -40,7 +40,7 @@ Origin is designed around **high-concurrency AI-agent workloads**. Reimers said 
 
 ### 3.3 Code review and collaboration
 
-Origin is meant to include a review surface, not just [118;1:3ubare Git remotes. Cursor’s launch wording explicitly includes “review” and “collaborate.” ([X (formerly Twitter)][2]) Graphite’s existing product already provides stacked PRs, a PR page, AI code review, chat, merge queue, PR inbox, and developer metrics; it also advertises a stack-aware merge queue, AI review, CI-failure help, and Git/GitHub integration. ([Graphite][7])
+Origin is meant to include a review surface, not just [118.1:3Ubare Git remotes. Cursor’s launch wording explicitly includes “review” and “collaborate.” ([X (formerly Twitter)][2]) Graphite’s existing product already provides stacked PRs, a PR page, AI code review, chat, merge queue, PR inbox, and developer metrics. It also advertises a stack-aware merge queue, AI review, CI-failure help, and Git/GitHub integration. ([Graphite][7])
 
 **Careful reading:** not every Graphite feature is officially documented as an Origin feature yet. But Graphite is clearly the review/workflow substrate Cursor brought in, and the demo was led by a Graphite cofounder. ([LinkedIn][3])
 
@@ -54,7 +54,7 @@ This is one of Origin’s marquee “agent-native” features. The demo transcri
 
 Origin is described as able to **fix CI failures**. Reimers said Origin is powered by the same intelligence that powers Cursor and can fix CI failures. ([LinkedIn][3]) Graphite already advertises PR-page chat that can fix CI failures and improve PRs, which supports the idea that this capability sits naturally in the review layer. ([Graphite][7])
 
-**Likely workflow:** a PR fails a check; Origin identifies the failed check, determines the likely cause, dispatches or invokes an agent, pushes a fix commit, and re-runs the check.
+**Likely workflow:** a PR fails a check. Origin identifies the failed check, determines the likely cause, dispatches or invokes an agent, pushes a fix commit, and re-runs the check.
 
 ### 3.6 Comment handling and PR next-step automation
 
@@ -187,18 +187,18 @@ The core product bet is not merely “faster Git.” It is **automated change ma
 | Feature                                              |                       Status | Notes                                                                                                                                 |
 | ---------------------------------------------------- | ---------------------------: | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Code storage and Git hosting                         |                    Confirmed | Cursor’s launch wording explicitly says this. ([X (formerly Twitter)][2])                                                             |
-| Waitlist and fall 2026 availability                  |                    Confirmed | Official page is waitlist; launch post says fall. ([Cursor][1])                                                                       |
-| Teams + agents as users                              |                    Confirmed | Cursor says Origin is for teams and agents; demo calls it agent-native. ([X (formerly Twitter)][2])                                   |
+| Waitlist and fall 2026 availability                  |                    Confirmed | Official page is waitlist. Launch post says fall. ([Cursor][1])                                                                       |
+| Teams + agents as users                              |                    Confirmed | Cursor says Origin is for teams and agents. Demo calls it agent-native. ([X (formerly Twitter)][2])                                   |
 | Create repos / share code / manage changes           |             Stage-demo claim | Stated in the Origin demo transcript. ([LinkedIn][3])                                                                                 |
 | High-concurrency push/pull to one repo               |             Stage-demo claim | Demo transcript says thousands of agents were simulated. ([LinkedIn][3])                                                              |
 | Merge-conflict resolution                            |             Stage-demo claim | Stated in transcript and reported by The Decoder. ([LinkedIn][3])                                                                     |
-| CI failure fixing                                    |             Stage-demo claim | Stated in transcript; Graphite already advertises CI-failure assistance in PR chat. ([LinkedIn][3])                                   |
+| CI failure fixing                                    |             Stage-demo claim | Stated in transcript. Graphite already advertises CI-failure assistance in PR chat. ([LinkedIn][3])                                   |
 | Comment handling                                     |             Stage-demo claim | Transcript says Origin can address comments and tag humans only when needed. ([LinkedIn][3])                                          |
 | API, MCP, third-party app platform                   |             Stage-demo claim | Reimers described API/MCP/app-platform extensibility. ([LinkedIn][3])                                                                 |
-| Git compatibility                                    |             Reported, likely | Secondary reports say Git-compatible; official wording says git forge/hosting but protocol details are not published. ([eesel AI][8]) |
-| NVMe + S3 storage architecture                       |  Reported from demo/coverage | Not yet in official docs; treat as credible but not fully specified. ([Tech Times][9])                                                |
+| Git compatibility                                    |             Reported, likely | Secondary reports say Git-compatible. Official wording says git forge/hosting but protocol details are not published. ([eesel AI][8]) |
+| NVMe + S3 storage architecture                       |  Reported from demo/coverage | Not yet in official docs. Treat as credible but not fully specified. ([Tech Times][9])                                                |
 | 22.6 commits/sec, 296k clones/hr, 81k pushes/hr      |           Reported benchmark | Demo metric, not independently verified production SLA. ([Tech Times][9])                                                             |
-| Stacked PRs / merge queues                           | Strongly likely via Graphite | Graphite provides these; exact Origin packaging not documented. ([Graphite][7])                                                       |
+| Stacked PRs / merge queues                           | Strongly likely via Graphite | Graphite provides these. Exact Origin packaging not documented. ([Graphite][7])                                                       |
 | Enterprise controls, SLAs, data residency, migration |                      Unknown | Public details remain thin. ([Learn Cursor][5])                                                                                       |
 
 ---
@@ -207,7 +207,7 @@ The core product bet is not merely “faster Git.” It is **automated change ma
 
 Origin will be unusually sensitive because a Git forge stores source code, review history, CI metadata, secrets-adjacent context, and potentially agent traces. Cursor’s general security page says it has a SOC 2 Type II attestation available on request, commits to at-least-annual third-party penetration testing, publishes subprocessors through its trust portal, and grants infrastructure access by least privilege with MFA and monitoring. ([Cursor][11])
 
-Cursor’s general data-use page says that with **Privacy Mode** enabled, customer data is not used for Cursor training, Cursor maintains zero-data-retention agreements with providers, and model providers do not store or train on the data; with Privacy Mode off, Cursor may use/store codebase data, prompts, editor actions, snippets, and other code/actions to improve AI features and train models. ([Cursor][12])
+Cursor’s general data-use page says that with **Privacy Mode** enabled, customer data is not used for Cursor training, Cursor maintains zero-data-retention agreements with providers, and model providers do not store or train on the data. With Privacy Mode off, Cursor may use/store codebase data, prompts, editor actions, snippets, and other code/actions to improve AI features and train models. ([Cursor][12])
 
 However, **Origin-specific** security and data terms are not yet public. Before storing production source code there, an enterprise should validate at least: SSO/SAML/SCIM, RBAC, repo-level and branch-level permissions, audit logs, signed commits, deploy keys, secret scanning, data residency, retention/deletion, backups, export/mirroring, model-training exclusions, subprocessor scope, incident response, and SLA.
 
@@ -215,7 +215,7 @@ However, **Origin-specific** security and data terms are not yet public. Before 
 
 ## 7. Strategic read
 
-Origin is Cursor moving from **“where code is written”** to **“where code lives, gets reviewed, and gets merged.”** The Graphite acquisition gave Cursor a mature review/workflow layer; Origin adds the hosting/storage layer underneath it. Cursor’s own acquisition post framed the bottleneck as review, merge safety, and collaboration, not typing speed. ([Cursor][4])
+Origin is Cursor moving from **“where code is written”** to **“where code lives, gets reviewed, and gets merged.”** The Graphite acquisition gave Cursor a mature review/workflow layer. Origin adds the hosting/storage layer underneath it. Cursor’s own acquisition post framed the bottleneck as review, merge safety, and collaboration, not typing speed. ([Cursor][4])
 
 The bet is that AI coding makes generation cheap but makes coordination expensive. If one engineer can launch many agents, then the bottleneck becomes: Which changes are safe? Which PRs are blocked? Which CI failures are real? Which conflicts can be auto-resolved? Which changes require human review? Origin is designed to be that coordination plane.
 
@@ -243,7 +243,7 @@ The biggest unresolved questions are not whether Origin can host Git repositorie
 
 Origin is best understood as **Cursor’s agent-native GitHub competitor**, but the “GitHub competitor” framing understates the point. It is a forge designed for a future where AI agents are high-volume contributors and humans supervise, approve, and intervene only when necessary. Confirmed features include code storage, Git hosting, review/collaboration, waitlist access, and fall availability. Stage-demo claims add repo creation, parallel agent workloads, conflict resolution, CI-failure fixing, comment handling, API/MCP extensibility, and PR next-step automation. Reported architecture points to NVMe-backed Git serving with S3/object storage underneath and global replicas for scale.
 
-For now, treat it as **promising infrastructure in private/limited rollout**, not a fully specified production replacement for GitHub/GitLab. The architecture is ambitious; the adoption decision will depend on the still-unpublished details around security, governance, migration, API semantics, and whether AI-resolved code changes are trustworthy enough for your production repos.
+For now, treat it as **promising infrastructure in private/limited rollout**, not a fully specified production replacement for GitHub/GitLab. The architecture is ambitious. The adoption decision will depend on the still-unpublished details around security, governance, migration, API semantics, and whether AI-resolved code changes are trustworthy enough for your production repos.
 
 [1]: https://cursor.com/origin "Cursor · Origin"
 [2]: https://x.com/cursor_ai/status/2067012220832329782?utm_source=chatgpt.com "Cursor · Origin"

@@ -1,7 +1,7 @@
 # Tassadar WASD + Mouselook Controller Plan
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -32,7 +32,7 @@ proper 3D MMO world.
   `data-pointer-lock`.
 - `openagents#5220` verification: local browser smoke confirmed `/tassadar`
   enters pointer lock, supports WASD movement, and releases with Escape. The
-  smoke also found the camera-facing label bug above; the app now pins the
+  smoke also found the camera-facing label bug above. The app now pins the
   fixed `three-effect` commit. A follow-up local browser smoke loaded the route
   with the live public summary stubbed into the local app, confirmed the
   `Enter run` control and training scene host render, dispatched a settlement
@@ -92,10 +92,10 @@ proper 3D MMO world.
 
 The underlying `trainingRunView` currently renders with an orthographic camera:
 
-- camera: `OrthographicCamera(-5, 5, 3, -3, 0.1, 100)`;
-- camera position: `(0, 0, 10)`;
-- scene layout: mostly XY coordinates with shallow Z layering;
-- interaction: raycast against circle hit targets from pointer coordinates;
+- camera: `OrthographicCamera(-5, 5, 3, -3, 0.1, 100)`.
+- camera position: `(0, 0, 10)`.
+- scene layout: mostly XY coordinates with shallow Z layering.
+- interaction: raycast against circle hit targets from pointer coordinates.
 - motion: mostly decorative pulses/lines from the existing visualization.
 
 That means the current scene is 3D technically, but experienced as a 2D diagram.
@@ -115,18 +115,18 @@ Drei splits the problem into reusable controls:
 
 The important parts to port are not React-specific. The useful primitives are:
 
-- selector-based "click to play" locking;
-- lock/unlock callbacks;
-- event cleanup on unmount;
-- centered raycasting while pointer lock is active;
-- named key state instead of ad hoc keydown logic;
+- selector-based "click to play" locking.
+- lock/unlock callbacks.
+- event cleanup on unmount.
+- centered raycasting while pointer lock is active.
+- named key state instead of ad hoc keydown logic.
 - frame-loop update with `delta` seconds.
 
 ### React Three Fiber
 
 R3F reinforces two implementation rules:
 
-- per-frame controller work should be tiny and avoid reactive state writes;
+- per-frame controller work should be tiny and avoid reactive state writes.
 - pointer/raycast event computation needs to be explicit when the camera moves
   or pointer lock changes how the cursor is interpreted.
 
@@ -139,11 +139,11 @@ coordinates.
 
 The sample MMORPG uses:
 
-- a dedicated input component with `forward/backward/left/right/shift` keys;
-- velocity, acceleration, and deceleration rather than direct position jumps;
-- movement relative to the controlled object's quaternion;
-- terrain height sampling;
-- collision checks against nearby entities;
+- a dedicated input component with `forward/backward/left/right/shift` keys.
+- velocity, acceleration, and deceleration rather than direct position jumps.
+- movement relative to the controlled object's quaternion.
+- terrain height sampling.
+- collision checks against nearby entities.
 - a camera component that lerps toward an ideal offset/look-at.
 
 For OpenAgents, do not copy that code directly. The useful pattern is the
@@ -196,17 +196,17 @@ export type WasdMouseLookControllerHandle = Readonly<{
 
 Implementation shape:
 
-- use the existing `createPointerLockControls` primitive for mouse-look;
+- use the existing `createPointerLockControls` primitive for mouse-look.
 - keep a named key map internally: `forward`, `backward`, `left`, `right`,
-  `sprint`, `rise`, `fall` for future fly/ghost mode;
+  `sprint`, `rise`, `fall` for future fly/ghost mode.
 - listen to `event.code` (`KeyW`, `KeyA`, `KeyS`, `KeyD`, `ShiftLeft`,
-  `ShiftRight`, `Space`, `KeyC`);
+  `ShiftRight`, `Space`, `KeyC`).
 - ignore keydown/keyup when the target is an input, textarea, select, or
-  contenteditable element;
-- compute movement from the camera yaw projected onto the XZ plane;
-- keep Y fixed at `groundHeightAt(x, z) + eyeHeight` for P0;
-- clamp to bounds;
-- apply acceleration/damping so movement feels like a controller, not a cursor;
+  contenteditable element.
+- compute movement from the camera yaw projected onto the XZ plane.
+- keep Y fixed at `groundHeightAt(x, z) + eyeHeight` for P0.
+- clamp to bounds.
+- apply acceleration/damping so movement feels like a controller, not a cursor.
 - clean up all DOM listeners and pointer-lock listeners in `dispose`.
 
 This belongs in `three-effect` because every future game/HUD surface will need
@@ -225,7 +225,7 @@ walkController?: WasdMouseLookControllerOptions
 
 Default stays exactly as today:
 
-- `cameraMode: "orthographic_map"`;
+- `cameraMode: "orthographic_map"`.
 - `controller: "none"`.
 
 For `perspective_walk`, `trainingRunView` should:
@@ -264,9 +264,9 @@ run.visualization = {
 
 The wrapper should add a small overlay button:
 
-- label: `Enter run`;
-- attribute: `data-tassadar-enter-world`;
-- hidden or dimmed once locked;
+- label: `Enter run`.
+- attribute: `data-tassadar-enter-world`.
+- hidden or dimmed once locked.
 - helper text: `WASD move / mouse look / Esc release`.
 
 The overlay must not become another dashboard. It is a pointer-lock affordance
@@ -281,9 +281,9 @@ When pointer lock is inactive:
 
 When pointer lock is active:
 
-- raycast from the center of the screen;
-- show a subtle center reticle;
-- click selects the entity under the reticle;
+- raycast from the center of the screen.
+- show a subtle center reticle.
+- click selects the entity under the reticle.
 - never make hovering or looking at a thing imply work is happening.
 
 Selection still routes through `node-selected` and the existing proof-link logic.
@@ -292,56 +292,56 @@ Selection still routes through `node-selected` and the existing proof-link logic
 
 P0 should be deliberately 2.5D:
 
-- camera can walk/fly around;
-- nodes are placed on a ground plane;
-- rings, labels, and proof objects gain depth;
-- no physics engine;
-- no avatar mesh;
-- no multiplayer presence yet;
+- camera can walk/fly around.
+- nodes are placed on a ground plane.
+- rings, labels, and proof objects gain depth.
+- no physics engine.
+- no avatar mesh.
+- no multiplayer presence yet.
 - no invented motion.
 
 P1 can add:
 
-- collision bounds around large entities;
-- a nav floor/terrain height callback;
-- inspectable 3D proof portals;
-- optional third-person camera/ghost avatar;
+- collision bounds around large entities.
+- a nav floor/terrain height callback.
+- inspectable 3D proof portals.
+- optional third-person camera/ghost avatar.
 - camera presets: map view, walk view, selected-entity focus.
 
 P2 can add:
 
-- SpacetimeDB-backed player presence;
-- multiplayer operator ghosts;
-- region streaming;
-- persisted user location;
+- SpacetimeDB-backed player presence.
+- multiplayer operator ghosts.
+- region streaming.
+- persisted user location.
 - proper avatar/controller animation if the MMO client needs it.
 
 ## Testing Plan
 
 `three-effect`:
 
-- unit-test key-state transitions and input cleanup;
-- unit-test movement vector math for yaw-relative WASD;
-- unit-test bounds clamping;
+- unit-test key-state transitions and input cleanup.
+- unit-test movement vector math for yaw-relative WASD.
+- unit-test bounds clamping.
 - add a small mount/dispose test for pointer-lock controller construction where
   browser APIs can be stubbed.
 
 `openagents.com`:
 
 - test that `/tassadar` passes `cameraMode: "perspective_walk"` and
-  `controller: "wasd_mouselook"` into the custom element;
-- test that the enter-world overlay renders;
+  `controller: "wasd_mouselook"` into the custom element.
+- test that the enter-world overlay renders.
 - preserve existing tests for loading/error/selection/proof-link behavior.
 
 Browser smoke:
 
-- done: run `/tassadar` locally;
-- done: click `Enter run`;
-- done: verify pointer lock enters;
-- done: move with W/A/S/D;
-- done: verify Esc unlocks;
-- follow-up fixed: text labels over entity nodes did not face the camera;
-- done: verify proof selection still works after the label-fix pin;
+- done: run `/tassadar` locally.
+- done: click `Enter run`.
+- done: verify pointer lock enters.
+- done: move with W/A/S/D.
+- done: verify Esc unlocks.
+- follow-up fixed: text labels over entity nodes did not face the camera.
+- done: verify proof selection still works after the label-fix pin.
 - done: verify no fake flow or unbacked motion was added.
 
 ## Implementation Order

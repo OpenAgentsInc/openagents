@@ -50,10 +50,10 @@ Evidence refs are refs, not payloads. They can point to public-safe receipts,
 deployments, Site URLs, proof bundles, or settlement records, but they cannot
 contain:
 
-- email addresses or customer private data;
-- provider account/grant/payload/token refs;
-- raw runner payloads, prompts, logs, or source archives;
-- raw invoices, payment hashes, preimages, wallet state, or private keys;
+- email addresses or customer private data.
+- provider account/grant/payload/token refs.
+- raw runner payloads, prompts, logs, or source archives.
+- raw invoices, payment hashes, preimages, wallet state, or private keys.
 - bearer tokens, OAuth material, cookies, or secret-shaped values.
 
 Unsafe evidence refs fail closed with `PublicClaimCopyUnsafe`.
@@ -63,9 +63,9 @@ Unsafe evidence refs fail closed with `PublicClaimCopyUnsafe`.
 Regression coverage lives in `workers/api/src/public-claim-state.test.ts` and
 covers:
 
-- planned claims without evidence;
-- lowering verified claims when evidence is missing;
-- verified and settled evidence requirements;
-- blocked and prohibited terminal states;
-- copy-rule contracts;
+- planned claims without evidence.
+- lowering verified claims when evidence is missing.
+- verified and settled evidence requirements.
+- blocked and prohibited terminal states.
+- copy-rule contracts.
 - unsafe copy and evidence-ref rejection.

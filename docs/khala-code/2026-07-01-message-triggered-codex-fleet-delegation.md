@@ -52,7 +52,7 @@ KHALA_CODE_DESKTOP_FLEET_MCP_BRIDGE=0
 
 The server intentionally exposes only the Fleet/Pylon supplemental tools. It
 does not expose filesystem, shell, patch, browser, or other Codex-equivalent
-Khala tools; those remain owned by Codex app-server on the default path.
+Khala tools. Those remain owned by Codex app-server on the default path.
 
 ## Authority Boundary
 

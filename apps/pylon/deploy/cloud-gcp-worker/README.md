@@ -42,14 +42,14 @@ run-scoped values onto each ephemeral VM at `instances create` time (mirroring
 the session-scoped SSH-metadata pattern `gce_capacity.rs` already uses for SSH,
 and cleaning them up at teardown) is a separate, not-yet-done integration
 step** — this script only defines the contract it expects on the VM side. Do
-not widen this to a long-lived, broadly-scoped credential; each value should
+not widen this to a long-lived, broadly-scoped credential. Each value should
 be minted per-session and revoked/discarded with the VM at teardown.
 
 ## Local dry-run of the pure helpers
 
 `metadata_attr`/`require_metadata` fall back to an env var named after the
 metadata key (dashes replaced with underscores, upper-cased) when not running
-on a real GCE instance, so they're testable without a metadata server — see
+on a real GCE instance, so they are testable without a metadata server — see
 `apps/pylon/tests/cloud-gcp-worker-bootstrap.test.ts`.
 
 ## Still gated

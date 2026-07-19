@@ -12,8 +12,8 @@ kind proves five capabilities:
   settlement invariants.
 - **(c) capacity/readiness probe** — typed readiness + non-negative capacity
   refs.
-- **(d) metering honesty** — exact token fields when present; the
-  `not_measured` sentinel otherwise; **never synthesized/invented tokens**.
+- **(d) metering honesty** — exact token fields when present. The
+  `not_measured` sentinel otherwise. **Never synthesized/invented tokens**.
 - **(e) typed failure classes** — including `account_exhausted`,
   `account_rate_limited`, and `account_quota_exhausted` (never a generic error).
 
@@ -36,7 +36,7 @@ failures).
    `satisfies Record<AgentDefinitionHarnessKind, …>` and the registry is
    `satisfies Record<CodingWorkerHarnessKind, …>`, so a new enum literal breaks
    `typecheck` until it is both classified and registered.
-2. **Run-time.** Proven kinds run the full five-capability suite (green);
+2. **Run-time.** Proven kinds run the full five-capability suite (green).
    pending kinds emit `test.todo` (visible red) and are checked against a
    known-pending allowlist, so an _unexpected_ pending coding kind fails the
    coverage gate.

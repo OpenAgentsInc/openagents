@@ -7,7 +7,7 @@
 > but is an **agent network underneath**, routing across a pool of models, tools,
 > validators, and (eventually) Pylon edge-compute workers — with work **verified, not
 > trusted**, settled **natively in Bitcoin**, and watchable in the Verse. (The older
-> `khala-*` websocket *sync/replay engine* is deprecated/superseded; ignore those labels.)
+> `khala-*` websocket *sync/replay engine* is deprecated/superseded. Ignore those labels.)
 
 ## Scope: what's actually open
 
@@ -17,12 +17,12 @@ part of this audit.
 
 | # | Issue | Kind | One-line state |
 |---|---|---|---|
-| #6017 | EPIC: Khala buildout to the head-to-head | umbrella tracker | M0–M6 landed (mostly inert/owner-gated); **M7 + M8 are the real remaining build** |
-| #6016 | M8: the head-to-head demo (north-star) | milestone | scaffolds + self-gating audit done; blocked on a **live** verified+paid+watchable run |
-| #6015 | M7: Conductor lane | milestone | readiness preflight landed; needs a **real trained NL-planner composition** (long pole) |
-| #6049 | EPIC: Khala on Machine Payments (MPP) + Stripe Directory | umbrella | discovery live; crypto+card **armed on prod**; Lightning rail + directory listing + e2e paid fetch remain |
+| #6017 | EPIC: Khala buildout to the head-to-head | umbrella tracker | M0–M6 landed (mostly inert/owner-gated). **M7 + M8 are the real remaining build** |
+| #6016 | M8: the head-to-head demo (north-star) | milestone | scaffolds + self-gating audit done. Blocked on a **live** verified+paid+watchable run |
+| #6015 | M7: Conductor lane | milestone | readiness preflight landed. Needs a **real trained NL-planner composition** (long pole) |
+| #6049 | EPIC: Khala on Machine Payments (MPP) + Stripe Directory | umbrella | discovery live. Crypto+card **armed on prod**. Lightning rail + directory listing + e2e paid fetch remain |
 
-Two are umbrella epics (#6017, #6049); two are concrete milestones (#6015 M7, #6016 M8).
+Two are umbrella epics (#6017, #6049). Two are concrete milestones (#6015 M7, #6016 M8).
 **#6015/#6016 are children of #6017** — closing them (plus the live gates on M0–M6) closes #6017.
 
 ---
@@ -39,12 +39,12 @@ crossy-road game"* head-to-head. Source of record:
 | M | Issue | State | What remains |
 |---|---|---|---|
 | M0 serve metered + receipt | #6008 | code landed (priced catalog alias + `openagents` disclosure block) | live SDK proof is **owner-gated** (enable a funded account) |
-| M1 Autopilot → Khala | #6009 | landed (call path + receipt projection + RPC + smoke, PR #6021) | live proof keyed on M0 enable; optional chat-pane button binding |
-| M2 verified coding outcomes | #6010 | **CLOSED** — `khala-code` + crossy-road rubric + Playwright headless verifier; on prod returns `verified:true`/`reward:1` in ~106s | — (the verification harness exists + works) |
+| M1 Autopilot → Khala | #6009 | landed (call path + receipt projection + RPC + smoke, PR #6021) | live proof keyed on M0 enable. Optional chat-pane button binding |
+| M2 verified coding outcomes | #6010 | **CLOSED** — `khala-code` + crossy-road rubric + Playwright headless verifier. On prod returns `verified:true`/`reward:1` in ~106s | — (the verification harness exists + works) |
 | M3 Bitcoin settlement | #6011 | landed **dormant** (Spark verified-work settlement leg reusing the Tassadar gate, PR #6023) | **arming is NEEDS-OWNER** (funded payout to the guinea-pig Pylon) |
-| M4 Pylon workers in pool | #6012 | landed **inert** (parity-gated fabric supply adapter, PR #6022; no transport bound → lane skipped) | activate (one line) once a **Psionic serving transport** exists |
+| M4 Pylon workers in pool | #6012 | landed **inert** (parity-gated fabric supply adapter, PR #6022, no transport bound → lane skipped) | activate (one line) once a **Psionic serving transport** exists |
 | M5 Verse serving view | #6013 | in progress (world-contract gateway projection + desktop Verse projection landed) | the new render primitives (crackling energy → Pylons, settlement beams) + live events |
-| M6 learned coordinator (TRINITY) | #6014 | **CLOSED** — P1 `forward_with_hidden` + P2 `CoordinatorHead` (psionic#1133) + the M6 buy-mode shadow run landed | (was the long pole; shadow A/B is done) |
+| M6 learned coordinator (TRINITY) | #6014 | **CLOSED** — P1 `forward_with_hidden` + P2 `CoordinatorHead` (psionic#1133) + the M6 buy-mode shadow run landed | (was the long pole, shadow A/B is done) |
 | M7 Conductor lane | #6015 | **OPEN** — see below | real trained NL-planner composition |
 | M8 head-to-head demo | #6016 | **OPEN** — see below | a live verified+paid+watchable manifest |
 
@@ -82,19 +82,19 @@ across the pool (plan → implement → verify → refine) — the composition t
   Psionic `ConductorReadiness` close gates and **separates `canStartConductorTraining`
   from `canPublishM7Claim`** — i.e. an owner-capped training run can be *start-ready*
   before the public M7 claim can go green.
-- **Substrate:** M6 (P1 hidden-state + P2 `CoordinatorHead`) is landed; the M6 shadow
+- **Substrate:** M6 (P1 hidden-state + P2 `CoordinatorHead`) is landed. The M6 shadow
   A/B run is done. P3–P5 (sep-CMA-ES, reward adapter, pool binding) were honest stubs
   as of the last status — confirm their current state in Psionic before training.
 
 ### What's necessary to complete M7 (the long pole)
 1. **Train the Conductor NL planner (GRPO).** Emit subtasks + worker ids + access-list
-   topology; adopt the TMAX stability recipe (**DPPO + FP32 LM head**, filter zero-std
+   topology. Adopt the TMAX stability recipe (**DPPO + FP32 LM head**, filter zero-std
    samples). Per `docs/sakana/conductor.md` + `docs/research/tmax/synthesis.md` §5.
    → **GPU compute + owner-armed training run** (the gating cost).
 2. **Compose the benchmark:** plan (frontier via gateway) → implement (best coding
    worker) → verify (M2 rubric/replay) → refine, and **win** — solve crossy-road by
    composition at comparable quality, lower cost than single-model.
-3. **Pool:** add open Pylons and (where applicable) verified Tassadar modules; expose
+3. **Pool:** add open Pylons and (where applicable) verified Tassadar modules. Expose
    `openagents/khala`.
 4. **Verse:** the multi-worker fan-out view (compose-across-the-map).
 5. **Publication evidence:** a publishable **M7 Conductor preflight** ref
@@ -102,7 +102,7 @@ across the pool (plan → implement → verify → refine) — the composition t
 
 **Done when** `openagents/khala` solves crossy-road by composition, beating single-model
 cost at comparable quality, verified by the M2 rubric. **Blockers:** GPU compute +
-owner-armed training; Psionic P3–P5 finished; not closeable as a docs/code-only slice.
+owner-armed training. Psionic P3–P5 finished. Not closeable as a docs/code-only slice.
 
 ---
 
@@ -116,7 +116,7 @@ The whole *measurement + closure* harness is built and merged:
 - Evidence schema + runbook (`docs/inference/khala-head-to-head-demo.md`).
 - Metric reducer + closure audit (`scripts/khala-demo/reduce-head-to-head.mjs`) and
   publication renderer (`render-publication.mjs`), with focused tests.
-- A `livePromotionAudit` that derives `closureAudit.canClose` from real checks; it
+- A `livePromotionAudit` that derives `closureAudit.canClose` from real checks. It
   **stays `canClose:false`** until a live manifest satisfies every check (including a
   publishable **M7 conductor preflight** ref, added in `dd5cdfdeb1`).
 - Unblocked already: `khala-code` streams a full crossy-road game on prod in ~106s and
@@ -156,17 +156,17 @@ primitives**, not on new measurement code.
 > smokes, and replay caches were removed/deferred on current main. Future
 > no-account machine payments need a fresh owner-approved, receipt-first design.
 
-**Decisions (owner):** accept MPP; **USDC + card settle into the Stripe balance**;
-**Bitcoin/Spark stays the contributor-payout rail**; do both discovery **and** payments.
+**Decisions (owner):** accept MPP. **USDC + card settle into the Stripe balance**.
+**Bitcoin/Spark stays the contributor-payout rail**. Do both discovery **and** payments.
 Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`.
 
 ### Phase state
 | Phase | State |
 |---|---|
-| **0 — Stripe profile** (owner/dashboard) | ✅ **approved** on the live account ("OpenAgents, Inc."); the directory `profile_…` id is wired into the Worker as a public `var` (`STRIPE_MPP_NETWORK_PROFILE_ID`, PR #6131) |
-| **1 — discovery surfaces** | ✅ **live + crawler-readable**: `/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md` return proper `text/plain`/`text/markdown` (PR #6051/#6060); `/v1/models` lists the virtual models; `/openapi.json` service-discovery doc with `x-payment-info` offers served (PR #6139) |
-| **2 — paid MPP endpoint** | 🟡 **crypto (Tempo/Base/Solana USDC) + card/SPT ARMED on prod**: `POST /mpp/v1/chat/completions` → `402` + deposit address (~2.6s); Worker-native Payment-Auth verify (`draft-httpauth-payment-00`, PR #6138); full crypto pay-loop **proven on staging** (402 → `simulate_crypto_deposit` → 200 + `Payment-Receipt` + `mpp:<pi>` credit, PR #6141). **Lightning rail still not surfacing — see below.** |
-| **3 — unify with the loop** | partially: settled USDC/card mint USD-origin credits; the Lightning rail mints **Bitcoin-origin** `balance_msat` credits (RL-3) |
+| **0 — Stripe profile** (owner/dashboard) | ✅ **approved** on the live account ("OpenAgents, Inc."). The directory `profile_…` id is wired into the Worker as a public `var` (`STRIPE_MPP_NETWORK_PROFILE_ID`, PR #6131) |
+| **1 — discovery surfaces** | ✅ **live + crawler-readable**: `/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md` return proper `text/plain`/`text/markdown` (PR #6051/#6060). `/v1/models` lists the virtual models. `/openapi.json` service-discovery doc with `x-payment-info` offers served (PR #6139) |
+| **2 — paid MPP endpoint** | 🟡 **crypto (Tempo/Base/Solana USDC) + card/SPT ARMED on prod**: `POST /mpp/v1/chat/completions` → `402` + deposit address (~2.6s). Worker-native Payment-Auth verify (`draft-httpauth-payment-00`, PR #6138). Full crypto pay-loop **proven on staging** (402 → `simulate_crypto_deposit` → 200 + `Payment-Receipt` + `mpp:<pi>` credit, PR #6141). **Lightning rail still not surfacing — see below.** |
+| **3 — unify with the loop** | partially: settled USDC/card mint USD-origin credits. The Lightning rail mints **Bitcoin-origin** `balance_msat` credits (RL-3) |
 | **4 — other primitives** (fine-tune, sandboxes…) | not started (deliberately) |
 
 ### Remaining blockers to close #6049
@@ -177,21 +177,21 @@ Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`.
    advertises offers, but the **directory crawl/badge is pending** — confirm Khala
    actually appears in directory search (owner/Stripe-side crawl timing).
 2. **Lightning rail (Spark-primary) is not live.** It has been hardened repeatedly
-   (per-rail isolation + bounded mint so it can never hang the 402 — PR #6149; Spark as
-   primary issuer via the `MDK_TREASURY` container with MDK fallback — PR #6152; raised
+   (per-rail isolation + bounded mint so it can never hang the 402 — PR #6149, Spark as
+   primary issuer via the `MDK_TREASURY` container with MDK fallback — PR #6152. Raised
    mint budgets — #6153/#6157) but prod `wrangler tail` shows the 402 **still leads with
    `[base, stripe]`, never Lightning**: the Spark `/spark/funding-invoice` container
    subrequest returns 200 (mint succeeds ~3.7–5.7s) yet the leg drops as
    `provider_unavailable`, and the paired MDK fallback subrequest comes back
    `canceled` (one hit a `/api/mdk/api/mdk` 404 double-path). Latest hardening
-   `9f8089e218` (Spark payload parsing accepts raw SDK shapes; MDK route normalized to
+   `9f8089e218` (Spark payload parsing accepts raw SDK shapes, MDK route normalized to
    `/api/mdk`). **Still needs:** confirm the Spark mint result actually parses to a
    `paymentHash` in the Worker (so it stops fail-closing into the canceled fallback),
    and/or a **pre-minted Spark invoice pool** to remove the cold-container latency from
    the 402 path entirely.
-3. **End-to-end paid fetch.** No `mppx` client is installed; the done-condition needs a
+3. **End-to-end paid fetch.** No `mppx` client is installed. The done-condition needs a
    real `mppx fetch` (or equivalent paid client) that pays a live offer and gets a
-   completion back. The crypto loop is proven on **staging**; a **prod** paid completion
+   completion back. The crypto loop is proven on **staging**. A **prod** paid completion
    (ideally over Lightning, owner's Bitcoin-first preference) is the final proof.
 
 Note: **MPP is optional for the non-MPP launch path** — the endpoint is fail-safe inert
@@ -207,10 +207,10 @@ Note: **MPP is optional for the non-MPP launch path** — the endpoint is fail-s
 | M3 settlement arming | **owner** | arm funded payout to the guinea-pig Pylon (NEEDS_OWNER) |
 | M4 Pylon-in-pool activation | **dependency** | a Psionic serving transport exists → flip the inert adapter |
 | M5 render primitives + live events | **codeable** | build crackling-energy/settlement-beam primitives + wire live serve events |
-| **M7 Conductor training** | **compute + owner** | GPU + owner-armed GRPO run; finish Psionic P3–P5 |
+| **M7 Conductor training** | **compute + owner** | GPU + owner-armed GRPO run. Finish Psionic P3–P5 |
 | M8 live manifest | **dependency** | needs M3 armed + M5 playback + M7 live + a real frontier run, then publish |
 | MPP directory listing | **owner / Stripe** | confirm the directory crawl lights the badge |
-| MPP Lightning rail | **codeable** | fix the Spark `paymentHash` parse / MDK fallback cancel; consider a pre-minted invoice pool |
+| MPP Lightning rail | **codeable** | fix the Spark `paymentHash` parse / MDK fallback cancel. Consider a pre-minted invoice pool |
 | MPP e2e paid fetch | **codeable + owner** | install/run a paid client against armed prod (Bitcoin-first) |
 
 ## The shortest path to zero open issues
@@ -226,7 +226,7 @@ Note: **MPP is optional for the non-MPP launch path** — the endpoint is fail-s
    `canClose:true`.
 4. **#6017** closes when M7 + M8 close and the owner-gated M0/M3 legs have live evidence.
 
-**Net:** one issue (#6049) is mostly an engineering finish + an owner/Stripe confirmation;
+**Net:** one issue (#6049) is mostly an engineering finish + an owner/Stripe confirmation.
 the other three collapse onto a single dependency — **an owner-armed, GPU-backed Conductor
 (M7) training run that wins the benchmark by composition** — after which the north-star
 demo (M8) and the epic (#6017) follow.

@@ -8,10 +8,10 @@ Scope: #5097, Epic D / customer #1 dogfood.
 The `/forge` factory dashboard now has a first-party dogfood status strip for
 the OpenAgents development pipeline:
 
-- open work is derived from the loaded Runs projection;
-- accepted outcomes are derived from accepted Run states;
-- incidents are derived from blocked, rejected, and invalid Run states;
-- eligible nodes are derived from the provider-account pool summary;
+- open work is derived from the loaded Runs projection.
+- accepted outcomes are derived from accepted Run states.
+- incidents are derived from blocked, rejected, and invalid Run states.
+- eligible nodes are derived from the provider-account pool summary.
 - the strip marks itself `live` only when both Runs and provider-pool capacity
   are loaded.
 

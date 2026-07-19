@@ -14,10 +14,10 @@ but that is not send-readiness evidence.
 Pylon now exposes a send-readiness preflight in `pylon wallet status`. The
 preflight classifies the wallet as send-ready only when all of these are true:
 
-- MDK reports `send_ready`;
-- the wallet balance is known;
-- outbound capacity is known and positive;
-- the wallet is not a mnemonic-only restore; and
+- MDK reports `send_ready`.
+- the wallet balance is known.
+- outbound capacity is known and positive.
+- the wallet is not a mnemonic-only restore. And
 - `MDK_WALLET_PORT` is explicitly set so the daemon cannot silently cross-talk
   with the default port.
 
@@ -45,14 +45,14 @@ not accepted as send-ready evidence even when balance is positive.
 
 The `sendReadinessPreflight` object reports:
 
-- `mode`: `original-wallet-home`, `mnemonic-only-restore`, or `unknown`;
-- `portConfigured`: whether `MDK_WALLET_PORT` was explicitly set;
+- `mode`: `original-wallet-home`, `mnemonic-only-restore`, or `unknown`.
+- `portConfigured`: whether `MDK_WALLET_PORT` was explicitly set.
 - `portIsolationRef`: `mdk.port.configured` or
-  `mdk.port.default_possible_crosstalk`;
-- `balanceKnown`;
-- `outboundCapacityKnown`;
-- `outboundCapacityPositive`;
-- `sendReady`; and
+  `mdk.port.default_possible_crosstalk`.
+- `balanceKnown`.
+- `outboundCapacityKnown`.
+- `outboundCapacityPositive`.
+- `sendReady`. And
 - `blockerRefs`.
 
 Relevant blocker refs:

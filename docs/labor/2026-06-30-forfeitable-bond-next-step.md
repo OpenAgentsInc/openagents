@@ -1,7 +1,7 @@
 # Next Step: Forfeitable Provider Bonds for Agent-to-Agent Labor
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -19,19 +19,19 @@ owned NIPs before any code lands.
 We already have two working agent-to-agent (A2A) payment paths:
 
 - **NIP-90 / LBR labor market over Nostr** — ref-only negotiation, sats move
-  out-of-band. Protocol in `nostr-effect/src/core/Nip90.ts`; OpenAgents wrapper
-  in `packages/nip90/src/lbr.ts` and `lbr-closeout.ts`; provider invoice mint in
-  `apps/pylon/src/provider-nip90.ts`; buyer dispatch in
+  out-of-band. Protocol in `nostr-effect/src/core/Nip90.ts`. OpenAgents wrapper
+  in `packages/nip90/src/lbr.ts` and `lbr-closeout.ts`. Provider invoice mint in
+  `apps/pylon/src/provider-nip90.ts`. Buyer dispatch in
   `apps/openagents.com/workers/api/src/buy-mode-dispatcher.ts`.
 - **L402 / MPP HTTP-402 paywall** — an agent pays for Khala inference
   (`apps/openagents.com/workers/api/src/inference/mpp/*`).
 
 Sats actually move on **Spark (primary, offline receive)** and **MDK
-(checkouts/treasury + Lightning fallback)**; BOLT12 is a payout-target kind only.
+(checkouts/treasury + Lightning fallback)**. BOLT12 is a payout-target kind only.
 
 The labor-market escrow lifecycle is built and proven on a no-spend credit
 ledger: **reserve → release → refund** (`apps/openagents.com/INVARIANTS.md`,
-"Labor Escrow Credit Ledger"; `apps/pylon/src/labor-market.ts`). 1-sat jobs have
+"Labor Escrow Credit Ledger". `apps/pylon/src/labor-market.ts`). 1-sat jobs have
 settled end-to-end on the ledger (P6/P7).
 
 **The one axis the design genuinely lacks is forfeitability.** Today escrow can
@@ -49,7 +49,7 @@ There is no escrow/forfeit logic behind it.
 
 - **Lightning hold-invoice forfeiture is blocked on rail support.** Real
   HODL/hold-invoice forfeit paths exist only in read-only reference code
-  (`projects/ldk/repos/rust-lightning` manual `claim_funds`/`fail_htlc_backwards`;
+  (`projects/ldk/repos/rust-lightning` manual `claim_funds`/`fail_htlc_backwards`,
   `projects/mutiny/repos/fedimint` `forfeit_message()`/`verify_forfeit_signature()`).
   Whether Spark/MDK expose hold invoices is unverified. `mutiny-node` only
   *detects/avoids* hold invoices.
@@ -77,14 +77,14 @@ two owned NIPs in direct contradiction.
 | **Agent Credit (AC.md)** | buyer-side credit / spending limits | reputation decay + limit reduction, **never slashed** | a requester's standing and ability to commission work |
 | **LBR Provider Bond (this doc)** | provider-side performance stake, posted voluntarily to win a job | **forfeitable** on validator-confirmed non-performance | a provider's skin-in-the-game for a specific accepted job |
 
-A provider *opts in* by posting a bond to make its quote more credible; it is not
+A provider *opts in* by posting a bond to make its quote more credible. It is not
 a tax on credit. AC's reputation-only model is untouched. This scoping is the
 load-bearing reason the bond is safe to add.
 
 ## What to build (the bounded unit)
 
-Build all four parts as one coherent step. Parts 1–2 are the core; 3 keeps it
-future-proof; 4 makes a posted bond actually reachable.
+Build all four parts as one coherent step. Parts 1–2 are the core. 3 Keeps it
+future-proof. 4 Makes a posted bond actually reachable.
 
 ### 1. Typed contract — `packages/nip90/src/lbr-bond.ts`
 
@@ -124,8 +124,8 @@ Extend the worker escrow lifecycle behind `apps/openagents.com/INVARIANTS.md`
 - `forfeit` moves the held `bond` `held_msat` to the `forfeitDestination`
   (counterparty or a burn sink) instead of back to the payer.
 - **Authority invariants (non-negotiable):** only validator non-acceptance can
-  trigger `forfeit`; the worker can neither self-release nor self-forfeit;
-  transitions are fail-closed and idempotent; the "not settled bitcoin until a
+  trigger `forfeit`. The worker can neither self-release nor self-forfeit.
+  transitions are fail-closed and idempotent. The "not settled bitcoin until a
   payout receipt records settlement evidence" invariant still holds — `forfeit`
   on the credit ledger is *not* an on-chain/Lightning movement.
 
@@ -144,7 +144,7 @@ BondSettlementAdapter {
 Today's only implementation is the credit ledger. Future implementations target
 Spark/MDK Lightning hold invoices, then the Ark forfeit-transaction path from
 `docs/2026-06-09-ark-mdk-agent-payments-audit.md`. The contract and ledger never
-import a rail directly; they speak to this interface, so the rail decision stays
+import a rail directly. They speak to this interface, so the rail decision stays
 deferred and reversible.
 
 ### 4. Couple to the P1 relay → DB offer bridge
@@ -161,22 +161,22 @@ actually ingestible. Without it, the bond is a schema with no path to the ledger
 
 | Phase | Deliverable | Acceptance |
 | --- | --- | --- |
-| FB-1 | `packages/nip90/src/lbr-bond.ts` + tests | **landed 2026-06-30 in package contract**: ref-only round-trip; payment-material rejected at decode; release XOR forfeit; closeout digest binds bond outcome; `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` green |
-| FB-2 | Ledger `forfeit` terminal state + invariants | **landed 2026-06-30 in the Worker credit ledger**: validator-only forfeit; worker/provider/requester cannot self-trigger; fail-closed, idempotent; refund/release after forfeit cannot move balances; counterparty vs burn destination covered; INVARIANTS.md updated with regression coverage |
-| FB-3 | `BondSettlementAdapter` seam + credit-ledger impl | adapter interface; ledger adapter passes; no rail imported; no-spend invariant preserved |
-| FB-4 | Minimal relay→DB quote/offer ingestion (P1) | `recordForumWorkRequestOffer` has a live caller; a relay kind-7000 quote+bond becomes an API offer; existing labor-market tests stay green |
+| FB-1 | `packages/nip90/src/lbr-bond.ts` + tests | **landed 2026-06-30 in package contract**: ref-only round-trip. Payment-material rejected at decode. Release XOR forfeit. Closeout digest binds bond outcome. `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` green |
+| FB-2 | Ledger `forfeit` terminal state + invariants | **landed 2026-06-30 in the Worker credit ledger**: validator-only forfeit. Worker/provider/requester cannot self-trigger. Fail-closed, idempotent. Refund/release after forfeit cannot move balances. Counterparty vs burn destination covered. INVARIANTS.md updated with regression coverage |
+| FB-3 | `BondSettlementAdapter` seam + credit-ledger impl | adapter interface. Ledger adapter passes. No rail imported. No-spend invariant preserved |
+| FB-4 | Minimal relay→DB quote/offer ingestion (P1) | `recordForumWorkRequestOffer` has a live caller. A relay kind-7000 quote+bond becomes an API offer. Existing labor-market tests stay green |
 
 Each phase lands with its package/worker tests **and** `check:deploy` green, and
 updates `apps/openagents.com/INVARIANTS.md` where it touches escrow authority. No
 public copy or promise state changes until a deployed, live-smoke-proven claim
 goes through the normal promise-evidence gate. FB-1 and FB-4 are independent and
-can run in parallel; FB-2 depends on FB-1's contract; FB-3 wraps FB-2.
+can run in parallel. FB-2 depends on FB-1's contract. FB-3 wraps FB-2.
 
 ## Non-goals (for this step)
 
-- No real Lightning hold-invoice creation/forfeiture (blocked on rail support;
+- No real Lightning hold-invoice creation/forfeiture (blocked on rail support,
   reference-only impls exist).
-- No Ark/VTXO forfeit transactions (larger lift; later target).
+- No Ark/VTXO forfeit transactions (larger lift, later target).
 - No change to Agent Credit's reputation-only model (AC.md stays as-is).
 - No on-chain or Lightning settlement of the bond — credit-ledger `forfeit` only,
   behind the adapter seam.
@@ -211,15 +211,15 @@ Read-only reference (study, do not vendor):
 
 | Phase | Status |
 | --- | --- |
-| FB-1 — `lbr-bond.ts` contract + tests | implemented in `packages/nip90/src/lbr-bond.ts`; exported by `packages/nip90/src/index.ts`; closeout digest binding implemented in `packages/nip90/src/lbr-closeout.ts`; verified by `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` |
-| FB-2 — ledger `forfeit` terminal state | implemented in `apps/openagents.com/workers/api/src/labor-escrow.ts`; migration `0261_labor_escrow_forfeit.sql` widens the D1 CHECK state; invariant ledger updated; verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck` |
-| FB-3 — `BondSettlementAdapter` seam | implemented as a Worker credit-ledger adapter in `apps/openagents.com/workers/api/src/labor-escrow.ts`; verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck`; no Spark/MDK/Lightning/Ark rail imported |
+| FB-1 — `lbr-bond.ts` contract + tests | implemented in `packages/nip90/src/lbr-bond.ts`. Exported by `packages/nip90/src/index.ts`. Closeout digest binding implemented in `packages/nip90/src/lbr-closeout.ts`. Verified by `bun run --cwd packages/nip90 test` and `bun run --cwd packages/nip90 typecheck` |
+| FB-2 — ledger `forfeit` terminal state | implemented in `apps/openagents.com/workers/api/src/labor-escrow.ts`. Migration `0261_labor_escrow_forfeit.sql` widens the D1 CHECK state. Invariant ledger updated. Verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck` |
+| FB-3 — `BondSettlementAdapter` seam | implemented as a Worker credit-ledger adapter in `apps/openagents.com/workers/api/src/labor-escrow.ts`. Verified by `bun --cwd apps/openagents.com/workers/api test src/labor-escrow.test.ts src/labor-live-rehearsal.test.ts` and `bun run --cwd apps/openagents.com/workers/api typecheck`. No Spark/MDK/Lightning/Ark rail imported |
 | FB-4 — relay→DB quote/offer bridge (P1) | not started |
 
 Implementation is intended to run through the Khala→Pylon→Codex labor fleet (the
 same no-spend lane this workspace uses), each phase running the package/worker
 verifier before merge. The 2026-06-30 FB-1 pass was implemented directly in the
-owner checkout after confirming Pylon fleet status was online and idle; it adds
+owner checkout after confirming Pylon fleet status was online and idle. It adds
 no ledger state, no rail adapter, and no public promise upgrade.
 
 The 2026-06-30 FB-2 pass is still credit-ledger-only. It adds no Lightning hold

@@ -7,7 +7,7 @@ Status: implemented for `OpenAgentsInc/openagents#515`.
 OpenAgents product surface now has a typed Stage 1 gate for Probe GEPA candidate movement. The gate
 can emit only:
 
-- `shadow`; or
+- `shadow`. Or
 - rejected `benchmark_only`.
 
 It cannot emit `active` or `release_candidate`. Those states require a separate
@@ -20,16 +20,16 @@ The implementation lives in
 
 The gate consumes:
 
-- retained result refs;
-- validation result refs;
-- Psionic candidate-frontier refs;
-- route scorecard refs;
-- proof bundle refs;
-- proof completeness basis points;
-- validation delta basis points;
-- typed policy findings with explicit severity;
-- OpenAgents product surface gate refs;
-- Blueprint gate refs;
+- retained result refs.
+- validation result refs.
+- Psionic candidate-frontier refs.
+- route scorecard refs.
+- proof bundle refs.
+- proof completeness basis points.
+- validation delta basis points.
+- typed policy findings with explicit severity.
+- OpenAgents product surface gate refs.
+- Blueprint gate refs.
 - requested target state.
 
 The gate uses typed policy-finding severity instead of parsing blocker meaning
@@ -39,16 +39,16 @@ from prose. A finding marked `blocking` blocks shadow movement.
 
 The gate returns `shadow` only when all are true:
 
-- requested state is `shadow`;
-- retained refs exist;
-- validation refs exist;
-- Psionic frontier refs exist;
-- route scorecard refs exist;
-- proof bundle refs exist;
-- proof completeness is at least `8000` basis points;
-- validation delta is non-negative;
-- OpenAgents product surface gate refs exist;
-- Blueprint gate refs exist;
+- requested state is `shadow`.
+- retained refs exist.
+- validation refs exist.
+- Psionic frontier refs exist.
+- route scorecard refs exist.
+- proof bundle refs exist.
+- proof completeness is at least `8000` basis points.
+- validation delta is non-negative.
+- OpenAgents product surface gate refs exist.
+- Blueprint gate refs exist.
 - no policy finding has `blocking` severity.
 
 Requests for `active` return rejected `benchmark_only` with
@@ -67,11 +67,11 @@ shadow candidate; validation measured only
 
 The gate does not claim:
 
-- public Terminal-Bench score;
-- active production deployment;
-- release-candidate status;
-- paid customer outcome improvement;
-- payout or settlement;
+- public Terminal-Bench score.
+- active production deployment.
+- release-candidate status.
+- paid customer outcome improvement.
+- payout or settlement.
 - automatic activation.
 
 ## Verification

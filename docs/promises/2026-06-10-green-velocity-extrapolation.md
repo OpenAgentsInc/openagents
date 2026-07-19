@@ -3,7 +3,7 @@
 Date: 2026-06-10 (registry `2026-06-10.9`)
 
 Provenance: **modeled**. The historical numbers below are measured from
-git history and the public transitions feed; every forward-looking date is
+git history and the public transitions feed. Every forward-looking date is
 an extrapolation, not a commitment. Per the registry's own discipline,
 promises transition on receipts and operator action only — a forecast
 line in this document moves nothing. If this document and the registry
@@ -24,21 +24,21 @@ withdrawn. Every state event in that window, from the file's git history:
 | Jun 9 12:12 | `agents.cursor_forum_wallet.v1` | yellow → **green** (register → post → tip-readiness projection) |
 | Jun 9 20:16 | `autopilot.mission_briefing.v1` | red → yellow (briefing route live, #4628) |
 | Jun 9 20:29 | `pylon.no_dark_capacity_accounting.v1` | red → yellow (live capacity funnel, #4629) |
-| Jun 10 04:19 | `pylon.install_without_wallet_knowledge.v1` | red → yellow **proposed**: transition receipt passed all checks; registry flip still pending maintainer action |
+| Jun 10 04:19 | `pylon.install_without_wallet_knowledge.v1` | red → yellow **proposed**: transition receipt passed all checks. Registry flip still pending maintainer action |
 
 **Births, deaths, corrections (board shape, not velocity):** 4 promises
 entered green at birth (already-live claims: homepage JSON, the registry
-itself, the AGENTS sheet, the code map); 22 promises were added across the
-day — 9 of them the training program at `.8`; 3 capacity-resale promises
+itself, the AGENTS sheet, the code map). 22 Promises were added across the
+day — 9 of them the training program at `.8`. 3 Capacity-resale promises
 were removed and replaced by `provider.compliant_usage_labor.v1` in the
-no-resale sweep; 1 rename (`api.hosted_gemini.v1`); 1 claim correction
+no-resale sweep. 1 Rename (`api.hosted_gemini.v1`). 1 Claim correction
 (five-streams labor stream).
 
 **Blocker-level motion (sub-state velocity, from commits and the
 transitions feed):** the orange-check smooth-purchase blocker cleared
-after a clean live rerun (two live $5 purchases total); the funded
-strict-smooth BOLT 12 tip smoke passed against two live recipients; the
-first live no-spend Autopilot Coder run was recorded (#4633); the X-claim
+after a clean live rerun (two live $5 purchases total). The funded
+strict-smooth BOLT 12 tip smoke passed against two live recipients. The
+first live no-spend Autopilot Coder run was recorded (#4633). The X-claim
 reward ledger, capacity funnel, mission-briefing route, and the
 transition-receipt machinery itself all shipped inside the window. The
 transitions feed holds 8 receipts: 1 passed, 4 exceptions (owner-approved
@@ -50,11 +50,11 @@ designed.
 - **State upgrades: ~4–5 per day** (2 to green, 2 to yellow in-registry,
   1 passed-pending).
 - **Blocker clears / evidence events: ~6–8 per day** (the leading
-  indicator; states lag blockers).
+  indicator. States lag blockers).
 - **Board growth: +22 promises per day** — claims are being written
   roughly 5× faster than they are being proven. Under claims-first
   discipline that is correct behavior, but it means *percent green* will
-  fall while *count green* rises; the honest KPI is absolute upgrades
+  fall while *count green* rises. The honest KPI is absolute upgrades
   plus blocker clears, not the green fraction.
 
 ## 2. Why naive extrapolation would lie
@@ -78,17 +78,17 @@ how the model below corrects for each:
 
 ## 3. The model
 
-Buckets, from the blocker classes (78 unique blocker refs at `.9`; the
+Buckets, from the blocker classes (78 unique blocker refs at `.9`, the
 Wave-2 operator audit's actionable remainder maps onto the same classes):
 
 - **A — agent-buildable** (code, tests, projections, smokes that spend
-  nothing): sustained ~2–3 promotions/day observed; assume 2/day with
+  nothing): sustained ~2–3 promotions/day observed. Assume 2/day with
   decay as the easy pool drains.
 - **B — operator-gated** (funded smokes, dispatch approvals, npm publish,
   registry flips): assume ~2 operator sessions/week, each clearing 3–5
   blockers.
 - **C — real-device-gated** (≥2 contributor devices, separate-device
-  replay, Win/WSL): one provisioning event unlocks a batch; assumed
+  replay, Win/WSL): one provisioning event unlocks a batch. Assumed
   within week 1–2.
 - **D — external-repo (Psionic)** work: parallel lane, ~days per ask at
   the observed psionic cadence (17 issues landed there on Jun 10 alone).
@@ -106,33 +106,33 @@ operator-dispatched 1000-sat reward), `identity.orange_check_forum_signal.v1`
 (Nostr export, the single remaining blocker),
 `autopilot.mission_briefing.v1` (drill-down + cost rollups),
 `pylon.no_dark_capacity_accounting.v1` (retained funnel snapshots),
-`pylon.v03_release_candidate.v1` (local gates + install smokes; the
+`pylon.v03_release_candidate.v1` (local gates + install smokes, the
 universal-release sibling waits on Win/WSL, class C).
 *Modeled green count: 12–15.* `pylon.install_without_wallet_knowledge.v1`
-reaches yellow-stable; green needs the funded live install-to-bitcoin
+reaches yellow-stable. Green needs the funded live install-to-bitcoin
 smoke (class B).
 
 **Week 2 — by ~Jun 24.** The first-receipt cluster.
 `pylon.gepa_worker_loop_v03.v1` (live endpoint smoke + one paid GEPA
 settlement), `compute.tassadar_executor_poc.v1` (dispatch →
-separate-device replay → one paid closeout; class B+C, runs the moment
+separate-device replay → one paid closeout. Class B+C, runs the moment
 two real devices exist), first settled dataset sale moving
 `pylon.data_trace_revenue.v1` red → yellow, compute-stream paid kind-5050
 and referral-payout receipts moving their streams,
 `pylon.five_bitcoin_revenue_streams.v1` red → yellow. Training rails
 #4673–#4677 land: `training.verification_classes.v1` and
-`training.full_pipeline_program.v1` planned → yellow;
+`training.full_pipeline_program.v1` planned → yellow.
 `pylon.first_real_model_training_run.v1` red → yellow via the bounded
 two-device run (#4670 shape).
 *Modeled green count: 16–20.*
 
 **Week 3 — by ~Jul 1.** The training program's first real evidence.
 Ablation gate zero (reproduce a published eval score) →
-`training.ablation_system.v1` yellow; first paid refinery shards →
-`training.data_refinery_corpus.v1` yellow; first paid benchmark
+`training.ablation_system.v1` yellow. First paid refinery shards →
+`training.data_refinery_corpus.v1` yellow. First paid benchmark
 assignments → `training.device_capability_dataset.v1` yellow→green
-candidate; R1 ladder rehearsal complete → `training.model_ladder.v1`
-yellow; `pylon.compute_revenue_modes.v1` red → yellow;
+candidate. R1 ladder rehearsal complete → `training.model_ladder.v1`
+yellow. `pylon.compute_revenue_modes.v1` red → yellow.
 `proof.claim_upgrade_receipts.v1` green if the audit panel lands.
 *Modeled green count: 20–24.*
 
@@ -167,10 +167,10 @@ keep us from back-door scheduling.
 
 This document is itself a claim, so it carries its own checks. The
 forecast is failing if, by **Jun 17**, green count is below 10 or the
-operator-gated cluster (tips/MDK/x-claim) has not cleared as a batch; it
+operator-gated cluster (tips/MDK/x-claim) has not cleared as a batch. It
 is failing structurally if, by **Jun 24**, no second real device has
 entered the system (everything in weeks 2–6 slips behind that single
-fact); and the R2 date is void if the psionic real-gradient scale-up
+fact). And the R2 date is void if the psionic real-gradient scale-up
 (multi-head, batching) has not landed by ~Jul 1. Conversely, if blocker
 clears keep running at 6–8/day while these dates hold, the model is
 conservative. Re-measure weekly against the transitions feed and the
@@ -186,5 +186,5 @@ Data: `git log`/`git show` over
 capacity funnel and pylon-stats endpoints, and the Wave-2 operator audit
 (`docs/2026-06-10-agent-work-audit-last-12-hours.md`). State counts
 derived by parsing promiseId/state pairs per commit and diffing
-consecutive versions. The sample is one day of a one-day-old registry;
+consecutive versions. The sample is one day of a one-day-old registry.
 treat every number above accordingly.

@@ -1,7 +1,7 @@
 # Autopilot Billing Credits
 
 Autopilot now has a first-party USD credit ledger in D1. The balance is not a
-mutable account number; it is derived from ledger entries:
+mutable account number. It is derived from ledger entries:
 
 - positive entries: launch grant, coupon credit, Stripe checkout purchase,
   Stripe auto top-up
@@ -23,7 +23,7 @@ Resend API key.
 
 Migration `0031_stripe_billing.sql` adds Stripe customer mappings, Checkout
 Session attempt records, webhook receipts, and the `stripe_checkout` ledger
-source. The D1 ledger remains the product balance authority; Stripe confirms
+source. The D1 ledger remains the product balance authority. Stripe confirms
 payment, then OpenAgents product surface appends one idempotent positive ledger row per paid Checkout
 Session.
 
@@ -94,7 +94,7 @@ grants. If the user does not have the minimum balance, the Worker returns HTTP
 Runner callback ingestion charges usage:
 
 - token-bearing OpenCode/SHC events create `codex_usage` debit rows with stable
-  idempotency keys;
+  idempotency keys.
 - started SHC runs create `container_usage` debit rows from the previous billing
   cursor to the latest running or terminal timestamp.
 
@@ -105,13 +105,13 @@ runner stops sending heartbeats.
 
 When a debit takes the derived balance to zero or below, the Worker now:
 
-- marks the billing account `suspended`;
-- appends a `billing.credits_exhausted` event to every active user run;
+- marks the billing account `suspended`.
+- appends a `billing.credits_exhausted` event to every active user run.
 - marks those active runs `canceled` and projects the change through
-  OpenAgents Sync;
+  OpenAgents Sync.
 - posts a best-effort SHC control action using the Vortex-compatible
   `{ action: "cancel", runId, reason }` contract against candidate
-  `codex-runs/cancel` routes;
+  `codex-runs/cancel` routes.
 - reserves and sends a single Resend out-of-credits email to the user's primary
   email address.
 
@@ -140,31 +140,31 @@ Email delivery requires non-empty Worker secrets:
 On 2026-06-03, Vortex production `vercel env ls` showed encrypted Resend
 variable names, but both `vercel env pull --environment production` and
 `vercel env run --environment production` resolved those values to empty
-strings. Those blank values were not retained in the Cloudflare Worker secrets;
+strings. Those blank values were not retained in the Cloudflare Worker secrets.
 set real Resend values before expecting out-of-credits email delivery.
 
 ## UI
 
 The logged-in app now has `/billing` inside the dedicated settings sidebar.
-Billing is usage-only; there is no subscription plan surface. The page shows:
+Billing is usage-only. There is no subscription plan surface. The page shows:
 
-- current USD credit balance;
-- SHC and Codex rates;
-- payment-method status for the server-side checkout flow;
+- current USD credit balance.
+- SHC and Codex rates.
+- payment-method status for the server-side checkout flow.
 - card-on-file status, auto-top-up threshold, top-up amount, monthly cap, and
-  recent auto-top-up events;
-- buy-credit packages;
-- coupon redemption;
-- active metered runs;
+  recent auto-top-up events.
+- buy-credit packages.
+- coupon redemption.
+- active metered runs.
 - recent ledger entries.
 
-The add-credit buttons call `POST /api/billing/checkout`; the server creates a
+The add-credit buttons call `POST /api/billing/checkout`. The server creates a
 hosted Checkout Session and the browser navigates to the returned provider URL.
-Success and cancellation return to clean `/billing`; product URLs do not carry
+Success and cancellation return to clean `/billing`. Product URLs do not carry
 Checkout result query parameters.
 
 The auto-top-up controls call the authenticated billing APIs above. The page
-does not collect raw card data; Stripe SetupIntent confirmation must happen
+does not collect raw card data. Stripe SetupIntent confirmation must happen
 through a Stripe-owned card collection flow before
 `/api/billing/stripe/setup-intents/save` can persist a payment-method ref.
 
@@ -178,7 +178,7 @@ fulfillment have been verified against the D1 ledger.
 
 Auto top-up uses the same Stripe API key boundary. It creates SetupIntents for
 card-on-file setup and PaymentIntents with `off_session: true` for threshold
-charges. Do not pass `payment_method_types`; let Stripe choose eligible payment
+charges. Do not pass `payment_method_types`. Let Stripe choose eligible payment
 methods from the configured account and saved card. Use restricted Stripe keys
 where possible, keep webhook/API secrets out of logs and docs, and verify
 declined-card, missing-card, monthly-cap, duplicate idempotency, and successful

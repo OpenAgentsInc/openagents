@@ -73,22 +73,22 @@ The source-visible contract is:
 
 Products and paid actions both carry:
 
-- `id`: stable source key scoped to the Site;
-- `name`: human-visible label;
-- `price.asset`: `usd`, `sats`, or `credits`;
+- `id`: stable source key scoped to the Site.
+- `name`: human-visible label.
+- `price.asset`: `usd`, `sats`, or `credits`.
 - `price.amount`: positive integer amount in the smallest useful unit for that
-  asset contract;
-- `checkoutPath`: clean Site-local absolute path for starting checkout;
-- `entitlementScope`: `site`, `product`, `path`, `action`, or `account`;
-- `agentReadable`: whether public agent manifests may describe this item;
-- `settlementMode`: `checkout_only`, `deferred`, or `accepted_work_linked`;
+  asset contract.
+- `checkoutPath`: clean Site-local absolute path for starting checkout.
+- `entitlementScope`: `site`, `product`, `path`, `action`, or `account`.
+- `agentReadable`: whether public agent manifests may describe this item.
+- `settlementMode`: `checkout_only`, `deferred`, or `accepted_work_linked`.
 - `customerDataRequirements`: non-secret customer fields such as email, name,
-  text, or URL; and
+  text, or URL. And
 - `publicProjectionState`: `hidden`, `listed`, `redacted`, or `proof_only`.
 
 Paid actions additionally carry:
 
-- `method`: `GET` or `POST`;
+- `method`: `GET` or `POST`.
 - `path`: clean Site-local absolute protected action path.
 
 ## D1 Catalog Tables
@@ -100,17 +100,17 @@ Migration `0065_site_commerce_catalog.sql` adds:
 
 Both tables link records to:
 
-- `site_id`;
-- optional `site_version_id`;
-- source key;
-- price asset and amount;
-- checkout path;
-- entitlement scope;
-- agent-readable flag;
-- settlement mode;
-- customer data requirement JSON;
-- public projection state;
-- creator; and
+- `site_id`.
+- optional `site_version_id`.
+- source key.
+- price asset and amount.
+- checkout path.
+- entitlement scope.
+- agent-readable flag.
+- settlement mode.
+- customer data requirement JSON.
+- public projection state.
+- creator. And
 - active/archive timestamps.
 
 The tables enforce clean local paths and positive prices at the database layer.
@@ -121,13 +121,13 @@ catalog records are written.
 
 The manifest validator rejects:
 
-- provider-account secret-shaped values detected by the shared secret scanner;
+- provider-account secret-shaped values detected by the shared secret scanner.
 - key names containing secret, token, mnemonic, preimage, invoice, wallet,
-  credential, private key, webhook, grant, or payout;
-- raw BOLT11 invoice prefixes such as `lnbc`, `lntb`, or `lnbcrt`;
-- raw BOLT12 offer prefix `lno1`;
+  credential, private key, webhook, grant, or payout.
+- raw BOLT11 invoice prefixes such as `lnbc`, `lntb`, or `lnbcrt`.
+- raw BOLT12 offer prefix `lno1`.
 - preimage, mnemonic, xprv, MDK access-token, checkout-result, payment-hash,
-  and payment-preimage strings; and
+  and payment-preimage strings. And
 - checkout/action paths containing query strings or fragments.
 
 The payments block is not a secret store. It must not contain MDK credentials,

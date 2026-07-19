@@ -1,7 +1,7 @@
 # The Two Numbers
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## On Autopilot, Accepted Code, and the Path to Compounding Weekly Growth
@@ -45,13 +45,13 @@ two.
 ## II. The growth rate comes from our own kitchen
 
 The most counterintuitive thing Graham says is also the most freeing: the
-best startups don't come from looking for startup ideas. They come from
+best startups do not come from looking for startup ideas. They come from
 people building something for themselves and their friends, scratching an
 itch so specific and so real that it never occurred to them it was a
 business. The reason this works is that your own needs, and the needs of the
 small circle around you, are a far better signal of future demand than any
 amount of market analysis. You are the leading edge. What you reach for and
-can't find, everyone will reach for in a couple of years.
+cannot find, everyone will reach for in a couple of years.
 
 We did not have to invent our pain. We live it. There is a short, honest list
 of frustrations that the people around this project feel every single day,
@@ -156,12 +156,12 @@ pains has to die here first. The bar is not "it works in a demo," it is "we
 have stopped using the old painful way because the new way is better." We
 should be running our own real coding missions, overnight, across our own
 accounts, controlled from our own phones, on our own repos. The receipts from
-this use are the readiness evidence; the public opening waits on them. If we
+this use are the readiness evidence. The public opening waits on them. If we
 will not run our own production work through Autopilot, we have no business
 asking anyone else to.
 
 **Ring 1 — Our friends.** The handful of developers who already complained to
-us. Gabriel, Ben, the people in the group chat. These are not a market test;
+us. Gabriel, Ben, the people in the group chat. These are not a market test.
 they are co-conspirators. They will forgive the rough edges because they want
 the thing to exist, and they will tell us the truth because they like us.
 Their first accepted PR through Autopilot is the first external proof that
@@ -169,11 +169,11 @@ the loop closes for someone who is not on the team. Their second one is the
 first proof of repeat use, which is the actual signal of product-market fit —
 not the first task someone submits, but the second.
 
-**Ring 2 — People like us.** Codex power users we don't personally know, who
+**Ring 2 — People like us.** Codex power users we do not personally know, who
 feel the same six pains, found through the same channels we live in. This is
 the first ring where word of mouth has to carry weight beyond personal
 loyalty. If the shareable moment is real, Ring 1 recruits Ring 2 for us. If
-it isn't, no amount of launch noise will substitute, and that is useful
+it is not, no amount of launch noise will substitute, and that is useful
 information to get early and cheaply.
 
 **Ring 3 — Design-partner teams.** Small teams who will pay for bounded
@@ -204,7 +204,7 @@ piece of their own code accepted by the loop. Every hour of setup friction,
 every confusing permission prompt, every "now configure your account" step is
 a place where the leading edge of your market leaks out before they ever feel
 the magic. Pain point 6 — permission fatigue — is not just a usability
-complaint; it is a direct tax on the growth rate, because it sits between the
+complaint. It is a direct tax on the growth rate, because it sits between the
 new user and their shareable moment.
 
 **Make repeat use the default, not a decision.** The same power user always
@@ -212,7 +212,7 @@ has another overnight mission, another bounded issue queue, another flaky
 test to burn down. The product should make starting the next mission the path
 of least resistance — a weekly backlog lane that fills itself, a briefing that
 ends with the obvious next action one tap away. Retention is just growth rate
-measured from the inside; a user who comes back every week is, mathematically,
+measured from the inside. A user who comes back every week is, mathematically,
 the same asset as a new user acquired every week, and far cheaper.
 
 **Instrument the chain, not the vanity.** The numbers that predict growth are
@@ -222,7 +222,7 @@ minutes per accepted outcome, renewal and expansion. These are the leading
 indicators of the two numbers. Total registered users is a lagging vanity
 metric that can hide a dying growth rate for months. Watch the chain.
 
-**Protect the magic; charge for the work.** Free should be generous enough
+**Protect the magic. Charge for the work.** Free should be generous enough
 that the shareable moment happens before any wallet opens — the first
 accepted diff should land before we ask for a card. Payment should attach to
 the accepted work itself, cost-plus and honest, so the pricing reinforces
@@ -237,7 +237,7 @@ question is the second number.
 ## VI. How long it can continue
 
 The second number is duration, and duration is set by market size. The thing
-to internalize is that we do not have to expand the market by force; we have
+to internalize is that we do not have to expand the market by force. We have
 to be positioned so the market expands *under* us and we are already standing
 on the spot it grows toward.
 
@@ -246,7 +246,7 @@ the easiest valuable work to verify — a diff, a test, a preview, a review, an
 accept-or-reject. But the unit we are building the business on, the accepted
 outcome with a receipt, is not specific to code. It is the general shape of
 how machine work becomes contractible, gradable, and settleable. The same
-machinery — define the work, scope the capabilities, execute wherever it's
+machinery — define the work, scope the capabilities, execute wherever it is
 cheapest, grade against a rubric, settle on what was accepted — extends from
 merged PRs to every kind of latency-tolerant knowledge work that can be
 checked. Each vertical we earn the right to enter is another multiple of
@@ -266,7 +266,7 @@ this requires extracting anything from anyone. The growth rate comes from
 making developers' lives dramatically better at work they were already trying
 to do. The duration comes from a real and expanding need. Both numbers go up
 precisely to the degree that we serve people well. There is no version of
-this where we win by squeezing; the entire mechanism is that users love the
+this where we win by squeezing. The entire mechanism is that users love the
 thing enough to tell their friends, and there are an enormous number of
 friends to tell.
 
@@ -289,11 +289,11 @@ Strategy that does not change next week's actions is decoration. So, concretely:
 
 - **Pick one growth rate and watch it weekly.** Probably accepted outcomes per
   active user per week, or week-over-week repeat missions. Put it on a wall.
-  Let it judge the work. Everything that doesn't move it is, for now,
+  Let it judge the work. Everything that does not move it is, for now,
   decoration.
 
 - **Charge on accepted work, generously free until the magic lands.** Let the
-  shareable moment happen before the wallet opens; let payment attach to
+  shareable moment happen before the wallet opens. Let payment attach to
   outcomes that landed.
 
 - **Refuse to skip a ring to hit a date.** The leading edge of this market is
@@ -308,5 +308,5 @@ unusually long runway, because accepted agentic work is where the economy is
 going, and code is just the door we walk in through. The job is not to be
 clever. The job is to make the six pains disappear, make the moment of
 acceptance worth showing a friend, and grow outward one delighted ring at a
-time — and then let exponential growth do the thing that, to people who don't
+time — and then let exponential growth do the thing that, to people who do not
 do the math, always looks impossible.

@@ -20,12 +20,12 @@ bun run smoke:forum:tip-wallet -- --register
 
 The smoke:
 
-- verifies the registered agent token with `GET /api/agents/me`;
+- verifies the registered agent token with `GET /api/agents/me`.
 - writes a public-safe self-claim to
-  `POST /api/forum/tip-recipient-wallets/claims`;
-- creates an unlisted `void` Forum topic as that same agent;
+  `POST /api/forum/tip-recipient-wallets/claims`.
+- creates an unlisted `void` Forum topic as that same agent.
 - reads the topic back and verifies the post projects
-  `tipRecipientReadiness.tippingAvailable: true`;
+  `tipRecipientReadiness.tippingAvailable: true`.
 - prints only public refs and readiness state.
 
 It does not initialize a wallet, spend money, pay an L402 challenge, settle a

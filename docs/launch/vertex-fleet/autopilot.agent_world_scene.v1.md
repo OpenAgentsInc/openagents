@@ -25,8 +25,8 @@ reducer so stale beams expire by time as well as by count.
   - `paymentParticleTsMs(particle)` — parse a particle's ISO `ts` to epoch ms, or
     `null` when absent/unparseable (never invents a time).
   - `prunePaymentParticlesByRecency(particles, referenceTsMs, windowMs?)` — drop
-    particles older than `referenceTsMs - windowMs`; KEEP particles with no
-    parseable ts (count cap bounds them); preserve order; no-op on a non-finite
+    particles older than `referenceTsMs - windowMs`. KEEP particles with no
+    parseable ts (count cap bounds them). Preserve order. No-op on a non-finite
     reference. **Pure**: the caller passes the reference time, so there is no
     hidden wall clock and replaying a stream is deterministic.
 - `apps/autopilot-desktop/src/ui/update.ts`
@@ -39,8 +39,8 @@ reducer so stale beams expire by time as well as by count.
     non-finite no-op, custom window).
 
 ### Why it stays honest / in-bounds
-- No promise state changed; no registry edits. Still yellow.
-- Still **evidence-bound**: pruning only ever *removes* beams; it never creates,
+- No promise state changed. No registry edits. Still yellow.
+- Still **evidence-bound**: pruning only ever *removes* beams. It never creates,
   fakes, or re-times a beam. Every remaining beam still carries its real
   `sourceRefs` (the upstream `activityEventToParticle` already drops refless events).
 - Flag-gated and default-OFF unchanged (`CHAT_WORLD_SCENE` / `CHAT_WORLD_PAYMENTS`).
@@ -52,16 +52,16 @@ reducer so stale beams expire by time as well as by count.
 - `apps/autopilot-desktop`: `bun test tests/chat-world-scene.test.ts` → 33 pass / 0 fail.
 - `git diff --check` → clean.
 
-> Note: `apps/autopilot-desktop` is Vite-built; running bare `tsc` against its
+> Note: `apps/autopilot-desktop` is Vite-built. Running bare `tsc` against its
 > `node16`-resolution tsconfig surfaces repo-wide pre-existing `TS2835`
 > (extensionless-import) and `TS6133/TS7006` errors unrelated to this change.
-> This change adds no new error type at the lines it touches; `bun test` is the
+> This change adds no new error type at the lines it touches. `bun test` is the
 > app's gate and passes.
 
 ## What genuinely remains for this blocker (still listed)
 P2.5 is **not** fully cleared — this clears one slice (beam lifetime). Remaining:
 - A periodic prune/tick so beams also expire on wall-clock idle (no new event to
-  trigger `appendChatWorldParticle`); today expiry is event-driven only.
+  trigger `appendChatWorldParticle`). Today expiry is event-driven only.
 - End-to-end in-app verification of the live mounted scene (pylon poll + SSE
   beams + inspector click → receipt) in the running Electrobun webview.
 - The default-on (or explicit stay-flag-gated) owner decision, which gates green

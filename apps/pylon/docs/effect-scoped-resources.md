@@ -3,21 +3,21 @@
 Pylon long-running runtime code should prefer Effect-scoped resources for
 handles that must be released on success, failure, or interruption:
 
-- subprocesses and streamed agent SDK sessions;
-- WebSocket or SSE clients;
-- local assignment leases, file locks, and workspace leases;
+- subprocesses and streamed agent SDK sessions.
+- WebSocket or SSE clients.
+- local assignment leases, file locks, and workspace leases.
 - temporary git worktrees and materialized checkouts.
 
 Use `Effect.acquireRelease` for new scoped APIs. The acquire step should create
-the local handle and write any lease/projection record; the release step should
+the local handle and write any lease/projection record. The release step should
 use the same cleanup path as normal closeout so interruption and explicit
 closeout cannot drift.
 
 The workspace materializer exposes the local pattern:
 
-- `materializeGitCheckoutWorkspaceWithLease(...)` is the legacy Promise API;
+- `materializeGitCheckoutWorkspaceWithLease(...)` is the legacy Promise API.
 - `scopedMaterializedGitCheckoutWorkspace(...)` is the Effect API for new
-  assignment runners and tests;
+  assignment runners and tests.
 - `WORKSPACE_GIT_LOCK_RETRY_POLICY` is the named bounded retry policy for
   transient git lock collisions.
 

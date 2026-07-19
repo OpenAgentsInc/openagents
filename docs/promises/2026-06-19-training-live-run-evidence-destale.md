@@ -41,7 +41,7 @@ distinct independent contributor pylons**, plus one excluded
 
 - **`training.decentralized_training_launch.v1` — stays GREEN.** Copy moves from
   "two distinct independent contributors / 1,005 sats" to "five distinct
-  independent contributors / 1,020 sats". Green→green; no `promise_transition`
+  independent contributors / 1,020 sats". Green→green. No `promise_transition`
   required. An exception receipt may be recorded against the deployed
   `2026-06-19.7` version per `proof.claim_upgrade_receipts.v1` if owner review
   wants one for the copy upgrade.
@@ -66,7 +66,7 @@ distinct independent contributor pylons**, plus one excluded
   stage dispatched, no reviewed vibe-test artifact.
 - **`training.data_refinery_corpus.v1` — stays PLANNED, evidence freshened.**
   The `a4_eval_delta` leaderboard lane is live-but-empty in
-  `training-leaderboards.ts`; the payment policy is
+  `training-leaderboards.ts`. The payment policy is
   `2026-06-10-cs336-a4-data-refinery-payment-policy.md`. Single missing receipt
   for green: one Verified `deterministic_recompute` refinery-shard challenge
   whose closeout records an eval-delta payment.
@@ -82,7 +82,7 @@ None of these are flipped here. The owner-signed, receipt-first path per
 `proof.claim_upgrade_receipts.v1`:
 
 1. **`training.public_distributed_training_run.v1` red→yellow** — fastest win:
-   author and publish a participant-count/network-scale methodology; the five
+   author and publish a participant-count/network-scale methodology. The five
    settled contributors already satisfy the multi-contributor settlement leg.
 2. **`training.decentralized_training_launch.v1`** — green→green copy-upgrade
    exception receipt for the 2→5 contributor / 1,005→1,020 sats change.
@@ -100,6 +100,6 @@ None of these are flipped here. The owner-signed, receipt-first path per
 
 A destale of evidence/copy to match the live feed grants no new payout,
 settlement, provider, wallet, deployment, network-scale, or public-claim
-authority. No `promise_transition` is required because no state changes; any
+authority. No `promise_transition` is required because no state changes. Any
 future green flip remains receipt-first and owner-signed per
 `proof.claim_upgrade_receipts.v1`.

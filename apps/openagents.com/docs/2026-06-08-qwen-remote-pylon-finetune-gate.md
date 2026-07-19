@@ -8,23 +8,23 @@ produce a receipt-backed training run report. The implementation lives in
 
 The gate intentionally distinguishes a bounded remote Qwen training/adaptation
 report from a full-transformer Qwen fine-tune claim. A sampled-projection LoRA
-run can clear the bounded remote training claim only with exact scope language;
+run can clear the bounded remote training claim only with exact scope language.
 it still cannot become full Qwen 3.6 transformer backprop copy.
 
 ## Required Evidence
 
 The gate requires:
 
-- at least two distinct `remote_pylon` worker refs;
-- signed worker receipt refs for every worker;
-- Qwen shard receipt refs meeting the required shard count;
-- no quarantined shard refs;
-- artifact refs;
-- merge receipt refs;
-- eval receipt refs;
-- adapter admission refs;
-- public projection refs;
-- payment receipt refs;
+- at least two distinct `remote_pylon` worker refs.
+- signed worker receipt refs for every worker.
+- Qwen shard receipt refs meeting the required shard count.
+- no quarantined shard refs.
+- artifact refs.
+- merge receipt refs.
+- eval receipt refs.
+- adapter admission refs.
+- public projection refs.
+- payment receipt refs.
 - settlement receipt refs when claiming settled bitcoin.
 
 ## Claim Boundaries

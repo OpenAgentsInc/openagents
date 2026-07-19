@@ -9,13 +9,13 @@ Status: current runbook for `autopilot.local_apple_fm_tool_chat.v1` and issue
 
 This runbook proves the basic local Autopilot Apple FM path on an admitted Mac:
 
-- a local Swift Foundation Models bridge is reachable;
-- Pylon reports Apple FM readiness through the loopback control API;
+- a local Swift Foundation Models bridge is reachable.
+- Pylon reports Apple FM readiness through the loopback control API.
 - Autopilot Desktop's Bun-side control client can start a bounded local
-  Apple FM chat/tool session through Pylon;
+  Apple FM chat/tool session through Pylon.
 - the session uses read-only workspace tools and retains only public-safe
-  proof fields;
-- the retained proof carries a public-safe local-session energy estimate;
+  proof fields.
+- the retained proof carries a public-safe local-session energy estimate.
 - no OpenAgents hosted model prompt path is used.
 
 It does not prove Codex parity, market-provider eligibility, paid work,
@@ -28,10 +28,10 @@ helper.
 Run this only on a supported Apple Silicon Mac where Apple Foundation Models is
 available for the current user:
 
-- macOS 26 or newer;
-- `arm64`;
-- Apple Intelligence enabled and model assets available;
-- Swift compiler/Xcode toolchain available;
+- macOS 26 or newer.
+- `arm64`.
+- Apple Intelligence enabled and model assets available.
+- Swift compiler/Xcode toolchain available.
 - `bun` available in the repo workspace.
 
 Unsupported, disabled, permission-denied, model-unavailable, malformed, and
@@ -94,24 +94,24 @@ bridge to prove unsupported/disabled readiness handling.
 The pass criteria are:
 
 - readiness `ok: true`, `available: true`, `status: "ready"`,
-  `backendKind: "apple_fm_bridge"`;
-- session row `adapter: "apple_fm"`, `lane: "local"`, `state: "completed"`;
-- `cloudRunner: null` and `resourceUsageReceiptRef: null`;
+  `backendKind: "apple_fm_bridge"`.
+- session row `adapter: "apple_fm"`, `lane: "local"`, `state: "completed"`.
+- `cloudRunner: null` and `resourceUsageReceiptRef: null`.
 - observed event facts for backend ready, read-only `read_file` tool success,
-  and local bounded mode;
+  and local bounded mode.
 - retained artifact `executionPathRef: "control_session.apple_fm_local"`,
   `executionMode: "local_bounded"`, `sandboxMode: "read-only"`,
-  `networkAccessEnabled: false`, `outcome: "completed"`, and one command;
+  `networkAccessEnabled: false`, `outcome: "completed"`, and one command.
 - retained artifact `energyEstimate.evidenceState: "modeled"` by default,
   `methodRef: "method.apple_fm.power.modeled_default_kw_wall_clock"`,
   `modeledPowerKw: 0.02`, a bounded wall-clock window, computed `energyKwh`,
   and the caveat refs
   `caveat.apple_fm.power.modeled_not_measured` and
-  `caveat.apple_fm.power.not_ao_kwh_without_accepted_outcome`;
+  `caveat.apple_fm.power.not_ao_kwh_without_accepted_outcome`.
 - external bridge session id retained only as
-  `session.pylon.apple_fm_bridge.<digest>`;
+  `session.pylon.apple_fm_bridge.<digest>`.
 - redaction booleans for prompt, fixture body, callback token, callback URL,
-  bearer material, and temp path are all false;
+  bearer material, and temp path are all false.
 - disabled fixture returns `unavailableReason: "apple_intelligence_disabled"`
   with typed blocker refs.
 
@@ -165,13 +165,13 @@ Those tests use fake bridges so ordinary CI does not require Apple hardware.
 Public docs, issue comments, and product-promise evidence may include the
 public-safe summary fields printed by `smoke:apple-fm-local`. Do not publish:
 
-- raw prompts;
-- local file contents;
-- callback tokens;
-- callback URLs;
-- bearer/control tokens;
-- local temporary paths;
-- full model transcripts;
-- raw telemetry dumps;
-- serial numbers or private machine identifiers;
+- raw prompts.
+- local file contents.
+- callback tokens.
+- callback URLs.
+- bearer/control tokens.
+- local temporary paths.
+- full model transcripts.
+- raw telemetry dumps.
+- serial numbers or private machine identifiers.
 - private workspace material.

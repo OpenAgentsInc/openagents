@@ -39,13 +39,13 @@ POST /api/operator/crm/commands/:id/reject    { reason? }
 ## How chat proposes
 
 The chat UI / agent calls `POST .../commands/send-email` with the contact, the
-chosen `channel`, and a `templateSlug`. That records a Blueprint-style proposal;
+chosen `channel`, and a `templateSlug`. That records a Blueprint-style proposal.
 it does **not** send. The operator reviews the queue (`GET .../commands`) and
 approves or rejects. On approve, the unified `dispatchCrmSend` runs over the
-chosen channel — Resend sends server-side; `gmail_gws` queues for the local
+chosen channel — Resend sends server-side. `gmail_gws` queues for the local
 executor (#5987). The shared suppression/unsubscribe gate still applies at
 execution, so a suppressed address yields a `failed` command (gate held).
 
-The chat-frontend affordance is a thin caller of the propose endpoint; the
+The chat-frontend affordance is a thin caller of the propose endpoint. The
 operator approval surface is the Autopilot Desktop CRM pane (#5987). The
 server-side proposal/approval/execute contract above is the source of truth.

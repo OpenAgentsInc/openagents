@@ -69,8 +69,8 @@ Important source observations:
   config, iteration metrics, proposer logs, prompt hashes, cost summaries, and
   resumable state.
 - The local TerminalBench example already demonstrates the shape we need:
-  create TerminalBench train, validation, and test splits; evaluate a seed
-  prompt; call GEPA with a rollout budget; evaluate the optimized prompt on the
+  create TerminalBench train, validation, and test splits. Evaluate a seed
+  prompt. Call GEPA with a rollout budget. Evaluate the optimized prompt on the
   held-out test set.
 
 ## What We Optimize First
@@ -99,10 +99,10 @@ Blueprint selection with keyword matching.
 
 The "Blueprint optimization" boundary is therefore:
 
-- optimize how Probe uses existing Blueprint authority;
+- optimize how Probe uses existing Blueprint authority.
 - optimize which approved Program Signatures are selected for a benchmark task
-  family;
-- optimize tool-menu projection hints and verification discipline;
+  family.
+- optimize tool-menu projection hints and verification discipline.
 - do not let an optimized text candidate become Source Authority.
 
 Promotion remains a normal OpenAgents policy event. Optimizer acceptance is not
@@ -117,13 +117,13 @@ deterministic benchmark artifacts.
 
 Pylon responsibilities:
 
-- lease benchmark-capable workers with declared capability envelopes;
+- lease benchmark-capable workers with declared capability envelopes.
 - run isolated Terminal-Bench, SWE/SWT, custom-repo, and retained Probe
-  fixtures;
+  fixtures.
 - preserve per-rollout transcripts, patches, verifier output, cost, model,
-  runtime version, and resource receipts;
-- stream structured rollout results back to the optimizer coordinator;
-- retry infrastructure failures without hiding model or agent failures;
+  runtime version, and resource receipts.
+- stream structured rollout results back to the optimizer coordinator.
+- retry infrastructure failures without hiding model or agent failures.
 - keep private task data and secrets out of optimizer traces.
 
 The first large run should treat Pylon as a parallel metric-call engine for
@@ -166,7 +166,7 @@ run candidate text bundle C on benchmark task T
 The GEPA coordinator can then use many independent Pylon results to update the
 candidate frontier. The reflection/proposal step should stay centralized at
 first on SHC, Psionic, or a hosted model. Pylons do not need to understand or
-run the whole optimizer; they need to run bounded benchmark jobs honestly.
+run the whole optimizer. They need to run bounded benchmark jobs honestly.
 
 Reserve `distributed training` for later Psionic/Qwen/LoRA/SFT/DPO/GRPO lanes
 where workers actually contribute to model-training, adapter, checkpoint,
@@ -225,8 +225,8 @@ failure families.
 Use Terminal-Bench through the public benchmark-cloud target, with a
 fixed split:
 
-- train: short and medium tasks suitable for high rollout volume;
-- validation: held-out tasks used for GEPA candidate selection;
+- train: short and medium tasks suitable for high rollout volume.
+- validation: held-out tasks used for GEPA candidate selection.
 - test: frozen held-out task set used only after candidate selection.
 
 The GEPA TerminalBench example in `projects/repos/gepa` uses train, validation,
@@ -265,13 +265,13 @@ where `verified_success` is the benchmark verifier result, not a model judge.
 
 Tie-breakers and penalties:
 
-- lower wall-clock duration;
-- lower token and dollar cost;
-- fewer risky shell actions;
-- smaller patch diff when tests pass;
-- complete closeout evidence;
-- no policy violations;
-- no unsafe approval bypass;
+- lower wall-clock duration.
+- lower token and dollar cost.
+- fewer risky shell actions.
+- smaller patch diff when tests pass.
+- complete closeout evidence.
+- no policy violations.
+- no unsafe approval bypass.
 - no degraded performance on retained safety or invariant fixtures.
 
 A candidate that improves benchmark reward but bypasses policy gets score zero
@@ -421,11 +421,11 @@ worth training into a model.
 
 If the GEPA lane works, it creates training data for later methods:
 
-- successful and failed rollouts;
-- candidate diffs;
-- task-family labels;
-- signature-selection evidence;
-- closeout evidence quality;
+- successful and failed rollouts.
+- candidate diffs.
+- task-family labels.
+- signature-selection evidence.
+- closeout evidence quality.
 - cost and duration tradeoffs.
 
 That data can later feed Psionic LoRA, DPO, or GRPO lanes. Starting with GEPA
@@ -436,15 +436,15 @@ keeps the first loop explainable and auditable.
 Do not publish "we beat Terminal-Bench" from the first GEPA run. Publish only
 bounded claims:
 
-- exact dataset and version;
-- exact split;
-- exact agent slug and model;
-- exact baseline commit and candidate hash;
-- exact retry and timeout policy;
-- verifier result;
-- cost and duration;
-- artifact availability;
-- redaction state;
+- exact dataset and version.
+- exact split.
+- exact agent slug and model.
+- exact baseline commit and candidate hash.
+- exact retry and timeout policy.
+- verifier result.
+- cost and duration.
+- artifact availability.
+- redaction state.
 - whether the run was retained, validation, or frozen holdout.
 - Forum topic and post refs when Artanis or another registered agent publishes
   a public-safe campaign summary.

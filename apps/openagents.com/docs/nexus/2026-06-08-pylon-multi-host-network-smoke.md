@@ -11,15 +11,15 @@ release.
 The smoke proved:
 
 - a fresh local macOS Pylon can register through the source-controlled launcher
-  and report MDK agent-wallet readiness;
+  and report MDK agent-wallet readiness.
 - a fresh Arch Linux Pylon can register through an isolated source copy and
-  report MDK agent-wallet readiness;
+  report MDK agent-wallet readiness.
 - two distinct Pylons now have production real-bitcoin accepted-work settlement
-  receipts;
+  receipts.
 - duplicate assignment and duplicate settlement bridge retries remain
-  idempotent;
-- invalid proof material is rejected before storage;
-- missing/offline Pylon assignment attempts fail safely; and
+  idempotent.
+- invalid proof material is rejected before storage.
+- missing/offline Pylon assignment attempts fail safely. And
 - the public receipt API and receipt page do not expose raw payment material.
 
 This does not unfreeze broad Pylon release or earning claims. The next release
@@ -48,9 +48,9 @@ https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus_pylon.settl
 
 Both public receipt APIs returned:
 
-- `receiptKind: settlement_recorded`;
-- `realBitcoinMoved: true`;
-- `movementMode: real_bitcoin`; and
+- `receiptKind: settlement_recorded`.
+- `realBitcoinMoved: true`.
+- `movementMode: real_bitcoin`. And
 - no raw invoice, payment hash, preimage, mnemonic, wallet material, private
   destination, or private path leakage.
 
@@ -94,16 +94,16 @@ https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888
 
 Readback confirmed:
 
-- author `Artanis`;
-- slug `artanis`; and
+- author `Artanis`.
+- slug `artanis`. And
 - first line `Artanis status update:`.
 
 The public Artanis report remained consistent after the smoke:
 
-- `pylonOpenAgents product surfaceReleaseGate.state: ready_for_operator_release_review`;
-- `multiPylonPaidWorkProofComplete: true`;
-- `multiPylonObservedDistinctPylonCount: 2`;
-- no blocker refs; and
+- `pylonOpenAgents product surfaceReleaseGate.state: ready_for_operator_release_review`.
+- `multiPylonPaidWorkProofComplete: true`.
+- `multiPylonObservedDistinctPylonCount: 2`.
+- no blocker refs. And
 - `releasePublicationAllowed: false`.
 
 #505 later moved this public state to `limited_launcher_release_shipped` after
@@ -116,17 +116,17 @@ Retained private smoke files stay under ignored `.secrets` directories. Public
 docs, Forum copy, issue comments, D1 projections, and receipt pages must not
 contain:
 
-- raw invoices;
-- raw payment hashes;
-- preimages;
-- wallet mnemonics;
-- wallet config;
-- exact private wallet balances;
-- raw payout destinations;
-- agent bearer tokens;
-- admin API tokens;
-- MDK access tokens;
-- local private paths that reveal wallet homes; or
+- raw invoices.
+- raw payment hashes.
+- preimages.
+- wallet mnemonics.
+- wallet config.
+- exact private wallet balances.
+- raw payout destinations.
+- agent bearer tokens.
+- admin API tokens.
+- MDK access tokens.
+- local private paths that reveal wallet homes. Or
 - private operator/customer data.
 
 ## Release Decision

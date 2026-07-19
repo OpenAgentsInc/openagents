@@ -19,9 +19,9 @@ Khala Code:
 
 | Mode | Command | Use |
 | --- | --- | --- |
-| **Primary** | `grok agent stdio` | Chat runtime + rich workers; JSON-RPC on stdio |
+| **Primary** | `grok agent stdio` | Chat runtime + rich workers. JSON-RPC on stdio |
 | Secondary | `grok -p … --output-format streaming-json` | Simple workers, CI, fixtures |
-| Avoid | Interactive TUI automation | Fragile; product owns UI |
+| Avoid | Interactive TUI automation | Fragile. Product owns UI |
 
 Why ACP wins:
 
@@ -50,7 +50,7 @@ AgentRuntimeAdapterKind     includes: claude_code, codex, opencode, hermes, …
 | harness kind | `grok_cli` | Prefer explicit `_cli` — this is the Build CLI, not a vague "grok api" |
 | adapter kind | `grok_cli` | Same |
 | raw event kind | `grok_acp_event` \| `grok_cli_event` | Projector input |
-| fleet workerKind | `grok` | UI-short form; map to harness kind in dispatch |
+| fleet workerKind | `grok` | UI-short form. Map to harness kind in dispatch |
 | runtime mode (desktop) | `grok_runtime` | Mirror `claude_runtime` |
 
 Also extend:
@@ -79,9 +79,9 @@ Minimal methods (headless proof set):
 | Method | ACP / process mapping |
 | --- | --- |
 | `startThread` | `session/new` with `cwd`, `mcpServers` |
-| `startTurn` | `session/prompt`; stream `session/update` |
+| `startTurn` | `session/prompt`. Stream `session/update` |
 | `interruptTurn` | process signal / future ACP cancel if available |
-| `resumeThread` | new session with resume semantics if ACP exposes; else map store |
+| `resumeThread` | new session with resume semantics if ACP exposes. Else map store |
 
 Process lifecycle:
 
@@ -138,10 +138,10 @@ FleetRunSupervisor tick
 
 | Layer | Mechanism |
 | --- | --- |
-| Git | Prefer Grok `--worktree` **or** monorepo worktree — pick **one** policy per FleetRun; document GC |
-| Auth | Per-capacity-host Grok login / API key; never shared across owners |
-| FS/network | Agent computer sandbox when on cloud; desktop host sandbox profile when local |
-| Secrets | Brokered grants only; no keys in prompts or Sync |
+| Git | Prefer Grok `--worktree` **or** monorepo worktree — pick **one** policy per FleetRun. Document GC |
+| Auth | Per-capacity-host Grok login / API key. Never shared across owners |
+| FS/network | Agent computer sandbox when on cloud. Desktop host sandbox profile when local |
+| Secrets | Brokered grants only. No keys in prompts or Sync |
 
 ### 5.3 Prompt contract (worker)
 
@@ -151,7 +151,7 @@ Every Grok worker prompt must include:
 2. Pinned repo + commit + branch
 3. Allowed paths
 4. Named verify command
-5. "Open one PR; do not expand scope"
+5. "Open one PR. Do not expand scope"
 6. Output machine-readable summary block for closeout parsing
 
 ### 5.4 Metering honesty
@@ -184,15 +184,15 @@ Mobile does not run three CLIs. Mobile **observes and steers**.
 | `approval_decision` | allow / deny tool or merge gate |
 | `steer_message` | queue prompt to worker or chat harness |
 
-Authority stays server/desktop-daemon side; mobile is not a second
+Authority stays server/desktop-daemon side. Mobile is not a second
 supervisor implementation.
 
 ### 6.3 Dogfood receipt (definition of done for Sync slice)
 
 1. Desktop starts mixed FleetRun (codex+grok fixtures)
 2. Phone shows workers + states via Sync within seconds
-3. Phone pauses run; desktop supervisor observes pause
-4. Phone approves a pending tool; worker continues
+3. Phone pauses run. Desktop supervisor observes pause
+4. Phone approves a pending tool. Worker continues
 5. All events have receipt/changelog rows
 
 ## 7. Effect Native UI touchpoints
@@ -221,15 +221,15 @@ avoidable. If a temporary RPC headless smoke is needed, keep UI minimal.
 | Pylon executor | new `grok-agent-executor.ts` (mirror claude-agent-executor) |
 | Sync | `packages/khala-sync*` projections + mutators |
 | Mobile | harness pill + fleet peek screens (EN-3) |
-| Docs | `docs/grok-cli/*` (done); promises later for public claims |
-| QA | fixture ACP mock; scenario: mixed workerKind run |
+| Docs | `docs/grok-cli/*` (done). Promises later for public claims |
+| QA | fixture ACP mock. Scenario: mixed workerKind run |
 
 ## 9. Test ladder
 
 | Tier | Proof |
 | --- | --- |
 | Unit | Projector maps ACP chunks → turn events |
-| Fixture | Mock ACP process; full startTurn |
+| Fixture | Mock ACP process. Full startTurn |
 | Integration | Real `grok agent stdio` hello (env-armed, skip-safe) |
 | Fleet fixture | Mixed workerKinds, claim uniqueness |
 | Live smoke | One real Grok worker claimed issue, verify command, closeout |

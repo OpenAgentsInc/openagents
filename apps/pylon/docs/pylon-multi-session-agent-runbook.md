@@ -42,10 +42,10 @@ CLI control verbs resolve the endpoint exactly like the node:
 
 - Home: `PYLON_HOME` or `~/.pylon`.
 - Token: `PYLON_CONTROL_TOKEN`, else `<home>/control-token` (written by the
-  node on first boot — read-only from the CLI side; the CLI never mints it).
+  node on first boot — read-only from the CLI side. The CLI never mints it).
 - URL: `PYLON_CONTROL_URL`, else `http://<PYLON_CONTROL_HOST|127.0.0.1>:<PYLON_CONTROL_PORT|4716>`.
 
-If no token is found you get `{ "ok": false, "code": "no_token" }`; if nothing
+If no token is found you get `{ "ok": false, "code": "no_token" }`. If nothing
 is listening you get `{ "ok": false, "code": "no_node" }`. Both exit nonzero.
 
 ## 3. Session steering (`pylon sessions`)
@@ -58,7 +58,7 @@ pylon sessions cancel --session-ref <ref>
 ```
 
 Wraps the control-server `session.list` / `session.spawn` / `session.cancel`
-verbs. The node owns execution; the CLI only forwards the command.
+verbs. The node owns execution. The CLI only forwards the command.
 
 ## 4. Approvals (`pylon approvals`)
 
@@ -87,7 +87,7 @@ control surface only — it never deploys directly.
 
 Mirrors the desktop training cockpit verbs against the openagents.com training
 HTTP API. Admin verbs need an admin token (`--admin-token` or
-`OA_TRAINING_ADMIN_TOKEN`); without one they fail cleanly with a nonzero exit.
+`OA_TRAINING_ADMIN_TOKEN`). Without one they fail cleanly with a nonzero exit.
 
 ```
 pylon training plan      --base-url <url> --admin-token <tok>            # POST runs + windows/plan
@@ -105,7 +105,7 @@ pylon training status    --base-url <url>                                # publi
 
 - `pylon balance` / `pylon wallet status` are projection-safe: balance +
   readiness only, never seed/mnemonic/offers.
-- Spend stays approval-gated. A CLI verb adds no new spend/settlement authority;
+- Spend stays approval-gated. A CLI verb adds no new spend/settlement authority.
   it routes through the existing node-side wallet-action path.
 - Agent-steerability is a capability claim, not an earning claim. Installing or
   steering Pylon grants no automatic earning.

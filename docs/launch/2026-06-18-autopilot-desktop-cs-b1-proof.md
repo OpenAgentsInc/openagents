@@ -5,7 +5,7 @@ Issue: #5364
 
 This is the public-safe proof record for the CS-B1 packaged headless-node and
 macOS signing/notarization gate. It records refs, command shapes, and verifier
-outcomes only; it does not include signing secrets, notary credentials, local
+outcomes only. It does not include signing secrets, notary credentials, local
 tokens, provider payloads, or raw private logs.
 
 ## Source

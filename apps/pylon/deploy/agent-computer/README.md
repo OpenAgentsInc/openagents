@@ -7,20 +7,20 @@ An Agent Computer is not a hosted Pylon. It is an isolated Firecracker microVM
 on OpenAgents-owned GCE capacity, assigned to one admitted work context
 (`user + thread + repo binding`) and reclaimed after the lifecycle policy says
 the work context is idle or expired. The Pylon runtime and coding agents are
-software inside the image; the provisioned and metered unit is the Agent
+software inside the image. The provisioned and metered unit is the Agent
 Computer.
 
 ## Public Responsibilities
 
 - Create a nested-virtualization-capable GCE host in `openagentsgemini`.
 - Verify `/dev/kvm` on the host before any Firecracker lane is armed.
-- Keep the host IAP/private-egress by default; do not expose inbound services.
+- Keep the host IAP/private-egress by default. Do not expose inbound services.
 - Install only host prerequisites here. Private topology, kernels/rootfs paths,
   capability broker internals, control-plane tokens, SCM tokens, and user repo
   content stay out of the public repo.
 - Let in-repo `crates/oa-node` / `crates/oa-codex-control` provisioners own
   Firecracker lifecycle, scratch wipe, quarantine, and refs-only receipts
-  (migrated from private `OpenAgentsInc/cloud`; see `docs/cloud/MIGRATION.md`).
+  (migrated from private `OpenAgentsInc/cloud`, see `docs/cloud/MIGRATION.md`).
 - Require the placement echo contract from #8476: one work-context ref per
   Agent Computer, no cross-context reuse, SCM-broker-only credentials,
   credential scanner before closeout/writeback, and reclaim receipts proving
@@ -37,7 +37,7 @@ jammy + git/python3/ca-certificates/openssh-client, pinned bun, the vsock
 guest agent from the checked-in `guest-agent.py` + `agent-guest.service`,
 compiled `turn-runner`, fixed `portable-session-control`, `oa-workroomd`, and the systemd-networkd/resolved
 egress fix) and ADDS the pinned `codex` binary at `/usr/local/bin/codex`
-(npm `@openai/codex` linux-x64 vendor musl build; version + digests pinned in
+(npm `@openai/codex` linux-x64 vendor musl build, version + digests pinned in
 the script and in `agent-computer-image.manifest.json` → `guestImage.codex`).
 
 ```sh
@@ -65,24 +65,24 @@ is not PORT-03-ready until its bake receipt includes
 
 Capability installation uses a separate authenticated
 `POST /v1/portable-agent-computers/capabilities/install` octet-stream route.
-Only public refs travel in `X-OA-*` headers; the material body is mutable,
+Only public refs travel in `X-OA-*` headers. The material body is mutable,
 passes to the fixed guest controller through a raw vsock stdin frame, and is
 zeroized on both sides. The host derives the retained resource from
 `targetRef + sessionRef`, requires the exact staged owner/attachment/generation,
 and verifies that the lease was planned by the stage operation. A marker with
-only `leaseRef` and `evidenceRef` is committed after successful installation;
+only `leaseRef` and `evidenceRef` is committed after successful installation.
 `wipeCapability` removes both material and marker.
 
 Checkpoint materialization uses the authenticated octet-stream
 `POST /v1/portable-agent-computers/checkpoints/materialize` route after a
 nonaccepting prepare. The archive is digest-bound to the exact checkpoint and
 contains only a Git bundle, manifest, and sorted post-image. The guest rejects
-traversal, devices, hard links, unknown entries, and escaping links; bounded
+traversal, devices, hard links, unknown entries, and escaping links. Bounded
 relative symbolic links are recreated from manifest-declared link-target
 bytes. It checks every size/mode/digest, reconstructs the pinned revision,
 recomputes repository/diff/graph digests, and only then records stage. Any
 resolver, upload, digest, or verification failure invokes replay-safe
-`abortPrepared`; teardown is journaled as pending before its effect so a lost
+`abortPrepared`. Teardown is journaled as pending before its effect so a lost
 ack or missing VM reconciles to completed cleanup rather than orphaning a VM.
 
 Real work acceptance is separate from lifecycle activation. The authenticated
@@ -93,7 +93,7 @@ to the guest over raw stdin. The guest executes one real `oa-workroomd codex
 session` turn per agent against the materialized workspace. Only accepted
 agent/turn refs, monotonic cursors, evidence refs, and `material: excluded` are
 journaled. Same-operation replay returns the stored result without a second
-turn; changed bytes conflict. The request includes the exact pre-turn graph
+turn. Changed bytes conflict. The request includes the exact pre-turn graph
 cursors, the receipt must advance each event cursor by one, and the retained
 resource persists those cursors before acknowledging so checkpoint/export
 cannot regress them.
@@ -105,7 +105,7 @@ bounded manifest/Git-bundle/post-image tar.zst contract used by materialize.
 The host verifies the digest, retains bytes only in its mode-0600 private
 artifact store, returns them as `application/octet-stream` with artifact ref
 and digest headers, and zeroizes the response buffer. Same-operation replay is
-byte-identical; changed checkpoint scope conflicts.
+byte-identical. Changed checkpoint scope conflicts.
 
 The 2026-07-13 capability image bake and live Firecracker boot smoke are green.
 The materializer/continuation additions require a new nested-virt rebake and a
@@ -200,13 +200,13 @@ microVM. Proof script `/tmp/vsock-turn-proof.py` (host-local, root) reports
 `TURN-PROOF-RESULT: PASS`:
 
 - microVM boots from the baked rootfs
-  (`sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb`);
+  (`sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb`).
   the vsock guest agent (`agent-guest.service`, port `1024`) is ready in ~3s.
 - `turn-runner` runs inside the guest: real depth-1 checkout of
   `octocat/Hello-World@7fd1a60b01f9` (in-guest git-fetch egress works) + a real
   1-file staged diff, with Khala-shaped `runtime_event`s streamed over vsock.
-- `result.json` is extracted microVM -> host; `baseCommit` matches the pinned
-  commit; the microVM is SIGKILLed and its per-run scratch rootfs is wiped.
+- `result.json` is extracted microVM -> host. `baseCommit` matches the pinned
+  commit. The microVM is SIGKILLed and its per-run scratch rootfs is wiped.
 
 Egress fix (recorded in the manifest `inMicrovmTurnProof.egressFix`): the baked
 image enabled `systemd-networkd` with an empty `/etc/systemd/network/`, which
@@ -240,7 +240,7 @@ Ranked, with the owning repo:
 5. **Arm + dispatch** — expose the validated nested-virt control daemon through
    the approved private/public control boundary, bind the production Worker to
    it, and run one real physical-mobile owner turn. This remains the literal
-   #8547 exit; a direct host smoke is readiness evidence, not mobile acceptance.
+   #8547 exit. A direct host smoke is readiness evidence, not mobile acceptance.
 
 ## Build and live-host readiness smoke (2026-07-12, #8547)
 
@@ -260,7 +260,7 @@ The runtime image includes `iproute2` and `iptables`, which the live
 Firecracker network setup executes directly. The daemon must run on the
 nested-virtualization host with `/dev/kvm`, `/dev/net/tun`, the pinned kernel
 and rootfs, the Firecracker binary, and its runtime directory available. Keep
-the control bearer in a mode-0600 host env file or Secret Manager; never place
+the control bearer in a mode-0600 host env file or Secret Manager. Never place
 it on the command line or in a receipt.
 
 At commit `b1af7b55ec`, an authenticated loopback request to the current-image
@@ -269,7 +269,7 @@ daemon on `agent-computer-gce-1` completed the exact live
 code `0`, and `cleanupReceipt.tornDown=true`. The post-run host audit reported
 zero Firecracker processes, zero zombies, zero TAP devices, and zero jail
 directories. The image digest was
-`sha256:98957ec230d20a02371fef6d5a2fe274427228719711706eb72bcc1bfef2d642`;
+`sha256:98957ec230d20a02371fef6d5a2fe274427228719711706eb72bcc1bfef2d642`.
 the provision and cleanup receipt digests were respectively
 `sha256:60643d1150e4d2dbce36faf68003ff6e9859678962e352eab9363078f3509d20`
 and
@@ -283,7 +283,7 @@ physical-phone turn, the operator must expose the daemon only through the
 approved control boundary, configure the Worker control URL/token, and verify
 that the owner has an active GitHub connection plus an owner-scoped Codex grant.
 The current OpenAgents mobile execution-target catalog does not yet advertise a
-`managed_cloud`/Agent Computer option; it exposes hosted, named Codex, and named
+`managed_cloud`/Agent Computer option. It exposes hosted, named Codex, and named
 Claude targets. The mobile start leg is therefore not owner-executable until
 that server-authorized target is projected into the catalog and composer. Do
 not ask the owner to look for a selector that the shipped source cannot render.
@@ -292,14 +292,14 @@ not ask the owner to look for a selector that the shipped source cannot render.
 
 #8503 is not complete until the owner records public-safe receipts for:
 
-- the nested-virt GCE host with `/dev/kvm` verified;
-- the signed or digest-pinned Agent Computer kernel/rootfs image;
+- the nested-virt GCE host with `/dev/kvm` verified.
+- the signed or digest-pinned Agent Computer kernel/rootfs image.
 - `CLOUD_CODING_SESSIONS_ENABLED=true`,
   `OA_CODEX_GCE_PROVISIONER=live`, and `OA_CLOUD_CONTROL_URL`/token configured
-  against the real control plane;
-- one mobile-dispatched Khala Code turn that ran inside a Firecracker microVM;
+  against the real control plane.
+- one mobile-dispatched Khala Code turn that ran inside a Firecracker microVM.
 - lifecycle receipt refs for provision/active/idle/reclaim and an
-  `openagents.resource_usage_receipt.v1` compute receipt;
+  `openagents.resource_usage_receipt.v1` compute receipt.
 - exact token receipt refs for the same turn.
 
 Do not paste control tokens, SCM credentials, raw GCE instance identifiers,

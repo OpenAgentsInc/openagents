@@ -35,7 +35,7 @@ recorded `/business` intake (`BusinessSignupRecord.id`).
 **advanced, NOT cleared.** The receipt format and its verifier now exist and are
 tested, so a real `intake -> delivery -> accepted outcome -> receipt` run has a
 concrete, honest target to emit. The blocker stays listed because no real paid
-quick win has produced a dereferenceable receipt yet (no money has moved; the
+quick win has produced a dereferenceable receipt yet (no money has moved, the
 paid credits/settlement loops it would reference are themselves not collectable
 end-to-end — see `inference.gateway_credits_business.v1` and
 `payments.autopilot_credits_purchase.v1`).
@@ -70,11 +70,11 @@ New files (under `apps/openagents.com/workers/api/src/`):
 
 - The rest of the self-serve delivery loop after scoping: actually driving a
   scoped quick win through delivery + acceptance WITHOUT an operator. This change
-  automates only routing; `needsOperator` stays true for every route. Closing
+  automates only routing. `needsOperator` stays true for every route. Closing
   `business_quick_win_self_serve_delivery_missing` means flipping at least one
   route to `self_serve` backed by a proven hands-off delivery path.
 - Persistence + a public route for scopes and receipts (both modules are pure
-  contracts only; no D1 table or HTTP surface was added).
+  contracts only. No D1 table or HTTP surface was added).
 - A real first paid quick win that produces a receipt passing
   `assertFirstPaidQuickWinReceipt`
   (`blocker.product_promises.business_first_paid_quick_win_receipt_missing`),

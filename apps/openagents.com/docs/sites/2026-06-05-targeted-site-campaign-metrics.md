@@ -16,17 +16,17 @@ The table is `targeted_site_campaign_metric_events`.
 
 Each row records:
 
-- `id` and unique `idempotency_key`;
-- `campaign_id`;
-- optional `prospect_id`;
-- optional `normalized_domain`;
-- `event_kind`;
-- `quantity`;
-- `cost_cents`;
-- optional `public_ref`;
-- required `source_ref`;
-- optional `related_event_id`;
-- bounded `metadata_json`;
+- `id` and unique `idempotency_key`.
+- `campaign_id`.
+- optional `prospect_id`.
+- optional `normalized_domain`.
+- `event_kind`.
+- `quantity`.
+- `cost_cents`.
+- optional `public_ref`.
+- required `source_ref`.
+- optional `related_event_id`.
+- bounded `metadata_json`.
 - `occurred_at`, `created_at`, and `archived_at`.
 
 Event kinds:
@@ -51,28 +51,28 @@ Refund and complaint events must link to a related prior metric event.
 `recordTargetedSiteCampaignMetricEvent`:
 
 - validates id, idempotency, campaign, prospect, public, source, and related
-  refs as public-safe refs;
-- validates normalized domains;
+  refs as public-safe refs.
+- validates normalized domains.
 - rejects raw provider, raw email, private customer, wallet, and payment-shaped
-  material in refs and metadata;
-- requires active, unarchived campaign records;
-- requires prospect refs to belong to the same active campaign;
+  material in refs and metadata.
+- requires active, unarchived campaign records.
+- requires prospect refs to belong to the same active campaign.
 - records idempotently by `idempotency_key`.
 
 `projectTargetedSiteCampaignMetrics`:
 
-- validates the campaign ref;
-- requires an active campaign;
+- validates the campaign ref.
+- requires an active campaign.
 - derives aggregate counts and total capture cost from unarchived metric rows.
 
 ## Projection
 
 The projection includes:
 
-- total capture cost in cents;
+- total capture cost in cents.
 - preview, sent, bounce, reply, meeting, conversion, accepted outcome, refund,
-  complaint, suppressed, and blocked counts;
-- latest event timestamp;
+  complaint, suppressed, and blocked counts.
+- latest event timestamp.
 - internal event count.
 
 The public-safe helper omits raw event rows and internal event count. It exposes

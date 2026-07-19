@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 
-Status: implementation plan in progress; the bounded proposal package and
+Status: implementation plan in progress. The bounded proposal package and
 generated MVP proposal exist, while review/admission, compiler, adapters,
 execution, and receipt integration remain unimplemented
 
@@ -14,22 +14,22 @@ Desktop MVP ProductSpec.
 
 The first vertical slice is successful when:
 
-1. a reviewed Assurance Spec binds the exact current MVP ProductSpec and all
-   18 criterion IDs;
-2. the format parser/validator accepts it and rejects known invalid fixtures;
-3. an external review/admission artifact binds its exact revision/digest;
+1. a reviewed AssuranceSpec binds the exact current MVP ProductSpec and all
+   18 criterion IDs.
+2. the format parser/validator accepts it and rejects known invalid fixtures.
+3. an external review/admission artifact binds its exact revision/digest.
 4. a deterministic compiler emits byte-identical Manifest bytes for identical
-   inputs;
-5. one existing `CW-AC-04` oracle runs through the pinned local Vite Plus adapter;
-6. one duplicate-ID falsifier is rejected through the same adapter;
-7. normalized receipts keep all other criteria visibly uncovered;
-8. changing the ProductSpec revision or bytes makes the Assurance Spec and
-   evidence stale under the current exact-byte legacy binding;
+   inputs.
+5. one existing `CW-AC-04` oracle runs through the pinned local Vite Plus adapter.
+6. one duplicate-ID falsifier is rejected through the same adapter.
+7. normalized receipts keep all other criteria visibly uncovered.
+8. changing the ProductSpec revision or bytes makes the AssuranceSpec and
+   evidence stale under the current exact-byte legacy binding.
 9. a current `CONFIRMED` Assurance Receipt is registered by exact reference on
    a canonical-r6/`CW-AC-04` Desktop work packet through a typed resolver, then
    verified with a distinct host verifier reference and a separately enforced
    Assurance producer/reviewer policy, without changing owner, release, or
-   promise state;
+   promise state.
 10. `REFUTED`, `INCONCLUSIVE`, stale, or infrastructure-failed Assurance
     results demonstrably cannot enter the workroom's current pass-only
     verification path.
@@ -50,7 +50,7 @@ criterion IDs:       CW-AC-01 through CW-AC-18
 
 The digest covers the exact committed UTF-8 bytes. The binder uses
 `validateExecutableProductSpec`, not only standard ProductSpec validity,
-because the Assurance Spec requires positive revision and stable unique
+because the AssuranceSpec requires positive revision and stable unique
 criterion IDs.
 
 This is an explicit OpenAgents legacy-profile binding. Upstream ProductSpec
@@ -58,7 +58,7 @@ This is an explicit OpenAgents legacy-profile binding. Upstream ProductSpec
 Metrics for item-level Related Artifacts. The current r6 file uses Markdown
 `CW-AC-*` criteria and semantic metric IDs, so it cannot honestly publish a
 portable Related Artifact for `CW-AC-04`. The first AssuranceSpec still tests
-the current MVP as requested; upstream-current evidence publication follows a
+the current MVP as requested. Upstream-current evidence publication follows a
 separately reviewed ID/spec revision migration.
 
 The first generated companion is:
@@ -177,9 +177,9 @@ MVP claims without projecting this journey onto unrelated criteria.
 Three evidence surfaces must stay separate:
 
 1. the immutable native JUnit and normalized Assurance Receipts say what the
-   exact QA run observed;
+   exact QA run observed.
 2. the implemented Desktop workroom owns the packet evidence envelope,
-   distinct-verifier receipt, and owner packet disposition;
+   distinct-verifier receipt, and owner packet disposition.
 3. upstream ProductSpec Related Artifacts provide portable pointers from
    standard `AC-*`/`EVAL-*`/`SM-*` IDs to durable evidence elsewhere.
 
@@ -210,7 +210,7 @@ The review and admission may begin as public-safe local JSON artifacts, but
 must bind exact ProductSpec and AssuranceSpec revisions/digests, review-set
 digest, recognized role/actor ref, and the allowed dogfood gate. An agent cannot
 self-admit its proposal. Cryptographic signatures are not required for the
-first local slice; Git review and an explicit recognized actor remain external
+first local slice. Git review and an explicit recognized actor remain external
 authority.
 
 ### Reusable execution inputs
@@ -222,13 +222,13 @@ assurance/adapters.lock.json
 
 `ENV-OA-DESKTOP-MVP-VITE-PLUS-1` pins:
 
-- Node `24.13.1` and Vite Plus `0.2.4`;
+- Node `24.13.1` and Vite Plus `0.2.4`.
 - `pnpm-lock.yaml` SHA-256
-  `cbea63dc023fb7c876a5ad0f7977ce538e913180f9fd3c755518a64c00f9bd87`;
-- repository-relative commands only;
+  `cbea63dc023fb7c876a5ad0f7977ce538e913180f9fd3c755518a64c00f9bd87`.
+- repository-relative commands only.
 - no credentials, external network, production target, or mutable customer
-  state;
-- isolated run-artifact writes only;
+  state.
+- isolated run-artifact writes only.
 - dependency bootstrap must complete before the environment is `ready`.
 
 The adapter lock pins `openagents.vite_plus_test.v1` by version and content digest.
@@ -247,7 +247,7 @@ var/assurance/runs/<run-ref>/dogfood-projection.json
 
 Manifest commit policy remains an explicit design decision. Whether committed
 or regenerated and byte-compared, generated Manifests are never hand-edited.
-Private/large run artifacts stay outside Git; only approved public-safe fixture
+Private/large run artifacts stay outside Git. Only approved public-safe fixture
 projections may be committed.
 
 After the upstream compatibility and item-ID migration gate, add one stable
@@ -272,11 +272,11 @@ gate that closes the portable Evidence Loop afterward.
 
 ### AS-MVP-0 — freeze the subject fixture
 
-- copy no ProductSpec content;
+- copy no ProductSpec content.
 - record exact path, format, revision, digest, and `CW-AC-01…18` binding in
-  conformance fixtures;
+  conformance fixtures.
 - add a test that a changed byte, revision, missing ID, duplicate ID, or changed
-  criterion set invalidates the binding;
+  criterion set invalidates the binding.
 - expose a canonical SHA-256 exact-byte helper from the new assurance package
   rather than copying Desktop's private helper.
 
@@ -289,23 +289,23 @@ Implemented bounded proposal slice in `packages/assurance-spec/`:
 
 - Effect Schema semantic model for v0.1 frontmatter, mandatory sections, and
   the subject/environment/obligation/gate/evidence/authority blocks needed by
-  this pilot;
-- Markdown parser and serializer;
-- structural validator with stable error codes;
-- adequacy validator separated from structural validity;
-- CLI `propose`, `validate`, and `coverage` commands;
-- deterministic one-unresolved-obligation-per-criterion proposal;
+  this pilot.
+- Markdown parser and serializer.
+- structural validator with stable error codes.
+- adequacy validator separated from structural validity.
+- CLI `propose`, `validate`, and `coverage` commands.
+- deterministic one-unresolved-obligation-per-criterion proposal.
 - optional committed-HEAD/tree repository inventory that never auto-maps
-  candidate artifacts to proof;
-- focused valid/invalid and clean/dirty repository fixtures;
-- parse → serialize → parse semantic equality;
+  candidate artifacts to proof.
+- focused valid/invalid and clean/dirty repository fixtures.
+- parse → serialize → parse semantic equality.
 - unsupported-version rejection.
 
 Still required for the full document-core exit:
 
-- comprehensive schema/parser parity and conformance fixtures;
-- custom-section preservation rather than explicit rejection;
-- reviewed proof-design and admission annotations;
+- comprehensive schema/parser parity and conformance fixtures.
+- custom-section preservation rather than explicit rejection.
+- reviewed proof-design and admission annotations.
 - the upstream-current ProductSpec item profile.
 
 Do not implement speculative techniques not used by the pilot. Keep the schema
@@ -317,14 +317,14 @@ pretending they pass. Exit remains open until the full items above land.
 
 ### AS-MVP-2 — review and admission
 
-- define minimal Assurance review-annotation and admission schemas;
+- define minimal Assurance review-annotation and admission schemas.
 - require review of subject fidelity, traceability, oracle adequacy, falsifier
   strength, environment fidelity, evidence sufficiency, and authority
-  containment for `AO-CW-AC-04-01`;
+  containment for `AO-CW-AC-04-01`.
 - bind exact AssuranceSpec revision/digest, ProductSpec revision/digest, and
-  review-set digest;
+  review-set digest.
 - make compilation refuse missing, stale, mismatched, or unauthorized
-  admission;
+  admission.
 - keep review opinion separate from admission authority.
 
 Exit: one recognized reviewer admits only `GATE-ASSURANCESPEC-DOGFOOD` for the
@@ -332,10 +332,10 @@ exact source artifacts.
 
 ### AS-MVP-3 — Environment Profile and adapter lock
 
-- implement the public-safe Environment Profile schema;
-- create `ENV-OA-DESKTOP-MVP-VITE-PLUS-1` with explicit capabilities and forbidden actions;
-- pin the exact Vite Plus adapter and lock digest;
-- return `infrastructure: unavailable` if dependencies are absent;
+- implement the public-safe Environment Profile schema.
+- create `ENV-OA-DESKTOP-MVP-VITE-PLUS-1` with explicit capabilities and forbidden actions.
+- pin the exact Vite Plus adapter and lock digest.
+- return `infrastructure: unavailable` if dependencies are absent.
 - never turn missing dependencies into `REFUTED` or an implicit skip.
 
 Exit: environment and adapter validation pass in a dependency-bootstrapped clean
@@ -346,11 +346,11 @@ differs.
 
 Compile only admitted inputs into canonical JSON containing:
 
-- exact subject, AssuranceSpec, admission, profile, lock, and compiler refs;
-- resolved `AO-CW-AC-04-01` candidate and falsifier units;
-- dependency and dogfood-gate graph;
-- JUnit and sensitivity-receipt requirements;
-- repository-relative command argv and symbolic run-relative artifact slots;
+- exact subject, AssuranceSpec, admission, profile, lock, and compiler refs.
+- resolved `AO-CW-AC-04-01` candidate and falsifier units.
+- dependency and dogfood-gate graph.
+- JUnit and sensitivity-receipt requirements.
+- repository-relative command argv and symbolic run-relative artifact slots.
 - `do_not_edit: true`.
 
 The compiler performs no model, network, clock, random, environment discovery,
@@ -368,15 +368,15 @@ reinterpret ProductSpec prose.
 
 Requirements:
 
-- spawn explicit argv without a shell;
-- run a dependency-bootstrapped clean worktree;
-- use Vite Plus's JUnit reporter rather than parsing console prose;
-- select and assert the exact named test case;
-- treat zero selected tests as infrastructure/adapter failure, never green;
+- spawn explicit argv without a shell.
+- run a dependency-bootstrapped clean worktree.
+- use Vite Plus's JUnit reporter rather than parsing console prose.
+- select and assert the exact named test case.
+- treat zero selected tests as infrastructure/adapter failure, never green.
 - record exit status plus JUnit, stdout/stderr, source, command, and toolchain
-  digests;
+  digests.
 - normalize exact ProductSpec, AssuranceSpec, obligation, environment, adapter,
-  candidate/falsifier, and evidence refs into an Assurance Receipt;
+  candidate/falsifier, and evidence refs into an Assurance Receipt.
 - retain native JUnit evidence rather than replacing it.
 
 Candidate command shape:
@@ -396,14 +396,14 @@ normalized evidence.
 
 ### AS-MVP-6 — sensitivity, projection, and independent review
 
-- execute the candidate and known-bad units;
+- execute the candidate and known-bad units.
 - require candidate `CONFIRMED` plus falsifier `REFUTED` before emitting
-  sensitivity `CONFIRMED`;
+  sensitivity `CONFIRMED`.
 - keep observation, infrastructure, stability, freshness, and reviewer
-  disposition separate;
-- project `CW-AC-04` as partially supported at `local_fixture`, not accepted;
-- project the remaining criteria as uncovered/`needs_design`;
-- independently review exact JUnit and receipt refs;
+  disposition separate.
+- project `CW-AC-04` as partially supported at `local_fixture`, not accepted.
+- project the remaining criteria as uncovered/`needs_design`.
+- independently review exact JUnit and receipt refs.
 - demonstrate that a copied subject with one-byte/revision change makes the
   admission and evidence stale.
 
@@ -414,35 +414,35 @@ state.
 
 - create a new canonical-r6 accepted plan with at least two non-equivalent
   packets, one child allocation, valid dependencies, and every criterion mapped
-  or explicitly deferred;
+  or explicitly deferred.
 - make the evidence packet's criterion IDs exactly `[CW-AC-04]`, never a
   broader set. A second packet may implement the receipt bridge under the
-  narrow independent-verification portion of `CW-AC-08`; it has its own tests
+  narrow independent-verification portion of `CW-AC-08`. It has its own tests
   and does not inherit `AO-CW-AC-04-01` evidence. The `CW-AC-04` evidence packet
-  depends on that bridge packet reaching host `verified`;
+  depends on that bridge packet reaching host `verified`.
 - admit the bridge packet and evidence packet only while each is `active` with
   its exact live lease. The host cannot append evidence to an
-  `evidence_present`, `verified`, failed, cancelled, or superseded packet;
+  `evidence_present`, `verified`, failed, cancelled, or superseded packet.
 - build `openagents.assurance_receipt_bridge.v1`. Before any host mutation it
-  must decode and digest-check the Assurance Receipt; verify exact
-  ProductSpec/AssuranceSpec/admission/Manifest/obligation bindings; require
-  `CONFIRMED`, current, ready, stable/nonflaky sensitivity evidence; enforce
-  Assurance producer/reviewer independence and publication policy; and reject
-  every other state with a typed result;
+  must decode and digest-check the Assurance Receipt. Verify exact
+  ProductSpec/AssuranceSpec/admission/Manifest/obligation bindings. Require
+  `CONFIRMED`, current, ready, stable/nonflaky sensitivity evidence. Enforce
+  Assurance producer/reviewer independence and publication policy. And reject
+  every other state with a typed result.
 - store an immutable resolver entry and issue a RefSchema-safe opaque handle
   such as `assurance.receipt.<sha256hex>`. The current host treats
-  `evidenceRef` as opaque and does not dereference the Assurance Receipt;
+  `evidenceRef` as opaque and does not dereference the Assurance Receipt.
 - register that handle as `evidenceKind: receipt`, preserving the native JUnit
-  and Assurance Receipt;
+  and Assurance Receipt.
 - use a host `verifierRef` different from the active lease executor recorded as
   `evidenceProducerRef`. This unequal-ref check is not authenticated identity
-  proof and does not replace the bridge's Assurance producer/reviewer check;
+  proof and does not replace the bridge's Assurance producer/reviewer check.
 - call the current pass-only `verifyEvidence` path only with the exact host
-  evidence-receipt refs the reviewer actually resolved;
+  evidence-receipt refs the reviewer actually resolved.
 - prove `REFUTED`, `INCONCLUSIVE`, stale, flaky, unavailable, and
-  infrastructure-failed inputs remain non-verified and visible;
+  infrastructure-failed inputs remain non-verified and visible.
 - leave owner disposition pending unless an owner separately accepts or waives
-  the packet; never infer release or promise state.
+  the packet. Never infer release or promise state.
 
 Exit: the first AssuranceSpec dogfood uses the real ProductSpec workroom as its
 runtime evidence integration point without building a second packet/status
@@ -459,33 +459,33 @@ claim that every operational step has happened.
 
 This is not a hidden prerequisite for the r6 internal dogfood:
 
-- vendor current upstream ProductSpec `0.19.0` conformance fixtures;
+- vendor current upstream ProductSpec `0.19.0` conformance fixtures.
 - implement structured AC/EVAL/SM and Related Artifact parser, serializer,
-  validator, exact errors, and unusual-target warnings locally;
+  validator, exact errors, and unusual-target warnings locally.
 - add exact document digest plus a versioned canonical intent-projection digest
   and golden tests. The projection includes `product_spec` dependency links and
-  consumed `tool_metadata`; only typed evidence attachments are excluded;
+  consumed `tool_metadata`. Only typed evidence attachments are excluded.
 - add an owner-confirmed evidence-attachment edit path that proves intent is
   unchanged and atomically rechecks exact bytes. Do not weaken generic
-  `proposeEdit`, which currently requires a revision bump for every byte edit;
+  `proposeEdit`, which currently requires a revision bump for every byte edit.
 - propose a ProductSpec revision mapping `CW-AC-01…18` to `AC-1…18` and the
-  seven semantic metric IDs to `SM-1…7`;
+  seven semantic metric IDs to `SM-1…7`.
 - use reviewed single-line criterion-normalization fixtures to preserve
-  semantics; upstream's handwritten parser does not accept YAML block scalars;
+  semantics. Upstream's handwritten parser does not accept YAML block scalars.
 - preserve each current metric's `segment` and `source` in a keyed
-  `custom-success-metric-context` section;
+  `custom-success-metric-context` section.
 - create a machine-readable old-to-new ID mapping artifact and use ProductSpec
-  Decision Trace prose plus a link to explain and approve it;
+  Decision Trace prose plus a link to explain and approve it.
 - retain or supersede old-identity packets/runs, then create a new accepted
   plan/run for the migrated IDs. Never retarget old history or carry its
-  evidence forward automatically;
+  evidence forward automatically.
 - seed the stable public-safe Assurance Evidence Index in `no_evidence`, add
   `engineering_spec`/`other`/`code` Related Artifact refs, validate dangling
   item errors and unusual-target warnings, and only then freeze the migrated
-  ProductSpec document/intent identities;
-- explicitly rebind and re-admit the Assurance Spec against `AC-4`, create the
+  ProductSpec document/intent identities.
+- explicitly rebind and re-admit the AssuranceSpec against `AC-4`, create the
   new exact-identity workroom plan/run, and rerun the narrow obligation before
-  publishing current evidence;
+  publishing current evidence.
 - prove a typed evidence-attachment-only edit can keep `spec_revision` and the
   canonical intent digest while changing the document digest. The current
   Desktop run still becomes exact-identity mismatch and requires a new run.
@@ -532,29 +532,29 @@ evidence-chain diagnostics only in their proper layers, including
 `missing_related_artifact_target`, `unsafe_related_artifact_path`,
 `invalid_assurance_evidence_index`, `related_artifact_subject_mismatch`, and
 `related_artifact_unresolved_external`. Offline external URLs remain
-`INCONCLUSIVE`; structural validity never fabricates reachability or proof.
+`INCONCLUSIVE`. Structural validity never fabricates reachability or proof.
 
 ## Test matrix
 
 | Case | Expected result |
 | --- | --- |
-| Exact MVP r6 subject, generated proposal | Structurally valid; 18 obligations; 18 `needs_design`; non-executable |
-| ProductSpec revision changed | `subject_revision_mismatch`; no compile |
-| ProductSpec bytes changed | `subject_document_digest_mismatch`; no compile |
-| Criterion missing/duplicated | binding failure; no compile |
-| Admission missing or stale | structurally valid but not admitted; no compile |
-| Environment dependencies missing | infrastructure unavailable; not `REFUTED` |
+| Exact MVP r6 subject, generated proposal | Structurally valid. 18 Obligations. 18 `needs_design`. Non-executable |
+| ProductSpec revision changed | `subject_revision_mismatch`. No compile |
+| ProductSpec bytes changed | `subject_document_digest_mismatch`. No compile |
+| Criterion missing/duplicated | binding failure. No compile |
+| Admission missing or stale | structurally valid but not admitted. No compile |
+| Environment dependencies missing | infrastructure unavailable. Not `REFUTED` |
 | Candidate named test passes | candidate `CONFIRMED` |
-| Duplicate-ID falsifier test rejects mutation | falsifier `REFUTED`; sensitivity `CONFIRMED` |
+| Duplicate-ID falsifier test rejects mutation | falsifier `REFUTED`. Sensitivity `CONFIRMED` |
 | Current confirmed receipt registered by exact workroom ref | bridge-valid evidence-present, then `verified` only with a distinct verifier ref |
 | Opaque ref has missing/mutated/subject-mismatched Assurance Receipt | bridge refuses before `recordEvidence` |
-| Refuted/inconclusive/stale/infrastructure-failed receipt presented to host adapter | no host `passed`/`verified`; explicit blocking result |
-| Zero selected tests | adapter/infrastructure failure; never green |
+| Refuted/inconclusive/stale/infrastructure-failed receipt presented to host adapter | no host `passed`/`verified`. Explicit blocking result |
+| Zero selected tests | adapter/infrastructure failure. Never green |
 | Identical compiler inputs twice | byte-identical Manifest |
-| Changed adapter/profile/source digest | new Manifest; dependent evidence stale |
+| Changed adapter/profile/source digest | new Manifest. Dependent evidence stale |
 | Related Artifact targets missing `AC-*` item after PSEL-MVP-1 | upstream-compatible `invalid_related_artifact` |
 | Eval artifact targets `SM-*` after PSEL-MVP-1 | valid with `unusual_related_artifact_target` warning |
-| Typed evidence-attachment-only edit after dual-digest support | document digest changes; intent digest/revision stay stable; existing Desktop run mismatches |
+| Typed evidence-attachment-only edit after dual-digest support | document digest changes. Intent digest/revision stay stable. Existing Desktop run mismatches |
 
 ## Current package check
 
@@ -571,17 +571,17 @@ admitted `ENV-OA-LOCAL-BUN-1` Assurance run and not product evidence.
 ## Explicit non-goals for the first slice
 
 - no semantic prose-to-proof generation beyond the deterministic
-  criterion-to-unresolved-obligation skeleton;
-- no automatic test generation;
-- no browser, native, device, staging, release, or production adapter;
-- no QA Swarm sharding;
-- no full `CW-AC-04` acceptance;
+  criterion-to-unresolved-obligation skeleton.
+- no automatic test generation.
+- no browser, native, device, staging, release, or production adapter.
+- no QA Swarm sharding.
+- no full `CW-AC-04` acceptance.
 - no proof-design fields or readiness claims inferred for any of the 18
-  generated obligations;
-- no hosted Observatory;
-- no public report beyond approved fixture-safe artifacts;
+  generated obligations.
+- no hosted Observatory.
+- no public report beyond approved fixture-safe artifacts.
 - no change to the r6 MVP ProductSpec, scope, sequencing, release gate, or
-  promise registry during the first internal dogfood;
+  promise registry during the first internal dogfood.
 - no claim that `CW-AC-*` Related Artifacts are upstream portable before the
   explicit PSEL-MVP-1 ProductSpec revision and ID reconciliation.
 
@@ -592,7 +592,7 @@ admitted `ENV-OA-LOCAL-BUN-1` Assurance run and not product evidence.
 3. Complete PSEL-MVP-1 so item-level Related Artifacts and intent/document
    digest separation are real rather than prose.
 4. Enroll the existing nine-step `mvp-proof` driver as a Codex-ready Desktop
-   execution adapter; do not map it to canonical criteria until each exercised
+   execution adapter. Do not map it to canonical criteria until each exercised
    claim is reviewed.
 5. Add one real host/renderer or ProductSpec/work-packet seam obligation.
 6. Add a packaged OpenAgents Desktop environment and release-artifact receipt.
@@ -604,7 +604,7 @@ admitted `ENV-OA-LOCAL-BUN-1` Assurance run and not product evidence.
 ## Completion statement
 
 The first internal dogfood is complete only when the exact r6 subject, admitted
-r1 Assurance Spec, deterministic Manifest, candidate test, duplicate-ID
+r1 AssuranceSpec, deterministic Manifest, candidate test, duplicate-ID
 falsifier, normalized receipts, stale-input proof, distinct-verifier workroom
 integration through a typed immutable resolver, and independent review are all
 dereferenceable. “A Markdown file

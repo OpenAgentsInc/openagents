@@ -8,7 +8,7 @@ Issue: #443 / `OPENAGENTS-SITES-MDK-013`
 OpenAgents product surface now has a source-safe helper contract for generated Sites that need to
 call OpenAgents-hosted Site commerce routes. The helpers keep payment authority
 inside OpenAgents product surface. Generated static Sites and Worker-compatible Sites call OpenAgents product surface
-APIs; they do not import MoneyDevKit native runtime packages, own MDK
+APIs. They do not import MoneyDevKit native runtime packages, own MDK
 credentials, hold wallet state, reconcile webhooks, or claim payout authority.
 
 Implementation:
@@ -20,14 +20,14 @@ Implementation:
 
 The helper contract covers:
 
-- payment discovery reads;
-- checkout intent creation;
-- checkout return reads for `success`, `cancel`, and `status`;
-- payment proof reads;
-- L402 challenge creation;
-- L402 redemption;
-- redacted helper error envelopes;
-- static-site fetch examples;
+- payment discovery reads.
+- checkout intent creation.
+- checkout return reads for `success`, `cancel`, and `status`.
+- payment proof reads.
+- L402 challenge creation.
+- L402 redemption.
+- redacted helper error envelopes.
+- static-site fetch examples.
 - Worker-compatible / Workers for Platforms fetch examples.
 
 All request bodies are validated against the current OpenAgents product surface Site commerce route
@@ -147,7 +147,7 @@ When generating or modifying a Site that accepts payment:
    `POST /api/sites/{siteId}/commerce/l402/challenges`, then redeem through
    `POST /api/sites/{siteId}/commerce/l402/redemptions` after payment proof is
    available. Both writes require an active registered OpenAgents agent bearer
-   token. Do not embed that token in generated public Site source; pass it from
+   token. Do not embed that token in generated public Site source. Pass it from
    the calling agent runtime.
 7. Always set a spend cap for paid actions. For bitcoin-denominated L402 test
    calls, the current route field may use `sats` as the denomination value.
@@ -160,15 +160,15 @@ When generating or modifying a Site that accepts payment:
 
 Generated Site source must never include:
 
-- MDK credentials or access tokens;
-- wallet mnemonics or wallet state;
-- webhook secrets;
-- raw invoices;
-- payment hashes;
-- payment preimages;
-- provider grants;
-- checkout query-state dependencies;
-- customer private values;
+- MDK credentials or access tokens.
+- wallet mnemonics or wallet state.
+- webhook secrets.
+- raw invoices.
+- payment hashes.
+- payment preimages.
+- provider grants.
+- checkout query-state dependencies.
+- customer private values.
 - payout or settlement claims.
 
 Generated Sites should not import `@moneydevkit/*`, `@moneydevkit/lightning-js`,

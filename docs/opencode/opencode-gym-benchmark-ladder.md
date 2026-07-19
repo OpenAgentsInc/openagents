@@ -1,7 +1,7 @@
 # OpenCode Gym Benchmark Ladder — Khala vs the Field
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > **Status:** planning doc, 2026-06-24. Defines the three-rung benchmark ladder
@@ -24,7 +24,7 @@ verification outcome.
 |------|----------|---------|--------------|
 | 1 | **Big Pickle** | Baseline — the default free model in OpenCode | Beat on cost-per-accepted-outcome AND verified-rate on the same coding task |
 | 2 | **Free/open models** | The field users compare to when not paying | Equal or better on verified-rate at equal or lower cost, or clearly better on cost-per-accepted-outcome |
-| 3 | **Paid frontier models** | The upper bound — what users pay for | Measure the gap; track closing over time. No requirement to beat — honesty demands showing the gap |
+| 3 | **Paid frontier models** | The upper bound — what users pay for | Measure the gap. Track closing over time. No requirement to beat — honesty demands showing the gap |
 
 ### Rung 1 — Khala vs Big Pickle
 
@@ -33,7 +33,7 @@ first and most important rung: if Khala cannot beat Big Pickle on the
 OpenCode surface, it has no reason to exist as an OpenCode provider.
 
 **Competitor lane:** `bigpickle` — registered as `fixture_only` for the no-spend
-Gym fixture. The fixture selector is `opencode/bigpickle`; an owner-armed real
+Gym fixture. The fixture selector is `opencode/bigpickle`. An owner-armed real
 sweep must resolve and record the exact upstream OpenCode model id + API version
 + date before a decision-grade report.
 
@@ -190,8 +190,8 @@ used in external comparisons or claims.
 | Rung | Opponent | Khala must... |
 |------|----------|---------------|
 | 1 | Big Pickle | Beat on verified-rate + cost-per-accepted-outcome |
-| 2 | Free/open (Gemini Flash, Llama, Qwen, Mistral) | Match or beat on verified-rate; win on tool-call completion |
-| 3 | Paid frontier (GPT, Claude, Gemini Pro) | Honest measurement of the gap; track shrinkage over time |
+| 2 | Free/open (Gemini Flash, Llama, Qwen, Mistral) | Match or beat on verified-rate. Win on tool-call completion |
+| 3 | Paid frontier (GPT, Claude, Gemini Pro) | Honest measurement of the gap. Track shrinkage over time |
 
 Every rung is re-run on every significant Khala model update. The Gym
 publishes a timed, dereferenceable leaderboard at a recurring cadence

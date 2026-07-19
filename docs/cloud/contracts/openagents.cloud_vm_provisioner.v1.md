@@ -1,7 +1,7 @@
 # `openagents.cloud_vm_provisioner.v1`
 
 Status: code-complete in `cloud` (provisioner + HTTP route + fake lane +
-contract test); the live firecracker boot is the deploy step on a Linux KVM
+contract test). The live firecracker boot is the deploy step on a Linux KVM
 host. Tracks OpenAgentsInc/openagents issue #6200 (follow-up from #6186).
 
 The production cross-OS Cloud-VM provisioner behind the qa-runner's typed
@@ -41,7 +41,7 @@ The live firecracker path is gated behind `OA_CLOUD_VM_PROVISIONER`:
   in-VM artifact dir (`/qa/artifacts`) back out to a host dir, and tears the
   jail down. If KVM is unavailable, the images are missing, or the OS tier has
   no host pool, it refuses (never falls back to a local browser, never fakes a
-  green); `provisioner_for(Live)` falls back to `fake` so no-KVM hosts never
+  green). `provisioner_for(Live)` falls back to `fake` so no-KVM hosts never
   attempt a real boot.
 
 Live env (kernel + rootfs are required to arm the live lane):
@@ -74,11 +74,11 @@ Request body (camelCase):
 ```
 
 - `sessionCommand` is the command run INSIDE the VM to produce the session +
-  artifacts; it must write outputs under `/qa/artifacts`. Mirrors the container
+  artifacts. It must write outputs under `/qa/artifacts`. Mirrors the container
   backend's `sessionCommand`. It is passed verbatim, never shell-interpolated by
   the daemon.
 - The host extraction dir is owned by the daemon (under its state root) and
-  returned as `extractedTo`; the caller never supplies a host path.
+  returned as `extractedTo`. The caller never supplies a host path.
 
 Response body (`CloudVmSessionOutcome`, refs-only):
 
@@ -140,5 +140,5 @@ Response body (`CloudVmSessionOutcome`, refs-only):
   (`contains_forbidden_material`, asserted over the full serialized outcome).
 - No wallet authority crosses the VM/workroom boundary.
 - Degrade-or-refuse: failed acquire / unhealthy boot tears down any partial jail
-  before refusing; teardown is idempotent and always runs (even on
+  before refusing. Teardown is idempotent and always runs (even on
   exec/copy_out failure) so a VM is never leaked.

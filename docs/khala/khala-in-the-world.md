@@ -28,8 +28,8 @@ The Verse is now a unified **Effect/TypeScript 3D world** (Cloudflare backend,
 replacing SpacetimeDB as of `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md`):
 
 - **`apps/openagents-world`** — a **Region Durable Object** per region owning
-  presence, hibernatable WebSocket fanout, and hot interaction state; **D1**
-  projection rows replayed from public source refs; cursor-based reconnect; a
+  presence, hibernatable WebSocket fanout, and hot interaction state. **D1**
+  projection rows replayed from public source refs. Cursor-based reconnect. A
   projection **bridge** that ingests `/api/public/*` feeds into world rows.
 - **`packages/world-contract`** — the shared Effect Schema contract: typed
   **rows** (`pylon_station`, `agent_avatar`, `avatar_position`, `training_run`,
@@ -49,8 +49,8 @@ Two rules from the engine that govern everything here:
    receipt** (the `openagents` response block in khala.md §3: `receipt`, `route`,
    `workers`, `verification`, `cost_msat`, `settled`). Click any arc → the
    receipt.
-2. **Authority boundary.** The world owns presence/interaction; the Worker/D1
-   owns settlement/proof. The visualization *consumes* projected inference events;
+2. **Authority boundary.** The world owns presence/interaction. The Worker/D1
+   owns settlement/proof. The visualization *consumes* projected inference events.
    no browser command can fabricate a route, a verification, or a payment.
 
 ## The cast (world objects → serving pieces)
@@ -62,7 +62,7 @@ Two rules from the engine that govern everything here:
 | Assigned in-world worker | **Pylon station** (lights up, serves, gets paid) | exists: `pylon_station`, `projectChatWorldPylonScene`, `/api/public/pylon-stats` |
 | External provider | **Gateway portal** — an actual gateway model: energy flows in and *offworld* to OpenRouter/Vertex/Fireworks/Claude/GPT | NEW `gateway_station` row + portal primitive |
 | Code work | **coding-agent avatar** — warps in, works a terminal, returns an artifact | exists: `createAgentAvatar`, `createCharacterSpawner`, `createAgentWarpInEffect` |
-| Verification | **verify glow / replay** — gold (Verified) vs red (Rejected) | exists: lifecycle stages in `trainingRunView`; verification classes from khala.md §6 |
+| Verification | **verify glow / replay** — gold (Verified) vs red (Rejected) | exists: lifecycle stages in `trainingRunView`. Verification classes from khala.md §6 |
 | Settlement | **payment beam** to worker + validator, sized by sats | exists: `subscribePaymentParticles`, gold beams |
 | Live metrics | **HUD meters** | exists: `createHudMeter` |
 
@@ -78,7 +78,7 @@ destinations are **visually distinct**, because the difference *is* the business
 
 1. **Pylon — in-world, verified, paid.** An electric-blue crackling arc to a
    Pylon station that *stays in the world*. The Pylon brightens / its mana bar
-   works while serving; on a `Verified` verdict, a **gold settlement beam** flows
+   works while serving. On a `Verified` verdict, a **gold settlement beam** flows
    back to the Pylon (worker) and to the validator. This is the lane where
    composition, verification, and Bitcoin all happen — the verified-work
    flywheel, lit up.
@@ -91,7 +91,7 @@ destinations are **visually distinct**, because the difference *is* the business
    visible at a glance.)
 3. **Coding agent.** Energy charges and **warps in a coding-agent avatar**, who
    walks to a workbench/pod, works a terminal session, and returns with the
-   artifact; verified by its test/verification command (`test_passed`); then paid.
+   artifact. Verified by its test/verification command (`test_passed`). Then paid.
 
 **Multi-worker requests (the Conductor / Fugu case)** are the payoff: the
 coordinator fans energy to *several* destinations at once — a Thinker Pylon, a
@@ -125,7 +125,7 @@ as world objects — you see the inference happening near you.
 
 ## Schema work (minimal additions, existing patterns)
 
-Prefer modeling on existing rows; add exactly one genuinely new object.
+Prefer modeling on existing rows. Add exactly one genuinely new object.
 
 - **New row — `gateway_station`** (interaction or projection, mirrors
   `pylon_station`): the external-provider portal. Fields: `gatewayRef`, `lane`
@@ -141,15 +141,15 @@ Prefer modeling on existing rows; add exactly one genuinely new object.
   a dedicated `inference_event` row is cleaner if volume/typing warrants it
   later.)
 - **Coding agents:** reuse `agent_avatar` + `run_entity` (+ `avatar_position`).
-- **Commands:** add service-only `upsert_gateway_station`; otherwise reuse
+- **Commands:** add service-only `upsert_gateway_station`. Otherwise reuse
   `append_world_event`, `upsert_run_entity`, `upsert_settlement_ref`. **No new
   browser command** — clients never fabricate inference/route/settlement.
-- **Deltas:** standard sparse `update`/`delete`; the render layer maps an
+- **Deltas:** standard sparse `update`/`delete`. The render layer maps an
   inference-event delta to arc/portal/avatar/beam animations.
 
 ## Rendering primitives (three-effect)
 
-Mostly reuse; two new primitives:
+Mostly reuse. Two new primitives:
 
 - **`createCracklingArc`** — a branching electric bolt between two world points,
   intensity-parameterized, with a short crackle lifetime (sibling of
@@ -159,9 +159,9 @@ Mostly reuse; two new primitives:
   return, an "out of world" stream for external-provider work. Implemented in
   `@openagentsinc/three-effect`.
 - **Reuse:** `createAgentAvatar` + `createAgentWarpInEffect` +
-  `createCharacterSpawner` (coding agents); `projectChatWorldPylonScene` /
-  `pylon_station` (workers); `subscribePaymentParticles` (settlement beams);
-  `createResourceBar` (Pylon mana/earnings); `createHudMeter` (HUD);
+  `createCharacterSpawner` (coding agents). `projectChatWorldPylonScene` /
+  `pylon_station` (workers). `subscribePaymentParticles` (settlement beams).
+  `createResourceBar` (Pylon mana/earnings). `createHudMeter` (HUD).
   `trainingRunView` (the nexus core and verify lifecycle).
 
 File seams that already do the closest thing today (Episode-240 era):
@@ -193,12 +193,12 @@ gateway-portal encodings.
   (`chatcmpl_5577d36f…`) → paid charge receipt → public event + cursor → D1
   `gateway_station`+`world_event` rows in `region.request.khala.…` → live region
   socket snapshot → desktop projection `gatewayLinkOk:true` → receipt/source-ref
-  inspector. `openagents-world` deployed `5778bf03`; `createCracklingArc` /
+  inspector. `openagents-world` deployed `5778bf03`. `createCracklingArc` /
   `createGatewayPortal` consumed from `@openagentsinc/three-effect`.
-- **P1 — coding-agent lane.** Spawn agent avatars for code work; add the verify
+- **P1 — coding-agent lane.** Spawn agent avatars for code work. Add the verify
   glow (gold/red) from the verification class.
 - **P2 — multi-worker fan-out + HUD.** The Conductor/Fugu compose-across-the-map
-  animation; the in-world-vs-gateway and AO/kWh meters.
+  animation. The in-world-vs-gateway and AO/kWh meters.
 
 **Status:** the P0 live loop is **proven end-to-end on production** — a real
 owner-enabled Khala receipt flows gateway → public timeline → world (D1 rows +
@@ -217,5 +217,5 @@ the most legible possible proof that inference is being served, routed, verified
 and paid. The in-world (Pylon, verified, paid) vs offworld (gateway, margin-only)
 split renders the actual economics: you can *see* the verified-work flywheel
 filling, and see exactly how much of each request we keep in our own paid economy
-versus pass through. One endpoint outside; step inside and watch the energy go
+versus pass through. One endpoint outside. Step inside and watch the energy go
 where the work goes.

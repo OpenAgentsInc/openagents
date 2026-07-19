@@ -52,12 +52,12 @@ Both routes also allow `HEAD` and reject other methods.
 
 `referral_attributions` stores:
 
-- source and optional invite ids;
-- public source and invite refs for public-safe traceability;
-- human or agent capture path;
-- clean redirect target;
-- policy state;
-- pending expiry;
+- source and optional invite ids.
+- public source and invite refs for public-safe traceability.
+- human or agent capture path.
+- clean redirect target.
+- policy state.
+- pending expiry.
 - optional claimed user and first verification timestamp for later REF1
   consumption.
 

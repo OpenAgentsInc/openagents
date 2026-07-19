@@ -16,24 +16,24 @@ the same projection model while dispatch policy remains unchanged.
 
 `OpenAgentsRunnerBackendKind` supports:
 
-- `shc_vm`;
-- `cloudflare_container`;
+- `shc_vm`.
+- `cloudflare_container`.
 - `gcloud_vm`.
 
 `OpenAgentsRunnerBackendRecord` tracks:
 
-- backend kind;
-- workload trust level;
-- enabled/configured state;
-- dispatch status;
-- lifecycle event refs;
-- artifact refs;
-- health refs;
-- capacity refs;
-- cost refs;
-- policy refs;
-- receipt refs;
-- public summary ref;
+- backend kind.
+- workload trust level.
+- enabled/configured state.
+- dispatch status.
+- lifecycle event refs.
+- artifact refs.
+- health refs.
+- capacity refs.
+- cost refs.
+- policy refs.
+- receipt refs.
+- public summary ref.
 - operator diagnostic refs.
 
 ## Projection Boundary
@@ -53,11 +53,11 @@ logs, source archives, and secrets.
 
 This issue does not:
 
-- dispatch work to a Container;
-- enable automatic failover;
-- create Cloudflare bindings;
-- run builds;
-- provision preview URLs;
+- dispatch work to a Container.
+- enable automatic failover.
+- create Cloudflare bindings.
+- run builds.
+- provision preview URLs.
 - charge customers or agents.
 
 Those remain behind later gateway, readiness, fake-runner, and policy-gated

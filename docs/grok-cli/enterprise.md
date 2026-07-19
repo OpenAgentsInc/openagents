@@ -24,7 +24,7 @@ Enterprise OIDC also needs your IdP domain (e.g. `login.microsoftonline.com`).
 | Host | Purpose | If blocked |
 | --- | --- | --- |
 | `api.x.ai` | Direct API-key path | Only needed for `api_key` auth vs proxy |
-| `code.grok.com` | Remote session sync, sharing, WebSocket relay | Sessions stay local; share links unavailable |
+| `code.grok.com` | Remote session sync, sharing, WebSocket relay | Sessions stay local. Share links unavailable |
 | `assets.grok.com` | UI assets | Avatars only |
 | `x.ai` | CLI binary downloads (`curl \| bash`, in-app update) | Use `npm install -g @xai-official/grok` |
 | `storage.googleapis.com` | Fallback CDN for CLI binaries | Only if `x.ai` unreachable during install |
@@ -73,7 +73,7 @@ grok login --device-auth
 
 ## Sandbox profiles
 
-Applied once at process startup; irreversible. Landlock (Linux 5.13+) /
+Applied once at process startup. Irreversible. Landlock (Linux 5.13+) /
 Seatbelt (macOS).
 
 | Profile | Write | Child network | Use case |
@@ -104,7 +104,7 @@ Independent of sandbox: what the model may **request**.
 | Mode | Behavior | Typical use |
 | --- | --- | --- |
 | `default` | Normal prompts | Interactive |
-| `acceptEdits` | Auto-approve file edits; prompt for shell | Semi-automated |
+| `acceptEdits` | Auto-approve file edits. Prompt for shell | Semi-automated |
 | `dontAsk` | Silently deny anything without explicit allow | CI / high-security |
 | `bypassPermissions` | Always-approve (same family as `--always-approve`) | Trusted automation |
 | `plan` | Plan mode | Planning-only |
@@ -148,7 +148,7 @@ rules = [
 dontAsk + narrow --allow rules + --sandbox strict
 ```
 
-Permissions limit what can be requested; sandbox limits what the process can
+Permissions limit what can be requested. Sandbox limits what the process can
 do even if approved.
 
 ## Privacy sketch

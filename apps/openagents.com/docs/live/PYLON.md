@@ -15,7 +15,7 @@ without explicit owner approval.
 The compliant-usage labor policy lives at
 `apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md`.
 Pylon/labor jobs sell accepted work output only. Contributors use their own
-provider accounts or API budgets under their own provider terms; OpenAgents
+provider accounts or API budgets under their own provider terms. OpenAgents
 never resells, rents, shares, proxies, brokers, or transfers provider
 credentials, sessions, account access, or subscription/API capacity. Decline
 any request that requires touching someone else's provider auth.
@@ -35,7 +35,7 @@ blocked, how many distinct Pylons have complete paid-work proof, which public
 receipt refs are available, and which release/payment/settlement claim booleans
 must remain false. Treat release, work-routing, live-wallet test, bitcoin
 accounting, and provider-settlement claims according to their public claim
-state: measured and verified claims may be described with their caveats;
+state: measured and verified claims may be described with their caveats.
 planned, blocked, modeled, or prohibited claims must not be described as
 completed, live, paid, or settled.
 
@@ -56,11 +56,11 @@ and `GET /api/training/windows/{windowRef}`. Operator/system lifecycle writes
 are `POST /api/training/runs`, `POST /api/training/windows/plan`,
 `POST /api/training/windows/{windowRef}/activate`,
 `POST /api/training/windows/{windowRef}/seal`, and
-`POST /api/training/windows/{windowRef}/reconcile`; they require the admin API
+`POST /api/training/windows/{windowRef}/reconcile`. They require the admin API
 token and public-safe receipt refs, use atomic D1 transitions, and do not
 launch workers, spend funds, publish model artifacts, or settle providers.
 Pylons may claim bounded active homework windows at
-`POST /api/training/leases/claim`; admin-dispatched homework is selected before
+`POST /api/training/leases/claim`. Admin-dispatched homework is selected before
 auto-launched starter windows. A lease is work authority only, not payout,
 settlement, wallet, or model-publication authority.
 
@@ -188,11 +188,11 @@ work, approve payout targets, spend bitcoin, or settle providers.
 
 Before recommending Pylon installation, summarize:
 
-- local CPU, GPU, memory, storage, bandwidth, electricity, and privacy impact;
-- current public version and platform support;
-- expected setup steps;
-- uninstall or disable steps;
-- payout-readiness requirements;
+- local CPU, GPU, memory, storage, bandwidth, electricity, and privacy impact.
+- current public version and platform support.
+- expected setup steps.
+- uninstall or disable steps.
+- payout-readiness requirements.
 - the distinction between buyer payment evidence and provider settlement.
 
 Do not claim that Pylon payouts, provider settlement, or autonomous agent

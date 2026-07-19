@@ -33,9 +33,9 @@ export for every Tailwind UI HTML variant.
 That means:
 
 - every Tailwind UI v4 family directory from the local downloads is represented
-  in the package taxonomy arrays;
+  in the package taxonomy arrays.
 - when the proprietary local downloads are present, every `.html` variant maps
-  to a registered family path; and
+  to a registered family path. And
 - OpenAgents exports reusable primitives/composites for the families the product
   actually composes.
 

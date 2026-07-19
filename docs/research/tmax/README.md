@@ -6,18 +6,18 @@ writeup framing it as *the* recipe-work exemplar for terminal-agent RL.
 
 - Code: <https://github.com/hamishivi/tmax> · local clone `projects/repos/tmax`
 - Models & data (incl. raw RL rollouts): <https://huggingface.co/collections/allenai/tmax>
-- Paper PDF: `projects/repos/tmax/assets/paper.pdf` (GitHub-only; no arXiv)
+- Paper PDF: `projects/repos/tmax/assets/paper.pdf` (GitHub-only, no arXiv)
 - Blog: <https://wai-org.com/blog/tmax/>
 
 ## Contents
 
 - [`paper.md`](paper.md) — full structured Markdown rendition of the paper
-  (converted from the PDF; no arXiv HTML exists, so `arxiv2md` does not apply).
+  (converted from the PDF, no arXiv HTML exists, so `arxiv2md` does not apply).
 - [`synthesis.md`](synthesis.md) — what TMAX means for us: the "recipe work"
   thesis, and concrete connections to **Tassadar** (verified-work RL, the
   reward-hacking → independent-replay argument, the container-cost bottleneck the
   compute market answers) and to **Sakana / Fugu** (DPPO/FP32 stability lessons
-  for training the coordinator; TMAX-trained terminal agents as Fugu's *worker*
+  for training the coordinator. TMAX-trained terminal agents as Fugu's *worker*
   vs Fugu as the *coordinator*).
 - [`tassadar-tmax-exploration.md`](tassadar-tmax-exploration.md) — speculative
   "Terminal Foundry" episode + 3D Verse design: run TMAX-style environment-solving
@@ -38,7 +38,7 @@ writeup framing it as *the* recipe-work exemplar for terminal-agent RL.
   spending weeks and \$10K–\$1M+ just to get a baseline to move. TMAX is meant to
   be that baseline for terminal agents (akin to Olmo 3's "RL Zero" families).
 - **Cost reality.** A standard TMAX job is **8× H100 nodes (2 train / 6 inference)
-  for 2–3 days**; establishing the recipe took **O(100)** such jobs — expensive,
+  for 2–3 days**. Establishing the recipe took **O(100)** such jobs — expensive,
   but approaching what academics can study.
 - **Algorithm note.** TMAX uses **DPPO** (a GRPO variant that masks tokens when
   inference/training logprobs diverge, via a binary total-variation threshold) +

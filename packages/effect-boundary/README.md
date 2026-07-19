@@ -9,5 +9,5 @@ const row = yield* decodeRowEffect(MyRowSchema, rawRow, "my.table.select")
 ```
 
 Every failure preserves the operation name and returns a public-safe
-`reasonRef`; detailed parser errors stay out of public responses and logs unless
+`reasonRef`. Detailed parser errors stay out of public responses and logs unless
 an owner-scoped caller deliberately inspects the typed error.

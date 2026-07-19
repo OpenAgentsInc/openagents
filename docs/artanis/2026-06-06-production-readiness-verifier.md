@@ -47,15 +47,15 @@ The typed verifier projects these readiness stages:
 
 The concrete checks are:
 
-- source commit ref;
+- source commit ref.
 - public Artanis report fields, including `productionLaunchGate`,
-  `pylonLaunchCommunication`, and `forumRewardSmoke`;
-- `/artanis` page reachability;
-- expected `artanis_*` D1 table names;
-- canonical Artanis Forum status topic evidence;
-- `/api/public/pylon-stats` availability;
-- Pylon v0.2 release tag and asset evidence;
-- retained production-equivalent smoke ref;
+  `pylonLaunchCommunication`, and `forumRewardSmoke`.
+- `/artanis` page reachability.
+- expected `artanis_*` D1 table names.
+- canonical Artanis Forum status topic evidence.
+- `/api/public/pylon-stats` availability.
+- Pylon v0.2 release tag and asset evidence.
+- retained production-equivalent smoke ref.
 - scheduler enablement state.
 
 The retained Forum delivery/listener verification contract from #418 is

@@ -21,7 +21,7 @@ datacenter Site:
 
 - Move the Site to light mode with a white background.
 - Use web imagery only when it is public-domain, permissively licensed, or
-  otherwise safe to use; otherwise use generated, diagrammatic, or CSS-native
+  otherwise safe to use. Otherwise use generated, diagrammatic, or CSS-native
   visuals rather than copyrighted images.
 - Present a 1000m ocean tower concept that is mostly below water.
 - Show an inner pipe bringing cold deep seawater upward.
@@ -47,7 +47,7 @@ Do not edit the existing live Site artifact in place.
 1. Build a new OTEC Revision 2 artifact.
 2. Save the output as a new Site version for `site_project_otec`.
 3. Link the new version to the adjustment request and feedback record above.
-4. Leave the current public URL stable; the revision workflow may later make
+4. Leave the current public URL stable. The revision workflow may later make
    the latest approved version active.
 5. Emit an `openagents.adjutant.site_artifact_receipt.v1` payload so OpenAgents product surface can
    ingest the new `site_versions` row.
@@ -62,29 +62,29 @@ The current dark, oversized terminal-style page is not acceptable as customer
 delivery. Revision 2 should feel like a credible investor concept page:
 
 - first viewport: clear OTEC floating datacenter thesis, light visual system,
-  and a strong tower/ocean diagram or safe image-led composition;
-- page tone: calm, premium, legible, and fundable rather than gimmicky;
-- avoid giant cropped monospace text;
+  and a strong tower/ocean diagram or safe image-led composition.
+- page tone: calm, premium, legible, and fundable rather than gimmicky.
+- avoid giant cropped monospace text.
 - avoid "proof", "agent challenge", or other internal process controls on the
-  customer-facing Site;
+  customer-facing Site.
 - include concise sections for infrastructure concept, environmental upside,
-  construction approach, and city-scale future;
+  construction approach, and city-scale future.
 - include enough technical specificity to make the concept concrete without
-  becoming an engineering whitepaper;
+  becoming an engineering whitepaper.
 - make the stable URL and revision artifact suitable for customer review.
 
 ## Acceptance Criteria
 
-- A new Site version exists after the run; it is not the initial version ID.
+- A new Site version exists after the run. It is not the initial version ID.
 - The new revision visibly incorporates Ben's light-mode investor-focused
   feedback.
 - The current live OTEC URL is not manually overwritten by a foreground agent.
 - The resulting revision can be listed on the customer order page as the latest
   revision.
 - The revision-ready transactional email can be sent to Ben with:
-  - a simple revision link;
-  - the product/order page link;
-  - the stable Site URL for background;
+  - a simple revision link.
+  - the product/order page link.
+  - the stable Site URL for background.
   - a short description of what changed.
 
 ## Safety

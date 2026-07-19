@@ -25,7 +25,7 @@ that bind the lane.
 - Capability declaration: `pylon provider go-online` declares
   `capability.pylon.local_claude_agent` when and only when the probe
   reports `ready`, and strips a stale declaration when it does not. The
-  capability ref is the only public signal that a local Claude exists;
+  capability ref is the only public signal that a local Claude exists.
   no machine details, paths, or account identifiers leave the device.
 - Local dashboard composer: the source TUI can use the Claude Agent SDK as
   the interactive composer backend when `dev.defaultAdapter` is
@@ -41,7 +41,7 @@ The bridge uses your own credentials, never platform-supplied ones.
 required.** The probe detects your local Claude session (presence only:
 the credentials file or the macOS keychain entry — values are never
 read) and reports
-`credential.source.claude_agent.local_claude_session`; the bundled SDK
+`credential.source.claude_agent.local_claude_session`. The bundled SDK
 binary reuses that same session for inference. This is still BYOK —
 the session is your own subscription and you pay for your own
 inference from it.
@@ -85,7 +85,7 @@ Optional `claudeAgent` section in the Pylon config file
 
 - `enabled: false` disables the lane regardless of SDK/key presence.
 - `model`, `maxTurns`, `timeoutSeconds` are runtime preferences consumed
-  by the executor gate (#4719) and the local dashboard composer; they cap,
+  by the executor gate (#4719) and the local dashboard composer. They cap,
   never expand, what an assignment may do. Config is preference, not
   authority.
 - Permission/execution-mode keys are deliberately not read from this section.
@@ -95,7 +95,7 @@ Optional `claudeAgent` section in the Pylon config file
   Pylon, run/session, operation/assignment, and named account. That grant is
   revocable, cannot survive serialization/restart, and projects refs rather
   than its permission-mode literal (CUT-05, #8685).
-- Never put credential values in the config file; the bridge reads
+- Never put credential values in the config file. The bridge reads
   credentials from the environment only.
 
 To make Claude/Fable the local dashboard composer default:
@@ -131,7 +131,7 @@ permission-system concept, not an OS sandbox:
 - `local_supervised_danger`: SDK `permissionMode: "bypassPermissions"`, no
   tool allowlist, and `settingSources: ["project"]` — the owner is watching
   their own checkout and wants their own `CLAUDE.md`/`.claude` instruction
-  layers active. (The bounded lane keeps executor-style isolation; this
+  layers active. (The bounded lane keeps executor-style isolation, this
   asymmetry is deliberate and recorded on #4845.)
 
 Explicit opt-in only, mirroring `--codex-danger`:
@@ -158,19 +158,19 @@ mode is a typed error
 ## Boundaries
 
 - **Your identity, your key, your machine.** The lane acts only with the
-  local user's credentials; no platform keys on devices, ever.
+  local user's credentials. No platform keys on devices, ever.
 - **Redaction law.** Raw SDK messages, prompts, file contents, session
   JSONL, provider payloads, and local paths never leave the device.
   Closeouts carry hashed refs only, through the existing
   `assertPublicProjectionSafe` boundary. SDK session files are
   operator-local evidence.
-- **Authority unchanged.** Worker closeout is not accepted work; the
+- **Authority unchanged.** Worker closeout is not accepted work. The
   lane grants no settlement, payout, deploy, spend, or Forum publication
   authority.
 - **Copy law.** This lane is "Claude Agent" / "your local Claude" /
   "Powered by Claude" in any user-facing copy — never "Claude Code"
   (Anthropic branding terms). Nothing about this lane may be described
-  as shipped or autonomous before its receipts exist; the promise's
+  as shipped or autonomous before its receipts exist. The promise's
   `unsafeCopy` binds.
 
 ## Current status

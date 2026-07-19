@@ -27,12 +27,12 @@ using the same browser-session request path as the Forge cockpit.
 ## Evidence Boundary
 
 The automation surface does not invent completion evidence. It creates the work
-order; the work-order lifecycle remains the source of truth for assignment,
+order. The work-order lifecycle remains the source of truth for assignment,
 execution closeout, proof refs, review, accepted outcome, delivery receipt, and
 settlement state.
 
 Each configured automation has public-safe evidence-ref expectations in the
-browser catalog. Those refs are labels for the expected work-order lifecycle;
+browser catalog. Those refs are labels for the expected work-order lifecycle.
 they do not grant deploy, spend, payout, settlement, or accepted-work authority.
 
 ## Remaining Follow-Up

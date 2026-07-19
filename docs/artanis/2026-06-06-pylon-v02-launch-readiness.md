@@ -38,12 +38,12 @@ Source docs:
 
 The projection keeps these states separate:
 
-- source-ready;
-- release-ready;
-- platform-ready;
-- eligible;
-- accepted;
-- paid;
+- source-ready.
+- release-ready.
+- platform-ready.
+- eligible.
+- accepted.
+- paid.
 - settled.
 
 The #419 release-parity projection adds explicit blockers for release tag,
@@ -58,7 +58,7 @@ Current seeded state:
 | Source-ready | Verified at source-contract level for the LDK-compatible payout target model. |
 | Release-ready | Blocked until a v0.2 or explicitly documented release line, assets, and checksums are retained. |
 | Platform-ready | Blocked until Linux, WSL Ubuntu, and native Windows smokes/assets are retained. |
-| Eligible | Planned only; online does not mean eligible, and LDK-compatible target registration is required. |
+| Eligible | Planned only. Online does not mean eligible, and LDK-compatible target registration is required. |
 | Accepted | Prohibited until accepted-work receipts exist. |
 | Paid | Prohibited until public paid-work receipts exist. |
 | Settled | Prohibited until public settlement receipt chains exist. |
@@ -84,13 +84,13 @@ Current public guidance is:
 
 The Artanis Forum launch/update template and #413 communication package include:
 
-- setup packet ref;
-- v0.2 public readiness audit ref;
+- setup packet ref.
+- v0.2 public readiness audit ref.
 - readiness command refs for version, status, training status, balance, and
-  history checks;
-- resource-mode caveats for background, overnight, and dedicated operation;
+  history checks.
+- resource-mode caveats for background, overnight, and dedicated operation.
 - explicit separation between online, eligible, assigned, accepted, paid, and
-  settled;
+  settled.
 - no request for credentials or local node material in public posts.
 
 The #413 package also wires the canonical Pylon release work-log topic into
@@ -99,11 +99,11 @@ as a compact Pylon launch section.
 
 The template intentionally does not say:
 
-- Pylon v0.2 is publicly released;
-- Pylon v0.2 is ready for everyone;
-- run Pylon and earn money;
-- online means eligible;
-- accepted means paid;
+- Pylon v0.2 is publicly released.
+- Pylon v0.2 is ready for everyone.
+- run Pylon and earn money.
+- online means eligible.
+- accepted means paid.
 - paid means settled.
 
 ## Authority Boundary
@@ -112,13 +112,13 @@ This readiness contract is public copy and evidence discipline only.
 
 It does not:
 
-- publish a release;
-- create release assets;
-- register a Pylon provider;
-- mutate Nexus;
-- register or disclose payout targets;
-- dispatch payouts;
-- settle work;
+- publish a release.
+- create release assets.
+- register a Pylon provider.
+- mutate Nexus.
+- register or disclose payout targets.
+- dispatch payouts.
+- settle work.
 - grant Artanis spend or provider mutation authority.
 
 ## Verification
@@ -129,11 +129,11 @@ Launch communication coverage lives in
 
 The tests cover:
 
-- all required readiness stages;
-- source-ready versus release/platform readiness;
+- all required readiness stages.
+- source-ready versus release/platform readiness.
 - setup refs, readiness command refs, resource-mode caveats, and safe Forum
-  copy;
-- macOS, Linux, WSL Ubuntu, and native Windows platform guidance;
-- rejection of broad public-ready and unconditional earnings copy;
-- rejection of paid or settled readiness without public receipt chains;
+  copy.
+- macOS, Linux, WSL Ubuntu, and native Windows platform guidance.
+- rejection of broad public-ready and unconditional earnings copy.
+- rejection of paid or settled readiness without public receipt chains.
 - missing stage and missing platform guidance rejection.

@@ -1,6 +1,6 @@
 # Autopilot Task: Effect-Driven Chat Demo Page
 
-Status: complete; moved to `docs/autopilot-tasks/done`
+Status: complete. Moved to `docs/autopilot-tasks/done`
 
 Completion evidence:
 
@@ -23,7 +23,7 @@ OpenAgents product surface implementation agent selected by preflight.
 Team: OpenAgents core / `team_openagents_core`
 
 Project: OpenAgents product surface demo and workroom presentation. Resolve the concrete project ID
-through operator preflight before dispatch; do not invent one in the runner
+through operator preflight before dispatch. Do not invent one in the runner
 prompt.
 
 Resolved dispatch project: `project_artanis`
@@ -58,10 +58,10 @@ Do not launch this task until the programmatic Autopilot runbook
 recommendations are complete enough for reliable delegation:
 
 - operator preflight exists and reports migrations, project/agent presence,
-  provider health, SHC health, callback config, and GitHub writeback readiness;
-- reconnect-required provider states are caught before dispatch;
-- SHC callback payload contracts and retry/backfill paths are covered;
-- run continuation attaches to the same durable goal;
+  provider health, SHC health, callback config, and GitHub writeback readiness.
+- reconnect-required provider states are caught before dispatch.
+- SHC callback payload contracts and retry/backfill paths are covered.
+- run continuation attaches to the same durable goal.
 - private goal/run observation can show current progress without exposing
   private delivery mechanics.
 
@@ -71,14 +71,14 @@ Source runbook:
 Demo-specific preflight must also report:
 
 - whether `/demo` is local-only, staging-only, admin-gated production, or public
-  production for a specific recording window;
+  production for a specific recording window.
 - the demo route does not call real Autopilot launch, provider-account, Stripe,
-  GitHub writeback, SHC, sync-stream, R2, or billing APIs;
+  GitHub writeback, SHC, sync-stream, R2, or billing APIs.
 - the demo route is not linked from normal product navigation unless the
-  operator explicitly asks for that;
-- project workrooms are not globally enabled just to make the demo pass;
+  operator explicitly asks for that.
+- project workrooms are not globally enabled just to make the demo pass.
 - the scripted demo data contains no secrets, real provider refs, callback
-  tokens, runner payloads, private branch logs, or private file contents;
+  tokens, runner payloads, private branch logs, or private file contents.
 - the 15-second playback is deterministic in tests and resettable by reloading
   `/demo`.
 
@@ -94,13 +94,13 @@ flow that the real app uses.
 
 The page should demonstrate:
 
-- the chat composer starting an Autopilot run;
-- a team/project room receiving the user invocation;
-- the compact parent-room Autopilot run card becoming active;
-- run events arriving over the same sync-shaped data path used by the app;
-- navigation into the full `/t/:threadId` run/workroom view;
-- side-panel context, run diagnostics, artifacts, and uploaded files;
-- navigation to team files and a file detail page with message references;
+- the chat composer starting an Autopilot run.
+- a team/project room receiving the user invocation.
+- the compact parent-room Autopilot run card becoming active.
+- run events arriving over the same sync-shaped data path used by the app.
+- navigation into the full `/t/:threadId` run/workroom view.
+- side-panel context, run diagnostics, artifacts, and uploaded files.
+- navigation to team files and a file detail page with message references.
 - a completed answer appearing back in the project/team room.
 
 The demo must be driven by Effect. That means the scenario, playback schedule,

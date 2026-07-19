@@ -12,7 +12,7 @@ Cloudflare Queues.
 2. **This service** leases due jobs per topic with the oa-infra Postgres
    JobQueue (`FOR UPDATE SKIP LOCKED`, `packages/oa-infra`), POSTs each job to
    the app's admin-bearer internal route `POST /api/internal/queue/deliver`,
-   acks on 2xx, nacks otherwise (delayed retry; `max_attempts = 4` mirrors the
+   acks on 2xx, nacks otherwise (delayed retry, `max_attempts = 4` mirrors the
    retired wrangler `max_retries: 3`, exhausted jobs land in the dead-letter
    state for `deadLetters()` inspection/replay).
 3. **The delivery route** runs the original queue-consumer logic unchanged
@@ -32,7 +32,7 @@ Topics (`src/topics.ts`) mirror the retired queue names and batch sizes:
 | `oa-queue-worker-smoke`                     | 10    | ack-local |
 
 The retired `openagents-autopilot-runner-events` queue had no producers and
-no consumer; the lane was deleted, not ported. The `oa-queue-worker-smoke`
+no consumer. The lane was deleted, not ported. The `oa-queue-worker-smoke`
 topic acks locally so operators can prove the live lease/ack loop with one
 INSERT and zero app dependency.
 
@@ -56,7 +56,7 @@ pnpm --dir apps/oa-queue-worker run deploy   # scripts/deploy-cloudrun.sh
 Cloud Run service `oa-queue-worker`, project `openagentsgemini`, region
 `us-central1`, `min-instances=1` (a scaled-to-zero pump delivers nothing).
 Secrets ride GCP Secret Manager (`oa-queue-worker-database-url`,
-`oa-queue-worker-delivery-token`); see the deploy script header.
+`oa-queue-worker-delivery-token`). See the deploy script header.
 
 The jobs table ships with oa-infra: apply
 `packages/oa-infra/migrations/` with

@@ -1,7 +1,7 @@
 # Khala Multi-Cloud And Geo-Aware Routing
 
 Issue: OpenAgents #6093  
-Status: first slice complete; broader geo-residency enforcement remains staged.
+Status: first slice complete. Broader geo-residency enforcement remains staged.
 
 Khala already routes across multiple supply families: Vertex, Fireworks,
 partner passthrough, and the future OpenAgents/Pylon serving fabric. The
@@ -23,8 +23,8 @@ dispatcher:
   routing behavior is unchanged and receipts record honest `not_measured`
   sentinels instead of fabricated health or region values.
 - When a signal is available, Khala receipts carry:
-  - `routing.provider_health_score` in `[0, 1]`;
-  - `routing.region`;
+  - `routing.provider_health_score` in `[0, 1]`.
+  - `routing.region`.
   - `routing.fallback_reason`, or `null` when the primary lane served.
 - The canonical `openagents.khala.telemetry.v1` record also has
   `providerHealthScore` alongside the existing `region` and `fallbackReason`
@@ -57,10 +57,10 @@ error body, prompt, key, or customer identifier is exposed.
 The first slice records region when a lane or control-plane snapshot discloses
 it. Account-level residency enforcement is staged behind the same typed shape:
 
-- account policy resolves an allowed region set or residency class;
-- the planner filters or demotes lanes that cannot satisfy that policy;
+- account policy resolves an allowed region set or residency class.
+- the planner filters or demotes lanes that cannot satisfy that policy.
 - the cache-affinity pin policy refuses a warm lane when privacy or region
-  rules forbid reuse;
+  rules forbid reuse.
 - the receipt records the served region and a fallback reason when a compliant
   fallback lane served.
 
@@ -79,7 +79,7 @@ impaired:
 - The optional `routingSignals` oracle is additive. If a health/region snapshot
   is unavailable, dispatch still uses the locally resolved plan and receipts
   fall back to sentinels.
-- Cache-aware routing is also inert without its oracle; a missing warm-lane
+- Cache-aware routing is also inert without its oracle. A missing warm-lane
   view leaves the cheapest viable plan unchanged.
 - A future global capacity view should be distributed as a last-known-good
   snapshot to workload planes. Snapshot absence or staleness must degrade

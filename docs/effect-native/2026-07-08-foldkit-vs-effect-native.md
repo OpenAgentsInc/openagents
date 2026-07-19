@@ -13,7 +13,7 @@ source of proven ideas — because Foldkit is the deepest expression of
 application framework* with a fixed DOM renderer and a mandated app
 architecture. Effect Native is a *renderer-agnostic component substrate*
 whose unit is a typed component and whose promise is "define once, render
-anywhere." One is not a newer version of the other; Effect Native re-homes
+anywhere." One is not a newer version of the other. Effect Native re-homes
 Foldkit's best instincts into a layer Foldkit deliberately never occupied.
 
 ## 1. What Foldkit is (précis)
@@ -39,7 +39,7 @@ identical structure by construction. Concretely:
   **Subscription** (Effect `Stream`s gated by a slice of the Model),
   **Mount** (imperative DOM/3rd-party work with cleanup), **ManagedResource**
   (Model-driven acquire/release for sockets/audio), **CustomElement**.
-  Errors fold back as Messages; nothing throws.
+  Errors fold back as Messages. Nothing throws.
 - **Ports** — a Schema-typed boundary (`Runtime.embed`) that lets a Foldkit
   widget run *inside any host, including React*, without the host reading
   the Model or dispatching Messages.
@@ -48,10 +48,10 @@ identical structure by construction. Concretely:
   primitive kit (Button/Dialog/Combobox/…) composed as **Submodels +
   OutMessage envelopes**, not prop-driven components.
 
-What it is **not**: no mobile / React Native / native; **no renderer
-abstraction** (Snabbdom-over-DOM is hardwired); web/SPA only; no
-component-local state or hooks; all-or-nothing adoption; no design-token
-system (Tailwind class strings); no prop-driven component catalog; no
+What it is **not**: no mobile / React Native / native. **No renderer
+abstraction** (Snabbdom-over-DOM is hardwired). Web/SPA only. No
+component-local state or hooks. All-or-nothing adoption. No design-token
+system (Tailwind class strings). No prop-driven component catalog. No
 server-driven UI and no per-request SSR yet. (Correcting an earlier loose
 claim: Foldkit has **no** three-effect/3D relationship — it ships a
 declarative 2D `canvas` module but targets only the DOM.)
@@ -64,22 +64,22 @@ declarative 2D `canvas` module but targets only the DOM.)
 | **Unit of the system** | The whole app (one Model / Message / update) | The component + the view-as-data tree |
 | **Renderer** | **Fixed**: Snabbdom → DOM, baked into the core | **Swappable adapters**: DOM, React Native, native Swift/Compose, canvas, tty |
 | **Platforms** | Web / SPA only | Web + mobile + desktop + canvas (native as the upgrade path) |
-| **App architecture** | **Mandated** (MVU, no escape hatch) | **Not mandated** — a component substrate; an MVU shell can sit above it |
+| **App architecture** | **Mandated** (MVU, no escape hatch) | **Not mandated** — a component substrate. An MVU shell can sit above it |
 | **Adoption** | All-or-nothing (or embed via Ports) | Incremental by design (greenfield-first, wrap existing, migrate on touch) |
 | **Composition** | Submodels + OutMessage | Typed component tree (props/children) — the "one component set" |
 | **Design tokens** | None (raw Tailwind classes) | A single token source both renderers read |
 | **Server-driven UI** | No | Designed-for (Hyperview axis), optional |
-| **State model** | Single immutable Model, coarse VDUM diffing | Data-driven tree bound to Khala Sync; renderer decides update granularity |
+| **State model** | Single immutable Model, coarse VDUM diffing | Data-driven tree bound to Khala Sync. Renderer decides update granularity |
 | **Shared foundation** | **Effect + Schema** | **Effect + Schema** |
 
 The rows that matter most: **renderer** and **unit**. Foldkit hardwired the
 DOM renderer and made the *application* the unit — which is exactly why the
 2026-07-04 ONE-UI decision shelved it: it could not target mobile, it was
-all-or-nothing against a codebase we can't rewrite, and it demanded deep
+all-or-nothing against a codebase we cannot rewrite, and it demanded deep
 Effect fluency for every contributor. Effect Native's founding commitments
-(renderer-agnostic contract; the component as the unit; incremental
+(renderer-agnostic contract, the component as the unit, incremental
 adoption) are precisely the axes Foldkit chose the opposite way on. They are
-not competitors; they are different layers that happen to share Effect.
+not competitors. They are different layers that happen to share Effect.
 
 ## 3. What Effect Native should learn from Foldkit (adopt these)
 
@@ -94,7 +94,7 @@ close to verbatim:
    serializable, loggable, replayable, agent-safe, and (the Hyperview
    dream) server-authorable.
 2. **Impossible states unrepresentable.** Foldkit models state as Schema
-   tagged unions + `Option` (absence is never `null`; loading/error/loaded
+   tagged unions + `Option` (absence is never `null`, loading/error/loaded
    are distinct variants). Effect Native's component props and view state
    should be typed the same way — a card *cannot* be "loading and loaded."
 3. **Exhaustive `Match` over a closed union.** A forgotten case fails to
@@ -104,7 +104,7 @@ close to verbatim:
    Command / Subscription / Mount / ManagedResource / CustomElement is a
    genuinely good partition of "the ways UI touches the world." Effect
    Native's runtime should adopt an analogous effect taxonomy rather than
-   ad-hoc effects — it's what makes time-travel and testing fall out for
+   ad-hoc effects — it is what makes time-travel and testing fall out for
    free.
 5. **Ports — the Schema-typed embed boundary — is the migration and
    host-interop pattern we need.** Foldkit widgets run inside React hosts
@@ -124,8 +124,8 @@ close to verbatim:
    AI-friendly. Effect Native should make **component authoring** uniform in
    the same spirit: one way to define a component, one way to express an
    intent, one way to bind data — so 1000 agent edits/day stay legible.
-8. **No JSX; the view is inspectable data.** Foldkit's typed hyperscript
-   proves you don't need JSX to be ergonomic, and that a data view is
+8. **No JSX. The view is inspectable data.** Foldkit's typed hyperscript
+   proves you do not need JSX to be ergonomic, and that a data view is
    inspectable and safe. Effect Native goes further (a fully serializable
    tree), but the instinct is the same and validated.
 9. **Batteries matter.** Foldkit shipped routing, subscriptions, managed
@@ -141,7 +141,7 @@ and Effect Native must diverge:
 1. **Renderer abstraction is non-negotiable.** Foldkit's fixed
    Snabbdom/DOM renderer is the exact ceiling that stopped it serving
    mobile. Effect Native's contract (component set + intents) must be
-   renderer-agnostic from line one; the renderer is a plugin, and there are
+   renderer-agnostic from line one. The renderer is a plugin, and there are
    several.
 2. **The unit is the component, not the app.** Foldkit's whole-app MVU
    forces all-or-nothing adoption. Effect Native must be **incrementally
@@ -155,9 +155,9 @@ and Effect Native must diverge:
    launch-ui look plugs in).
 4. **Cross-platform and (optionally) server-driven.** Foldkit is DOM-SPA
    only. Effect Native targets web/mobile/desktop/canvas and designs-for the
-   Hyperview server-driven axis, even if v0 doesn't use it.
+   Hyperview server-driven axis, even if v0 does not use it.
 5. **App architecture stays separable.** Effect Native does not mandate
-   MVU; a surface may use an MVU shell (even a Foldkit-style one) above the
+   MVU. A surface may use an MVU shell (even a Foldkit-style one) above the
    component substrate, or not. The substrate is below the architecture
    decision, not the same as it.
 
@@ -172,7 +172,7 @@ This is worth naming because it may save us real work and it reframes
   (the Schema-typed boundary already built for exactly this). We'd reuse
   Foldkit's routing, subscriptions, DevTools, and keyed-VDOM performance
   work instead of rebuilding a web renderer from scratch. Effect Native
-  supplies the cross-platform component contract; Foldkit supplies a
+  supplies the cross-platform component contract. Foldkit supplies a
   best-in-class web host for it.
 - **Option B — shared primitives, separate renderers.** Keep them
   independent but share the foundation they already share (Effect + Schema),
@@ -204,7 +204,7 @@ code.
 So: **mine Foldkit for everything except its renderer and its all-or-nothing
 scope.** Take interactions-as-data, Schema-modeled state, the effect
 taxonomy, Ports, and the testing/devtools leverage — these are the crown
-jewels and they're already ours. Leave behind the fixed DOM renderer and the
+jewels and they are already ours. Leave behind the fixed DOM renderer and the
 whole-app mandate. And seriously evaluate hosting Effect Native's web surface
 *inside* Foldkit (Option A) rather than rebuilding web rendering, so the last
 few years of Effect UI work compounds into the new direction instead of
@@ -225,4 +225,4 @@ being discarded.
    for the renderer/host and legacy-embed seams?
 5. Should the recommended *app shell* above Effect Native be Foldkit-style
    MVU (uniformity, testability) or left open — and does mandating it
-   reintroduce the all-or-nothing friction we're trying to avoid?
+   reintroduce the all-or-nothing friction we are trying to avoid?

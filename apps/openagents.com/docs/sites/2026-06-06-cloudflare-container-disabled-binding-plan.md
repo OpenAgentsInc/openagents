@@ -18,39 +18,39 @@ real Wrangler bindings and a fake/staging runner path.
 
 `RunnerBackendConfig.cloudflareContainer` now tracks:
 
-- `enabled`;
-- `configured`;
-- `stagingSmokePassed`;
-- `policyApproved`;
-- `allowedWorkloadTrusts`;
+- `enabled`.
+- `configured`.
+- `stagingSmokePassed`.
+- `policyApproved`.
+- `allowedWorkloadTrusts`.
 - binding refs:
-  - `className`;
-  - `durableObjectBinding`;
-  - `imageRef`;
-  - `instanceType`;
+  - `className`.
+  - `durableObjectBinding`.
+  - `imageRef`.
+  - `instanceType`.
   - `maxInstances`.
 
 The default is intentionally safe:
 
-- Container enabled: `false`;
-- Container configured: `false`;
-- staging smoke passed: `false`;
-- policy approved: `false`;
-- automatic failover enabled: `false`;
+- Container enabled: `false`.
+- Container configured: `false`.
+- staging smoke passed: `false`.
+- policy approved: `false`.
+- automatic failover enabled: `false`.
 - allowed workload trust: `low`, `medium`.
 
 ## Readiness Gates
 
 Container readiness requires all of the following:
 
-- global runner backend policy includes the Container backup lane;
-- Container enabled;
-- Container configured;
-- Container class name ref present;
-- Container Durable Object binding ref present;
-- Container image ref present;
-- staging smoke passed;
-- operator policy approved;
+- global runner backend policy includes the Container backup lane.
+- Container enabled.
+- Container configured.
+- Container class name ref present.
+- Container Durable Object binding ref present.
+- Container image ref present.
+- staging smoke passed.
+- operator policy approved.
 - workload trust is allowed.
 
 If automatic failover is requested before these gates pass, the readiness check
@@ -60,11 +60,11 @@ returns `blocked` and explains which Container prerequisites are still required.
 
 This issue does not:
 
-- add `containers` to `wrangler.jsonc`;
-- add a Container class;
-- add a Durable Object binding;
-- build or push a Container image;
-- execute customer code;
+- add `containers` to `wrangler.jsonc`.
+- add a Container class.
+- add a Durable Object binding.
+- build or push a Container image.
+- execute customer code.
 - enable automatic failover.
 
 Those are reserved for the fake runner, provider-boundary, operator health, and

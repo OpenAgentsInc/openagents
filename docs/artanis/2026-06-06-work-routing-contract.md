@@ -120,10 +120,10 @@ They do not show:
 Coverage lives in `workers/api/src/artanis-work-routing.test.ts`. It proves:
 
 - proposals carry source evidence, target capability, risk, cost caveat,
-  resource mode, and approval requirements;
-- accepted proposals carry traceable work refs and receipts;
-- blocked/rejected proposals expose public-safe caveats;
-- public projections redact operator details and raw timestamps;
+  resource mode, and approval requirements.
+- accepted proposals carry traceable work refs and receipts.
+- blocked/rejected proposals expose public-safe caveats.
+- public projections redact operator details and raw timestamps.
 - direct dispatch, provider mutation, wallet spend, settlement mutation, and
-  runtime mutation authority is rejected;
+  runtime mutation authority is rejected.
 - unsafe refs are rejected before projection.

@@ -180,7 +180,7 @@ ceiling determines the effective fleet concurrency ceiling at current
 provisioned quota.
 
 Also measure soft-race behavior: send two simultaneous session-start requests
-for the same owner at exactly the cap limit; confirm that at most one extra
+for the same owner at exactly the cap limit. Confirm that at most one extra
 slot is transiently admitted and that the next admission is rejected until the
 count corrects.
 
@@ -203,7 +203,7 @@ Two microVM sub-tracks are in scope:
 
 | Sub-track | Technology | Repo | Isolation model |
 | --- | --- | --- | --- |
-| B1 | Firecracker + jailer | `projects/repos/firecracker` | KVM-based lightweight VMM; strong VM-level isolation; no hypervisor overhead from full QEMU |
+| B1 | Firecracker + jailer | `projects/repos/firecracker` | KVM-based lightweight VMM. Strong VM-level isolation. No hypervisor overhead from full QEMU |
 | B2 | gVisor / TDX confidential | `projects/repos/sek8s` | gVisor (kernel syscall interception) and/or Intel TDX hardware-attested confidential VMs |
 
 Sub-track B1 runs on `oa-shc-katy-01` (SHC provider lane). Sub-track B2 runs
@@ -227,7 +227,7 @@ Methodology:
    threshold is crossed.
 3. Record the maximum N at which all microVMs remain within threshold.
 4. Compare against full-VM concurrency ceiling from Track A (Track A measures
-   GCP quota/cap ceiling; Track B measures host-level density per physical node).
+   GCP quota/cap ceiling. Track B measures host-level density per physical node).
 
 Report `microVMs per host vCPU` and `microVMs per GiB host RAM` as density
 ratios. These ratios feed the $/session comparison in §1.2.3.
@@ -288,7 +288,7 @@ The `compute_quota_routing.v1` pricing formula applies identically to microVMs.
 GCP instance rate, apportioned across concurrent microVMs by the node agent.
 
 For the SHC provider lane (Track B1 on `oa-shc-katy-01`), `egress_bytes`
-is 0 unless routed through a GCP NAT; `workspace_byte_seconds` and
+is 0 unless routed through a GCP NAT. `workspace_byte_seconds` and
 `artifact_byte_seconds` are measured locally. The effective $/microVM-session
 is:
 
@@ -328,10 +328,10 @@ No ad hoc cost figures or manually entered rates are accepted.
 | `metering_source` | `oa-workroomd` | `gcp_reported`, `node_measured`, or `estimated` |
 | `rejection_code` | Quota router rejection receipt | `compute_quota_routing.v1` rejection receipt |
 | Cold-start latency | Firecracker `InstanceStart` event | `vm_seconds` start anchor |
-| In-guest latency | Active measurement from host | Not in receipt; benchmark-only metric |
+| In-guest latency | Active measurement from host | Not in receipt. Benchmark-only metric |
 | Density | Concurrent microVMs on host | Derived from `vm_seconds` and host inventory |
 | `firecracker_candidate` | `VirtualizationFacts` | `openagents.resource_usage_receipt.v1` `host` block |
-| Attestation latency | TDX REPORT timestamp | Track B2 only; outside current contract scope |
+| Attestation latency | TDX REPORT timestamp | Track B2 only. Outside current contract scope |
 
 `metering_source` is a quality flag: any session recording `estimated` must
 include a declared reason in the associated `compute.usage.captured` runner
@@ -344,7 +344,7 @@ GCP on-demand rates are read from the Cloud Billing Catalog API and cached with
 a 24 h TTL per region, as specified by `compute_quota_routing.v1`. Benchmark
 sessions must record the rate-fetch timestamp alongside `cost_input_microusd`.
 Any session where the cached rate is older than 24 h must set
-`metering_source = estimated`; the benchmark analysis excludes such sessions
+`metering_source = estimated`. The benchmark analysis excludes such sessions
 from the primary cost analysis and flags them separately.
 
 Rate versions used during the benchmark run are frozen in a rate-snapshot
@@ -389,7 +389,7 @@ Each benchmark run produces:
 - `cloud_execution_closeout.json` (Cloud-side closeout gate artifact)
 - Raw lease projection snapshot at each state transition
 - GCP Billing Catalog rate snapshot (frozen at run start)
-- In-guest latency time series (Track B only; not a contract artifact)
+- In-guest latency time series (Track B only, not a contract artifact)
 
 All retained projections must comply with the forbidden-field rules of both
 contracts: no raw GCP project ids, IP addresses, instance names, self-links,
@@ -431,7 +431,7 @@ the full cost of the compute infrastructure relative to raw GCP cost.
 | Failed-acquire waste | VM creation cost for leases that never reach `ready` | §1.1.5 |
 | Teardown cost | `vm_seconds` continues during `release` until GCP confirms deletion | §1.1.4 |
 | GCP rate-cache staleness corrections | Estimated vs. reported deltas requiring downstream reconciliation | §2.2 |
-| Billing Catalog API call cost | Negligible; excluded from markup analysis unless measurable |  |
+| Billing Catalog API call cost | Negligible. Excluded from markup analysis unless measurable |  |
 
 **Analysis method:**
 
@@ -456,14 +456,14 @@ value locked into Treasury routing for each class.
 If measured overhead fractions differ significantly across classes (e.g., `micro`
 has proportionally higher provision latency burn than `standard`), the contract
 may need per-class markup rates rather than a single 10% figure. This plan
-outputs a recommendation; any contract change requires a separate contract
+outputs a recommendation. Any contract change requires a separate contract
 revision.
 
 ### 3.2 Decision B — MicroVM Cutover Criteria
 
 Cutover from full ephemeral GCE VMs to Firecracker (and eventually gVisor/TDX)
 requires satisfying all of the following criteria simultaneously. These are
-proposed go/no-go thresholds; the owner confirms final threshold values after
+proposed go/no-go thresholds. The owner confirms final threshold values after
 reviewing benchmark data.
 
 #### B.1 Cold-Start Latency
@@ -527,7 +527,7 @@ Track B2 cutover (if adopted) adds:
 | --- | --- |
 | TDX attestation overhead (cold-start addition, §1.2.2) | ≤ 2 s added to Firecracker cold-start p50 |
 | TDX confidential VM GCP pricing premium | Offset by density benefit at max stable density |
-| Remote attestation verification passes | Required for every session; failures block `in_use` |
+| Remote attestation verification passes | Required for every session. Failures block `in_use` |
 | `sek8s` TDX receipt schema aligned with `resource_usage_receipt.v1` | Required before production use |
 
 If Track B2 gVisor/TDX does not meet these criteria within the benchmark
@@ -554,7 +554,7 @@ CUTOVER GO criteria (all must be true):
 ```
 
 Owner confirms final threshold values after reviewing benchmark data. Any
-criterion marked NO-GO delays cutover; partial promotion (e.g., `micro` class
+criterion marked NO-GO delays cutover. Partial promotion (e.g., `micro` class
 only) is possible if density and cost criteria are met for that class while
 isolation work continues.
 
@@ -567,11 +567,11 @@ isolation work continues.
 | `docs/contracts/openagents.gce_capacity_class.v1.md` | Full-VM lease lifecycle, receipt schema, and forbidden-field rules |
 | `docs/contracts/openagents.compute_quota_routing.v1.md` | Compute classes, metering dimensions, quota caps, pricing formula, TTL defaults |
 | `docs/contracts/openagents.resource_usage_receipt.v1.md` | `host` block facts including `VirtualizationFacts.firecracker_candidate` |
-| `docs/bootstrap/CND-041-shc-katy-01-bootstrap.md` | Firecracker v1.15.1 manual smoke on `oa-shc-katy-01`; baseline for Track B1 |
+| `docs/bootstrap/CND-041-shc-katy-01-bootstrap.md` | Firecracker v1.15.1 manual smoke on `oa-shc-katy-01`. Baseline for Track B1 |
 | `projects/repos/firecracker` | Firecracker integration and `sandbox.firecracker.exec` profile (Track B1) |
-| `projects/repos/sek8s` | gVisor and TDX confidential compute bootstrap; remote attestation receipt schema (Track B2) |
-| `crates/openagents-cloud-contract/src/lib.rs` | `VirtualizationFacts` struct; `firecracker_candidate` field |
-| `crates/oa-workroomd/src/main.rs` | `firecracker_candidate` detection logic; `compute-quota-receipts.jsonl` writer |
+| `projects/repos/sek8s` | gVisor and TDX confidential compute bootstrap. Remote attestation receipt schema (Track B2) |
+| `crates/openagents-cloud-contract/src/lib.rs` | `VirtualizationFacts` struct. `firecracker_candidate` field |
+| `crates/oa-workroomd/src/main.rs` | `firecracker_candidate` detection logic. `compute-quota-receipts.jsonl` writer |
 
 ---
 
@@ -579,12 +579,12 @@ isolation work continues.
 
 | Phase | Work | Owner | Prerequisite |
 | --- | --- | --- | --- |
-| P0 — Full-VM baseline | Track A (§1.1); all sub-metrics | Cloud infrastructure | GCP project access; `gce_capacity_class.v1` provisioner in test state |
-| P1 — Firecracker integration | `oa-workroomd` Firecracker integration (`projects/repos/firecracker`); jailer/cgroup policy; TAP/firewall receipts | Cloud + Psionic | Track A complete; `CND-041` smoke passing |
+| P0 — Full-VM baseline | Track A (§1.1). All sub-metrics | Cloud infrastructure | GCP project access. `gce_capacity_class.v1` provisioner in test state |
+| P1 — Firecracker integration | `oa-workroomd` Firecracker integration (`projects/repos/firecracker`). Jailer/cgroup policy. TAP/firewall receipts | Cloud + Psionic | Track A complete. `CND-041` smoke passing |
 | P2 — Firecracker benchmark | Track B1 (§1.2) on `oa-shc-katy-01` | Cloud infrastructure | P1 complete |
-| P3 — gVisor / TDX | Track B2 (§1.2) using `projects/repos/sek8s` | Cloud + Psionic | P2 complete; TDX-capable GCP nodes provisioned |
-| P4 — Decision review | Markup recommendation (Decision A); cutover criteria evaluation (Decision B) | Owner | All tracks complete |
-| P5 — Contract update | Update `compute_quota_routing.v1` markup figure; set cutover gate state | Cloud | P4 sign-off |
+| P3 — gVisor / TDX | Track B2 (§1.2) using `projects/repos/sek8s` | Cloud + Psionic | P2 complete. TDX-capable GCP nodes provisioned |
+| P4 — Decision review | Markup recommendation (Decision A). Cutover criteria evaluation (Decision B) | Owner | All tracks complete |
+| P5 — Contract update | Update `compute_quota_routing.v1` markup figure. Set cutover gate state | Cloud | P4 sign-off |
 
 No timeline dates are specified in this plan. Phases are sequentially
 dependent. P0 begins on the next available benchmark window after this document
@@ -600,7 +600,7 @@ is reviewed.
 - GPU class benchmarks (Track A §1.1.1 measures `gpu-standard` and `gpu-high`
   provision latency but does not benchmark GPU workload throughput).
 - Public leaderboard claims or public benchmark result publication (all outputs
-  are internal; Omega/Vortex promotion gates apply for any public claim).
+  are internal. Omega/Vortex promotion gates apply for any public claim).
 - Pylon contributor wallet UX and public Pylon contributor paths.
 - Model token usage benchmarks (covered by `openagents.resource_usage_receipt.v1`
   model_usage fields but not in scope here).

@@ -18,8 +18,8 @@ prospects through the targeted outreach repository added in issue #181.
 
 `workers/api/src/targeted-site-discovery-planner.ts` exposes:
 
-- `buildTargetedSiteDiscoveryPlan`;
-- `sourceCardsFromExaResults`;
+- `buildTargetedSiteDiscoveryPlan`.
+- `sourceCardsFromExaResults`.
 - `runTargetedSiteDiscoveryPlan`.
 
 `runTargetedSiteDiscoveryPlan` accepts an `ExaClientShape`, so tests and future
@@ -29,14 +29,14 @@ operator flows can supply a fake adapter without making live Exa calls.
 
 The planner supports:
 
-- campaign id;
-- vertical;
-- geography;
-- website-quality signals;
-- max result caps;
-- dry-run mode;
-- source run ref;
-- prospect idempotency key prefix;
+- campaign id.
+- vertical.
+- geography.
+- website-quality signals.
+- max result caps.
+- dry-run mode.
+- source run ref.
+- prospect idempotency key prefix.
 - optional include/exclude domain filters.
 
 Result count is clamped to 1 through 25. Dry-run mode is the default.
@@ -45,13 +45,13 @@ Result count is clamped to 1 through 25. Dry-run mode is the default.
 
 Each source card contains:
 
-- campaign id;
-- source run ref;
-- result URL;
-- normalized domain;
-- title and snippet when public-safe;
-- confidence;
-- source ref;
+- campaign id.
+- source run ref.
+- result URL.
+- normalized domain.
+- title and snippet when public-safe.
+- confidence.
+- source ref.
 - prospect idempotency key.
 
 Cards are deduped by normalized domain before persistence.
@@ -69,10 +69,10 @@ The planner does not store raw Exa payloads.
 
 It drops or redacts result fields that contain:
 
-- raw contact data;
-- provider payload markers;
-- OAuth or provider-account material;
-- wallet, payment, Lightning, or MDK secrets;
+- raw contact data.
+- provider payload markers.
+- OAuth or provider-account material.
+- wallet, payment, Lightning, or MDK secrets.
 - private operator notes.
 
 Exa API keys remain inside the existing `ExaClient` boundary and never appear

@@ -5,7 +5,7 @@ Issue #235 adds the first Blueprint smoke/probe discipline scaffold.
 The rule is split into two lanes:
 
 - no-network smoke tests run under fake Effect layers and are safe for normal
-  unit test execution;
+  unit test execution.
 - deployed probes validate the live Worker, D1, Resend, and runner paths using
   redacted evidence refs only.
 

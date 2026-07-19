@@ -42,8 +42,8 @@ token-hash-looking values before generated Sites or manifests can receive them.
 
 `GET /api/public/proof/otec` now includes:
 
-- top-level `referralCta`;
-- `agentInstructionCard.referralCta`; and
+- top-level `referralCta`.
+- `agentInstructionCard.referralCta`. And
 - copyable agent instructions that tell agents to preserve attribution through
   the hosted capture URL.
 
@@ -68,7 +68,7 @@ state, auth state, provider account refs, wallet material, or private user data.
 
 `/.well-known/openagents.json` now advertises:
 
-- `site_referral_capture` as a public resource template; and
+- `site_referral_capture` as a public resource template. And
 - `request_site_from_public_source` as a public browser-flow action.
 
 This tells agents that the capture boundary is hosted by OpenAgents and that

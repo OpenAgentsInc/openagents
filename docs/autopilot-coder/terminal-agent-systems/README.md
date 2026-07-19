@@ -1,7 +1,7 @@
 # Terminal Agent Systems
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-11
@@ -214,7 +214,7 @@ map. The audits below are the currently imported subsystem records.
   which subsystem audits to operationalize during and after the active #4786
   Autopilot MVP sprint, grouped into proof/supervision, credential/policy,
   repo/delivery, intake/market, and extension/polish packs. Pack A is tracked
-  by GitHub issue #4813 and child issues #4814-#4823; Pack B is tracked by
+  by GitHub issue #4813 and child issues #4814-#4823. Pack B is tracked by
   #4824 and child issues #4825-#4830.
 - `2026-06-16-forge-autopilot-coder-systems-roadmap.md`: Audits #5107 against
   the current Forge cockpit, Pack A/B/C, Pylon, and control-protocol surfaces,

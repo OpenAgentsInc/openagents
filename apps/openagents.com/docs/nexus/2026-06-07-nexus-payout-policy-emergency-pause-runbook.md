@@ -11,15 +11,15 @@ browser operator UI.
 
 The policy evaluator uses:
 
-- payout target approval refs on the payout intent;
-- accepted work refs on the payout intent;
-- the amount and spend cap on the payout intent;
-- the payout policy snapshot ref;
-- wallet readiness;
-- payout adapter kind;
-- actor ref;
-- payout target ref;
-- Pylon/job refs; and
+- payout target approval refs on the payout intent.
+- accepted work refs on the payout intent.
+- the amount and spend cap on the payout intent.
+- the payout policy snapshot ref.
+- wallet readiness.
+- payout adapter kind.
+- actor ref.
+- payout target ref.
+- Pylon/job refs. And
 - emergency pause state.
 
 The ledger from issue #421 already stores payout target approvals and payout
@@ -30,10 +30,10 @@ evaluation.
 
 The service can pause:
 
-- the global payment authority;
-- an individual payout adapter;
-- an individual payout target;
-- an individual Pylon/job ref; and
+- the global payment authority.
+- an individual payout adapter.
+- an individual payout target.
+- an individual Pylon/job ref. And
 - an individual agent or actor ref.
 
 Use the narrowest pause that stops the unsafe behavior:
@@ -89,7 +89,7 @@ hashes, private payout targets, raw daemon output, or customer private data.
 
 ## Resume Procedure
 
-1. Remove the specific pause entry; avoid clearing global pause if a narrower
+1. Remove the specific pause entry. Avoid clearing global pause if a narrower
    pause is enough.
 2. Re-run a simulation payout path first.
 3. Re-run mocked MDK adapter tests.

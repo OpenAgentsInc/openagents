@@ -11,10 +11,10 @@ The implementation lives in
 
 Sites need a public-safe way to say:
 
-- this order or Site version produced accepted work;
-- a provider job is associated with that accepted work;
+- this order or Site version produced accepted work.
+- a provider job is associated with that accepted work.
 - reward intent, payout eligibility, dispatch, confirmation, verification, or
-  settlement evidence exists; and
+  settlement evidence exists. And
 - the user-facing Site/order/proof page can link to the relevant safe receipt
   refs.
 
@@ -26,10 +26,10 @@ a payment, or release a Site revision.
 
 The contract supports these consumer surfaces:
 
-- `site_order`;
-- `customer_dashboard`;
-- `public_proof`;
-- `operator_receipt`; and
+- `site_order`.
+- `customer_dashboard`.
+- `public_proof`.
+- `operator_receipt`. And
 - `agent_api`.
 
 Each projection includes safe refs for the Site, order, version, public proof,
@@ -40,12 +40,12 @@ bridge, settlement evidence, caveats, and source records.
 
 The projection keeps these states separate:
 
-- accepted work;
-- reward intent;
-- payout eligibility;
-- payout dispatch;
-- payout confirmation;
-- payout verification; and
+- accepted work.
+- reward intent.
+- payout eligibility.
+- payout dispatch.
+- payout confirmation.
+- payout verification. And
 - settled.
 
 `settlementClaimAllowed` becomes true only when the link is in `settled` state
@@ -67,11 +67,11 @@ credentials, private repo refs, customer data, raw logs, and raw timestamps.
 
 `workers/api/src/pylon-accepted-work-proof-links.test.ts` covers:
 
-- settled Site/order proof-link projection;
-- read-only authority;
-- public ref redaction;
+- settled Site/order proof-link projection.
+- read-only authority.
+- public ref redaction.
 - accepted-work, reward, eligibility, dispatch, verification, and settlement
-  separation;
-- required provider job and state evidence refs; and
+  separation.
+- required provider job and state evidence refs. And
 - unsafe payout, wallet, payment, invoice, credential, channel, provider,
   customer, and timestamp material rejection.

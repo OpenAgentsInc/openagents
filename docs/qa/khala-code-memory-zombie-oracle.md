@@ -41,7 +41,7 @@ shutdown fails or reports any orphan processes, the scenario status becomes
 ## Nightly Wiring
 
 `scripts/qa-nightly-matrix.ts` expects the memory oracle artifact from the
-monkey-night step. It also reads `monkey-night-report.json`; if the report,
+monkey-night step. It also reads `monkey-night-report.json`. If the report,
 memory oracle, or shutdown oracle status is `fail`, the `monkey-night` step is
 marked failed even when a command runner exits 0.
 

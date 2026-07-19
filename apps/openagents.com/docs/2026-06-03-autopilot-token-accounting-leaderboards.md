@@ -235,7 +235,7 @@ otherwise run_id:sequence
 ```
 
 That means SHC can retry a callback without inflating totals. The event table
-already ignores duplicate run/sequence rows; the token ledger now follows the
+already ignores duplicate run/sequence rows. The token ledger now follows the
 same retry boundary.
 
 The canonical `token_usage_events` ledger uses a wider retry boundary:
@@ -409,14 +409,14 @@ Supported query filters are:
 
 The aggregate response includes:
 
-- global totals;
-- provider/model breakdowns;
-- producer/source-route breakdowns;
-- actor/team/account drilldowns with anonymous rows preserved;
-- exact/estimated/unknown usage-truth buckets;
+- global totals.
+- provider/model breakdowns.
+- producer/source-route breakdowns.
+- actor/team/account drilldowns with anonymous rows preserved.
+- exact/estimated/unknown usage-truth buckets.
 - safe source-reference drilldowns for anonymized source, repository, run,
-  session, and task refs;
-- recent safe event metadata; and
+  session, and task refs.
+- recent safe event metadata. And
 - the filter window used for the query.
 
 Opted-out events remain in global totals. Leaderboard projections must exclude
@@ -495,7 +495,7 @@ The page loads `GET /api/stats/token-usage/aggregate` and renders:
 The page must not render raw prompts, completions, provider payloads, source
 code, private repository paths, API keys, bearer tokens, callback/OAuth
 material, or provider secrets. Event rows use normalized ledger fields plus
-safe primitive metadata only; anonymous or privacy opted-out rows are labeled
+safe primitive metadata only. Anonymous or privacy opted-out rows are labeled
 `Anonymous/anonymized source`.
 
 ## Usage Page

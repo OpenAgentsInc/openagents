@@ -1,7 +1,7 @@
 # 2026-06-29 Khala 2B Token Burn And PR Backlog Afteraction
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Status as of `2026-06-29T13:00Z`.
@@ -21,19 +21,19 @@ own-capacity tokens on `2026-06-29` between `00:00:00Z` and `12:59:56Z`, across
 
 The burn was not evenly productive. Early work fanned out issue implementation
 too aggressively and created a huge open-PR queue. By `12:47Z`, GitHub showed
-`418` open PRs; by `12:52Z`, it was `423` open PRs. At least `59` issues had
+`418` open PRs. By `12:52Z`, it was `423` open PRs. At least `59` issues had
 duplicate PRs. The fleet had solved or partially solved many issue prompts, but
 the merge/review/close lane was too weak.
 
 The control-plane diagnosis is:
 
-- dispatch and execution are separate; the executor pool must stay alive;
-- token accounting can fail independently from task execution and needs replay;
+- dispatch and execution are separate. The executor pool must stay alive.
+- token accounting can fail independently from task execution and needs replay.
 - killing/refilling controllers mid-turn can orphan accepted tasks and lose
-  closeout unless workers are detached and reports are replayed;
+  closeout unless workers are detached and reports are replayed.
 - once open PRs outnumber open issues, the fleet must switch from issue
-  implementation to PR consolidation;
-- rate-limit UX must distinguish short 5-hour cooldowns from weekly exhaustion;
+  implementation to PR consolidation.
+- rate-limit UX must distinguish short 5-hour cooldowns from weekly exhaustion.
   weekly exhaustion needs explicit operator reset/recovery, while 5-hour
   cooldown should wait for `resetAt`.
 
@@ -153,9 +153,9 @@ consolidating the queue.
 
 The replacement PR resolver prompt now asks workers to classify and act:
 
-- merge if safely mergeable and narrow verification passes;
-- close/comment if duplicate or superseded;
-- fix small blockers on the PR branch;
+- merge if safely mergeable and narrow verification passes.
+- close/comment if duplicate or superseded.
+- fix small blockers on the PR branch.
 - report still-blocked with reason.
 
 The old review-only parent process was stopped without killing accepted child
@@ -167,18 +167,18 @@ slots so capacity remained for ORCA gap closure.
 Four dedicated ORCA lanes were created from
 `docs/ade/2026-06-27-orca-orchestrator-adaptation-report.md`:
 
-- Pylon runner registry / typed coordinator spine;
-- Codex rate-limit status and reset/recovery UX;
-- OpenAgents desktop message/tool rendering;
+- Pylon runner registry / typed coordinator spine.
+- Codex rate-limit status and reset/recovery UX.
+- OpenAgents desktop message/tool rendering.
 - live/retained agent-status store shape.
 
 After clarification, an extra high-priority Codex weekly reset policy task was
 launched. Its required behavior:
 
 - if a Codex fleet account only hit a temporary 5-hour limit and still has
-  weekly quota, show `resetAt`/wait state and do not trigger reset;
+  weekly quota, show `resetAt`/wait state and do not trigger reset.
 - if a Codex fleet account exhausted weekly usage, expose a safe explicit
-  operator reset/recovery action and recheck status afterward;
+  operator reset/recovery action and recheck status afterward.
 - do not add a fake reset button that cannot work.
 
 This is important because weekly exhaustion is operationally different from
@@ -211,7 +211,7 @@ workers to select/merge/close, not produce another branch.
 ### Controller Replacement Risked Closeout Loss
 
 At least one controller swap left accepted tasks terminal without normal
-closeout. Some failures wrote `codex-turn-report-failures.jsonl`; some did not.
+closeout. Some failures wrote `codex-turn-report-failures.jsonl`. Some did not.
 The non-spooled misses required reconstructing token reports from exact-account
 Codex rollout JSONL, using the workspace hash from `statusRef`.
 
@@ -223,8 +223,8 @@ workers under `nohup` and syncs recent accepted logs into local locks.
 
 Several report failures appeared as:
 
-- `401 unauthorized` from stale process env;
-- `500 internal_server_error`;
+- `401 unauthorized` from stale process env.
+- `500 internal_server_error`.
 - `503 pylon_codex_storage_error/token_usage_ingest`.
 
 Those were replayed through `createPylonCodexTurnReporter` using the current
@@ -234,9 +234,9 @@ Pylon agent token and archived under
 However, one batch of terminal sessions had no live failure spool. The reliable
 audit is:
 
-1. parse accepted assignment refs from local launcher logs;
-2. exclude refs still active under `~/.pylon-fable/active-assignment-runs`;
-3. query D1 `token_usage_events` by exact `task_ref`;
+1. parse accepted assignment refs from local launcher logs.
+2. exclude refs still active under `~/.pylon-fable/active-assignment-runs`.
+3. query D1 `token_usage_events` by exact `task_ref`.
 4. only reconstruct from rollout JSONL for finished refs missing D1 rows.
 
 Never backfill active sessions early.
@@ -247,10 +247,10 @@ The desktop can show a nonzero coding badge and active/recent session cards
 while also rendering "No active Codex sessions." The UI needs an ORCA-like
 status model:
 
-- live vs retained sessions;
-- `stateStartedAt` distinct from `updatedAt`;
-- state history;
-- process-liveness and latest-event status;
+- live vs retained sessions.
+- `stateStartedAt` distinct from `updatedAt`.
+- state history.
+- process-liveness and latest-event status.
 - empty-state derived from visible sessions, not only a strict active subset.
 
 ### Public Stats Read Path Flapped Under Load
@@ -267,7 +267,7 @@ failure spool first.
 With four Codex accounts (`codex-3`, `codex-4`, `codex-5`, `codex-7`) and
 target 5 slots per account, the machine repeatedly reached `20` active marker
 files. That was visible in the desktop and in the active assignment marker
-directory. The practical ceiling was not a mysterious 5; it depended on keeping
+directory. The practical ceiling was not a mysterious 5. It depended on keeping
 the executor/refiller lanes alive and targeting per-account capacity.
 
 ### Replay Path Recovered Missing Accounting
@@ -275,9 +275,9 @@ the executor/refiller lanes alive and targeting per-account capacity.
 The current replay method worked:
 
 - read current token from
-  `~/.pylon-fable/auth/openagents-agent-token`;
-- post stored reports with `createPylonCodexTurnReporter`;
-- verify exact `task_ref` rows in D1;
+  `~/.pylon-fable/auth/openagents-agent-token`.
+- post stored reports with `createPylonCodexTurnReporter`.
+- verify exact `task_ref` rows in D1.
 - archive replayed spool.
 
 The public counter reached `5,850,136,969` at `2026-06-29T12:57:48Z` with
@@ -288,10 +288,10 @@ The public counter reached `5,850,136,969` at `2026-06-29T12:57:48Z` with
 A helper was added at
 `apps/pylon/scripts/codex-supervisor/pr-review-refill.sh` with tests. It:
 
-- atomically locks per PR number;
-- preserves locks while an accepted assignment is active;
-- converts stale accepted/inactive locks into done markers;
-- releases failed-before-accept locks;
+- atomically locks per PR number.
+- preserves locks while an accepted assignment is active.
+- converts stale accepted/inactive locks into done markers.
+- releases failed-before-accept locks.
 - launches workers detached with redirected logs.
 
 Focused tests passed:
@@ -315,9 +315,9 @@ live failure spools: 0
 Additional explicit tasks launched:
 
 - desktop empty-state fix (`codex-7`):
-  `assignment.public.khala_coding.chatcmpl_50eef2af5b7c47c1bfa70d6b740f3c01`;
+  `assignment.public.khala_coding.chatcmpl_50eef2af5b7c47c1bfa70d6b740f3c01`.
 - `/stats` counter/graph/deploy (`codex-3`):
-  `assignment.public.khala_coding.chatcmpl_c6aa92db7533443bada2392e2937e085`;
+  `assignment.public.khala_coding.chatcmpl_c6aa92db7533443bada2392e2937e085`.
 - weekly Codex rate-limit reset policy (`codex-4`):
   `assignment.public.khala_coding.chatcmpl_1d2ce7605c874f85a11a3f632a1f3173`.
 
@@ -333,10 +333,10 @@ with `blocker.public.pylon_dispatch.duplicate_active_assignment`. Removing
    of merely reviewing them.
 2. Keep exactly a small dedicated ORCA lane active until the desktop/operator
    gaps are closed.
-3. Finish the Codex weekly-reset policy work. This is not optional; the operator
+3. Finish the Codex weekly-reset policy work. This is not optional. The operator
    needs to recover weekly-exhausted fleet accounts while leaving 5-hour
    cooldown accounts alone.
-4. Monitor `~/.pylon-fable/codex-turn-report-failures.jsonl`; replay and archive
+4. Monitor `~/.pylon-fable/codex-turn-report-failures.jsonl`. Replay and archive
    immediately if it appears.
 5. Run the accepted-ref D1 diff periodically. If `missing_finished_candidates`
    becomes nonzero, fix accounting before claiming the counter is correct.
@@ -352,8 +352,8 @@ with `blocker.public.pylon_dispatch.duplicate_active_assignment`. Removing
 - No controller should own child process lifetime by accident. Use detached
   worker launches and per-worker logs.
 - Rate-limit UX must classify:
-  - temporary 5-hour cooldown: wait/recheck after `resetAt`;
-  - weekly usage exhaustion: explicit reset/recovery action plus recheck;
+  - temporary 5-hour cooldown: wait/recheck after `resetAt`.
+  - weekly usage exhaustion: explicit reset/recovery action plus recheck.
   - invalid credentials: operator reauth, never automatic login against
     default `~/.codex`.
 - Desktop "active" UI must be derived from both process liveness and recent

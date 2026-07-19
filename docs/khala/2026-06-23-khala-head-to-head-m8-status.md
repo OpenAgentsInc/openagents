@@ -14,7 +14,7 @@ paid inference was burned to produce this doc.*
 > **execution-gated verifier that works and a north-star artifact that does not
 > pass it.** A real `failed` beats a fake `passed`. The two remaining
 > differentiators — **watched-in-Verse** and **playable-in-our-world** — are
-> pending the Verse lanes (crackling render fix in flight; the in-world three.js
+> pending the Verse lanes (crackling render fix in flight, the in-world three.js
 > game is not yet built). This doc does not claim M8 is published.
 >
 > **UPDATE 2026-06-23 (genuine EXECUTED PASS now on record):** in a bounded
@@ -25,7 +25,7 @@ paid inference was burned to produce this doc.*
 > caveats, both recorded in full: (1) the **bare** north-star prompt still fails 6/6
 > (the model has no way to expose the runner's `__openagentsCrossyRoad*` state
 > hooks unless told), so the passing run **augmented the prompt with that state
-> contract**; (2) the prod **gateway** returned `verification:failed` on the same
+> contract**. (2) The prod **gateway** returned `verification:failed` on the same
 > stream because its cheap pre-screen rejects CDN-loaded three.js — the standalone
 > Playwright runner has no such gate and is the authoritative behavioral verdict.
 > So for differentiator #2, "we ran it and it played" is now **true for one
@@ -42,8 +42,8 @@ Reported public comparison (**external claims, NOT ours**):
 
 | source | tokens | $ | wall-clock | reported verdict |
 | --- | --- | --- | --- | --- |
-| Sakana Fugu Ultra | ~89k | ~$7.32 | ~22 min | faster/cheaper; defects: inverted turns, wonky camera, no SFX |
-| Claude Opus 4.8 Ultracode | ~940k | ~$37.85 | ~79 min | higher quality; defects: retry loops, wrong restart position |
+| Sakana Fugu Ultra | ~89k | ~$7.32 | ~22 min | faster/cheaper. Defects: inverted turns, wonky camera, no SFX |
+| Claude Opus 4.8 Ultracode | ~940k | ~$37.85 | ~79 min | higher quality. Defects: retry loops, wrong restart position |
 
 These numbers are carried in every manifest as `externalReportedClaims` with
 `citationStatus: reported_without_primary_url` and an
@@ -98,7 +98,7 @@ chromium) and then through `verifyKhalaCodeCompletion`, via the harness
 
 | acceptance check | executed result |
 | --- | --- |
-| `loads_without_errors` | ❌ FAIL — 1 page error during construction (`localStorage` read in the `Game` ctor throws in an opaque origin; the ctor never finishes, the `start-btn` listener never attaches — the documented crash-on-load defect, executed). |
+| `loads_without_errors` | ❌ FAIL — 1 page error during construction (`localStorage` read in the `Game` ctor throws in an opaque origin, the ctor never finishes, the `start-btn` listener never attaches — the documented crash-on-load defect, executed). |
 | `play_starts_game` | ❌ FAIL — PLAY did not start the game (`started=undefined`, loop never ticked). |
 | `forward_input_advances_player` | ❌ FAIL — forward input did not advance the player. |
 | `camera_follow_delta_bounded` | ❌ FAIL — no bounded camera motion observed. |
@@ -123,7 +123,7 @@ fixtures PASS a working game and FAIL the 4-bug one (`runner.test.ts`), and the
 preserved north-star artifact is independently asserted to FAIL the executed suite
 (`scripts/khala-demo/run-executed-acceptance.test.mjs`). The
 `verifier_static_prescreen_not_executed` blocker is **superseded** by the executed
-verdict; the manifest's `verifierRef` is now
+verdict. The manifest's `verifierRef` is now
 `verifier.khala_code.executed_acceptance_suite.v1`.
 
 ## The genuine executed pass (2026-06-23)
@@ -136,9 +136,9 @@ streaming path (no 524). The generations:
 
 | # | prompt | wall-clock | executed verdict |
 | --- | --- | --- | --- |
-| 1 | bare north-star | ~90s | ❌ **0/6** — `localStorage`-on-load crash; no state hooks exposed (same defect class as the recorded run). |
-| 2 | north-star + state contract | ~113s | (transient: stream reconstructed 0 bytes; re-run as #4). |
-| 3 | north-star + state contract (raw probe) | ~110s | valid 1.66 MB stream confirmed; content not saved (cost a generation). |
+| 1 | bare north-star | ~90s | ❌ **0/6** — `localStorage`-on-load crash. No state hooks exposed (same defect class as the recorded run). |
+| 2 | north-star + state contract | ~113s | (transient: stream reconstructed 0 bytes, re-run as #4). |
+| 3 | north-star + state contract (raw probe) | ~110s | valid 1.66 MB stream confirmed. Content not saved (cost a generation). |
 | 4 | north-star + state contract | ~113s | ✅ **6/6** — `verified:true`, `scalarReward:1`. |
 
 **Attempt 4 PASSES all six executed acceptance checks** under the real headless
@@ -153,7 +153,7 @@ Playwright runner. The artifact is preserved at
 | `play_starts_game` | ✅ PASS — game started (`started=true`, `loopTicks` 0→4..6). |
 | `forward_input_advances_player` | ✅ PASS — forward input advanced the player by ~0.66 (within the ~1-tile tolerance). |
 | `camera_follow_delta_bounded` | ✅ PASS — max camera delta per move ~0.41–0.49 ≤ bound 5 (no 100× camera bug). |
-| `world_keeps_generating_ahead` | ✅ PASS — 24 rows ahead after 12 moves (≥ 12; no blue sky). |
+| `world_keeps_generating_ahead` | ✅ PASS — 24 rows ahead after 12 moves (≥ 12, no blue sky). |
 | `restart_resets_state` | ✅ PASS — restart reset player to origin and progress to 0. |
 
 Two honest caveats, both kept in the manifest:
@@ -174,10 +174,10 @@ Two honest caveats, both kept in the manifest:
    north-star prompt explicitly asks for three.js, so a faithful artifact loads it
    from a CDN and is pre-screen-rejected by the gateway today **even though it
    executes correctly**. The standalone executed-acceptance runner has no such
-   pre-screen gate and runs the real Playwright suite directly; it is the
+   pre-screen gate and runs the real Playwright suite directly. It is the
    authoritative behavioral verdict (`verified:true`, 6/6). *(This is a real
    gateway pre-screen gap — it should allow a self-contained HTML file that pulls
-   only a pinned CDN library; fixing it lives in the gateway source, which this
+   only a pinned CDN library. Fixing it lives in the gateway source, which this
    scripts/docs lane does not edit.)*
 
 **Cost:** 4 Khala-code generations spent (1 bare + 3 contract incl. one transient
@@ -205,7 +205,7 @@ misleading `$0.00`.
 
 Manifest: `recorded.khala.head_to_head.crossy_road.verified_run.v1`
 (evidenceMode: `fixture_scaffold`)
-Verified-rate: **0.5** (two executed runs: bare-prompt fails 6/6; contract-augmented
+Verified-rate: **0.5** (two executed runs: bare-prompt fails 6/6, contract-augmented
 passes 6/6 — see above)
 
 | lane | model | coordinator | tokens | $ | wall-clock | verified | cost/accepted-outcome | AO/kWh | in-world vs gateway | settled |
@@ -215,7 +215,7 @@ passes 6/6 — see above)
 
 ### Why each `not_measured` is honest
 
-- **tokens / $:** the recorded run is from the issue-comment receipt narrative;
+- **tokens / $:** the recorded run is from the issue-comment receipt narrative.
   the verified-run record we have carries the verdict + wall-clock + no-524
   evidence, but **not** a token count or a USD/`cost_msat` figure. We do not
   invent them. (Token/cost capture is a runner-side telemetry add, not a re-run:
@@ -223,11 +223,11 @@ passes 6/6 — see above)
   stream without burning a fresh paid generation.)
 - **cost-per-accepted-outcome:** derived from $, so it inherits `not_measured`.
   The metric is *defined and computed* (it would equal the run cost for an
-  accepted run) — we just don't have the cost input for this recorded run.
-- **AO/kWh:** energy telemetry is never estimated; no measured kWh exists for
+  accepted run) — we just do not have the cost input for this recorded run.
+- **AO/kWh:** energy telemetry is never estimated. No measured kWh exists for
   this run.
 - **in-world-vs-gateway split:** derived from `verse.inWorldWorkUnits` /
-  `gatewayWorkUnits`; this run was a gateway serve with no in-world Verse units
+  `gatewayWorkUnits`. This run was a gateway serve with no in-world Verse units
   recorded, so the split is `not_measured` rather than asserted.
 - **settled:** see M3 below — settlement is **code-complete and owner-armed**,
   but no sats moved for this recorded run (the owner real-settlement gate is OFF
@@ -238,28 +238,28 @@ passes 6/6 — see above)
 `verified-rate = accepted runs / runs with a verifier verdict = 1/2 = 0.5`. Two
 **executed** verdicts are now on record: the bare-prompt run is unaccepted
 (`failed`, 0/6) and the contract-augmented run is accepted (`test_passed`, 6/6).
-The earlier `1` was the static pre-screen; we superseded it by actually running the
-game (the bare artifact does not load/play; the contract-augmented one does). Both
+The earlier `1` was the static pre-screen. We superseded it by actually running the
+game (the bare artifact does not load/play, the contract-augmented one does). Both
 numbers are honest — `verified` now means "we ran it," and we ran both.
 
 ## The four differentiators — HONEST status
 
 | # | differentiator | milestone | status | evidence |
 | --- | --- | --- | --- | --- |
-| 1 | Autopilot → Khala (coordinator composes the pool) | M1 (#6009) | ✅ | cockpit `khala-turn.ts` submits to Khala; streaming default (PR #6031) |
+| 1 | Autopilot → Khala (coordinator composes the pool) | M1 (#6009) | ✅ | cockpit `khala-turn.ts` submits to Khala. Streaming default (PR #6031) |
 | 2 | Verified, not vibes (rubric → accepted outcome + receipt) | M2 (#6010) | ✅ mechanism / ✅ genuine executed PASS (contract-augmented) / ❌ bare-prompt | the **execution-gated** verifier exists and was run on TWO artifacts: the bare-prompt north-star fails 6/6 (`verified:false`, honest red), and a contract-augmented Khala-code artifact **PASSES 6/6** under the real headless runner (`verified:true`, `scalarReward:1`) — a GENUINE executed pass, not a static pre-screen. receipts `recorded.receipt.khala.crossy_road.executed_failed_scalar_reward_0.v1` (fail) and `recorded.receipt.khala.crossy_road.executed_passed_scalar_reward_1.v1` (pass). Caveats: the pass needed the runner state contract in the prompt, and the prod gateway pre-screen rejects CDN three.js (see "The genuine executed pass"). |
-| 3 | Bitcoin-settled (worker + validator paid, public receipts) | M3 (#6011 / PR #6053) | ✅ code-complete / 🟡 owner-armed | `khala-accepted-outcome-settlement.ts` fires RL-2 escrow→firm-up→Spark payout on the first executed-verified backfill; double-gated and **inert by default** (`OPENAGENTS_KHALA_LOOP_ARMED` + `OPENAGENTS_REAL_SETTLEMENT_GATE`, both OFF ⇒ no sats move) |
-| 4a | Watched in the Verse | M5 (#6013) | 🟡 | crackling render fix in flight; gateway/Pylon scene exists, playback ref not yet emitted for this run |
+| 3 | Bitcoin-settled (worker + validator paid, public receipts) | M3 (#6011 / PR #6053) | ✅ code-complete / 🟡 owner-armed | `khala-accepted-outcome-settlement.ts` fires RL-2 escrow→firm-up→Spark payout on the first executed-verified backfill. Double-gated and **inert by default** (`OPENAGENTS_KHALA_LOOP_ARMED` + `OPENAGENTS_REAL_SETTLEMENT_GATE`, both OFF ⇒ no sats move) |
+| 4a | Watched in the Verse | M5 (#6013) | 🟡 | crackling render fix in flight. Gateway/Pylon scene exists, playback ref not yet emitted for this run |
 | 4b | Playable in our world (three.js game inside our three-effect Verse) | M8 tail | ❌ | **not built** — the in-world three.js game running inside the three-effect Verse is the remaining piece |
 
-So: differentiator **1 is in hand**; **2's verifier mechanism is execution-gated and
+So: differentiator **1 is in hand**. **2'S verifier mechanism is execution-gated and
 real, AND Khala-code has now produced an artifact that genuinely PASSES it 6/6**
 (`verified:true`) — with the caveats that the bare prompt still fails 6/6 and the
-pass needed the runner state contract in the prompt; **3 is code-complete /
-owner-armed**; **4a is in flight**, **4b is not built**. The honest read of M8 today
+pass needed the runner state contract in the prompt. **3 Is code-complete /
+owner-armed**. **4A is in flight**, **4b is not built**. The honest read of M8 today
 is: we have a working **executed** verifier and a real head-to-head data point, and
 Khala-code can produce a game that actually loads and plays through it — while the
-unaided north-star prompt does not yet pass. That is the correct, honest state; the
+unaided north-star prompt does not yet pass. That is the correct, honest state. The
 watched + playable half is pending the Verse lanes
 (M4/crackling/durable-streams), which are concurrent and own those surfaces — this
 doc does not touch them.
@@ -276,7 +276,7 @@ still returns blocked. To turn this measured half into a published M8:
    `not_measured`. This is a recorded-stream/runner telemetry add, **not** a
    re-run of the paid generation.
 3. **Execution-gated verifier** — ✅ **DONE (2026-06-23), and now PASSED.** The
-   static pre-screen was replaced by the `executed_acceptance_suite` runner; both the
+   static pre-screen was replaced by the `executed_acceptance_suite` runner. Both the
    bare north-star artifact (`verified:false`, 0/6) and a contract-augmented
    Khala-code artifact (`verified:true`, **6/6**) were run through it (harness
    `scripts/khala-demo/run-executed-acceptance.mjs`). The
@@ -284,7 +284,7 @@ still returns blocked. To turn this measured half into a published M8:
    "produce an artifact that PASSES it" item is **met** for the contract-augmented
    case. Two follow-ups remain: (a) the **bare** north-star prompt still fails (the
    coder loop should expose the runner state hooks, or the gateway should inject the
-   acceptance contract, so an unaided prompt can pass); (b) the **gateway pre-screen**
+   acceptance contract, so an unaided prompt can pass). (B) the **gateway pre-screen**
    (`khala-code-verifier.ts`) rejects CDN-loaded three.js and so returns
    `verification:failed` for a correctly-executing artifact — it should allow a
    self-contained HTML file that pulls only a pinned CDN library. Both live in the
@@ -301,7 +301,7 @@ still returns blocked. To turn this measured half into a published M8:
 8. **Learned conductor (optional for honesty, required for the "composition"
    story)** — M6/M7 `live_conductor` mode rather than the heuristic router
    (`m7_live_conductor` check). The current run is a valid head-to-head on the
-   heuristic router; it is just not yet the learned-composition story.
+   heuristic router. It is just not yet the learned-composition story.
 9. **Publication** — flip `publication.status` to `published` with a
    `publicationRef`, after the owner-signed claim upgrade (no world-first /
    AO/kWh / broad product claim without the DE-10 pack + owner sign-off).
@@ -339,7 +339,7 @@ bun test scripts/khala-demo/emit-metric-table.test.mjs \
 ```
 
 Re-run the EXECUTED acceptance verdict against the preserved north-star artifact
-(real headless chromium; no paid inference). Requires
+(real headless chromium, no paid inference). Requires
 `bunx playwright install chromium` once:
 
 ```sh
@@ -359,7 +359,7 @@ bun test scripts/khala-demo/run-executed-acceptance.test.mjs
 ## The exact command that produced the recorded run
 
 The verified prod run was produced by the M8 streaming runner against prod with
-an agent token (owner-gated; do **not** re-run to regenerate the data point):
+an agent token (owner-gated, do **not** re-run to regenerate the data point):
 
 ```sh
 KHALA_BASE_URL=https://openagents.com/v1 \
@@ -370,9 +370,9 @@ FRONTIER_TOKEN=<frontier-token> \
 bun scripts/khala-demo/run-head-to-head.mjs --out /tmp/khala-h2h-live.json
 ```
 
-Streaming SSE is the interactive default (the 524 fix); `--no-stream` forces the
+Streaming SSE is the interactive default (the 524 fix). `--no-stream` forces the
 legacy blocking transport for debug only. The recorded data point above is the
-Khala lane of one such run; the frontier lane and the live token/cost/settlement/
+Khala lane of one such run. The frontier lane and the live token/cost/settlement/
 Verse/energy fields are still to be captured per the "fully publish" list.
 
 ## References

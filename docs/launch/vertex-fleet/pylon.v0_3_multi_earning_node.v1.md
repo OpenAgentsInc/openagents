@@ -20,7 +20,7 @@ This change supplies the missing receipt evidence layer:
     (`mode`, `amountClass`, `assignmentRef`, `receiptRef`, optional
     `settlementReceiptRef`).
   - `recordModeWorkReceipt(...)` — validating builder. A `settled` receipt MUST
-    carry a public-safe `settlementReceiptRef`; only `settled` may carry one.
+    carry a public-safe `settlementReceiptRef`. Only `settled` may carry one.
     `modeled` is intentionally NOT receiptable (it is an estimate, no work event).
   - `makeInMemoryPylonModeWorkReceiptStore(...)` — idempotent store keyed by
     `receiptRef`.
@@ -91,13 +91,13 @@ counting as a distinct settled "mode" — a label-splitting over-claim that fake
   genuinely distinct stems distinct (no false collapse of two custom modes).
   Plus `isSameEarningModeFamily` and `distinctEarningModeFamilies`.
 - `pylon-multi-earning-node.ts`: new `settledModeFamilies` /
-  `settledModeFamilyCount`; the projection now surfaces `settledModeFamilies` +
+  `settledModeFamilyCount`. The projection now surfaces `settledModeFamilies` +
   `settledModeFamilyCount` and measures `settledModesBarMet` against distinct
   FAMILIES, not labels — so two spellings of one mode can never satisfy the
   multi-earning requirement.
 - Tests: `pylon-earning-mode-taxonomy.test.ts` (canonicalization, no-false-
   collapse, split detection) and new `pylon-multi-earning-node.test.ts` cases
-  (family count collapses splits; bar not met for a label-split; bar met only
+  (family count collapses splits, bar not met for a label-split, bar met only
   with two genuinely distinct settled families).
 
 INERT and PURE: mints no money, reads no wallet, admits no settlement. The empty

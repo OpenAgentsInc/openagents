@@ -1,7 +1,7 @@
 # Cloud coding-session surface — flag-gated INERT scaffold (wave 2)
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-19
@@ -57,7 +57,7 @@ Tests: `apps/openagents.com/workers/api/src/cloud/cloud-coding-session-routes.te
 - **Placement policy** (`decidePlacement` / `admissibleLanesForTrustTier`) — a
   pure, checkable encoding of the promise's authority boundary, enforced BEFORE
   any adapter dispatch: `regulated -> SHC-only`, `private -> own/verified`,
-  `public -> any`. A regulated repo requesting `cloud-gcp` is refused (403);
+  `public -> any`. A regulated repo requesting `cloud-gcp` is refused (403).
   nothing reaches a VM.
 - **Managed-runtime adapter seam** (`CloudCodingRuntimeAdapter`) — where the
   real OpenAgents Cloud control plane plugs in (the cloud repo's
@@ -67,15 +67,15 @@ Tests: `apps/openagents.com/workers/api/src/cloud/cloud-coding-session-routes.te
 - **Usage/receipt seam** (`CloudCodingMeteringHook`) — the single point where the
   session's runtime usage round-trips into an `openagents.resource_usage_receipt.v1`
   (the #5005 round-trip target) and, when live, a credit debit. Ships a no-op/log
-  stub; a real receipt-first ledger hook (`makeLedgerCloudCodingMeteringHook`)
+  stub. A real receipt-first ledger hook (`makeLedgerCloudCodingMeteringHook`)
   is available, charging through the SAME atomic credit ledger the inference
   gateway uses, from REAL usage via an injected pure pricing function.
 
 ## Honest scope (no green flip)
 
-- The stub adapter provisions no real VM and runs no real repo-edit; the metering
+- The stub adapter provisions no real VM and runs no real repo-edit. The metering
   stub bills nothing. On prod the routes are inert (404).
-- No `product-promises.ts` state change. The promise stays **red**; the blocker
+- No `product-promises.ts` state change. The promise stays **red**. The blocker
   set (`cloud_live_gce_provisioning_is_fake_default_stub`,
   `cloud_gce_event_kinds_do_not_roundtrip_5005`,
   `pylon_remote_bridge_transport_missing`) is unchanged.

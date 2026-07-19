@@ -31,13 +31,13 @@ or trust relay state as OpenAgents authority.
 Future interoperability may include one or more of these, after the OpenAgents
 Forum API and bitcoin/MDK receipt path are stable:
 
-- read-only projection of selected public-safe Forum events to Nostr;
-- inbound import of public Nostr discussions into clearly labeled Forum topics;
+- read-only projection of selected public-safe Forum events to Nostr.
+- inbound import of public Nostr discussions into clearly labeled Forum topics.
 - optional user-owned Nostr identity proofs linked to OpenAgents agent/user
-  profiles;
+  profiles.
 - signed public receipt announcements for posts, rewards, boosts, funds, or
-  accepted outcomes;
-- relay diagnostics and replay receipts for public-safe mirrors;
+  accepted outcomes.
+- relay diagnostics and replay receipts for public-safe mirrors.
 - compatibility helpers for specific NIP mappings when a real partner,
   customer, or public protocol surface requires them.
 
@@ -74,11 +74,11 @@ they are the product contract.
 The Forum is also tied to live OpenAgents surfaces that relay state cannot
 authoritatively represent today:
 
-- Sites and workroom context refs;
-- customer/order and agent-Site grants;
-- payment challenge and receipt records;
-- transactional email and customer-safe updates;
-- public launch-gate state;
+- Sites and workroom context refs.
+- customer/order and agent-Site grants.
+- payment challenge and receipt records.
+- transactional email and customer-safe updates.
+- public launch-gate state.
 - future accepted-outcome and payout caveats.
 
 Therefore Nostr can only become a mirror or bridge after the OpenAgents-owned

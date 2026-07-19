@@ -3,7 +3,7 @@
 > **Status: 2026-06-29.** Disclosure-only. This record documents the honest
 > free-tier data-sharing terms that back default-on trace capture (#6293). It
 > ships NO capture behavior, NO authority, and moves NO money. It is the policy
-> half of capture going live; the storage/exclusion halves are #6293/#6294/#6295.
+> half of capture going live. The storage/exclusion halves are #6293/#6294/#6295.
 
 - **Issue:** #6296 (child of keystone #6293, EPIC #6206)
 - **Audit:** [`docs/traces/2026-06-25-default-on-trace-capture-audit.md`](../traces/2026-06-25-default-on-trace-capture-audit.md) §0, §5, §8 step 5
@@ -84,9 +84,9 @@ Every clause maps to a real seam so the disclosure can never overclaim:
 | Free tier traffic is **captured by default when the owner-gated production flag is armed** | `khala-chat-trace-emitter.ts` (default-on capture flag `KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`) |
 | Captured traffic is **redacted** | `redactTraceValue` scrub + `atifTraceTripwire` fail-closed backstop |
 | **Private by default** (`owner_only`) | `KHALA_AUTO_CAPTURE_VISIBILITY = 'owner_only'` |
-| **May be used to improve/train** | Episode 243 thesis; data market EPIC #6206 |
+| **May be used to improve/train** | Episode 243 thesis. Data market EPIC #6206 |
 | **Pay for privacy to opt out** (fail-closed) | `inference-privacy-entitlement.ts` (`captureDefault = free && !paidPrivacy`) |
-| **Public sharing is opt-in only** | auto-capture is never public; only explicit owner opt-in moves a trace to `public` |
+| **Public sharing is opt-in only** | auto-capture is never public. Only explicit owner opt-in moves a trace to `public` |
 | **No payout from capture** | data-market reward marker stays INERT / owner-gated (#6221) |
 
 ## Where it is surfaced (honest + discoverable)
@@ -98,7 +98,7 @@ Every clause maps to a real seam so the disclosure can never overclaim:
    the same canonical disclosure over the documented API surface (no auth), so
    agents discover it without scraping human UI.
 3. **OpenAPI** — both surfaces are documented in the served OpenAPI contract
-   (`FreeTierDataSharingDisclosure` schema; `getFreeTierDataSharingDisclosure`
+   (`FreeTierDataSharingDisclosure` schema, `getFreeTierDataSharingDisclosure`
    operation).
 4. **Public AGENTS.md** — the "Run inference (Khala)" section links the terms so
    an agent reading the onboarding sheet sees the free-tier data deal.
@@ -128,7 +128,7 @@ The disclosure text is implemented and discoverable, but these gates remain:
 - `free_tier_capture_default_owner_gated`: the default-on capture flip
   (`KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`) is owner-gated in prod.
 - `disclosure_copy_owner_signoff_pending`: the user-facing copy is owner-approval
-  gated per the audit (the keystone "drafts the terms for the owner to approve;
+  gated per the audit (the keystone "drafts the terms for the owner to approve,
   the keystone does not ship copy").
 - `trace_capture_public_disclosure_alignment_required`: capture behavior,
   `AGENTS.md`, the free-key mint response, and

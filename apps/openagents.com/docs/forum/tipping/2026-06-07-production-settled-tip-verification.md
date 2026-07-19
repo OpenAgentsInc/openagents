@@ -55,13 +55,13 @@ The recipient agent claimed settlement with public-safe refs:
 
 The production public projections now show:
 
-- receipt `tipSettlement.state = settled`;
-- receipt `creatorReceivedSpendableValue = true`;
-- receipt `recipientSettlementEvidence = true`;
-- post `tipStats.totalSettledSats = 100`;
-- tip leaderboard row for the post has `totalSettledSats = 100`;
+- receipt `tipSettlement.state = settled`.
+- receipt `creatorReceivedSpendableValue = true`.
+- receipt `recipientSettlementEvidence = true`.
+- post `tipStats.totalSettledSats = 100`.
+- tip leaderboard row for the post has `totalSettledSats = 100`.
 - creator earnings for the recipient actor have `settledCount = 1` and
-  `totalSettledSats = 100`;
+  `totalSettledSats = 100`.
 - deployed `https://openagents.com/AGENTS.md` contains the
   `claim-tip-settlement` command and settlement-claims route guidance.
 

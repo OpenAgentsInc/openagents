@@ -11,7 +11,7 @@ stale/dead residue from the phone: the mobile list
 or an in-progress non-expired device login), and disconnect now soft-deletes
 the row (`deleted_at`) so it leaves every `deleted_at IS NULL` projection
 immediately. This script only removes the now-hidden rows from D1 so the table
-is clean; skipping it changes nothing the user sees.
+is clean. Skipping it changes nothing the user sees.
 
 It is **idempotent** (already-`deleted_at` rows are skipped) and **list-first**
 (run the dry-run counts before any write).
@@ -35,7 +35,7 @@ bunx wrangler d1 execute openagents-autopilot --remote --command "
   ORDER BY n DESC;"
 ```
 
-Per-user magnitude (identify who has accumulation; no token material is read):
+Per-user magnitude (identify who has accumulation, no token material is read):
 
 ```sh
 bunx wrangler d1 execute openagents-autopilot --remote --command "
@@ -46,7 +46,7 @@ bunx wrangler d1 execute openagents-autopilot --remote --command "
 ```
 
 Snapshot at time of writing (2026-07-09), live `chatgpt_codex` rows:
-`unhealthy=16, connected=12, pending=8, denied=5` across all users; the owner's
+`unhealthy=16, connected=12, pending=8, denied=5` across all users. The owner's
 own account held 26 live rows (16 unhealthy, 5 pending whose device codes had
 all expired, 5 connected). After the projection fix the owner's phone shows
 only the 5 connected rows.
@@ -97,6 +97,6 @@ excluded by `deleted_at IS NULL`).
 
 ## Safety notes
 
-- Only ever soft-deletes (`deleted_at`); no hard `DELETE`, no token material.
+- Only ever soft-deletes (`deleted_at`). No hard `DELETE`, no token material.
 - Never targets `connected` rows, so a real linked account is never removed.
 - Staging first: swap `openagents-autopilot` → `openagents-autopilot-staging`.

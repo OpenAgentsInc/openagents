@@ -12,11 +12,11 @@ coordinator does not perform network, provider, or native work on its own.
 
 The six required lanes are:
 
-1. scripted browser;
-2. seeded monkey;
-3. LLM explorer;
-4. performance;
-5. terminal;
+1. scripted browser.
+2. seeded monkey.
+3. LLM explorer.
+4. performance.
+5. terminal.
 6. macOS native.
 
 Every lane has independent action, duration, and model-token caps. Real work,
@@ -26,7 +26,7 @@ uppercase `INCONCLUSIVE` observation with blockers and no fabricated native
 report, artifact commitment, or normalized Assurance Receipt. A configured lane
 adapter must match every assigned Manifest unit's locked adapter exactly.
 Non-model lanes report exact zero model
-usage; an executed LLM lane must report exact observed input plus output tokens
+usage. An executed LLM lane must report exact observed input plus output tokens
 within its cap.
 
 Each Manifest unit with observed adapter output produces the existing normalized Assurance Receipt, bound to
@@ -47,6 +47,6 @@ pnpm --dir apps/qa-runner exec vp test --run src/assurance-swarm.test.ts
 This command proves the coordinator contract with injected deterministic
 adapters. It is not a real six-substrate Desktop execution. The repository does
 not yet provide a CLI or production composition that binds the installed app to
-all six adapters; until that composition and its adapter lock are separately
+all six adapters. Until that composition and its adapter lock are separately
 reviewed and admitted, a request for a real six-lane run is `INCONCLUSIVE`, not
 green.

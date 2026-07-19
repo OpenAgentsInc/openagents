@@ -105,7 +105,7 @@ serve two horizons:
 
 - near term: improve Blueprint-governed coding workrooms by improving Program
   Signature selection, tool-menu projection, closeout discipline, acceptance
-  criteria, account/backend routing, and route scorecards;
+  criteria, account/backend routing, and route scorecards.
 - longer term: make Probe the owned runtime surface that can use Codex,
   Psionic/Qwen, Apple FM, local/swarm inference, or future backends while
   preserving the same product evidence contract.
@@ -171,12 +171,12 @@ results. Online node count is not the economic unit.
 
 For the benchmark apparatus, this means Pylon should run:
 
-- GEPA rollout metric calls;
-- Terminal-Bench and retained fixture attempts;
-- validation and holdout reruns;
-- Qwen/LoRA training shards when admitted;
+- GEPA rollout metric calls.
+- Terminal-Bench and retained fixture attempts.
+- validation and holdout reruns.
+- Qwen/LoRA training shards when admitted.
 - evaluator and verifier work where a low-capability device can still
-  contribute;
+  contribute.
 - public-safe receipt generation.
 
 The worker should advertise what it can honestly do. The scheduler should pay
@@ -187,22 +187,22 @@ or credit work only after the result survives validation and policy gates.
 Episode 216 introduces Psionic as the Rust-native ML stack and training
 ambition. Episode 224 explains the distributed training primitives:
 
-- run identity;
-- assignment window;
-- current checkpoint;
-- local work;
-- synchronization or merge;
-- validation;
-- contribution accounting;
+- run identity.
+- assignment window.
+- current checkpoint.
+- local work.
+- synchronization or merge.
+- validation.
+- contribution accounting.
 - recovery after dropout.
 
 For Probe, Psionic should own optimizer and model-training truth:
 
-- GEPA-style optimizer coordinator or manifests;
-- candidate frontier and lineage;
-- LoRA/SFT/DPO/GRPO jobs;
-- adapter merge and registration;
-- Pylon worker receipts;
+- GEPA-style optimizer coordinator or manifests.
+- candidate frontier and lineage.
+- LoRA/SFT/DPO/GRPO jobs.
+- adapter merge and registration.
+- Pylon worker receipts.
 - training report and promotion evidence.
 
 Probe should not become the training stack. Probe should emit the traces,
@@ -213,18 +213,18 @@ turn into candidate improvements.
 
 Episode 219 demos the important product thesis: Probe should combine multiple
 inference routes behind one Blueprint-governed runtime. Codex is one possible
-account-backed or Codex-style backend; Psionic/Qwen local or remote models,
+account-backed or Codex-style backend. Psionic/Qwen local or remote models,
 Apple/local inference modes, and Pylon/swarm compute should sit in the same
 surface. Episode 201 adds the Apple Silicon edge-compute thesis: some
 coding-agent work can move from cloud APIs to local devices over time.
 
 The benchmark loop should measure that migration honestly. It should compare:
 
-- Blueprint-governed Probe runs using Codex when useful;
-- Probe using Codex-style backends;
-- Probe using Apple FM for bounded local tool use;
-- Probe using Qwen/Psionic models;
-- Probe using Pylon/swarm compute;
+- Blueprint-governed Probe runs using Codex when useful.
+- Probe using Codex-style backends.
+- Probe using Apple FM for bounded local tool use.
+- Probe using Qwen/Psionic models.
+- Probe using Pylon/swarm compute.
 - mixed strategies where local models handle low-risk tool, summarization,
   routing, or verifier-support steps.
 
@@ -242,11 +242,11 @@ paid skills into one pattern: useful capabilities should earn.
 
 For Probe learning, this implies attribution records:
 
-- which Program Signature helped;
-- which GEPA candidate improved the run;
-- which Pylon workers produced valid rollouts;
-- which Psionic adapter or checkpoint was used;
-- which verifier or fixture suite caught the failure;
+- which Program Signature helped.
+- which GEPA candidate improved the run.
+- which Pylon workers produced valid rollouts.
+- which Psionic adapter or checkpoint was used.
+- which verifier or fixture suite caught the failure.
 - which provider route delivered the accepted outcome.
 
 Those records are how the learning apparatus becomes an economy instead of an
@@ -274,13 +274,13 @@ mission
 
 Metrics:
 
-- acceptance rate;
-- human review minutes;
-- turns per accepted outcome;
-- cost per accepted outcome;
-- retry count;
-- route scorecard;
-- artifact completeness;
+- acceptance rate.
+- human review minutes.
+- turns per accepted outcome.
+- cost per accepted outcome.
+- retry count.
+- route scorecard.
+- artifact completeness.
 - public/private proof state.
 
 This loop proves the commercial wedge.
@@ -303,13 +303,13 @@ task
 
 Metrics:
 
-- verifier reward;
-- cost;
-- duration;
-- policy findings;
-- failure family;
-- retained regression delta;
-- validation and holdout split results;
+- verifier reward.
+- cost.
+- duration.
+- policy findings.
+- failure family.
+- retained regression delta.
+- validation and holdout split results.
 - artifact and proof bundle completeness.
 
 This loop makes the product improve without relying on vibes.
@@ -330,13 +330,13 @@ candidate text bundle
 
 The candidate bundle can include:
 
-- Probe system prompt;
-- backend prompt addendum;
-- terminal benchmark global playbook;
-- signature-selection policy;
-- tool-menu policy;
-- failure-family playbooks;
-- patch/test policy;
+- Probe system prompt.
+- backend prompt addendum.
+- terminal benchmark global playbook.
+- signature-selection policy.
+- tool-menu policy.
+- failure-family playbooks.
+- patch/test policy.
 - closeout policy.
 
 Promotion boundary:
@@ -371,13 +371,13 @@ clean traces
 
 This should start after the GEPA loop produces clean data:
 
-- successful rollouts;
-- failed rollouts;
-- candidate diffs;
-- verifier outcomes;
-- failure-family labels;
-- selected signatures;
-- tool-menu decisions;
+- successful rollouts.
+- failed rollouts.
+- candidate diffs.
+- verifier outcomes.
+- failure-family labels.
+- selected signatures.
+- tool-menu decisions.
 - closeout evidence quality.
 
 The model loop should train open/local models such as Qwen3.6 adapters through

@@ -6,7 +6,7 @@ The epic adopted Orrery's invariant after eight frozen-projection
 instances in ~24 hours: every public projection carries `generatedAt`
 (or `lastRebuiltAt`) plus a declared `maxStaleness`, and either
 rebuilds on the state transitions that matter or composes live at
-read; a projection that cannot meet its own declared staleness says so
+read. A projection that cannot meet its own declared staleness says so
 in the payload.
 
 ## What landed
@@ -39,12 +39,12 @@ vocabulary. Tests: `public-projection-staleness.test.ts`.
 
 - discovers every `/api/public/...` literal (quoted, template, or
   regex form) in route modules and fails any route not covered by its
-  projection-surface ledger — verified red on a probe route;
+  projection-surface ledger — verified red on a probe route.
 - greps every `staleness_declared` ledger module for the contract
-  token (`maxStalenessSeconds` or the shared module import);
+  token (`maxStalenessSeconds` or the shared module import).
 - freezes the legacy set as an exact budget
   (`PUBLIC_PROJECTION_LEGACY_BUDGET = 18`): retrofits must flip the
-  row and lower the budget in the same change; new legacy rows fail.
+  row and lower the budget in the same change. New legacy rows fail.
 
 This satisfies "any NEW public projection without
 generatedAt+maxStaleness fails review/check tooling" without
@@ -55,7 +55,7 @@ retrofitting every legacy surface tonight.
 - `/api/public/artanis/report` (instance 6, #4745): payload now
   carries `generatedAtUnixMs` (numeric because the surface's safety
   scan bans raw ISO strings) and the report contract
-  (`live_at_read`); `autonomousLoop` carries its own
+  (`live_at_read`). `autonomousLoop` carries its own
   `rebuilt_on_transition` contract (bound 86 400 s,
   `rebuildsOn: [artanis_loop_tick_closeout]`),
   `latestTickAgeSeconds`, `nextTickOverdue` (the tick's own
@@ -68,40 +68,40 @@ retrofitting every legacy surface tonight.
   current loop state. 5 new tests in `artanis-public-report.test.ts`.
 - Tip surfaces (the #4753 remainder): `tip-leaderboards`,
   `moderation/tip-earnings`, and `actors/{ref}/tip-earnings` payloads
-  declare `generatedAt` + the live-at-read contract; per-post
-  `tipStats` blocks carry the contract; creator leaderboard rows list
+  declare `generatedAt` + the live-at-read contract. Per-post
+  `tipStats` blocks carry the contract. Creator leaderboard rows list
   ladder `totalCreditedSats`/`totalSweptSats` (swept coverage =
   oldest-credited-first `min(sweptMsat, creditedMsat)`), with honesty
   caveat refs that ranking still keys on settled receipt-backed tips.
-  New `forum/tip-leaderboards-staleness.test.ts` (3 tests); updated
+  New `forum/tip-leaderboards-staleness.test.ts` (3 tests). Updated
   `forum-routes.test.ts` assertions.
 - Agent profile (instances 1–2, #4744): verified #4744's live
-  owner-claim composition landed (`f83106c33`); the route response now
+  owner-claim composition landed (`f83106c33`). The route response now
   declares `generatedAt` + contract
   (`rebuildsOn: [agent_owner_claim_approved,
   agent_owner_x_claim_verified, agent_registration_updated,
-  orange_check_entitlement_changed]`); and the second lost write is
+  orange_check_entitlement_changed]`). And the second lost write is
   fixed: a verified/approved X-proof challenge
   (`agent_owner_x_claim_challenges`) now composes live into the
   profile as `verificationState: 'x_verified_agent'` with the X claim
-  receipt ref in `safeReceiptRefs` (refs only; no handle, token, or
+  receipt ref in `safeReceiptRefs` (refs only, no handle, token, or
   tweet URL). New route test in `forum-routes.test.ts`.
 
 ## Per-instance closure map
 
 | Instance | Issue | State | Disposition against the invariant |
 | --- | --- | --- | --- |
-| 1. profile frozen at registration | #4744 | CLOSED (`f83106c33`) | Closes against the invariant: live-at-read composition landed pre-epic; this epic added the payload declaration (`generatedAt` + contract). |
-| 2. X-proof verified, verificationState stale | documented on #4744 | fixed here | Closes against the invariant: `x_verified_agent` composes the verification write live; regression test on the route. |
-| 3. openapi.json frozen | #4752 | OPEN | Static contract document — exempt from the payload rule but its route inventory must track shipped routes; remains the open companion (file locked by the in-flight lane). |
-| 4. pylon-stats window self-contradiction | #4735 | CLOSED (`4ca56d0df`) | Predates the rule: fixed by self-describing `counterWindows`; surface still lacks a declared `maxStaleness` contract — listed NON-COMPLIANT in the inventory and counted in the frozen budget. |
-| 5. credited tips invisible | #4753 | CLOSED (`932212a1d`) | Closes against the invariant: read paths landed pre-epic; this epic delivered the named remainder (tipStats + leaderboard declarations, ladder credited/swept sats in leaderboards). |
-| 6. artanis report asserting stale state | #4745 | CLOSED (`2533856f8`) | Closes against the invariant: rebuild-on-closeout landed pre-epic; this epic added the declaration, age/overdue flags, and the example-fallback labeling. |
-| 7. capacity funnel at zero | #4745 | CLOSED | Predates the rule for the declaration: stage derivation fixed; `generatedAt` exists but no contract — listed NON-COMPLIANT, in the frozen budget. |
+| 1. profile frozen at registration | #4744 | CLOSED (`f83106c33`) | Closes against the invariant: live-at-read composition landed pre-epic. This epic added the payload declaration (`generatedAt` + contract). |
+| 2. X-proof verified, verificationState stale | documented on #4744 | fixed here | Closes against the invariant: `x_verified_agent` composes the verification write live. Regression test on the route. |
+| 3. openapi.json frozen | #4752 | OPEN | Static contract document — exempt from the payload rule but its route inventory must track shipped routes. Remains the open companion (file locked by the in-flight lane). |
+| 4. pylon-stats window self-contradiction | #4735 | CLOSED (`4ca56d0df`) | Predates the rule: fixed by self-describing `counterWindows`. Surface still lacks a declared `maxStaleness` contract — listed NON-COMPLIANT in the inventory and counted in the frozen budget. |
+| 5. credited tips invisible | #4753 | CLOSED (`932212a1d`) | Closes against the invariant: read paths landed pre-epic. This epic delivered the named remainder (tipStats + leaderboard declarations, ladder credited/swept sats in leaderboards). |
+| 6. artanis report asserting stale state | #4745 | CLOSED (`2533856f8`) | Closes against the invariant: rebuild-on-closeout landed pre-epic. This epic added the declaration, age/overdue flags, and the example-fallback labeling. |
+| 7. capacity funnel at zero | #4745 | CLOSED | Predates the rule for the declaration: stage derivation fixed. `generatedAt` exists but no contract — listed NON-COMPLIANT, in the frozen budget. |
 | 8. x_claim_reward no read path | #4754 | CLOSED (`6acc0573d`) | Closes against the invariant: the read path shipped with `generatedAt` + the #4748-shape contract and is the `staleness_declared` reference row. |
 
 #4746 (evidence refs unresolvable) and #4747 (tips settle invisibly)
-closed pre-epic with resolving read paths; their surfaces
+closed pre-epic with resolving read paths. Their surfaces
 (`/api/public/nexus-pylon/receipts/{ref}`, `/api/forum/receipts/{ref}`)
 are inventoried NON-COMPLIANT for the payload declaration and sit in
 the frozen budget.
@@ -118,20 +118,20 @@ the frozen budget.
   lane: generatedAt + staleness declarations for the training
   window/leaderboard/eval read surfaces (single frozen-budget row).
 - 18 legacy surfaces to retrofit budget-down (inventory in
-  `INVARIANTS.md`); highest value next: `/api/public/pylon-stats`,
+  `INVARIANTS.md`). Highest value next: `/api/public/pylon-stats`,
   `/api/public/launch-dashboard`, `/api/public/pylon-capacity-funnel`.
 - Leaderboard post rows do not yet list per-post ladder credited sats
-  (recipient-level sweep attribution does not map to posts cheaply);
+  (recipient-level sweep attribution does not map to posts cheaply).
   covered by the caveat refs.
 - Web UI surfacing of credited/swept leaderboard fields remains
   unclaimed (#4753 note).
 
 ## Gates
 
-- `bunx vitest run` on touched areas: 313 tests / 28 files green;
+- `bunx vitest run` on touched areas: 313 tests / 28 files green.
   full worker suite 2597/2602 with 5 failures pre-existing on the
   clean base (artanis-forum-delivery, artanis-scheduled-runner,
   openagents-agent-onboarding sha256 — reproduced with changes
   stashed).
-- `bun run typecheck:api` exit 0; full `bun run check:deploy` green,
+- `bun run typecheck:api` exit 0. Full `bun run check:deploy` green,
   including the extended `check:architecture` with the new ledger.

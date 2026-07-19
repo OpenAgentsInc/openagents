@@ -15,7 +15,7 @@ grok -p "Your prompt here"
 
 | Flag | What it does |
 | --- | --- |
-| `-p, --single <PROMPT>` | Send one prompt; print response to stdout and exit |
+| `-p, --single <PROMPT>` | Send one prompt. Print response to stdout and exit |
 | `--prompt-file <PATH>` | Single-turn prompt from a file *(local CLI)* |
 | `--prompt-json <JSON>` | Single-turn prompt as JSON content blocks *(local CLI)* |
 | `-m, --model <MODEL>` | Choose a model |

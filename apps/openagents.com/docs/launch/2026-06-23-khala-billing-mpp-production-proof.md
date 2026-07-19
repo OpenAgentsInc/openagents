@@ -5,7 +5,7 @@ Date: 2026-06-23
 > **Current status (2026-07-05, #8387): MPP portion retired.** The standalone
 > Khala MPP/x402 chat endpoint, root discovery document, Stripe MPP profile
 > config, smokes, and replay-cache writers were removed/deferred. This file is
-> preserved as historical launch context; do not use the MPP arming or smoke
+> preserved as historical launch context. Do not use the MPP arming or smoke
 > steps below on current main.
 
 Issue: OpenAgentsInc/openagents#6108
@@ -17,7 +17,7 @@ Issue: OpenAgentsInc/openagents#6108
 > (real mainnet BOLT11 via **Spark** PRIMARY through the `MDK_TREASURY` container, MDK
 > fallback — leads the 402), **USDC/crypto** (full pay-loop proven on staging), and
 > **card/SPT**. Prod secrets `KHALA_MPP_ENABLED`, `STRIPE_API_KEY` (rk_live),
-> `KHALA_MPP_SIGNING_SECRET`, and `KHALA_MPP_LIGHTNING_ENABLED` are set; profile
+> `KHALA_MPP_SIGNING_SECRET`, and `KHALA_MPP_LIGHTNING_ENABLED` are set. Profile
 > `@openagents` (`profile_61Uug9…`) is live. The fail-safe/inert behavior described below
 > still holds when the flags are removed (rollback). Only the Stripe Directory **badge**
 > remains pending (external async crawl). Current status & ops:
@@ -98,7 +98,7 @@ Final live MPP activation needs owner-supplied Stripe inputs:
   approved.
 
 The Worker must continue to avoid logging Stripe keys or payment credentials.
-The MPP smoke never sends payment credentials; it only proves that unauthenticated
+The MPP smoke never sends payment credentials. It only proves that unauthenticated
 production cannot receive a free completion.
 
 ## Product-Promise State
@@ -107,10 +107,10 @@ Do not flip a product promise green from this runbook alone.
 
 The source state is honest when it says:
 
-- card/Stripe and MPP paths are built and receipt-gated;
-- a real green claim still requires dereferenceable paid evidence;
+- card/Stripe and MPP paths are built and receipt-gated.
+- a real green claim still requires dereferenceable paid evidence.
 - USD/card-origin balances are inference-spendable only, not
-  Bitcoin-withdrawable;
+  Bitcoin-withdrawable.
 - final MPP profile activation is owner-gated.
 
 ## Rollback

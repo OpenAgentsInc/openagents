@@ -25,10 +25,10 @@ tweets containing the nonce plus claim URL remain accepted during the
 transition window. After verification, the worker records one reward row in
 `x_claim_reward_ledger`:
 
-- deduped by X account and by challenge (one reward per X account, ever);
+- deduped by X account and by challenge (one reward per X account, ever).
 - `state: eligible` (or `refused` with
   `reason.public.x_claim_reward_campaign_budget_exhausted` when the campaign
-  cap is reached);
+  cap is reached).
 - `amountSats: 1000`, `receiptRef: x_claim_reward_receipt_*`.
 
 The verify response includes the public-safe reward projection, so the
@@ -38,9 +38,9 @@ claiming owner sees eligibility immediately.
 
 - Never paste invoices, BOLT12 offers, preimages, mnemonics, or wallet paths
   into issue comments, Forum posts, or this repo. Evidence refs only.
-- `mark_settled` requires public-safe settlement evidence refs; the route
+- `mark_settled` requires public-safe settlement evidence refs. The route
   rejects it otherwise.
-- One reward per X account is enforced by the ledger; do not work around it.
+- One reward per X account is enforced by the ledger. Do not work around it.
 - The campaign wallet is a bounded marketing wallet, not the Forum tip payer,
   the edge wallet, or Treasury.
 
@@ -91,7 +91,7 @@ ready only when every check passes:
 
 Feed it the aggregate dispatch stats from
 `GET /api/operator/treasury/status` (`rewardDispatch`) plus the wallet's max
-sendable balance; a non-empty `blockingReasonRefs` means do not start the live
+sendable balance. A non-empty `blockingReasonRefs` means do not start the live
 smoke until each listed reason clears.
 
 As of the 2026-06-20 wiring, the operator no longer needs to run the evaluator
@@ -140,7 +140,7 @@ All calls use the worker admin API token as the bearer.
    Expected row state: `dispatch_requested`.
 
 2. Pay 1000 sats from the campaign wallet to the owner-provided receive code
-   (collect the receive code out of band; never store it in the ledger).
+   (collect the receive code out of band, never store it in the ledger).
    Confirm the payment reaches `completed` in the campaign wallet history.
 
    Funding amount: exactly `1000` sats to the owner-provided receive
@@ -208,7 +208,7 @@ only when:
   stop).
 
 A non-empty `blockingReasonRefs` means the run did not complete a clean
-single-reward smoke; resolve each reason before running the per-row audit. The
+single-reward smoke. Resolve each reason before running the per-row audit. The
 public-safe `outcomeSummary` (aggregate counters and skip-reason refs only) is
 safe to paste into issue #4626.
 
@@ -230,7 +230,7 @@ transition receipt is published. The audit passes only when:
   preimage, or payment hash appears in any public-facing field.
 
 A passing audit returns `transitionReceiptSummary` — a public-safe object
-(rewardId, receiptRef, state, amountSats, public settlement evidence refs only;
+(rewardId, receiptRef, state, amountSats, public settlement evidence refs only,
 never the treasury payment id or destination) suitable for pasting into the
 issue #4626 transition receipt. A non-empty `violationReasonRefs` means do not
 publish the receipt until each listed reason clears.
@@ -258,7 +258,7 @@ For the flag-gated worker-side path, run the composite completion gate
 (`assertXClaimRewardSmokeCompletion` in
 `apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.ts`) instead
 of calling the transition-receipt builder directly. The standalone builder only
-inspects the settled *row*; this gate also requires the worker-side dispatch
+inspects the settled *row*. This gate also requires the worker-side dispatch
 *run* to have been a clean bounded single-reward smoke before it will emit the
 transition request. That closes the hole where a run that settled the wrong
 number of rewards, left a payment pending, or skipped on liquidity/daily-cap
@@ -284,6 +284,6 @@ curl -fsS "$OPENAGENTS_BASE_URL/api/public/product-promises?cb=x-claim-smoke-$(d
 ## Promise gate
 
 `agents.x_claim_reward.v1` stays yellow until one live reward settles through
-this flow with public-safe receipt refs; record that run on issue #4626 and
+this flow with public-safe receipt refs. Record that run on issue #4626 and
 propose the registry update with a transition receipt
 (`POST /api/operator/product-promises/transitions`).

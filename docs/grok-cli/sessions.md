@@ -10,7 +10,7 @@ directory. Sessions work the same in the **TUI**, **headless mode**, and
 ## Resuming
 
 In the TUI, `/resume` opens a picker of recent sessions for the current
-workspace; the welcome screen lists them too.
+workspace. The welcome screen lists them too.
 
 From the command line:
 
@@ -55,7 +55,7 @@ unless committed to git.
 
 `/compact [context]` compresses conversation history to reclaim context
 window, with optional instructions about what to preserve. Grok also
-auto-compacts as the context window fills; check usage with `/context` or
+auto-compacts as the context window fills. Check usage with `/context` or
 `/session-info`.
 
 ## Housekeeping

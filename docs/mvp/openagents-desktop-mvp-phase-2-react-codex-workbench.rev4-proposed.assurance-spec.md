@@ -2,7 +2,7 @@
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.desktop.react-codex-workbench.phase2"
 assurance_revision: 4
-title: "OpenAgents Desktop React Codex Workbench Phase 2 Assurance Spec"
+title: "OpenAgents Desktop React Codex Workbench Phase 2 AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -94,7 +94,7 @@ Every executable ProductSpec criterion is in assurance scope. No criterion is si
 ## Environments
 
 Repository facts are proposal context only. The post-RC16 obligations target a
-proposed macOS ARM64 Node 24 Desktop profile; admission must pin exact OS,
+proposed macOS ARM64 Node 24 Desktop profile. Admission must pin exact OS,
 hardware, artifact, adapter, permission, and isolation details before execution.
 
 ```assurancespec-environments
@@ -2989,7 +2989,7 @@ hardware, artifact, adapter, permission, and isolation details before execution.
 ## Obligations
 
 Every criterion has one obligation. AC-15 through AC-20 carry complete proposed
-proof design for the post-RC16 UI work; AC-1 through AC-14 remain explicit
+proof design for the post-RC16 UI work. AC-1 through AC-14 remain explicit
 `needs_design` obligations and therefore prevent full Phase 2 admission or
 execution until their proof design is reconciled.
 

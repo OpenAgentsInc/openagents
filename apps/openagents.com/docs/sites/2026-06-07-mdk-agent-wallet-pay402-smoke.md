@@ -171,17 +171,17 @@ curl --fail-with-body \
 
 The local token cache must be outside tracked source. Acceptable examples:
 
-- an ignored local temp file under `.secrets/`;
-- a process-local environment variable;
-- an agent runtime secret store;
+- an ignored local temp file under `.secrets/`.
+- a process-local environment variable.
+- an agent runtime secret store.
 - a private wallet-daemon state file.
 
 The token cache may hold:
 
-- L402 token;
-- payment preimage;
-- route/method binding;
-- expiry;
+- L402 token.
+- payment preimage.
+- route/method binding.
+- expiry.
 - public-safe receipt ref after retry.
 
 The token cache must not be committed, printed to GitHub, sent to public Forum
@@ -191,28 +191,28 @@ posts, or embedded in docs.
 
 Never print, commit, or include in public projections:
 
-- wallet mnemonic or recovery phrase;
-- `~/.mdk-wallet/config.json` contents;
-- `MDK_WALLET_MNEMONIC`;
-- `MDK_WALLET_PORT` when it reveals a private local setup;
-- `MDK_ACCESS_TOKEN`;
-- `MDK_MNEMONIC`;
-- MDK webhook secrets;
-- raw BOLT11/BOLT12/LNURL payloads;
-- raw invoice strings;
-- raw payment hashes;
-- preimages;
-- exact wallet home paths;
-- exact private balances;
+- wallet mnemonic or recovery phrase.
+- `~/.mdk-wallet/config.json` contents.
+- `MDK_WALLET_MNEMONIC`.
+- `MDK_WALLET_PORT` when it reveals a private local setup.
+- `MDK_ACCESS_TOKEN`.
+- `MDK_MNEMONIC`.
+- MDK webhook secrets.
+- raw BOLT11/BOLT12/LNURL payloads.
+- raw invoice strings.
+- raw payment hashes.
+- preimages.
+- exact wallet home paths.
+- exact private balances.
 - customer emails, operator emails, or private user IDs.
 
 Use refs instead:
 
-- `wallet_home.local.redacted`;
-- `payment_hash.redacted.<scope>`;
-- `receipt.openagents.<scope>`;
-- `entitlement.openagents.<scope>`;
-- `token_cache.local.redacted`;
+- `wallet_home.local.redacted`.
+- `payment_hash.redacted.<scope>`.
+- `receipt.openagents.<scope>`.
+- `entitlement.openagents.<scope>`.
+- `token_cache.local.redacted`.
 - `spend_cap.bitcoin_satoshis.<bounded_amount>`.
 
 ## Failure Handling
@@ -225,10 +225,10 @@ npx @moneydevkit/agent-wallet@latest restart
 
 If payment fails, do not retry unboundedly. Re-check:
 
-- the route still advertises L402/MDK recovery;
-- the invoice has not expired;
-- the payment remains under the spend cap;
-- the token cache has not mixed credentials from another route;
+- the route still advertises L402/MDK recovery.
+- the invoice has not expired.
+- the payment remains under the spend cap.
+- the token cache has not mixed credentials from another route.
 - the wallet is still the named operator-approved wallet.
 
 If any value is uncertain, stop and request operator review.
@@ -237,18 +237,18 @@ If any value is uncertain, stop and request operator review.
 
 Use only these OpenAgents categories for this smoke:
 
-- fake/sandbox Site MDK smoke fixtures and tests;
-- routes whose discovery explicitly says L402/MDK recovery is available;
-- operator-approved signet tests with a named wallet and amount;
+- fake/sandbox Site MDK smoke fixtures and tests.
+- routes whose discovery explicitly says L402/MDK recovery is available.
+- operator-approved signet tests with a named wallet and amount.
 - public-safe receipt/proof lookup routes after retry.
 
 Do not use this runbook to:
 
-- initialize or fund a production wallet in source code;
-- create a live checkout product;
-- spend live bitcoin;
-- bridge buyer payment to Pylon payout;
-- settle provider payouts;
+- initialize or fund a production wallet in source code.
+- create a live checkout product.
+- spend live bitcoin.
+- bridge buyer payment to Pylon payout.
+- settle provider payouts.
 - test private customer routes.
 
 Those require separate issue-specific authority and evidence.

@@ -1,7 +1,7 @@
 # OpenCode → Ecosystem Tools Expansion Plan
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Source context: `docs/inference/2026-06-25-khala-inference-gtm-push.md` §3
@@ -36,13 +36,13 @@ Aider uses the OpenAI Python client under the hood. Base URL override maps direc
 - Model name `openai/openagents/khala` selects the OpenAI-compatible route and sends `openagents/khala` as the model field
 - Tool/function calling: Aider's edit workflow depends on the model producing `read_file` / `write_file` / `run` tool calls. This is the critical correctness test.
 - Streaming: Aider uses streaming by default for real-time output. Verify SSE works end-to-end.
-- `--no-git` mode: Aider commits by default; test without git hooks first for a clean signal.
+- `--no-git` mode: Aider commits by default. Test without git hooks first for a clean signal.
 
 **What to test:**
 1. Aider connects and lists files with `/files` — proves base chat completion works
 2. Aider makes an edit (tool call round-trip) — `read_file` → edit → `write_file` → `run lint` — the full tool-calling loop
 3. Aider streaming output renders cleanly (no garbled deltas)
-4. Free-tier quota: one session stays within 2,500,000 tokens; a second session after quota exhaust returns a readable 402
+4. Free-tier quota: one session stays within 2,500,000 tokens. A second session after quota exhaust returns a readable 402
 5. Token counter: session tokens appear on `/api/public/khala-tokens-served`
 6. `--model-settings-role map` — if Aider maps model ids to capability profiles, ensure `openagents/khala` is recognized or falls back gracefully
 
@@ -87,7 +87,7 @@ Or in VS Code settings.json:
 3. Streaming output renders incrementally (Cline processes SSE deltas)
 4. Cline's token usage display matches our `usage` field in non-streaming responses
 5. Error states: 402 displays as a readable error, not a crash
-6. Model context window: Cline may send the full conversation history; verify 128k context works end to end
+6. Model context window: Cline may send the full conversation history. Verify 128k context works end to end
 
 ### Continue
 
@@ -107,7 +107,7 @@ models:
 
 **What to test:**
 1. Chat and tab-autocomplete both work (tab-autocomplete may need a separate lightweight model — just test chat)
-2. Context retrieval: Continue sends retrieved context as system messages; verify the system-message limit
+2. Context retrieval: Continue sends retrieved context as system messages. Verify the system-message limit
 3. Streaming in the Continue sidebar renders cleanly
 4. Slash commands (`/edit`, `/comment`) produce valid tool calls (Continue uses different tool schemas than OpenCode — verify compatibility)
 5. Free tier: a typical Continue session fits within 2,500,000 tokens
@@ -122,7 +122,7 @@ models:
 
 ## 3. Vercel AI SDK
 
-**Priority:** High (substrate under OpenCode and many other tools; one documented snippet reaches every AI SDK consumer)
+**Priority:** High (substrate under OpenCode and many other tools, one documented snippet reaches every AI SDK consumer)
 
 **Why:** The AI SDK's `@ai-sdk/openai-compatible` provider is the foundation OpenCode itself uses. A clean, documented snippet means every AI SDK application — from Next.js chatbots to agent frameworks — can point at Khala. This is a force multiplier, not a single-tool win.
 
@@ -160,19 +160,19 @@ const { text } = await generateText({
 4. Multi-turn conversation (preserves tool calls and tool results)
 5. System prompt and multi-modal content arrays
 6. AI SDK's built-in rate-limit retry logic handles 402 correctly (may need `maxRetries: 0` doc note)
-7. Context window: AI SDK sends `maxTokens` in the request body; verify our API respects it
+7. Context window: AI SDK sends `maxTokens` in the request body. Verify our API respects it
 
 **Adoption path:**
 1. Verify the snippet with a live AI SDK client (Node.js script)
 2. Publish as a "Using Khala with the AI SDK" runbook doc — short, copy-pasteable
 3. Optionally contribute the provider preset to the AI SDK's built-in provider list (upstream PR to `packages/providers/openai-compatible/`)
-4. Track: AI SDK adoption is harder to attribute directly (it's a library, not a tool) — recommend `x-openagents-client: ai-sdk` plus `x-openagents-demand-source: ecosystem` for attribution
+4. Track: AI SDK adoption is harder to attribute directly (it is a library, not a tool) — recommend `x-openagents-client: ai-sdk` plus `x-openagents-demand-source: ecosystem` for attribution
 
 ---
 
 ## 4. LiteLLM / LangChain
 
-**Priority:** Medium (reaches the long tail of agent frameworks; lower per-tool traffic than coding agents but broad surface area)
+**Priority:** Medium (reaches the long tail of agent frameworks, lower per-tool traffic than coding agents but broad surface area)
 
 **Why:** LiteLLM and LangChain are the middleware layers for hundreds of agent-based applications. Getting `openagents/khala` into their provider configurations makes Khala available to every consumer of those frameworks — a distribution multiplier.
 
@@ -238,7 +238,7 @@ LangChain's `ChatOpenAI` wraps the OpenAI Python client, which supports arbitrar
 2. Publish a single "Middleware / Framework Integration" runbook doc covering both
 3. Contribute `openagents/khala` to LiteLLM's `model_prices_and_context_window.json` for cost tracking
 4. Contribute `openagents/khala` to LangChain's model registry (it uses `ChatOpenAI` with no registry — but a doc note)
-5. Track: LiteLLM and LangChain are proxy layers; use `x-openagents-client`
+5. Track: LiteLLM and LangChain are proxy layers. Use `x-openagents-client`
    where the caller/proxy can set custom headers, otherwise rely on fresh-key
    counter windows until F1 (#6252) ships owner-gated rollups.
 
@@ -246,7 +246,7 @@ LangChain's `ChatOpenAI` wraps the OpenAI Python client, which supports arbitrar
 
 ## 5. Codex / Claude Code-compatible Clients
 
-**Priority:** Medium (captive audiences; OpenAI-compatible clients are a natural fit)
+**Priority:** Medium (captive audiences, OpenAI-compatible clients are a natural fit)
 
 **Why:** Codex CLI, Claude Code, and compatible clients already speak OpenAI Chat Completions. They accept `--base-url` or env vars. Capturing these audiences means being discoverable where developers already look.
 
@@ -274,7 +274,7 @@ export ANTHROPIC_API_KEY=<free key>
 **Adoption path:**
 1. Verify with Codex CLI first (cleanest OpenAI-compatible fit)
 2. Publish recipe in the coding-tools runbook doc
-3. For Claude Code: verify compatibility model; may need adapter since Claude Code speaks Anthropic API, not OpenAI. If incompatible, defer or document "not yet supported."
+3. For Claude Code: verify compatibility model. May need adapter since Claude Code speaks Anthropic API, not OpenAI. If incompatible, defer or document "not yet supported."
 4. Track: client-specific user-agent headers (if these clients send identifiable headers)
 
 ---
@@ -291,7 +291,7 @@ export ANTHROPIC_API_KEY=<free key>
 - Model aggregator consumers: one config change, same as individual tools
 
 **Gating requirements before listing:**
-1. **Paid loop must be operational.** Aggregator users pay for inference; the three-way split (margin / serving node / referrer) must be collectable and auditable. This is owner-gated per the GTM doc §6.
+1. **Paid loop must be operational.** Aggregator users pay for inference. The three-way split (margin / serving node / referrer) must be collectable and auditable. This is owner-gated per the GTM doc §6.
 2. **Reliability SLA.** Aggregators expect 99%+ uptime and consistent latency. Pillar 1 (internal dogfood) and Pillar 3 (benchmarking) must demonstrate this first.
 3. **Rate limiting and multi-key management.** Aggregators send traffic from many users through one upstream key. We need to support API-key-level rate limiting that does not degrade one user's traffic when another user is over-quota.
 4. **Latency requirements.** Aggregators compare providers head-to-head. P50/P90/P99 latency must be competitive with other listed providers. The benchmark harness (§4 of GTM doc) must produce decision-grade reports.
@@ -325,7 +325,7 @@ We need to attribute tokens to each tool to know which landings actually move th
 
 1. **Attribution headers where supported.** Use
    `x-openagents-demand-kind`, `x-openagents-demand-source`, and
-   `x-openagents-client`; the gateway records them in safe ledger metadata.
+   `x-openagents-client`. The gateway records them in safe ledger metadata.
 2. **Dedicated API key per tool.** For clients that cannot set headers, mint a
    fresh key per tool and use before/after public counter deltas for verification.
 3. **User-agent header parsing.** Later F1 rollups may also read tool user agents,

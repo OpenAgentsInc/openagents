@@ -30,7 +30,7 @@ Spark-treasury outbound smokes to Whitefang's Spark-backed Lightning Address:
 5 sats settled with a 7-sat Spark balance delta, and 25 sats settled with a
 27-sat Spark balance delta. Earlier Spark-preferred BOLT11 attempts failed
 before dispatch because the Breez Spark SDK returned
-`invalid_transferid_format`; the deployed container now retries that exact
+`invalid_transferid_format`. The deployed container now retries that exact
 validation failure with `preferSpark:false`, so the treasury still spends from
 the Spark wallet while avoiding the broken Spark-preferred BOLT11 metadata
 path.
@@ -41,7 +41,7 @@ path.
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Trigger | 50,000 | 50,000 | 0 | 0 | 50,000 | Closed. Recipient-side rc.12 Spark backup status reported 50,000 sats visible. |
 | Whitefang | 50,000 | 1,030 | 0 | 0 | 1,000 | Not closed. The 1,000-sat canary is confirmed, and two Spark-treasury smokes totaling 30 sats settled after #5183. Remaining recognition closeout needs a funded Spark treasury balance. |
-| Orrery | 50,000 | 234,639 | 100,005 | 260,000 | 0 | Do not resend. Settled-sent exceeds owed by 184,639 sats; owner decision is that Orrery keeps the overage as hazard pay. Recipient confirmation is still pending on Orrery's Spark backup/MDK-side balance read. |
+| Orrery | 50,000 | 234,639 | 100,005 | 260,000 | 0 | Do not resend. Settled-sent exceeds owed by 184,639 sats. Owner decision is that Orrery keeps the overage as hazard pay. Recipient confirmation is still pending on Orrery's Spark backup/MDK-side balance read. |
 
 ## Pending rows
 
@@ -49,9 +49,9 @@ The supported reconcile endpoint was run against all three legacy pending rows:
 
 | Transaction | Amount | Wallet | Reconcile result |
 | --- | ---: | --- | --- |
-| `tips_buffer_payout_acf6dd7c-26e3-450a-b431-c7c32f944dc9` | 50,000 | tips buffer | Still `pending`; container reported no terminal payment status. |
-| `treasury_payout_daad3604-6646-4b98-abef-c6a79619f830` | 5 | treasury | Still `pending`; container reported no terminal payment status. |
-| `treasury_payout_23c170b1-51c7-4dbc-b2d4-ced722dab619` | 50,000 | treasury | Still `pending`; container reported no terminal payment status. |
+| `tips_buffer_payout_acf6dd7c-26e3-450a-b431-c7c32f944dc9` | 50,000 | tips buffer | Still `pending`. Container reported no terminal payment status. |
+| `treasury_payout_daad3604-6646-4b98-abef-c6a79619f830` | 5 | treasury | Still `pending`. Container reported no terminal payment status. |
+| `treasury_payout_23c170b1-51c7-4dbc-b2d4-ced722dab619` | 50,000 | treasury | Still `pending`. Container reported no terminal payment status. |
 
 Meaning: `pending` is not a settled recipient receipt. It also cannot honestly
 be marked failed without a terminal wallet event or durable journal entry. The
@@ -62,7 +62,7 @@ guessed away.
 
 The six large Orrery retry failures total 260,000 sats of attempted payout
 amount, but they failed before dispatch. They have no durable payment id and no
-settled row; they are not recipient received and are not counted as settled
+settled row. They are not recipient received and are not counted as settled
 sent.
 
 ## Operator rule
@@ -70,10 +70,10 @@ sent.
 No more recognition payouts should be sent from memory. For this incident:
 
 - Trigger is closed.
-- Orrery is over-sent on settled rows already; await recipient-side proof only.
+- Orrery is over-sent on settled rows already. Await recipient-side proof only.
 - Whitefang still needs the remaining recognition closeout. The clean path is
   now proven as #5183 Spark treasury -> Whitefang Spark-backed Lightning
-  Address; fund the Spark treasury rail first, then send the remaining
+  Address. Fund the Spark treasury rail first, then send the remaining
   recognition amount plus expected routing fee under a fresh operator
   idempotency key.
 - The three pending rows remain unresolved pending intent until the wallet

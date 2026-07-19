@@ -23,10 +23,10 @@ D1 + Postgres implementations and a fail-soft dual-write wrapper
 (`packages/khala-sync-server/scripts/backfill-pylon.ts`), and a contract
 suite run against BOTH stores. The prod cutover (flag flips + backfill +
 verification evidence) is tracked on epic
-[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); the
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282). The
 cutover procedure is [`RUNBOOK.md`](./RUNBOOK.md) "Pylon dispatch domain
 cutover". Per owner direction on 2026-07-04, the per-domain soak/drop ticket
-is not an active gate; final D1 retirement is consolidated into KS-8.19
+is not an active gate. Final D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 **KS-8.1 fresh backup verification (2026-07-05, #8282/#8330 follow-up):** a
@@ -47,21 +47,21 @@ finish inside this session — and was left running as a detached,
 safe/idempotent/resumable background process for its remaining ~9-11
 hours. Full evidence:
 [`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
-**Registrations and assignments are safe to cite on KS-8.19; assignment
+**Registrations and assignments are safe to cite on KS-8.19. Assignment
 events backfill is IN PROGRESS as of this writing — re-verify before citing
 that table specifically.**
 
 **KS-8.2 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0008_token_usage_ledger.sql`:
 `token_usage_events` + the three `public_khala_tokens_served_*` rollup
-twins + `token_usage_leaderboard_preferences`; indexes re-derived from the
+twins + `token_usage_leaderboard_preferences`. Indexes re-derived from the
 actual post-#8304 read patterns — the 14 D1 indexes are deliberately NOT
 ported, rationale in the migration header), the `TokenLedgerWriteStore`
 repository seam with D1 + Postgres implementations, a fail-soft dual-write
 wrapper and flag-routed public reads
 (`apps/openagents.com/workers/api/src/token-ledger-store.ts`), flags
 `KHALA_SYNC_LEDGER_DUAL_WRITE` (default on) / `KHALA_SYNC_LEDGER_READS`
-(d1|compare|postgres, default d1; covers the five public tokens-served
+(d1|compare|postgres, default d1, covers the five public tokens-served
 read paths), direct-insert mirrors on the khala-chat and khala-MCP paths,
 resumable backfill + exact-verify CLI
 (`packages/khala-sync-server/scripts/backfill-token-ledger.ts`: exact
@@ -75,7 +75,7 @@ and the two low-volume unhooked direct-insert paths
 (`builtin-compute-agent-grant.ts`, `provider-account-service-routes.ts` —
 the same pair the #8304 runbook already tracks) stay D1-only until the final
 KS-8.19 D1 retirement sweep. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Token ledger domain cutover"; cutover
+[`RUNBOOK.md`](./RUNBOOK.md) "Token ledger domain cutover". Cutover
 evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), while the
 per-domain soak/drop ticket is intentionally closed as not planned.
@@ -93,7 +93,7 @@ against only 11,077 Postgres rows (`sum_total_tokens` 8,441,160,476 vs
 `KHALA_SYNC_LEDGER_READS` stays at its documented default `d1`, so the
 public counter itself was never served from the incomplete mirror — this
 was a backup-completeness gap, not an active-serving bug. Ran the standard
-sweep (full sweep converged 285,831 rows + all rollups; several transient
+sweep (full sweep converged 285,831 rows + all rollups, several transient
 `wrangler` API errors during the resumable catch-up sweep, each resumed
 cleanly from the saved cursor with zero data loss since the upsert is `ON
 CONFLICT DO NOTHING`). Full evidence and the closing `--verify` result:
@@ -101,8 +101,8 @@ CONFLICT DO NOTHING`). Full evidence and the closing `--verify` result:
 
 **KS-8.6 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0011_artanis_domain.sql`: all twenty
-`artanis_*` twins; indexes re-derived from the owning modules' actual
-query patterns; D1's one-active-loop-per-scope partial unique index
+`artanis_*` twins. Indexes re-derived from the owning modules' actual
+query patterns. D1's one-active-loop-per-scope partial unique index
 deliberately NOT ported mid-migration, rationale in the migration
 header), the `ArtanisDatabase` seam — a database-shaped handle
 (`apps/openagents.com/workers/api/src/artanis-domain-store.ts`) rather
@@ -130,9 +130,9 @@ read cutover.
 
 **KS-8.6 read-cutover evidence (2026-07-05, #8335):** retention decision
 made — `artanis_health_snapshots` / `artanis_runtime_snapshots` are 125
-rows each in production; porting as-is (no bounding) is cheap enough that
+rows each in production. Porting as-is (no bounding) is cheap enough that
 no pre-sweep retention change is needed. Backfill ran twice (sweep 1:
-first full port; sweep 2 `--restart`: 0 newly-inserted rows across all 20
+first full port. Sweep 2 `--restart`: 0 newly-inserted rows across all 20
 tables — dual-write was already fully caught up) then `--verify
 --verify-newest 50`: **19 of 20 tables exact** (rows, per-state tallies,
 newest-50 row hashes all match). `artanis_responder_ticks` came back
@@ -141,7 +141,7 @@ non-exact: row COUNT matches (7940=7940) but 20 rows have a stale
 concurrent-writer race in `mirrorArtanisRows` (full-row read-D1-then-
 upsert, no ordering guard) between the two independent ticks
 (`ArtanisResponder.scan`, `ArtanisResponder.compose`) that both write the
-same `scheduled_at` row; filed as
+same `scheduled_at` row. Filed as
 [#8409](https://github.com/OpenAgentsInc/openagents/issues/8409). This
 table is NOT one of the eight `ArtanisPersistenceRecordKind`s routed
 through `artanisRead` (only `approval_gate`, `forum_publication_intent`,
@@ -155,7 +155,7 @@ joins" item) and blocks KS-8.19 D1 retirement for that table until fixed.
 Of the six every-minute cron ticks, only `ArtanisScheduledRunner.runTick`
 currently issues a flag-routed read (an idempotency check via
 `readArtanisPersistedRecord('loop_record', ...)`, unconditional on every
-invocation); `ArtanisResponder.scan/.compose`, `ArtanisAdmin.tick`,
+invocation). `ArtanisResponder.scan/.compose`, `ArtanisAdmin.tick`,
 `ArtanisAdmin.closeoutVerifier`, and `ArtanisFleet.tick` only mirror
 writes today — their own decision-making reads (spend/grant aggregation
 in `artanis-spend.ts`, responder scan/composer joins in
@@ -164,16 +164,16 @@ receipt ordered list in `artanis-labor-receipt-store.ts`) are still bare
 D1 SQL with no Postgres reader wired, so `KHALA_SYNC_ARTANIS_READS` is a
 no-op for them regardless of value. `KHALA_SYNC_ARTANIS_READS=compare`
 shipped to production and staging in commit `07ada9d32b` (Worker version
-`473b6c53-8a65-40d2-b238-2e1d5c21c449`) for a live soak; see the
+`473b6c53-8a65-40d2-b238-2e1d5c21c449`) for a live soak. See the
 issue/RUNBOOK for the soak window and flip decision. "Move remaining
 D1-direct read paths" (analytics joins, dashboard/console aggregations,
 spend/grant aggregation, responder scan/composer joins, labor receipt
 ordered list) is real follow-up implementation work, not yet started —
 each needs its own re-derived Postgres index/query and its own compare
 evidence before it can be flag-routed. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision domain cutover";
+[`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision domain cutover".
 cutover evidence tracked on
-[#8335](https://github.com/OpenAgentsInc/openagents/issues/8335); D1 drop
+[#8335](https://github.com/OpenAgentsInc/openagents/issues/8335). D1 drop
 consolidated into KS-8.19
 ([#8330](https://github.com/OpenAgentsInc/openagents/issues/8330)) per
 the 2026-07-04 owner direction.
@@ -182,20 +182,20 @@ the 2026-07-04 owner direction.
 `artanis_responder_ticks` full-row-upsert race above —
 `mirrorArtanisRows`/`upsertRows` now accept a column-ownership scope so
 two independent writers of disjoint columns on the same key (the scan and
-compose ticks) can never clobber each other's concurrent update; the same
+compose ticks) can never clobber each other's concurrent update. The same
 race shape, also fixed, existed for `artanis_responder_state`. Real
 Postgres+D1 regression coverage added and verified sensitive (fails
 without the fix, passes with it). A fresh production `--verify` run the
 same day shows the drift is real, ongoing, and has grown since the
 original #8335 report (20→21/22 stale rows) — confirming the diagnosis —
 but the fix is not yet deployed and the already-stale rows are not yet
-corrected; see `RUNBOOK.md` "#8409 fix landed" for the full evidence and
+corrected. See `RUNBOOK.md` "#8409 fix landed" for the full evidence and
 the outstanding deploy + corrective-sweep follow-up.
 
 **KS-8.6 follow-up (2026-07-05, #8335): fix deployed, but the clobber
 recurred AFTER deploy — flip NOT taken.** Confirmed `06ee7de4c7`
-(#8409) is on `main`; fast-forwarded a clean worktree and ran a
-guaranteed-fresh `deploy:safe` (staging + prod; prod Worker Version
+(#8409) is on `main`. Fast-forwarded a clean worktree and ran a
+guaranteed-fresh `deploy:safe` (staging + prod, prod Worker Version
 `17543300-c80f-450f-a84a-826be0b06358`, live `2026-07-05T10:00:48Z`) so
 there is no worktree-staleness ambiguity about whether the fix is
 actually running. A fresh `--verify` still shows 23 stale
@@ -222,14 +222,14 @@ deploy".
 right: `mirrorArtanisRows` attempted its D1-read-back + Postgres upsert
 exactly ONCE with no retry, so a transient failure on a writer's OWN
 mirror call permanently dropped that writer's column update — a DIFFERENT
-bug from the #8409 clobber race (which is genuinely fixed; its regression
+bug from the #8409 clobber race (which is genuinely fixed, its regression
 tests still pass), producing the identical stuck-at-`'pending'` symptom.
 Fixed with bounded retry (`[100, 400]` ms backoff, matching the existing
 `artanisRead` postgres-mode precedent) plus a new
 `khala_sync_artanis_dual_write_retry` diagnostic for observability. Real
 Postgres+D1 regression coverage added and verified sensitive. Fresh
 `--verify` baseline the same day: drift has plateaued (23-row skew, same
-order as the prior pass) rather than accelerated. Fix committed to `main`;
+order as the prior pass) rather than accelerated. Fix committed to `main`.
 not yet deployed as of this note. See `RUNBOOK.md` "#8409 follow-up — root
 cause confirmed and fixed" for full evidence and the outstanding
 deploy/soak/corrective-sweep sequence.
@@ -239,7 +239,7 @@ deploy/soak/corrective-sweep sequence.
 money tables — treasury transactions, the six nexus payout-authority
 ledgers, the forum money half, both reward ledgers, agent balances, labor
 escrows + receipts, partner/site-referral payout ledgers + agreements,
-revenue-event provenance, and the two MPP replay guards; idempotency/
+revenue-event provenance, and the two MPP replay guards. Idempotency/
 replay keys ported EXACTLY, money amounts as bigint, indexes re-derived
 from the owning modules' actual reads, `agent_claim_reward_ledger`'s
 partial uniques deliberately NOT ported mid-migration — rationale in the
@@ -252,14 +252,14 @@ redacted diagnostics for the replay-guard payment identifiers, and
 seam in `payments-ledger.ts` so every `runLedgerStatements` batch
 (balances, escrows, credit grants) mirrors its touched rows after the
 atomic D1 commit. Flags `KHALA_SYNC_TREASURY_DUAL_WRITE` (default on) /
-`KHALA_SYNC_TREASURY_READS` (d1|compare|postgres, default d1; read flips
+`KHALA_SYNC_TREASURY_READS` (d1|compare|postgres, default d1, read flips
 are EPIC-GATED ops decisions on #8282, never a code default). Wired at
 the money write call sites INCLUDING all six money crons
 (`TipsSweep.runTick`, `TipsBuffer.reconcileForwarding`,
 `TipsBuffer.backingInvariant`, `TreasuryTransactions.reconcilePending`,
 `XClaimRewardTreasuryDispatcher.runTick`,
 `ForumDirectTips.archiveStaleRecoveries`) — D1 stays SOLE payout
-authority; every side-effect-bearing scan (payout dispatch, sweep
+authority. Every side-effect-bearing scan (payout dispatch, sweep
 candidates, pending reconcile) reads exactly ONE store with no Postgres
 twin, so no flag can double-dispatch. Resumable backfill + money-exact
 verify CLI (`packages/khala-sync-server/scripts/backfill-treasury.ts`:
@@ -272,17 +272,17 @@ Live closeout evidence: commit `87d16a6ee7` deployed through
 `a423fc15-16a6-492b-9559-bb78e26160ed`, production Worker version
 `1bcd048d-de0d-4a1e-a108-f79b4ba5e33f`). Migration
 `0016_treasury_domain.sql` was dry-run then applied in staging and prod
-(`1 pending, 16 already applied` in each dry-run; `applied 1, already
+(`1 pending, 16 already applied` in each dry-run, `applied 1, already
 applied 16` in each apply). Production smokes passed: `https://openagents.com/`
 HTTP 200, `/assets/index-DWcdsn2N.js` HTTP 200, and
 `/api/internal/khala-sync/db-smoke` returned `{ ok: true,
 khalaSyncTables: 12 }`. Production backfill copied the nonzero treasury
-corpus (126 treasury transactions; 40 payout approvals; 67 payout intents;
-64 payout attempts; 64 reconciliation events; 72 payment-authority
-receipts; 1 release gate; 100 forum money actions; 100 forum payment
-events; 58 forum receipts; 37 L402 challenges; 26 L402 redemptions; 74
-direct-tip attempts; 2 direct-tip webhook events; 30 recipient wallets; 10
-settlement claims; 3 X-claim rewards; 7 agent balances; 3 labor escrows;
+corpus (126 treasury transactions, 40 payout approvals, 67 payout intents,
+64 payout attempts. 64 Reconciliation events. 72 Payment-authority
+receipts. 1 Release gate. 100 Forum money actions. 100 Forum payment
+events. 58 Forum receipts. 37 L402 challenges. 26 L402 redemptions. 74
+direct-tip attempts. 2 Direct-tip webhook events. 30 Recipient wallets. 10
+settlement claims. 3 X-claim rewards. 7 Agent balances. 3 Labor escrows.
 1 MPP lightning replay guard), then the required restart sweep scanned the
 same rows with zero inserts. Production `--verify --verify-newest 50`
 ended `VERIFY OK: exact counts, per-state money sums, and newest-N hashes
@@ -290,7 +290,7 @@ match.`
 
 Known
 D1-only residuals until their callers pass the seam handle (all
-low-volume; tracked for the KS-8.19 sweep): the referral/engagement
+low-volume. Tracked for the KS-8.19 sweep): the referral/engagement
 accrual feeds (`site-referral-payout-feed.ts`,
 `business-referral-engagement-feed.ts`,
 `referral-cross-category-accrual.ts`, `inference-referral-accrual.ts`),
@@ -299,7 +299,7 @@ provenance writers, the metering/cloud-metering statement paths that only
 read balances, and Artanis' internal forum-route invocations. Prod
 cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Treasury settlement
 domain cutover" (flag flips are epic-gated on
-[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)); final
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)). Final
 D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
@@ -318,13 +318,13 @@ never-mirrored row each with no live D1 counterpart to reconcile against.
 Retired both tables from the registry (`treasury-backfill.ts`,
 `backfill-treasury.ts`, tests) and added Postgres migration
 `0036_drop_treasury_mpp_replay_tables.sql` (applied to staging + prod,
-mirroring the D1 drop; zero live code referenced either table). After that
+mirroring the D1 drop. Zero live code referenced either table). After that
 fix, a full `--verify --verify-newest 50` against production is **VERIFY
 OK** across all 25 remaining live money tables — exact row counts,
 per-(state, rail) tallies, and exact money-column SUMs to the
 sat/msat/cent. D1 was never read from destructively or written to beyond
 the retired-table Postgres migration (which mirrors an already-D1-dropped,
-already-write-dead pair); no `KHALA_SYNC_TREASURY_*` flag was touched. Full
+already-write-dead pair). No `KHALA_SYNC_TREASURY_*` flag was touched. Full
 evidence:
 [`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
 **Safe to cite on KS-8.19 (#8330).**
@@ -333,21 +333,21 @@ evidence:
 (`khala-sync-server` migration `0013_inference_entitlements.sql`: 29
 tables — the 15 `inference_*` entitlement/quota tables,
 `builtin_compute_agent_quota_events`, `orange_check_entitlements`, the 4
-`agent_rate_limit_*` and 8 `agent_search_*` tables; indexes ported from
-actual reads only, each justified in the migration header;
+`agent_rate_limit_*` and 8 `agent_search_*` tables. Indexes ported from
+actual reads only, each justified in the migration header.
 `agent_search_metric_events` deliberately EXCLUDED — the `*_metric_events`
 observability stream is an Analytics Engine candidate, not Postgres rows),
 the typed mirror-op + enforcement-gate-read seam
 (`apps/openagents.com/workers/api/src/inference-entitlements-store.ts`),
 flags `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE` (default on) /
-`KHALA_SYNC_ENTITLEMENTS_READS` (d1|compare|postgres, default d1; routes
+`KHALA_SYNC_ENTITLEMENTS_READS` (d1|compare|postgres, default d1, routes
 the six serving-path enforcement reads — free-tier key membership +
 daily usage, free-usage pool state, premium allowlist, operator
 exemption, privacy entitlement — with compare-mode shadow decisions
 scheduled OFF the response path and postgres mode falling back to D1 on
 error). The dual-write mirror is FIRE-SAFE on the inference hot path:
 synchronous enqueue, never awaited by the caller, never fails or delays a
-completion (regression-tested); tally counters mirror EVENT-KEYED
+completion (regression-tested). Tally counters mirror EVENT-KEYED
 (event insert `ON CONFLICT DO NOTHING` gates the tally increment in one
 transaction) so a re-delivered mirror op can never double-count — a lost
 increment is a free-tier leak, a doubled one a false denial. Wired at all
@@ -364,9 +364,9 @@ proves D1-vs-Postgres decision parity on the six gate reads under mirror
 re-delivery. NOT mirrored in this lane: the `token_usage_events` row the
 builtin-compute grant writes (KS-8.2 domain) and the metric-events stream
 (Analytics Engine). Prod cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md)
-"Inference entitlements domain cutover"; the read cutover changes which
+"Inference entitlements domain cutover". The read cutover changes which
 store ENFORCES allow/deny, so it requires the low-traffic window +
-zero-divergence compare evidence; cutover evidence + D1 drop tracked on
+zero-divergence compare evidence. Cutover evidence + D1 drop tracked on
 epic [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 **KS-8.9 decommission follow-up status (2026-07-05, #8336):** `inference_batch_jobs`
@@ -393,18 +393,18 @@ Effect-shaped `markAccountFreeTier`/`recordFreeKeyMint` variants in
 the mirror-wired `*Async` siblings are wired at the real write path) and
 were deleted, with call sites in
 `inference/inference-free-tier-key.test.ts` moved onto the `*Async`
-functions (37/37 tests green); (2) the `token_usage_events` row
+functions (37/37 tests green). (2) The `token_usage_events` row
 `builtin-compute-agent-grant.ts` writes is confirmed to belong to the
 KS-8.2 ledger domain by table ownership, but that exact call site is a
 KNOWN, ALREADY-TRACKED KS-8.2 gap (see the KS-8.2 status paragraph above:
 it stays D1-only, unhooked, "until the final KS-8.19 D1 retirement
 sweep") — not a new KS-8.9 finding, and it must close before the ledger D1
-drop, tracked on KS-8.2/KS-8.19, not here; (3) `agent_search_metric_events`
+drop, tracked on KS-8.2/KS-8.19, not here. (3) `agent_search_metric_events`
 (`agent-search.ts` `recordMetric`, ~line 1489) is confirmed WRITE-ONLY
 (zero reads anywhere in the codebase) and is a clean Analytics Engine
 candidate, but this repo has zero existing Analytics Engine binding/dataset
 precedent today, so wiring it is deferred to its own properly-scoped,
-locally-verifiable follow-up rather than a same-change addition; (4) the
+locally-verifiable follow-up rather than a same-change addition. (4) The
 "route the non-gate reads to Postgres" scope (admin/list reads for premium
 allowlist + operator exemption, agent-search request/cache/quota/count
 reads, agent-rate-limit recovery reads, privacy-receipt reads, and the two
@@ -419,9 +419,9 @@ the call sites span `index.ts`, `config.ts`,
 `orange-check-entitlements.ts`, and (for the orange-check reads)
 `forum-routes.ts` — each needs env/flag threading through existing
 Effect-based call chains, a materially larger and riskier change than fit
-safely in this pass; it stays open. Per the current owner-directed policy
+safely in this pass. It stays open. Per the current owner-directed policy
 above the KS-8.1/8.2 status paragraphs ("the old per-domain soak/drop
-follow-ups are not active gates; KS-8.19 owns final D1 retirement"), moving
+follow-ups are not active gates. KS-8.19 owns final D1 retirement"), moving
 write authority off D1 and dropping this domain's remaining 28 tables is
 explicitly DEFERRED to KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330) rather
@@ -452,7 +452,7 @@ hazards in disguise, not display reads:
 - `khala-code-paid-plan-payments.ts`'s reads are against
   `khala_code_paid_plan_payment_intents`, a KS-8.7 BILLING-domain table
   (imports `BillingDomainMirror`, not this domain's mirror) — out of scope
-  for KS-8.9 entirely; it does call this domain's
+  for KS-8.9 entirely. It does call this domain's
   `grantPaidPrivacyEntitlement` for the write-side fulfillment step, but
   that is a write, not a read.
 - `grantPaidPrivacyEntitlement`'s and
@@ -479,20 +479,20 @@ projection). Landed in
 - `InferenceEntitlementsNonGateReads` + `makeD1InferenceEntitlementsNonGateReads`
   + the Postgres side in `makePostgresInferenceEntitlementsStore` + the
   three-mode router `makeRoutedEntitlementsNonGateReads` (d1 — untouched
-  inline reads; compare — D1-serve + off-path Postgres shadow-compare,
-  logging `khala_sync_entitlements_non_gate_read_compare_mismatch`;
+  inline reads. Compare — D1-serve + off-path Postgres shadow-compare,
+  logging `khala_sync_entitlements_non_gate_read_compare_mismatch`.
   postgres — REAL Postgres serve with single-attempt D1 fallback + the
   `khala_sync_entitlements_non_gate_postgres_read_fallback` diagnostic —
   safe to actually serve here because none of the three decides an
   allow/deny/consume outcome).
 - Wired at all 5 call sites (`orange-check-entitlements.ts`'s two functions
-  gained an optional `nonGateReads` param; `forum-routes.ts`'s
+  gained an optional `nonGateReads` param. `forum-routes.ts`'s
   `ForumRouteDependencies` gained `entitlementsNonGateReads`, threaded
   through `orangeCheckNostrExportResponse`, `agentProfileResponse`,
   `agentProfilePageResponse`, the post-detail author-badge read, and the
-  `/api/forum/launch-status` count; `inference-privacy-receipt-routes.ts`'s
+  `/api/forum/launch-status` count. `inference-privacy-receipt-routes.ts`'s
   `PrivacyReceiptRoutesDeps` gained `nonGateReads`, threaded through
-  `handlePublicPrivacyReceiptRead`); `index.ts` constructs it from
+  `handlePublicPrivacyReceiptRead`). `index.ts` constructs it from
   `makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads` at both call
   sites. Absent/`'d1'` ⇒ byte-identical inline D1 behavior everywhere.
 - Contract-suite coverage
@@ -540,9 +540,9 @@ decision on #8282. Rollback at any time: `KHALA_SYNC_ENTITLEMENTS_READS=d1`.
 
 **KS-8.7 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0015_billing_pay_ins.sql`: the 22 live
-billing/Stripe/pay-ins/buyer-payment tables; the
+billing/Stripe/pay-ins/buyer-payment tables. The
 `billing_ledger_entries_next` rewrite artifact was renamed away by worker
-0031/0170 and does not exist live, so nothing was created for it; indexes
+0031/0170 and does not exist live, so nothing was created for it. Indexes
 re-derived — PKs + every idempotency UNIQUE port exactly, plus only the
 one secondary index the routed balance read uses, rationale in the
 migration header), the fail-soft READ-BACK mirror seam
@@ -551,7 +551,7 @@ write, the mirror re-reads the fresh authoritative row(s) by key and
 converge-upserts byte-identical copies — amounts and idempotency keys are
 copied, never recomputed, and no idempotency decision is ever re-made
 against Postgres), flags `KHALA_SYNC_BILLING_DUAL_WRITE` (default on) /
-`KHALA_SYNC_BILLING_READS` (d1|compare|postgres, default d1; routes ONLY
+`KHALA_SYNC_BILLING_READS` (d1|compare|postgres, default d1, routes ONLY
 the display balance read behind an explicit `routeReads` opt-in — gates,
 evaluators, and receipt inputs always read D1), mirror wiring across
 billing.ts (all credit/debit/policy/notification ops), the FULL Stripe
@@ -567,7 +567,7 @@ exact counts, the FULL per-user balance map to the cent, per-(currency,
 source) cents, per-(type, state)/(direction, kind) msat, webhook event-id
 SET equality, newest-N row hashes), and a contract suite run against BOTH
 stores including the webhook-replay idempotency regression and fail-soft
-proofs. MONEY DISCIPLINE: D1 stays the SOLE authority; the production
+proofs. MONEY DISCIPLINE: D1 stays the SOLE authority. The production
 read-flag flip is an EPIC-GATED ops decision (#8282) taken only on a
 green money `--verify`. Writers still D1-only pending the decommission
 follow-up (backfill-converged until then): `first_batch_payment_policies`
@@ -577,13 +577,13 @@ follow-up (backfill-converged until then): `first_batch_payment_policies`
 inference-abuse-controls, serving-node-payout, cloud-metering,
 product-promises, business-starter-credit). Prod cutover
 procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Billing/Stripe/pay-ins domain
-cutover"; cutover evidence + D1 drop tracked on epic
+cutover". Cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 **KS-8.16 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0021_forge_domain.sql`: ALL SIXTEEN
 `forge_*` twins, column-for-column with worker migrations
-0251–0256/0259/0260/0284; indexes re-derived from the five owning
+0251–0256/0259/0260/0284. Indexes re-derived from the five owning
 stores' actual reads — D1 artifacts with no live read (token prefix,
 object-by-packfile) are dropped, and the D1 uniques/partial-uniques
 (active-lease-per-work, held-lock-per-ref, token-hash, packfile digest,
@@ -603,31 +603,31 @@ the control-plane routes, the three agent-definition webhook paths, the
 dynamic run request path, assignment token revocation, and the
 AgentDefinitionScheduler tick (injectable stores, same pattern as
 KS-8.1/8.5). REF LOCKING: D1 stays the sole lock authority — the
-held/applied/rejected dance is NOT emulated in Postgres; porting the
+held/applied/rejected dance is NOT emulated in Postgres. Porting the
 protocol onto real `SELECT ... FOR UPDATE` is the read/write-cutover
 step (§3.13). SECRETS (invariant 9): the token twin stores exactly what
-D1 stores (hashes/prefixes, no widening); custody values never appear in
+D1 stores (hashes/prefixes, no widening). Custody values never appear in
 diagnostics (the one token_hash-keyed mirror path redacts its refs) or
 in backfill/verify output. Flags `KHALA_SYNC_FORGE_DUAL_WRITE` (default
-on) / `KHALA_SYNC_FORGE_READS` (d1|compare|postgres, default d1;
+on) / `KHALA_SYNC_FORGE_READS` (d1|compare|postgres, default d1,
 `compare` shadow-compares the canonical `listRefs` ref advertisement —
-the §3.13 ref-set surface; `postgres` SERVES that ref advertisement from
+the §3.13 ref-set surface. `postgres` SERVES that ref advertisement from
 the Postgres twin via `makePostgresForgeGitCanonicalStore.listRefs` and is
 FAIL-SOFT — any Postgres error falls back to the D1 authority for that one
 call and logs `khala_sync_forge_postgres_read_serve_failed`, so the
 advertisement can never break). Resumable backfill +
 exact-verify CLI (`packages/khala-sync-server/scripts/backfill-forge.ts`:
 exact counts, per-state tallies, per-(tenant, repository) REF-SET
-digests — the storage twin of `git ls-remote`; the live ls-remote
+digests — the storage twin of `git ls-remote`. The live ls-remote
 cross-check is the runbook's cutover step — per-(tenant, queue)
-merge-queue LEDGER REPLAY digests, newest-N row hashes; secret-safe
+merge-queue LEDGER REPLAY digests, newest-N row hashes. Secret-safe
 output), and a contract suite run against BOTH engines
 (`forge-domain-repository.contract.test.ts`: composite-PK converge on
 D1/SQLite AND Postgres, end-to-end mirror fidelity across all sixteen
 tables through the real stores incl. lease double-fire idempotency and
 mirror-receipt attempt bumps, fail-soft proofs, custody redaction,
 compare-read drift detection). Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Forge domain cutover"; cutover evidence,
+[`RUNBOOK.md`](./RUNBOOK.md) "Forge domain cutover". Cutover evidence,
 the FOR UPDATE lock-protocol port, read/write cutover, and the D1 drop
 are tracked in the follow-up
 [#8358](https://github.com/OpenAgentsInc/openagents/issues/8358).
@@ -659,22 +659,22 @@ immediately after use and the resulting D1 rows (mint + revoke) were
 converged into Postgres by a follow-up backfill sweep, re-verified clean.
 READ CUTOVER — DONE (`KHALA_SYNC_FORGE_READS=postgres`, second pass
 2026-07-05): the canonical `listRefs` ref advertisement now SERVES from
-the Postgres twin (fail-soft; any Postgres error falls back to the D1
+the Postgres twin (fail-soft, any Postgres error falls back to the D1
 authority for that call and logs `khala_sync_forge_postgres_read_serve_failed`,
 so the advertisement can never break). Gated on this-session evidence:
 (1) a FRESH full backfill `--verify --verify-newest 50` against the
 direct prod Cloud SQL URL — CLEAN across all 16 tables (exact row counts,
 all newest-50 row hashes match, the per-(tenant, repository) REF-SET
 DIGEST — the §3.13 ls-remote twin — matches for the 1 repository,
-merge-queue replay digests match); (2) the prior live git-advertisement
-ground-truth cross-check (exact `refs/heads/main` object-id match); (3)
+merge-queue replay digests match). (2) The prior live git-advertisement
+ground-truth cross-check (exact `refs/heads/main` object-id match). (3)
 ~20 minutes of `wrangler tail` on production with ZERO forge
 advertisement requests and ZERO forge diagnostics (this domain has
 effectively no organic traffic, so a passive soak yields no comparisons —
 the fresh full `--verify` is the stronger, higher-signal evidence and was
 used instead of minting further live tokens for synthetic traffic). The
 serving change is unit-tested in `forge-domain-repository.contract.test.ts`
-(postgres mode returns the Postgres value, not D1; a dead twin falls back
+(postgres mode returns the Postgres value, not D1, a dead twin falls back
 to D1 and logs the serve-failed diagnostic). Earlier compare-mode soak
 (first pass): Worker `75c8132b-9994-4a59-a17a-751e185b011d`, ~7 minutes +
 6 advertisement reads, zero drift. REF-LOCK PROTOCOL PORT: implemented and
@@ -690,7 +690,7 @@ for a plain row lock to hold) PLUS a real
 literal §3.13 mechanism, re-validating the CAS precondition under lock).
 No lock-row bookkeeping of any kind. `forge-git-canonical-postgres-store.test.ts`
 proves it against a real ephemeral Postgres, including two genuine
-concurrency races (two simultaneous CREATEs of the same brand-new ref;
+concurrency races (two simultaneous CREATEs of the same brand-new ref,
 two simultaneous UPDATEs racing the same `old_object_id`) — in both
 cases exactly one transaction wins, the other is rejected with the same
 typed `forge_git_unsafe_ref_update`/`ForgeGitCanonicalStoreError` the D1
@@ -698,12 +698,12 @@ lane raises, and the final ref state is never corrupted. REMAINING WORK
 (left honestly undone — the WRITE cutover): wiring
 `makePostgresForgeGitCanonicalStore` as write authority is NOT a one-store
 swap. The canonical git store is one of FIVE forge stores that all write
-D1-first then mirror to Postgres; flipping only it to Postgres write
+D1-first then mirror to Postgres. Flipping only it to Postgres write
 authority would split authority incoherently (canonical refs on Postgres,
 the other 15 tables on D1, mirror running the wrong direction). It also
 requires re-adding the six deliberately-unported Postgres uniques
 (active-lease-per-work, token-hash, packfile digest, mirror-destination
-tuple, github-issue-number/change_ref; held-lock-per-ref is moot under the
+tuple, github-issue-number/change_ref. Held-lock-per-ref is moot under the
 new locking) so the Postgres write authority enforces the same integrity
 D1 does. This is a coordinated, domain-wide write cutover, deliberately
 left unwired this pass rather than risk a tenant's git-ref integrity on a
@@ -718,7 +718,7 @@ comment, and found NINE distinct unique indexes/constraints were missing
 from the Postgres twin, not six: the prior count bundled two pairs
 together ("packfile digest / R2 key" is two separate D1 UNIQUE indexes on
 different columns — `idx_forge_git_packfile_archives_digest` and
-`idx_forge_git_packfile_archives_r2_key`; "github-issue-number/change_ref"
+`idx_forge_git_packfile_archives_r2_key`. "Github-issue-number/change_ref"
 is one unique index each on two different tables) and MISSED
 `forge_dispatch_leases`' `idx_forge_dispatch_leases_idempotency`
 (`UNIQUE (tenant_ref, idempotency_key_hash) WHERE idempotency_key_hash IS
@@ -749,16 +749,16 @@ matches. The new unique constraint on `forge_git_access_tokens.token_hash`
 immediately caught a real test-fixture bug in
 `forge-backfill.test.ts` — two `tokenRow()` fixture rows shared one
 hardcoded fake hash (`"e3".repeat(32)`), which is unrealistic test data
-(a real SHA-256 collision), not a production scenario; fixed to derive a
+(a real SHA-256 collision), not a production scenario. Fixed to derive a
 distinct hash per row. Full `khala-sync-server` suite (355 tests) and the
-seven forge-prefixed suites in `workers/api` (49 tests) pass;
+seven forge-prefixed suites in `workers/api` (49 tests) pass.
 `workers/api` typecheck, `check:architecture` zero-debt, and
 `check:deploy` (full suite) are clean. **Write cutover — RE-EVALUATED and
 STILL deliberately NOT wired**, for two reasons: (1) the domain-wide
 write-authority-incoherence concern from the second pass is unchanged —
 flipping only the canonical git store still splits authority across the
 other four forge stores, which remain D1-first with no coordinated
-plan landed this pass to flip all five together; (2) a NEW finding on
+plan landed this pass to flip all five together. (2) A NEW finding on
 inspection this pass: `forge-git-canonical-postgres-store.ts` has NO
 path that mirrors its writes back into D1 at all (it is a pure
 Postgres-only implementation). Wiring it as write authority today would
@@ -768,17 +768,17 @@ existing FAIL-SOFT-to-D1 read fallback (used when `KHALA_SYNC_FORGE_READS
 ref state instead of failing loud — worse than today's D1-authoritative
 behavior. A safe write cutover needs either a reverse D1-mirror write
 path added to the Postgres store, or an explicit accepted-risk decision
-to drop the D1 read fallback once Postgres is write-authoritative; this
+to drop the D1 read fallback once Postgres is write-authoritative. This
 pass does not resolve that gap, so per the task's "if in doubt, leave D1
 as sole write authority" guardrail, write authority stays on D1 for all
-five forge stores. Still tracked on #8358; the D1 drop remains
+five forge stores. Still tracked on #8358. The D1 drop remains
 consolidated into #8330.
 
 **KS-8.16 follow-up status (2026-07-05, #8358, fourth pass): D1
 mirror-back gap CLOSED — write cutover reduced to a routing decision.**
 Closed the exact gap the third pass named:
 `makePostgresForgeGitCanonicalStore` now takes an OPTIONAL second
-`mirror` argument (`ForgeGitCanonicalD1MirrorDeps`); when provided, every
+`mirror` argument (`ForgeGitCanonicalD1MirrorDeps`). When provided, every
 successful write (`applyReceivePack`, `importExternalRef`)
 converge-upserts its already-RESOLVED rows (no extra read-back — the
 rows are already available via `RETURNING`/in-tx reads inside the same
@@ -810,7 +810,7 @@ store's entire surface (preflight/apply/import/read/list) via
 there is deliberately NO fallback to D1 on a Postgres error (a silent
 D1 fallback under this flag would let two ref-lock protocols race the
 same ref — a Postgres outage must fail the request loud, not silently
-diverge lock authority). Default stays `'d1'`; the production route
+diverge lock authority). Default stays `'d1'`. The production route
 handler call site (`index.ts`) needed NO changes — the flip is entirely
 this env-var-gated branch, matching the read-cutover pattern. Scoped to
 ONLY this store: the other four Forge stores are constructed by
@@ -836,7 +836,7 @@ both the create and the fast-forward update. Only after that real
 end-to-end proof did production get the same flag flip and a matching
 canary-tenant verification (never against the real live
 `tenant.openagents` repository). Rollback is one flag flip back to `d1`
-(or unset); D1 authority for the other four stores is unaffected either
+(or unset). D1 authority for the other four stores is unaffected either
 way. The D1 drop stays out of scope, consolidated into the epic-closing
 KS-8.19 sweep (#8330).
 
@@ -845,20 +845,20 @@ KS-8.19 sweep (#8330).
 supervision long-tail twins — `adjutant_*` (10), `omni_*` (9),
 `autopilot_*` (6), `relay_health_*` (2), `backend_incident_events`,
 `hygiene_debt_receipts` — column-for-column with the worker migrations
-incl. every later ADD COLUMN; type-fidelity TEXT/bigint/smallint, no
+incl. every later ADD COLUMN. Type-fidelity TEXT/bigint/smallint, no
 FK/CHECK, and the D1 uniqueness constraints deliberately NOT ported
 mid-migration except `omni_idempotency_keys` whose PRIMARY KEY *is* the
 idempotency key, ported exactly — rationale in the migration header).
 Write-dead audit: `autopilot_token_usage` has ONE live writer
-(`omni-runs.ts`, so it dual-writes, NOT reconcile-and-freeze);
+(`omni-runs.ts`, so it dual-writes, NOT reconcile-and-freeze).
 `omni_idempotency_keys` is unwritten today (twin + verified copy only). One
 shared registry
 (`packages/khala-sync-server/src/supervision-longtail-domain-tables.ts`) +
 row-level converge store, fail-soft read-back mirror, and flags
 `KHALA_SYNC_SUPERVISION_DUAL_WRITE` (default on) /
-`KHALA_SYNC_SUPERVISION_READS` (d1|compare|postgres, default d1; postgres
+`KHALA_SYNC_SUPERVISION_READS` (d1|compare|postgres, default d1, postgres
 serving deferred to the read-cutover follow-up)
-(`apps/openagents.com/workers/api/src/supervision-longtail-domain-store.ts`;
+(`apps/openagents.com/workers/api/src/supervision-longtail-domain-store.ts`,
 drift metric `khala_sync_supervision_dual_write_failed`). LIVE WIRING: the
 three re-homed crons + the funded-hygiene store are wired as clean
 store-factory drop-ins at their construction sites — `RelayHealth.probeTick`
@@ -872,7 +872,7 @@ CLI
 (`packages/khala-sync-server/scripts/backfill-supervision-longtail.ts`:
 exact counts, per-state/sum tallies, **idempotency-key-set equality**
 (`omni_idempotency_keys`), **public proof-bundle digests**
-(`omni_public_proof_bundles`), newest-N row hashes; secret-safe by
+(`omni_public_proof_bundles`), newest-N row hashes. Secret-safe by
 construction), and a contract suite run against BOTH engines
 (`supervision-longtail-domain-repository.contract.test.ts`: composite-PK
 converge on D1/SQLite AND Postgres, read-back mirror byte-fidelity incl. the
@@ -888,10 +888,10 @@ Effect-based onboarding store, `autopilot_token_usage`
 (`omni-runs.ts:tokenUsageInsert`), and `backend_incident_events`
 (`recordBackendIncidentEvent`) keep their twins + backfill + verify from
 this lane but plug their per-site live mirror into
-`makeSupervisionLongtailMirrorForEnv` in that follow-up; the follow-up also
+`makeSupervisionLongtailMirrorForEnv` in that follow-up. The follow-up also
 carries the compare/postgres read cutover, the shadow-compared public
 proof-bundle endpoint serving, and the D1 drop. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Supervision long-tail cutover"; cutover
+[`RUNBOOK.md`](./RUNBOOK.md) "Supervision long-tail cutover". Cutover
 evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
@@ -912,13 +912,13 @@ response is sent) wired into the one public projection surface this domain
 serves (`omni_public_proof_bundles`, read by both the
 redacted public handoff page and the operator JSON view in
 `omni-bundle-routes.ts`). D1 remains the ONLY store that ever serves a
-response, at every flag value; `compare`/`postgres` only widen when the
+response, at every flag value. `compare`/`postgres` only widen when the
 shadow diff fires, logging
 `khala_sync_supervision_read_compare_mismatch`/`_failed`/
 `_postgres_reads_deferred`. `KHALA_SYNC_SUPERVISION_READS=compare` is set in
 prod + staging `wrangler.jsonc` to start a genuine soak. HONEST CAVEAT: this
 is a cold, near-zero-traffic domain today (`omni_public_proof_bundles` is 0
-rows in both D1 and Postgres as of this backfill; most other tables are
+rows in both D1 and Postgres as of this backfill. Most other tables are
 single/double-digit rows) — a short soak window is thin-by-vacuity evidence,
 matching the Forge (#8358) precedent, so the real read/write cutover (and
 any bounded postgres-serving allowlist, per the #8360 business-domain
@@ -931,14 +931,14 @@ migration `0028_identity_auth_domain.sql`: the SEVENTEEN canonical
 identity/auth twins — `users`, `auth_identities`, `openauth_storage`,
 `openauth_agent_links`, the three `github_write_*` tables, and the
 provider (BYOK) account custody family incl. `provider_account_token_custody`
-+ `_audit`; column-for-column with worker migrations
-0002/0003/0004/0009/0011/0044–0050/0173/0234/0237/0283; the `_0173_new`/
-`_0173_data`/`_0237_data` rebuild artifacts are deliberately NOT twinned;
-indexes re-derived from the owning stores' reads; D1 uniques and FKs NOT
++ `_audit`. Column-for-column with worker migrations
+0002/0003/0004/0009/0011/0044–0050/0173/0234/0237/0283. The `_0173_new`/
+`_0173_data`/`_0237_data` rebuild artifacts are deliberately NOT twinned.
+indexes re-derived from the owning stores' reads. D1 uniques and FKs NOT
 ported mid-migration so a transiently stale mirror can never reject a
 converge upsert — rationale in the migration header). SECRETS (invariant
 9 — the invariant this domain motivated): the twin stores EXACTLY what D1
-stores with NO widening and the same at-rest encryption posture; the
+stores with NO widening and the same at-rest encryption posture. The
 custody columns (token ciphertext/IVs/key ids on
 `provider_account_token_custody`, `openauth_storage.value_json`,
 `provider_account_connection_attempts.user_code`,
@@ -952,7 +952,7 @@ handle every writer calls after its authoritative D1 write) and the
 flagship drop-in `makeProviderAccountTokenCustodyStoreForEnv(env)` (the
 encrypted-token vault), WIRED in this lane at its two centralized
 `index.ts` construction sites. Flags `KHALA_SYNC_IDENTITY_DUAL_WRITE`
-(default ON) / `KHALA_SYNC_IDENTITY_READS` (default `d1`); there is NO
+(default ON) / `KHALA_SYNC_IDENTITY_READS` (default `d1`). There is NO
 read cutover in this lane — `postgres` DEFERS and logs
 `khala_sync_identity_postgres_reads_deferred` once (auth read serving +
 KV cache + session-revocation verification is the highest-risk,
@@ -963,7 +963,7 @@ counts / identity set equality, custody-safe scalar tallies, newest-N row
 hashes), and contract suites on BOTH engines
 (`identity-auth-domain-repository.contract.test.ts` — composite-PK
 converge on D1/SQLite AND Postgres incl. a custody round-trip, end-to-end
-token-custody mirror fidelity, fail-soft, custody redaction;
+token-custody mirror fidelity, fail-soft, custody redaction.
 `identity-auth-backfill.test.ts` — all seventeen twins converge, rotation
 idempotency, no tally references a custody column).
 REMAINDER (wiring the rest of the write surface is intentionally
@@ -976,9 +976,9 @@ and the scattered inline writers (`index.ts` user upserts,
 `operator-provider-account-routes.ts`, `provider-account-pool-routes.ts`,
 `artanis-operator-dashboard-routes.ts`) adopt `identityAuthMirrorFromEnv`
 in the decommission/wiring follow-up
-[#8362](https://github.com/OpenAgentsInc/openagents/issues/8362); until
+[#8362](https://github.com/OpenAgentsInc/openagents/issues/8362). Until
 then their rows converge on the backfill sweep. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Identity/auth domain cutover"; the
+[`RUNBOOK.md`](./RUNBOOK.md) "Identity/auth domain cutover". The
 OWNER-GATED auth read cutover, KV cache, session-revocation proof, and D1
 drop are the same follow-up.
 **#8362 follow-up, bounded non-gate read allowlist (2026-07-05):** a
@@ -988,14 +988,14 @@ bounded-allowlist precedent (#8337/#8360).
 `KHALA_SYNC_IDENTITY_NON_GATE_READS` (d1|compare|postgres, default `d1`)
 governs ONLY `IdentityAuthNonGateReads.providerAccountPoolStateByUserId`
 (`provider-account-usage-routes.ts`'s `listPoolState`) — the ONE read (of
-six re-audited candidates) that cleared the conservative bar; the other
+six re-audited candidates) that cleared the conservative bar. The other
 five (admin user listing joined to a not-yet-Postgres-served
-`software_orders`; the operator-account-status reset route, a
-read-your-own-write hazard; the operator triage lease/failover/users
+`software_orders`. The operator-account-status reset route, a
+read-your-own-write hazard. The operator triage lease/failover/users
 reads, blocked by the domain's own documented `provider_account_leases`
 staleness gap and a cross-domain blob shared with an existence-gate
-consumer; the CRM target-resolution reads, which feed real money-grant and
-account-linking decisions; and the forum author-profile join, which also
+consumer. The CRM target-resolution reads, which feed real money-grant and
+account-linking decisions. And the forum author-profile join, which also
 gates a follow-creation existence/self-follow check) stay D1-only. Fully
 independent of `KHALA_SYNC_IDENTITY_READS`, which stays untouched at `d1`
 forever in this follow-up. Machinery:
@@ -1010,8 +1010,8 @@ Everything except the Verse world runs through one D1 database
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds
 **312 migration files** creating **~330 logical tables**. The end state
 (fable report §5): Cloud SQL Postgres HA is the authoritative relational
-core reached via Hyperdrive; telemetry firehose lives on R2 + Analytics
-Engine + DO buffers, never on the relational core; D1 is retired from the
+core reached via Hyperdrive. Telemetry firehose lives on R2 + Analytics
+Engine + DO buffers, never on the relational core. D1 is retired from the
 hot path and survives, if at all, only as bounded staging.
 
 ## 1. The standard migration recipe
@@ -1021,7 +1021,7 @@ generalized). Deviations are called out per domain.
 
 1. **Dual-write behind a flag.** Postgres schema lands first (khala-sync
    migration runner, KS-0.3). The domain's write paths gain a flag-gated
-   second write to Postgres (same request, after the D1 write; Postgres
+   second write to Postgres (same request, after the D1 write, Postgres
    write failure logs + counts but never fails the request during this
    phase). All writes go through single-transaction mutator-shaped
    functions — Hyperdrive is transaction-mode pooling: no session state, no
@@ -1044,7 +1044,7 @@ generalized). Deviations are called out per domain.
    R2, dropping those tables, and deleting the flag. Owner direction on
    2026-07-04 skips those per-domain soak/drop tickets so the migration
    fanout keeps moving. Until KS-8.19, keep D1 rollback/fallback paths
-   explicit and documented; destructive drops happen only in the final D1
+   explicit and documented. Destructive drops happen only in the final D1
    retirement sweep.
 
 **Universal porting rules** (apply to every domain):
@@ -1068,14 +1068,14 @@ generalized). Deviations are called out per domain.
   cleanup per domain, never mid-migration.
 - **Rewrite artifacts collapse.** D1's no-ALTER workarounds left
   table-rewrite pairs behind (`*_0173_data`, `*_0193_new`, `*_0261_new`,
-  `*_next`, `*_0275`). Only the live canonical table migrates; the
+  `*_next`, `*_0275`). Only the live canonical table migrates. The
   artifact twins are verified-empty-or-superseded and dropped with the
   domain.
 - **Firehose exclusion.** Append-only telemetry streams (heartbeat/status
   events, `*_metric_events` counters) are candidates for Analytics Engine
   + R2, not Postgres rows. Each domain section flags its firehose split.
 - **Khala Sync exposure is optional per domain.** Migrating a domain to
-  Postgres does not require putting it on the sync engine; domains whose
+  Postgres does not require putting it on the sync engine. Domains whose
   surfaces poll today (fleet cockpit, threads) should adopt scopes +
   changelog writes at cutover, others just get transactional Postgres.
 
@@ -1119,7 +1119,7 @@ Census from `CREATE TABLE` statements across the 312 migration files
 | everything else | ~60 | users/auth/openauth/github_write, referrals, treasury, mpp, relay health, event ledger, prefilled workspaces, workroom templates, cloud sandbox/fine-tuning, share projections, misc receipts |
 
 Two tables (`pylon_api_assignments`, `pylon_api_events`) migrate under
-KS-8.1; `token_usage_events` + `token_usage_leaderboard_preferences` +
+KS-8.1. `token_usage_events` + `token_usage_leaderboard_preferences` +
 `public_khala_tokens_served_*` rollups (4) under KS-8.2. Everything else
 is sequenced below.
 
@@ -1136,7 +1136,7 @@ progress — `khala-sync-server` migration
 remaining Pylon control-plane metadata tables, including the raw Codex event
 metadata indexes (R2 payload bodies stay out of Postgres). The direct
 backfill/verify tool is
-`packages/khala-sync-server/scripts/backfill-pylon-control-plane.ts`; it
+`packages/khala-sync-server/scripts/backfill-pylon-control-plane.ts`. It
 copies bounded rowid pages from D1, preserves natural-key `ON CONFLICT DO
 NOTHING` semantics, and verifies exact row counts, per-domain tallies, and
 newest-N hashes. Partial Worker mirrors are live in source for
@@ -1149,12 +1149,12 @@ Artanis Fleet tick `pylon_agent_runner_status_events` writes, plus
 `fleet_alerts` cron alert rows from FleetBurnStallDetector and
 ServingRateMonitor. The raw Codex event metadata path now writes payloads to
 R2 on the request path and enqueues metadata rows through
-`PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`; its consumer preserves D1 indexing and
+`PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`. Its consumer preserves D1 indexing and
 fail-soft mirrors Postgres when `KHALA_SYNC_PYLON_DUAL_WRITE` is armed. These
 paths remain D1-first and read-authoritative until verification/cutover.
 Runner-status spine reads now honor `KHALA_SYNC_PYLON_READS` for D1,
 compare, and Postgres modes across the operator fleet-status route and the
-in-worker Artanis status-spine loader; compare serves D1 while adding the
+in-worker Artanis status-spine loader. Compare serves D1 while adding the
 Postgres shadow source ref and logging drift. Pylon Codex proof and
 trace-status closeout reads now route their raw-event metadata sections through
 the same D1/compare/Postgres seam, exposing D1/Postgres-shadow source refs and
@@ -1170,7 +1170,7 @@ same hole pattern. The reconcile tool now reports D1/Postgres/shared/unique gap
 counts and can focus the chunk-gap gate on chains whose latest observed row is
 after an explicit post-fix cutoff. It also classifies unique gapped chains by
 final turn-event presence and by shape (missing first chunk, internal missing
-chunk, duplicate chunk indexes); production classification is currently
+chunk, duplicate chunk indexes). Production classification is currently
 `turn_event=511`, `live_stream_only=167`, `missing_first=19`, `internal=659`,
 and `duplicate_indexes=0`. The bounded historical exception is explicit:
 `--raw-event-accept-historical-gaps-before` accepts only duplicate-free chains
@@ -1179,7 +1179,7 @@ The Worker config now commits `KHALA_SYNC_PYLON_READS=postgres` for production
 and staging, so Pylon dispatch, runner-status, and raw Codex proof metadata
 reads use Cloud SQL with bounded retry and D1 fallback. Remaining #8315 closure
 work is recorded on
-[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315); destructive
+[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315). Destructive
 D1 decommission is deferred to the final KS-8.19 retirement sweep rather than
 blocking Wave A.
 
@@ -1199,11 +1199,11 @@ count (521/521) but 11 of its newest 50 rows have a genuinely different
 content hash between stores — a continuously re-upserted rolling snapshot
 table (the cron re-writes hourly/daily buckets in place), so this reads as
 live-write timing drift (the same *class* of issue as the already-tracked
-`artanis_responder_ticks` clobber, #8409) rather than a missing-row gap; not
+`artanis_responder_ticks` clobber, #8409) rather than a missing-row gap. Not
 chased further, flagged here rather than silently left undocumented. Full
 evidence:
 [`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
-**10 of 11 tables safe to cite on KS-8.19; `pylon_capacity_funnel_snapshots`
+**10 of 11 tables safe to cite on KS-8.19. `pylon_capacity_funnel_snapshots`
 has an open, low-severity, non-blocking hash-drift note above.**
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
@@ -1212,7 +1212,7 @@ has an open, low-severity, non-blocking hash-drift note above.**
   targets, runner sessions, fleet alerts — plus the **raw-event firehose
   split**: `pylon_codex_raw_events` / `pylon_codex_raw_event_chunks` are
   the #1 write amplifier (per-item unbatched chunk flush, ~60+ statements
-  per 30-command turn). Payload bodies already live in R2; only a bounded
+  per 30-command turn). Payload bodies already live in R2. Only a bounded
   metadata index moves to Postgres, and the ingest path goes through a
   Queue (Phase 0 item) so the relational core never sees per-item writes.
 - **Tables (~14):** `pylon_api_registrations`, `pylon_api_quarantines`
@@ -1223,19 +1223,19 @@ has an open, low-severity, non-blocking hash-drift note above.**
   `pylon_capacity_funnel_snapshots`, `pylon_spark_payout_targets`,
   `pylon_codex_raw_events`, `pylon_codex_raw_event_chunks` (metadata
   index only), `runner_sessions`, `fleet_alerts`.
-- **Heat:** hot writes (raw-event chunks per item; presence heartbeats do
-  wide full-row UPDATEs per pylon per heartbeat); hot reads (closeout and
+- **Heat:** hot writes (raw-event chunks per item, presence heartbeats do
+  wide full-row UPDATEs per pylon per heartbeat). Hot reads (closeout and
   proof scans over raw-event + assignment tables during fleet
   supervision).
 - **Risks:** chunk dedupe key (`INSERT OR IGNORE`) must port exactly —
-  closeout/proof verification depends on chunk-chain completeness;
+  closeout/proof verification depends on chunk-chain completeness.
   presence heartbeat UPDATE shape should slim to changed columns on the
-  Postgres side; status-event streams are firehose candidates (Analytics
+  Postgres side. Status-event streams are firehose candidates (Analytics
   Engine) — decide per stream before porting rows.
 - **Verification:** chunk-chain contiguity per turn (no gaps, no dupes)
-  across stores; closeout verifier runs against Postgres shadow and
+  across stores. Closeout verifier runs against Postgres shadow and
   produces identical verdicts on a sampled window.
-- **Cron re-homed:** `PylonCapacityFunnel.recordSnapshots`;
+- **Cron re-homed:** `PylonCapacityFunnel.recordSnapshots`.
   `FleetBurnStallDetector.tick` reads move here + KS-8.2.
 - **Depends:** KS-8.1 (same code neighborhood, dispatch gate already on
   Postgres), KS-8.2 (stall detector reads the ledger).
@@ -1246,22 +1246,22 @@ has an open, low-severity, non-blocking hash-drift note above.**
 core metadata tables — Postgres schema (`khala-sync-server` migration
 `0010_agent_runtime.sql`: `agent_definitions`, `agent_definition_runs`,
 `agent_definition_triggers`, `agent_runs`, `agent_run_events`,
-`agent_traces`, `agent_goals`, `agent_goal_events`; dedupe keys ported
+`agent_traces`, `agent_goals`, `agent_goal_events`. Dedupe keys ported
 exactly — run-event `INSERT OR IGNORE` collapses to bare
 `ON CONFLICT DO NOTHING` over the same three uniques, the trace
 owner+idempotency and owner+content-digest partial uniques (the
 training-consent / trace-plugin revenue-share keys) port verbatim, and
-the one-active-goal-per-scope partial expression unique is preserved;
+the one-active-goal-per-scope partial expression unique is preserved.
 indexes re-derived from actual reads). Typed row-level repository seam
 with D1 + Postgres implementations, a fail-soft dual-write wrapper, and
 a read-back mirror wired at ALL worker write call sites for those tables
-(`apps/openagents.com/workers/api/src/agent-runtime-store.ts`; wired
+(`apps/openagents.com/workers/api/src/agent-runtime-store.ts`, wired
 via `make*ForEnv` factories in `index.ts`, `omni-handlers.ts`,
 `agent-goal-routes.ts`, `adjutant-assignments.ts`,
 `operator-adjutant-routes.ts`, and the `AgentDefinitionScheduler`
 dependencies — the cron this domain re-homes). Flags
 `KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE` (default on) /
-`KHALA_SYNC_AGENT_RUNTIME_READS` (d1|compare|postgres, default d1;
+`KHALA_SYNC_AGENT_RUNTIME_READS` (d1|compare|postgres, default d1,
 covers the scheduler due-trigger scans in this lane — all other reads
 stay on D1 until cutover). Resumable backfill + exact-verify CLI
 (`packages/khala-sync-server/scripts/backfill-agent-runtime.ts`: exact
@@ -1292,7 +1292,7 @@ bodies per row) via the page-by-page CLI — too slow to finish inside this
 session — left running as a detached, safe/idempotent/resumable background
 process for its remaining ~3.5-4 hours. Full evidence:
 [`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
-**`agent_runs`/`agent_run_events`/goals are safe to cite on KS-8.19;
+**`agent_runs`/`agent_run_events`/goals are safe to cite on KS-8.19.
 `agent_traces` backfill is IN PROGRESS as of this writing — re-verify
 before citing that table specifically.**
 
@@ -1306,7 +1306,7 @@ follow-up remainder lane — Postgres schema (`khala-sync-server` migration
 the D1 rewrite artifact from migration 0287: the live canonical table is
 `event_ledger_entries`, and the verifier fails if the artifact still
 exists with rows. The exact backfill/verify CLI is
-`packages/khala-sync-server/scripts/backfill-agent-runtime-remainder.ts`;
+`packages/khala-sync-server/scripts/backfill-agent-runtime-remainder.ts`.
 it checks counts, scalar status/attempt/verdict tallies, newest-N row
 hashes, and per-owner `event_ledger_entries.ordering_sequence` density.
 Credential diagnostics remain key/hash-only: row hashes may include the
@@ -1342,7 +1342,7 @@ retirement is deferred to KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330), not a
 per-domain soak/drop follow-up. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Agent runtime metadata domain cutover" and
-"Agent runtime remainder backfill"; cutover evidence is tracked on epic
+"Agent runtime remainder backfill". Cutover evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 - **What:** the agent execution record: definitions, scheduled triggers,
@@ -1356,17 +1356,17 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   `event_ledger_entries` (+ `event_ledger_entries_next` artifact),
   `khala_acceptance_jobs`, `khala_acceptance_verdicts`.
 - **Heat:** warm writes on every agent run (trace insert per ingest is
-  part of the measured 10–11-statement turn cost); reads are per-run UIs
+  part of the measured 10–11-statement turn cost). Reads are per-run UIs
   + acceptance verifiers.
 - **Risks:** `agent_traces` dedupe keys feed training-consent and
-  trace-plugin revenue-share surfaces — key semantics must not drift;
+  trace-plugin revenue-share surfaces — key semantics must not drift.
   `event_ledger_entries` has a per-owner dense `ordering_sequence`
   (`UNIQUE(owner_agent_user_id, ordering_sequence)`) — allocate it inside
   the Postgres transaction exactly like khala-sync scope versions, never
-  read-then-insert; credentials are secret-bearing (no post-images into
+  read-then-insert. Credentials are secret-bearing (no post-images into
   broad scopes, SPEC invariant 9).
-- **Verification:** per-run event-chain contiguity; trace row counts +
-  content-hash sampling; ordering_sequence density per owner.
+- **Verification:** per-run event-chain contiguity. Trace row counts +
+  content-hash sampling. Ordering_sequence density per owner.
 - **Cron re-homed:** `AgentDefinitionScheduler.tick`.
 - **Depends:** KS-8.1 (runs reference assignments), KS-8.2 (traces
   correlate with ledger events).
@@ -1381,18 +1381,18 @@ per-domain soak/drop follow-up. Prod cutover procedure:
 - **Heat:** the single biggest **cron** writer — six of the ~23
   every-minute tasks are Artanis ticks. Fixed write floor under
   everything.
-- **Risks:** tick idempotency (a re-run minute must not double-act);
+- **Risks:** tick idempotency (a re-run minute must not double-act).
   spend decisions reference treasury state (keep as ID references, no
-  cross-store transactions until KS-8.8 lands); snapshots are
+  cross-store transactions until KS-8.8 lands). Snapshots are
   firehose-ish — consider bounded retention or Analytics Engine for
   `artanis_health_snapshots` / `artanis_runtime_snapshots` instead of
   row-porting history.
-- **Verification:** tick-chain contiguity per loop; decision counts;
+- **Verification:** tick-chain contiguity per loop. Decision counts.
   replaying one tick against both stores yields identical decisions.
 - **Cron re-homed:** `ArtanisScheduledRunner.runTick`,
   `ArtanisResponder.scan`, `ArtanisResponder.compose`,
   `ArtanisAdmin.tick`, `ArtanisAdmin.closeoutVerifier`,
-  `ArtanisFleet.tick` — six tasks leave the D1 contention floor at once;
+  `ArtanisFleet.tick` — six tasks leave the D1 contention floor at once.
   this is the highest-leverage cron move.
 - **Depends:** KS-8.1 (fleet overseer reads assignments), KS-8.4
   (closeout verifier reads raw events).
@@ -1402,7 +1402,7 @@ per-domain soak/drop follow-up. Prod cutover procedure:
 - **CFG-4 HARD CUTOVER (2026-07-06, #8519):** `pay_ins` and `pay_in_legs`
   left this lane's dual-write posture entirely — they are Cloud SQL
   Postgres-AUTHORITATIVE with the D1 code path deleted (executor:
-  `payments-ledger-db.ts`; see the RUNBOOK "Credits domain HARD cutover"
+  `payments-ledger-db.ts`. See the RUNBOOK "Credits domain HARD cutover"
   section). The rest of the ~23 billing tables keep the flag/dual-write
   machinery described below unchanged.
 
@@ -1416,15 +1416,15 @@ per-domain soak/drop follow-up. Prod cutover procedure:
 - **Heat:** low volume, maximum correctness stakes.
 - **Risks:** ledger-entry idempotency (Stripe webhook replays MUST hit
   `ON CONFLICT DO NOTHING` on the event id — `stripe_webhook_events` is
-  the dedupe gate for everything downstream); balance = SUM(ledger) must
-  reconcile **to the cent** before any read cutover; auto-top-up policies
+  the dedupe gate for everything downstream). Balance = SUM(ledger) must
+  reconcile **to the cent** before any read cutover. Auto-top-up policies
   must not double-fire during dual-write (the Postgres side is
   shadow-only until cutover — side-effectful evaluators run against
   exactly one store at any time).
 - **Verification:** per-account balance equality (exact), ledger row
   counts, Stripe event id set equality, receipts content-hash equality.
 - **Cron re-homed:** none directly (auto-top-up evaluation is
-  request-path today); webhook consumers repoint.
+  request-path today). Webhook consumers repoint.
 - **Depends:** KS-8.2 (usage cursors correlate with the token ledger via
   `billing_usage_cursors`).
 - **KS-8.7 follow-up status (#8337, 2026-07-05):** the RUNBOOK-listed
@@ -1447,12 +1447,12 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   of a genuine pre-existing production data bug found during this sweep
   (swapped `party_ref`/`amount_msat` params in
   `usd-credit-bridge.ts`'s `usdCreditGrantStatements` audit-leg INSERT —
-  fixed in this pass; the 2 already-corrupted historical rows are tracked
+  fixed in this pass. The 2 already-corrupted historical rows are tracked
   in [#8412](https://github.com/OpenAgentsInc/openagents/issues/8412) for
   an owner-gated historical-correction decision, not silently patched).
   `billing_ledger_entries_next` confirmed ABSENT in both D1 and Postgres.
   The epic-gated `KHALA_SYNC_BILLING_READS=postgres` decision on #8282 has
-  NOT been made — reads stay `d1`; dual-write stays on; no D1 table was
+  NOT been made — reads stay `d1`. Dual-write stays on. No D1 table was
   dropped (per the #8330 KS-8.19 consolidation policy: bulk domain drops
   wait for that closing sweep, not per-domain follow-ups).
 - **KS-8.7 follow-up #2 status (#8337, 2026-07-05): bounded read allowlist
@@ -1493,7 +1493,7 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   there is SHARED between the read-only checkout-return/payment-proof
   status routes AND the challenge/webhook/redemption idempotency-dedupe
   decision paths, and cannot be split into a decision-free surface without
-  further store-interface surgery; and the forum tip-earnings
+  further store-interface surgery. And the forum tip-earnings
   leaderboard/creator-earnings projections (`forum/tip-earnings.ts`),
   which JOIN `pay_ins`/`pay_in_legs` against `forum_posts` (a different
   domain's mirror) in a single statement.
@@ -1506,10 +1506,10 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   hit an existing PK/UNIQUE index. Contract tests (real local Postgres,
   `billing-repository.contract.test.ts` +new
   `stripe-checkout-receipts.test.ts` + new `inference-receipts.test.ts`)
-  prove: parity between the D1 and Postgres-served answers; REAL serving
+  prove: parity between the D1 and Postgres-served answers. REAL serving
   (a value diverged directly on the Postgres twin is what `postgres` mode
-  reads back — not a shadow compare that always answers D1); fail-soft
-  fallback to D1 on any Postgres error, including a broken connection; and
+  reads back — not a shadow compare that always answers D1). Fail-soft
+  fallback to D1 on any Postgres error, including a broken connection. And
   compare-mode logs divergence only on a genuine disagreement. No flag was
   flipped in production this pass — `KHALA_SYNC_BILLING_READS` stays `d1`
   until an operator deploys with `postgres`/`compare` and records that
@@ -1536,18 +1536,18 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   `labor_escrows` (+ artifacts, 4), `partner_payout_ledger_entries`,
   `partner_agreements`, `site_referral_payout_ledger_entries`,
   `revenue_event_provenance`, `mpp_lightning_replay`, `mpp_spt_replay`.
-- **Heat:** low volume; settled receipts are public projections
+- **Heat:** low volume. Settled receipts are public projections
   (`/direct-tips` evidence etc.) that must stay continuously servable.
 - **Risks:** the highest-stakes domain. Replay guards (`mpp_*_replay`)
-  are pure idempotency tables — port key-exactly; payout intents must
+  are pure idempotency tables — port key-exactly. Payout intents must
   never double-dispatch during dual-write (Postgres shadow rows carry a
-  `shadow` marker or the dispatcher reads exactly one store); tip
+  `shadow` marker or the dispatcher reads exactly one store). Tip
   settlement claims reference forum posts by id across the domain split
-  with KS-8.10 — ID references only, no joins across stores; millisat
+  with KS-8.10 — ID references only, no joins across stores. Millisat
   totals reconcile exactly.
-- **Verification:** payout-intent set equality; settled-amount totals to
-  the millisat; public receipt endpoints byte-identical (modulo
-  timestamps) under shadow reads; replay-guard key set equality.
+- **Verification:** payout-intent set equality. Settled-amount totals to
+  the millisat. Public receipt endpoints byte-identical (modulo
+  timestamps) under shadow reads. Replay-guard key set equality.
 - **Cron re-homed:** `TipsSweep.runTick`,
   `TipsBuffer.reconcileForwarding`, `TipsBuffer.backingInvariant`,
   `TreasuryTransactions.reconcilePending`,
@@ -1566,20 +1566,20 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   `builtin_compute_agent_quota_events`, `orange_check_entitlements`,
   `agent_rate_limit_*` (4), `agent_search_*` (9).
 - **Heat:** **hot** — quota checks and usage-event writes ride the
-  serving path of every free/public completion; second only to the token
+  serving path of every free/public completion. Second only to the token
   ledger.
 - **Risks:** quota counters are enforcement, not telemetry — a lost
-  increment is a free-tier leak, a doubled one is a false denial;
+  increment is a free-tier leak, a doubled one is a false denial.
   dual-write must therefore be increment-idempotent (event-keyed, tally
-  derived); the read cutover changes which store *enforces* — do it in a
-  low-traffic window with shadow-compare evidence; `*_metric_events` and
+  derived). The read cutover changes which store *enforces* — do it in a
+  low-traffic window with shadow-compare evidence. `*_metric_events` and
   usage-event streams here are Analytics Engine candidates (enforcement
   tallies stay relational, observability streams do not).
-- **Verification:** tally = SUM(events) equality per key; denial-decision
+- **Verification:** tally = SUM(events) equality per key. Denial-decision
   shadow comparison (same request → same allow/deny) over a sampled
   window.
 - **Cron re-homed:** GLM pool heartbeat ledger writes leave for Analytics
-  Engine under Phase 0/KS-8.2; nothing else scheduled.
+  Engine under Phase 0/KS-8.2. Nothing else scheduled.
 - **Depends:** KS-8.2 (same serving-path code, ledger already moved).
 
 ### 3.7 KS-8.10 — Forum (content + trust)
@@ -1590,7 +1590,7 @@ migration `0014_forum_content.sql`: `forum_boards`, `forum_categories`,
 `forum_forums`, `forum_topics`, `forum_posts`, `forum_post_bodies`,
 `forum_post_revisions`, `forum_actor_follows`, `forum_watches`,
 `forum_bookmarks`, `forum_reports`, `forum_moderation_events`,
-`forum_context_links`; every idempotency-key and natural-key unique
+`forum_context_links`. Every idempotency-key and natural-key unique
 ports verbatim, incl. the moderation-events partial unique). The seam is
 the forum repository's OWN interface: every scoped write lives in
 `apps/openagents.com/workers/api/src/forum/repository.ts` and takes
@@ -1600,18 +1600,18 @@ the forum repository's OWN interface: every scoped write lives in
 dropped in at the forum write entry points in `index.ts` (the forum API
 route, both Artanis composer paths, the Artanis forum-update writer,
 Artanis publication delivery, and the two agent-definition forum
-webhooks). Repository SQL is untouched; after each successful D1 write
+webhooks). Repository SQL is untouched. After each successful D1 write
 to a scoped table the proxy reads the row back by PK and
-converge-upserts the exact D1 row into Postgres (fail-soft; the drift
+converge-upserts the exact D1 row into Postgres (fail-soft, the drift
 metric is `khala_sync_forum_dual_write_failed`, and any write shape the
 classifier cannot key logs `khala_sync_forum_write_unclassified` instead
 of guessing). Column/PK registry is SHARED between the Worker store and
 the backfill via `@openagentsinc/khala-sync-server`
 (`forum-content-tables.ts`) — one source of truth. Flags
 `KHALA_SYNC_FORUM_DUAL_WRITE` (default on) / `KHALA_SYNC_FORUM_READS`
-(d1|compare|postgres, default d1; `compare` shadow-runs scoped-table
+(d1|compare|postgres, default d1, `compare` shadow-runs scoped-table
 SELECTs against Postgres and serves D1 — the thread-page shadow-compare
-evidence; `postgres` serving is deferred to the read-cutover follow-up
+evidence. `postgres` serving is deferred to the read-cutover follow-up
 and downgrades to compare with a loud diagnostic). Resumable backfill +
 exact-verify CLI
 (`packages/khala-sync-server/scripts/backfill-forum-content.ts`: exact
@@ -1622,14 +1622,14 @@ REAL repository write functions end-to-end through the mirror
 (`forum-content-repository.contract.test.ts`). The forum MONEY
 tables stay with KS-8.8 (D1 authority, that lane's mirror discipline) —
 this lane never touches them. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover"; cutover
+[`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover". Cutover
 evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
-**KS-8.10 REMAINDER machinery status (2026-07-04, #8338; #8379 cleanup on
+**KS-8.10 REMAINDER machinery status (2026-07-04, #8338, #8379 cleanup on
 2026-07-05):** LANDED for the eleven active remainder tables after the
 write-dead trust pair was removed. Historical migration
-`0027_forum_remainder.sql` created the original thirteen Postgres twins;
+`0027_forum_remainder.sql` created the original thirteen Postgres twins.
 `0030_drop_forum_trust_remainder.sql` drops `forum_trust_edges` and
 `forum_actor_forum_trust` to match Worker D1 migration
 `0300_drop_forum_trust_tables.sql`. The active Postgres schema now covers
@@ -1638,7 +1638,7 @@ write-dead trust pair was removed. Historical migration
 and the work-request lifecycle family (6)
 `forum_work_requests`, `forum_work_request_relay_links`,
 `forum_work_request_offers`, `forum_work_request_lifecycle_posts`,
-`forum_work_request_acceptances`, `forum_work_request_results`; every
+`forum_work_request_acceptances`, `forum_work_request_results`. Every
 idempotency/natural-key unique ports verbatim, including the offers
 `provider_pubkey` ALTER (0179) trailing in D1 physical order and the
 notification-read partial uniques). Shared registry
@@ -1648,13 +1648,13 @@ Worker mirror and the backfill. The Worker seam
 (`apps/openagents.com/workers/api/src/forum/forum-remainder-store.ts`,
 `wrapForumRemainderMirroring`) is COMPOSED around the content lane's
 `forumContentDatabaseForEnv`, so the SAME forum write call sites cover the
-remainder tables with no new wiring; the content classifier treats
+remainder tables with no new wiring. The content classifier treats
 remainder tables as passthrough and the remainder classifier treats content
 tables as passthrough, so the two nested mirroring wrappers never
 double-mirror. PRIVACY: private-message threads/messages store exactly what
-D1 stores (bodies behind `content_ref`); diagnostics carry row keys/hashes
+D1 stores (bodies behind `content_ref`). Diagnostics carry row keys/hashes
 only — never subjects, participants, or content. The remaining DERIVED
-table, `forum_score_snapshots`, is recomputed from events in D1; this lane
+table, `forum_score_snapshots`, is recomputed from events in D1. This lane
 mirrors the D1 snapshot and VERIFIES against D1 rather than re-running the
 recompute on Postgres.
 Resumable backfill + exact-verify CLI
@@ -1669,13 +1669,13 @@ end-to-end through the mirror
 (`forum-remainder-repository.contract.test.ts`,
 `forum-remainder-store.test.ts`, `forum-remainder-backfill.test.ts`).
 Flags/binding are SHARED with the content lane
-(`KHALA_SYNC_FORUM_DUAL_WRITE` / `KHALA_SYNC_FORUM_READS`); Postgres read
+(`KHALA_SYNC_FORUM_DUAL_WRITE` / `KHALA_SYNC_FORUM_READS`). Postgres read
 serving stays deferred lane-wide (the content wrapper logs the single
-`khala_sync_forum_postgres_reads_deferred`; the remainder wrapper treats
+`khala_sync_forum_postgres_reads_deferred`. The remainder wrapper treats
 `postgres` as `compare` silently). Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover" (the remainder
 tables ride the same sequence, with the extra trust-recompute and
-work-request set-membership verify gates); actual Postgres read serving +
+work-request set-membership verify gates). Actual Postgres read serving +
 final D1 drop remain epic-gated on
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282) /
 KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
@@ -1695,7 +1695,7 @@ post-chain comparison and 25 sampled thread spot-hashes) and the remainder
 (11 active tables, incl. work-request cross-domain ref-set digest equality
 against KS-8.1/KS-8.8). Full evidence:
 [`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
-D1 was not read from, written to, or altered; no flag was flipped. **Forum
+D1 was not read from, written to, or altered. No flag was flipped. **Forum
 content + remainder mirror-completeness is now SAFE TO CITE on KS-8.19
 (#8330).**
 
@@ -1711,16 +1711,16 @@ content + remainder mirror-completeness is now SAFE TO CITE on KS-8.19
   `forum_moderation_events`, `forum_notification_reads`,
   `forum_bookmarks`, `forum_watches`, `forum_reports`,
   `forum_context_links`, `forum_work_request_*` (6).
-- **Heat:** read-heavy public surface (agents + humans poll it); writes
+- **Heat:** read-heavy public surface (agents + humans poll it). Writes
   are bursty but modest. Public projections everywhere.
 - **Risks:** largest single family — backfill is the long pole (post
-  bodies are big rows; page the backfill and checksum content);
+  bodies are big rows. Page the backfill and checksum content).
   work-request lifecycle couples to assignments (KS-8.1) and tips
   (KS-8.8) by id — verify referential integrity by set-membership, not
-  FK enforcement, at cutover; scoring snapshots are derived — recompute
+  FK enforcement, at cutover. Scoring snapshots are derived — recompute
   on Postgres and compare rather than blind-copy.
-- **Verification:** row counts per table; post-body content hashes
-  (sampled + full count); public thread pages shadow-compared; trust
+- **Verification:** row counts per table. Post-body content hashes
+  (sampled + full count). Public thread pages shadow-compared. Trust
   recomputation equality.
 - **Cron re-homed:** none content-side (tips crons moved in KS-8.8).
 - **Khala Sync exposure:** forum topics/posts are a natural later scope
@@ -1733,19 +1733,19 @@ content + remainder mirror-completeness is now SAFE TO CITE on KS-8.19
 
 **KS-8.11 machinery status (2026-07-04, #8322):** LANDED — Postgres schema
 (`khala-sync-server` migration `0022_crm_email_domain.sql`: the 36
-canonical tables — `crm_*` (13), `email_*` (11 live; the `_0193_new` D1
+canonical tables — `crm_*` (13), `email_*` (11 live, the `_0193_new` D1
 names were transient rebuild artifacts, verified superseded, no twins),
 `subscriber_lists` + `list_subscribers`, `business_outreach_*` (4),
-`exa_enrichment_*` (6); every idempotency/dedupe UNIQUE ports verbatim —
+`exa_enrichment_*` (6). Every idempotency/dedupe UNIQUE ports verbatim —
 including the campaign-send enrollment×step key, webhook
 `(provider, provider_event_id)` replay safety, and the outreach
 `(subject_ref, reason)` suppression key — so the Postgres side can never
 double-email where D1 could not). The seam is the `CrmEmailDatabase`
 union handle (`apps/openagents.com/workers/api/src/crm-email-domain-store.ts`,
 artanis-style: the domain's SQL lives in ~15 owning modules): a plain
-`D1Database` keeps working unchanged; the dual-write handle read-back
+`D1Database` keeps working unchanged. The dual-write handle read-back
 mirrors the RESOLVED D1 rows fail-soft after every authoritative write
-(`mirrorCrmEmailRows` never throws; drift metric
+(`mirrorCrmEmailRows` never throws, drift metric
 `khala_sync_crm_dual_write_failed`), and `crmEmailRead` flag-routes reads
 (d1 | compare | postgres with bounded retry + D1 fallback) — the
 suppression/preference compliance gate rides this seam, so the send path
@@ -1757,7 +1757,7 @@ campaigns/sequences/preferences/suppression, native lists +
 list→sequence enrollment, the Resend webhook ingest, transactional email
 ledger writers, business outreach, Exa enrichment ledger/operations, and
 the `EmailCampaignDispatcher.dispatchDue` cron. PII discipline: Postgres
-stores exactly what D1 stores; every diagnostic carries table names,
+stores exactly what D1 stores. Every diagnostic carries table names,
 keys, and hashes only, email-valued keys as sha256 prefixes. Resumable
 (rowid-cursor) idempotent backfill + exact-verify CLI
 (`packages/khala-sync-server/scripts/backfill-crm-email.ts`: exact
@@ -1767,8 +1767,8 @@ without printing an address). Contract tests cover both engines, the
 fail-soft paths, and backfill idempotency
 (`crm-email-domain-store.test.ts`, `crm-email-backfill.test.ts`). Prod
 cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "CRM / email / enrichment
-domain cutover"; flag flips are epic-gated on
-[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); final
+domain cutover". Flag flips are epic-gated on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282). Final
 D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
@@ -1776,7 +1776,7 @@ D1 retirement is consolidated into KS-8.19
 found the KS-8.10 gap found the identical pattern here — the production
 Postgres mirror had never actually been backfilled (business-outreach
 acceptances, transactional email delivery events, and all six
-`exa_enrichment_*` ledgers were present in D1 and absent in Postgres; no
+`exa_enrichment_*` ledgers were present in D1 and absent in Postgres. No
 real `crm_contacts` rows exist in production today, so no customer PII was
 at risk). Ran the existing `backfill-crm-email.ts` CLI (two sweeps +
 `--verify`) against production: **VERIFY OK** — exact counts, tallies,
@@ -1791,19 +1791,19 @@ D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 - **Tables (~40):** `crm_*` (13), `email_*` (15, incl. three `_0193_new`
   artifacts), `subscriber_lists`, `list_subscribers`,
   `business_outreach_*` (4), `exa_enrichment_*` (6).
-- **Heat:** cold-to-warm; campaign dispatch is scheduled batch; contact
+- **Heat:** cold-to-warm. Campaign dispatch is scheduled batch. Contact
   imports are bulk.
 - **Risks:** **suppression lists are a compliance gate** — the send path
   must read exactly one authoritative suppression store at every moment
   of the cutover (flip atomically, verify by attempting a suppressed
-  send in staging); campaign send dedupe (enrollment × step) keys port
-  exactly or we double-email real people; provider webhook events
+  send in staging). Campaign send dedupe (enrollment × step) keys port
+  exactly or we double-email real people. Provider webhook events
   (`email_provider_events`) are the delivery-state source of truth —
   replay-safe upserts.
-- **Verification:** suppression set equality (exact); per-campaign send
-  counts; contact/account row counts + email-address set equality.
+- **Verification:** suppression set equality (exact). Per-campaign send
+  counts. Contact/account row counts + email-address set equality.
 - **Cron re-homed:** `EmailCampaignDispatcher.dispatchDue`.
-- **Depends:** none hard; sequenced in wave C for risk budget, and CRM
+- **Depends:** none hard. Sequenced in wave C for risk budget, and CRM
   semantic-selector routing (workspace rule) is unaffected by the store
   move.
 
@@ -1814,12 +1814,12 @@ schema (`khala-sync-server` migration `0020_sites_core.sql`) covers the
 FIFTEEN content/builder tables the version-chain and deployment state
 machine live on (`site_projects`, `site_versions`, `site_deployments`,
 `site_deployment_attempts`, `site_access_grants`, `site_events`, and the
-nine `site_builder_*` tables); the shared registry
+nine `site_builder_*` tables). The shared registry
 `packages/khala-sync-server/src/sites-content-tables.ts` owns column/key
-order for both the Worker mirror and the backfill verifier; the Worker
+order for both the Worker mirror and the backfill verifier. The Worker
 seam `apps/openagents.com/workers/api/src/sites-content-store.ts` is a
 mirroring D1Database (`sitesContentDatabaseForEnv`) — sites module SQL is
-untouched; after a successful D1 write the proxy reads back the affected
+untouched. After a successful D1 write the proxy reads back the affected
 rows (PK or the registered PARENT keys `site_id`/`session_id` for the
 rollback/disable and archival transitions) and converge-upserts them into
 Cloud SQL, fail-soft. Wired at the sites write call sites: the
@@ -1829,10 +1829,10 @@ sites/triage/adjutant/email-inspection routes, omni runner lifecycle, and
 the index.ts site-event notification writers. Backfill + exact verify
 lives at `packages/khala-sync-server/scripts/backfill-sites-content.ts`
 (counts, domain tallies, PER-PROJECT VERSION CHAINS, the deployment
-state-machine census, builder sequence chains, newest-N row hashes;
+state-machine census, builder sequence chains, newest-N row hashes.
 rowid-cursor resumable — file snapshots/manifests page small). Read
-authority remains D1 (`KHALA_SYNC_SITES_READS` default `d1`; `compare`
-shadow-reads; `postgres` defers).
+authority remains D1 (`KHALA_SYNC_SITES_READS` default `d1`, `compare`
+shadow-reads. `postgres` defers).
 
 **KS-8.12 remainder status (2026-07-04, #8357):** the REMAINDER 36 tables
 are now LANDED behind the SAME shared registry
@@ -1842,26 +1842,26 @@ Scope A content satellites (`site_build_validations`,
 `site_revision_feedback`, `site_compatibility_checks`,
 `site_provisioning_plans`, `site_storage_bindings`,
 `site_source_exports`, and the referral family `site_referral_sources` /
-`referral_invites` / `site_referral_policy_events`); Scope B
+`referral_invites` / `site_referral_policy_events`). Scope B
 `site_environment_values` — SECRET-BEARING, so `plain_value` is EXCLUDED
 from the registry column list and the twin carries metadata + the
-`secret_ref` INDIRECTION only (SPEC invariant 9; the KS-8.5 credential
-posture); Scope C site COMMERCE/money (`site_commerce_*` (5),
+`secret_ref` INDIRECTION only (SPEC invariant 9, the KS-8.5 credential
+posture). Scope C site COMMERCE/money (`site_commerce_*` (5),
 `site_mdk_checkout_intents`, `site_mdk_account_bindings`,
 `site_payment_catalog_items`, `site_referral_payout_ledger_entries`) —
 D1 stays money authority, twin is MIRROR-ONLY, KS-8.7/8.8 rails
 referenced BY ID (never forked, no FKs), verified by commerce totals to
 the cent (`SUM(amount)` per asset) + set-membership referential checks
-(no cross-store joins); Scope D `targeted_site_*` (14) +
+(no cross-store joins). Scope D `targeted_site_*` (14) +
 `tenant_custom_hostnames` + legacy `deployments`/`deployment_events`.
 DELIBERATELY EXCLUDED: `targeted_site_campaign_metric_events` — the
 Analytics-Engine-candidate campaign firehose stays on D1/AE pending a
 telemetry-sink decision, not blind-copied into a relational twin. The
 dual-write mirror auto-covers these tables wherever a sites write call
-site is already wrapped; `scripts/backfill-sites-content.ts` now
+site is already wrapped. `scripts/backfill-sites-content.ts` now
 backfills + verifies the full core+remainder set
 (`ALL_SITES_CONTENT_TABLES`). SITES READ CUTOVER (Scope E,
-`KHALA_SYNC_SITES_READS=postgres`) stays DEFERRED — reads remain `d1`;
+`KHALA_SYNC_SITES_READS=postgres`) stays DEFERRED — reads remain `d1`.
 read-serving indexes are re-derived at that cutover. Final destructive
 D1 retirement stays in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
@@ -1887,16 +1887,16 @@ D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 - **Tables (~51):** `site_*` (33), `targeted_site_*` (15),
   `tenant_custom_hostnames`, `deployments`, `deployment_events`.
 - **Heat:** builder sessions are hot *during a build* (file snapshots,
-  message streams), cold otherwise; capture runs are batch; commerce is
+  message streams), cold otherwise. Capture runs are batch. Commerce is
   low-volume money (payment events reference KS-8.7 rails).
 - **Risks:** file snapshots may be large — confirm payload homes (R2 for
-  bodies, Postgres for metadata) before porting; site commerce payment
-  events must not fork from the KS-8.7 money rails (ID references);
+  bodies, Postgres for metadata) before porting. Site commerce payment
+  events must not fork from the KS-8.7 money rails (ID references).
   `site_environment_values` may carry secrets — same invariant-9
-  handling as credentials; capture/campaign `*_metric_events` are
+  handling as credentials. Capture/campaign `*_metric_events` are
   Analytics Engine candidates.
-- **Verification:** per-project version-chain contiguity; deployment
-  state-machine equality; commerce totals to the cent; live site serving
+- **Verification:** per-project version-chain contiguity. Deployment
+  state-machine equality. Commerce totals to the cent. Live site serving
   unaffected (serving reads mostly hit R2/KV already — verify inventory
   first).
 - **Cron re-homed:** none scheduled today (orchestration is
@@ -1909,7 +1909,7 @@ D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
   tables are Postgres-AUTHORITATIVE with the D1 path deleted —
   `khalaCodeProductStateDatabaseForEnv` returns a D1-shaped Postgres adapter
   (`workers/api/src/postgres-d1-adapter.ts`) so the existing store factories
-  run unchanged on the `0017` twins; the scope-changelog projection rides on
+  run unchanged on the `0017` twins. The scope-changelog projection rides on
   top best-effort. No new schema (0017 already had every ON CONFLICT target),
   no backfill (twins verified exact). See the RUNBOOK "CFG-4 HARD CUTOVER"
   subsection. Ships live with CFG-9.
@@ -1917,10 +1917,10 @@ D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 **KS-8.13 source status (2026-07-04):** source machinery LANDED —
 Postgres schema (`khala-sync-server` migration
 `0017_khala_code_product_state.sql`) covers the product-state tables
-listed below; the shared registry
+listed below. The shared registry
 `packages/khala-sync-server/src/khala-code-product-state-tables.ts`
 owns column/key order for both the Worker mirror and the backfill
-verifier; the Worker seam
+verifier. The Worker seam
 `apps/openagents.com/workers/api/src/khala-code-product-state-store.ts`
 wraps the existing D1 write handle, read-backs accepted D1 rows, mirrors
 them to Cloud SQL, and appends Khala Sync changelog entries for
@@ -1930,7 +1930,7 @@ receipt write factories. Backfill + exact verify lives at
 `packages/khala-sync-server/scripts/backfill-khala-code-product-state.ts`
 (counts, newest-N row hashes, active membership set equality, and
 message-chain fingerprints). Read authority remains D1 until the runbook
-shadow window posts evidence; final destructive D1 retirement stays in
+shadow window posts evidence. Final destructive D1 retirement stays in
 KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 Tables with no current Worker writer registration, such as workroom
 template rows and Khala Code download events, are still covered by the
@@ -1943,28 +1943,28 @@ post-images are now TYPED PUBLIC-SAFE CONTRACT ENTITIES, not raw D1 rows.
 thread/team/workspace entity contracts (team, membership, project,
 invite, team chat message, thread message, thread file, file↔message
 ref, prefilled workspace, share projection) with golden wire fixtures
-(`fixtures/KhalaCode*.json`) registered in the conformance suite;
+(`fixtures/KhalaCode*.json`) registered in the conformance suite.
 `packages/khala-sync-server/src/khala-code-product-state-projection.ts`
 owns the allowlist row→entity mappings, scope routing, and a
 forbidden-material scan over structural fields (invite `token_hash` /
 invitee emails, R2 `object_key`s, `metadata_json`, team `credits`, and
-share `projection_json` payloads never ride a post-image; bounded chat
+share `projection_json` payloads never ride a post-image. Bounded chat
 bodies/filenames are product content for the authorized scope).
 Projection failures are fail-soft
 (`khala_sync_khala_code_state_projection_skipped`): the Cloud SQL twin
 still converges and D1 authority is untouched. Money-bearing receipt
 tables (trace-plugin revenue-share precedents, outside-user-run
 receipts) and cloud/feedback/workroom rows remain Postgres-mirror-only
-with NO scope fan-out; their public surfaces stay on the continuously
+with NO scope fan-out. Their public surfaces stay on the continuously
 servable Worker read paths, and any future scope-native consumption is a
 follow-up contract lane, not a raw-row projection. Scope-read auth for
 the produced scopes is the existing KS-7.1 resolver seam: `scope.team.*`
 gates on LIVE D1 team membership and `scope.thread.*` on the Worker's
 thread-capability callback (`khala-sync-scope-auth.ts`), both
-matrix-tested; `khala_sync_scope_owners` remains fleet/owner-scope
+matrix-tested. `khala_sync_scope_owners` remains fleet/owner-scope
 machinery and is deliberately NOT used for team scopes while D1
 membership is authoritative. Deletion tombstones for the few hard-delete
-paths (e.g. `share_projection_recipients`) are a named follow-up; the
+paths (e.g. `share_projection_recipients`) are a named follow-up. The
 interactive surfaces soft-delete via `deleted_at`, which projects as a
 normal upsert.
 
@@ -1985,7 +1985,7 @@ contract `KhalaCodeShareProjectionRecipientEntity` (+
 `fixtures/KhalaCodeShareProjectionRecipientEntity.json` in the
 conformance suite) projects each recipient into the SUBJECT's own scope
 (`subject_kind='user'` → `scope.user.<id>`, `'team'` →
-`scope.team.<id>`); `'email'` subjects have no sync scope (PII, never a
+`scope.team.<id>`). `'email'` subjects have no sync scope (PII, never a
 `scope.*.<id>`) and stay Postgres-mirror-only, and `display_name` is
 structurally absent. All OTHER remainder families
 (`workroom_*`, `cloud_*`, `khala_feedback` /
@@ -2014,7 +2014,7 @@ recorded a production backfill/verify run. Ran
 **exit 0, zero mismatches**, cross-checked directly against D1 (e.g.
 `team_chat_messages` 41/41, `teams` 2/2, `team_memberships` 11/11,
 `khala_feedback` 7/7 — genuinely non-zero and exact, not a trivial
-both-empty result). No backfill was needed; dual-write has kept this domain
+both-empty result). No backfill was needed. Dual-write has kept this domain
 converged. `thread_messages` itself is 0/0 in both stores — live Khala Code
 chat already rides the Khala Sync scope-native path per this domain's own
 "migration = sync adoption" framing, not this D1 table. Full evidence:
@@ -2032,19 +2032,19 @@ chat already rides the Khala Sync scope-native path per this domain's own
   `khala_code_outside_user_run_receipts`,
   `khala_code_trace_plugin_revenue_share_precedents`,
   `share_projections`, `share_projection_recipients`.
-- **Heat:** warm; interactive chat surfaces poll today.
+- **Heat:** warm. Interactive chat surfaces poll today.
 - **Risks:** this is the domain where **migration = sync adoption**:
   threads and team scopes should land as khala-sync scopes
   (`scope.thread.<id>`, `scope.team.<id>`) with changelog writes from day
   one, replacing polling — migrating it as plain tables and retrofitting
-  scopes later would be double work; revenue-share precedents and outside
+  scopes later would be double work. Revenue-share precedents and outside
   -user-run receipts are public projections (continuously servable).
-- **Verification:** thread message-chain contiguity; membership set
-  equality; a desktop client on the synced scope converges with the D1
+- **Verification:** thread message-chain contiguity. Membership set
+  equality. A desktop client on the synced scope converges with the D1
   read path during shadow window.
 - **Cron re-homed:** none.
 - **Depends:** KS-5.x client engine + KS-6.2 desktop consumption (this
-  domain rides the sync engine, not just Postgres); KS-8.5 (agent runs
+  domain rides the sync engine, not just Postgres). KS-8.5 (agent runs
   referenced from threads).
 
 ### 3.11 KS-8.14 — Business funnel, orders, referrals
@@ -2060,29 +2060,29 @@ chat already rides the Khala Sync scope-native path per this domain's own
   `user_referral_attributions`, `agent_referral_attributions`,
   `viral_agent_funnel_events`, `qa_swarm_first_engagements`,
   `promise_transition_receipts`.
-- **Heat:** cold/append-mostly; funnel events are firehose-ish
+- **Heat:** cold/append-mostly. Funnel events are firehose-ish
   (Analytics Engine candidate for `business_funnel_events` volume — keep
   the attributions relational, they pay money).
 - **Risks:** referral attributions feed payouts (KS-8.8) — attribution
-  uniqueness keys port exactly; promise transition receipts back the
-  public product-promises registry — continuously servable; fulfillment
+  uniqueness keys port exactly. Promise transition receipts back the
+  public product-promises registry — continuously servable. Fulfillment
   escalation state must not double-page during dual-write.
-- **Verification:** attribution set equality; promise-receipt hash
-  equality; funnel counts per cohort.
+- **Verification:** attribution set equality. Promise-receipt hash
+  equality. Funnel counts per cohort.
 - **Cron re-homed:** `BusinessFulfillmentLoop.dailyMotion`.
 - **Depends:** KS-8.7/8.8 (attributions → payouts), KS-8.11 (outreach
   already moved).
 
 **KS-8.14 machinery status (2026-07-04, #8325):** LANDED for all 32 LIVE
 tables — Postgres schema (`khala-sync-server` migration
-`0023_business_funnel.sql`; the `business_funnel_events_0275` /
+`0023_business_funnel.sql`. The `business_funnel_events_0275` /
 `business_service_promises_0275` rewrite artifacts were renamed back by
-worker 0277/0275 and do not exist live, so nothing was created for them;
+worker 0277/0275 and do not exist live, so nothing was created for them.
 indexes re-derived — PKs + every attribution/idempotency UNIQUE port
 exactly, the two partial-unique CONSTRAINTS
 (`software_orders_agent_idempotency_idx`,
 `order_triage_records_active_order_idx`) port verbatim, all D1 read
-accelerators dropped because this lane routes zero reads; the
+accelerators dropped because this lane routes zero reads. The
 starter-credit window-cap TRIGGER is deliberately NOT ported — it is a
 D1 write-authority gate), the MIRRORING D1Database seam
 (`apps/openagents.com/workers/api/src/business-domain-store.ts`,
@@ -2091,7 +2091,7 @@ per-table LOOKUP COLUMNS for update-by-unique statements and
 `ON CONFLICT(col)` read-back so the surviving
 `business_signup_fulfillments` row mirrors correctly), flags
 `KHALA_SYNC_BUSINESS_DUAL_WRITE` (default on) /
-`KHALA_SYNC_BUSINESS_READS` (d1|compare|postgres, default d1; `postgres`
+`KHALA_SYNC_BUSINESS_READS` (d1|compare|postgres, default d1, `postgres`
 serving is deferred-to-compare until the read-cutover follow-up), wiring
 at the core write boundaries (public business-signup intake + its
 referral capture/consume/affiliate/fulfillment chain, the intake-chat and
@@ -2109,7 +2109,7 @@ PROMISE-RECEIPT full-row hash-set equality, funnel counts per cohort,
 money sums for checkout/starter-credit/buy-mode/workflow-event/order/QA
 amounts, newest-N row hashes), and a contract suite run against BOTH
 stores incl. consume-once replay, fail-soft, and compare-read proofs.
-Funnel-event volume stays relational in this lane; the Analytics Engine
+Funnel-event volume stays relational in this lane. The Analytics Engine
 split is a post-cutover follow-up decision.
 
 **KS-8.14 remainder status (2026-07-04, #8359):** FULL WRITER COVERAGE —
@@ -2123,16 +2123,16 @@ pattern): business/order statements read-back mirror to the business
 Postgres twin while the wrapped domain's statements pass through to (and
 mirror via) their own seam. Live boundaries wired: customer-orders and
 operator-order-triage (business OVER the sites proxy, file-local
-`openAgentsDatabase` helper); operator-adjutant launch-state UPDATE
+`openAgentsDatabase` helper). Operator-adjutant launch-state UPDATE
 (business UNDER the CRM seam and OVER the sites proxy at the two
-`makeCrmEmailDatabaseForEnv` sites feeding it); adjutant-run-lifecycle
+`makeCrmEmailDatabaseForEnv` sites feeding it). Adjutant-run-lifecycle
 via `omni-handlers` (business OVER the sites proxy at the single
-`applyAdjutantRunLifecycleEvents` call); the stripe-billing–fed
+`applyAdjutantRunLifecycleEvents` call). The stripe-billing–fed
 `business_checkout_kickoffs` + `business-referral-engagement-feed` funnel
 writes (billing-routes webhook + return-URL fulfillment boundaries — the
 1c323deac3 sourceRef hardening is untouched, only the db handle is
-wrapped); onboarding referral consumption (`consumePendingReferralForUser`
-/ `linkPendingReferralToOrder` in `onboarding/routes.ts`); and the
+wrapped). Onboarding referral consumption (`consumePendingReferralForUser`
+/ `linkPendingReferralToOrder` in `onboarding/routes.ts`). And the
 operator QA-swarm first-engagement path
 (`business_commitment_ledger`/`qa_swarm_first_engagements`) which #8325
 had left on raw D1 while the public routes path already rode the factory.
@@ -2141,7 +2141,7 @@ referral capture/consume (`referral-source-capture`,
 `business_signup_referral_attributions`), `site-referral-routes` capture,
 session-bootstrap consumption, and the pipeline/QA-swarm public stores.
 `business-new-routes` itself writes nothing — it only renders and
-validates referral codes (`isSafeReferralSourceRef`); the capture write it
+validates referral codes (`isSafeReferralSourceRef`). The capture write it
 implies happens in `business-signup-routes`, already on the factory.
 
 **Decommission audit (write-dead / dormant boundaries).** These have NO
@@ -2150,18 +2150,18 @@ live worker write statement, so there is nothing to wire — they take a
 `github-writeback-authority` (`order_github_write_authority_receipts`,
 `order_fulfillment_artifacts`, `software_orders` UPDATE) and
 `github-pr-fulfillment` (`order_fulfillment_artifacts`, `software_orders`
-delivered flip), whose only callers are their tests; and
+delivered flip), whose only callers are their tests. And
 `site-referral-workflow-events.recordReferralWorkflowEvent`
 (`referral_workflow_events`) via `site-referral-policy`, both test-only.
 `order_fulfillment_feedback` and `referral_invites` likewise have no live
 write statement (already noted in #8325). Their exact SQL shapes are still
 pinned in the classifier contract suite so that IF a production caller is
 added later it classifies as a mirrored write (never a silent
-`khala_sync_business_write_unclassified` drift); they take the
+`khala_sync_business_write_unclassified` drift). They take the
 snapshot-and-drop short path at cutover unless a live writer lands first.
 
 Prod cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Business funnel
-domain cutover"; cutover evidence + D1 drop tracked on epic
+domain cutover". Cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 **KS-8.14 read-cutover follow-up status (2026-07-05, #8360): BOUNDED READ
@@ -2241,12 +2241,12 @@ trace contributions) with indexes re-derived from the live reads and
 the lease/contribution idempotency keys ported exactly. The shared
 registry `packages/khala-sync-server/src/training-domain-tables.ts`
 owns column/key order for both the Worker mirror and the backfill
-verifier; the Worker seam
+verifier. The Worker seam
 `apps/openagents.com/workers/api/src/training-domain-store.ts` wraps
 the three existing D1 stores (authority / verification / trace
 contribution) with fail-soft read-back mirroring at every write call
 site, behind `KHALA_SYNC_TRAINING_DUAL_WRITE` (default ON) /
-`KHALA_SYNC_TRAINING_READS` (default `d1`; routes the
+`KHALA_SYNC_TRAINING_READS` (default `d1`, routes the
 `listClaimableWindows` scan behind the re-homed
 `SelfServeWindowProducer.topUp` cron). Backfill + exact verify lives at
 `packages/khala-sync-server/scripts/backfill-training.ts` (counts,
@@ -2269,16 +2269,16 @@ exact verify (`packages/khala-sync-server/scripts/backfill-gym-evals.ts`),
 and a contract suite against both stores
 (`gym-evals-domain-repository.contract.test.ts`). Confirmed findings:
 `gym_harbor_full_trace_archives` is R2-body-split (D1 carries only
-`artifact_r2_key`/`artifact_sha256`/`artifact_bytes`; the twin never
-carries a body — no table skipped); the derived
+`artifact_r2_key`/`artifact_sha256`/`artifact_bytes`. The twin never
+carries a body — no table skipped). The derived
 `gym_ladder_leaderboard_snapshots` / `gym_run_progress_snapshots` are
 verified by newest-N byte-exact copy-equality (leaderboard recomputation
 equality), NOT recomputed in Postgres. Live dual-write is wired for the gym stores
-(run-progress, mirrorcode, ladder, mutalisk delegation, harbor); the
+(run-progress, mirrorcode, ladder, mutalisk delegation, harbor). The
 transactional `mullet_*` / `blueprint_*` / `replay_clip_jobs` call-site
 mirror wiring lands with the read-cutover follow-up (RUNBOOK "Gym/evals
 domain cutover"). The retired AgentCL eval family is dropped by Worker
-migration `0301_drop_gym_agentcl_eval_tables.sql`; broad D1 retirement stays
+migration `0301_drop_gym_agentcl_eval_tables.sql`. Broad D1 retirement stays
 in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
@@ -2312,7 +2312,7 @@ genuinely 0 rows in production today, not silently skipped). Ran
 Both training-core and gym-evals-remainder are now **SAFE TO CITE ON KS-8.19
 (#8330)** for the mirror-completeness precondition. D1 was never read from
 in a mutating way, written to beyond the additive `ON CONFLICT DO NOTHING`
-converge upsert, or schema-changed; no `KHALA_SYNC_*_READS` /
+converge upsert, or schema-changed. No `KHALA_SYNC_*_READS` /
 `KHALA_SYNC_*_DUAL_WRITE` flag was flipped.
 
 - **What:** training runs/windows/leases/verification, trace
@@ -2320,15 +2320,15 @@ converge upsert, or schema-changed; no `KHALA_SYNC_*_READS` /
   simulations, blueprint program runs, replay clips, mirrorcode runs.
 - **Tables (~23 active):** `training_*` (7), `gym_*` (6), `mullet_*` (5),
   `blueprint_*` (3), `replay_clip_jobs`, `mirrorcode_runs`.
-- **Heat:** bursty during runs, cold otherwise; leaderboard snapshots are
+- **Heat:** bursty during runs, cold otherwise. Leaderboard snapshots are
   derived.
 - **Risks:** window leases are correctness-bearing (double-lease =
   double-payout risk upstream) — lease acquisition becomes a Postgres
-  row-lock transaction, which is strictly better than D1's; large trace
+  row-lock transaction, which is strictly better than D1's. Large trace
   archives (`gym_harbor_full_trace_archives`) — confirm R2 payload split
   before porting.
-- **Verification:** window/lease chain equality; leaderboard
-  recomputation equality; verification-event chains contiguous.
+- **Verification:** window/lease chain equality. Leaderboard
+  recomputation equality. Verification-event chains contiguous.
 - **Cron re-homed:** `SelfServeWindowProducer.topUp`.
 - **Depends:** KS-8.2 (verification correlates with ledger), KS-8.5
   (trace contributions reference agent traces).
@@ -2340,14 +2340,14 @@ converge upsert, or schema-changed; no `KHALA_SYNC_*_READS` /
   queue, coordination status, verification receipts, dispatch leases,
   promotion decisions.
 - **Tables (16):** all `forge_*`.
-- **Heat:** bursty on push/mirror; ref updates are contention-sensitive.
+- **Heat:** bursty on push/mirror. Ref updates are contention-sensitive.
 - **Risks:** `forge_git_objects` payloads belong in R2 (packfile archives
-  already are) — Postgres carries refs/locks/metadata only; ref locking
+  already are) — Postgres carries refs/locks/metadata only. Ref locking
   gains real `SELECT ... FOR UPDATE` semantics — port the lock protocol
-  deliberately, don't emulate the D1 dance; access tokens are
+  deliberately, do not emulate the D1 dance. Access tokens are
   secret-bearing (invariant 9).
 - **Verification:** ref-set equality against a live `git ls-remote` of
-  each tenant repo (ground truth is git itself); merge-queue ledger
+  each tenant repo (ground truth is git itself). Merge-queue ledger
   replay equality.
 - **Cron re-homed:** none.
 - **Depends:** none hard (self-contained bounded context) — scheduled
@@ -2386,15 +2386,15 @@ history.
   probes, backend incident events, hygiene debt receipts.
 - **Tables (~30):** `adjutant_*` (10), `omni_*` (9), `autopilot_*` (6,
   incl. legacy `autopilot_token_usage` — reconcile-and-freeze rather than
-  live-migrate if it is write-dead; verify first), `relay_health_*` (2),
+  live-migrate if it is write-dead. Verify first), `relay_health_*` (2),
   `backend_incident_events`, `hygiene_debt_receipts`.
-- **Heat:** cold-to-warm; several tables may already be write-dead —
+- **Heat:** cold-to-warm. Several tables may already be write-dead —
   each gets a freshness check (last-write timestamp) and write-dead
   tables take the short path: snapshot to R2 + verified copy + drop, no
   dual-write phase.
 - **Risks:** `omni_idempotency_keys` is a pure idempotency table (port
-  key-exactly); evidence/proof bundles are public projections.
-- **Verification:** row counts; idempotency key set equality; public
+  key-exactly). Evidence/proof bundles are public projections.
+- **Verification:** row counts. Idempotency key set equality. Public
   proof-bundle endpoints shadow-compared.
 - **Cron re-homed:** `AutopilotScheduledLaunches.dispatchDue`,
   `AutopilotContinuationPolicy.sweep`, `RelayHealth.probeTick`.
@@ -2412,8 +2412,8 @@ writer across `index.ts`, `onboarding/repository.ts`,
 now adopts `identityAuthMirrorFromEnv`. A production `--restart` backfill
 sweep + `--verify` ran clean immediately after: all 17 tables exact row
 counts, newest-50 row hashes all matched, zero scalar-tally mismatches
-(evidence on #8362). D1 remains the SOLE authority; `KHALA_SYNC_IDENTITY_READS`
-is untouched (still `d1`, still defers on `postgres`); NO flags were
+(evidence on #8362). D1 remains the SOLE authority. `KHALA_SYNC_IDENTITY_READS`
+is untouched (still `d1`, still defers on `postgres`). NO flags were
 flipped. The owner-gated read cutover (KV/cache layer, real auth-matrix
 shadow-read replay tooling, session-revocation staging drill) is NOT
 built and remains a separate, not-yet-scheduled follow-up — see the
@@ -2426,12 +2426,12 @@ wiring above is now LIVE in production (first post-commit deploy
 `2026-07-05T06:53:56Z`, version `b34ad490-450b-4728-b945-ad858983917a`) and
 re-ran `--restart` + `--verify` against production hours into live traffic on
 the new code: all 17 tables still exact (same row counts as the pre-deploy
-snapshot; a restart sweep re-converges regardless), zero mismatches. Also
+snapshot. A restart sweep re-converges regardless), zero mismatches. Also
 produced a read call-site classification inventory — which identity/auth
 reads are permanent D1-only auth-decision paths vs. candidates for a future
 bounded non-gate-read allowlist (mirroring `inference-entitlements-store.ts`)
 — see the RUNBOOK section for the full list. No candidate was implemented or
-flipped this pass; that remains real, separate follow-up work needing its own
+flipped this pass. That remains real, separate follow-up work needing its own
 flag, its own compare-mode soak, and (for the actual auth-decision reads) the
 KV/cache layer and auth-matrix replay tooling that still do not exist.
 Forum posts are confirmed out of scope for this domain's backup concerns —
@@ -2457,17 +2457,17 @@ evidence:
   (+`_0173_new`), `provider_account_*` (16 more, incl. `_0173_data` /
   `_0237_data` artifacts).
 - **Heat:** hottest *read* family in the system (auth on every request)
-  but highly cacheable; writes are rare.
+  but highly cacheable. Writes are rare.
 - **Risks:** maximum blast radius — a bad cutover breaks literally
   everything, which is why it goes **last**, after the recipe has been
-  proven ~14 times; token custody + auth grants are secret-bearing
-  (invariant 9: never into changelog post-images beyond owner scope; at
-  rest, same encryption posture as today); auth reads must gain a
-  KV/cache layer as part of this move so Postgres doesn't inherit a
-  per-request read storm; session invalidation semantics verified
+  proven ~14 times. Token custody + auth grants are secret-bearing
+  (invariant 9: never into changelog post-images beyond owner scope, at
+  rest, same encryption posture as today). Auth reads must gain a
+  KV/cache layer as part of this move so Postgres does not inherit a
+  per-request read storm. Session invalidation semantics verified
   explicitly (revoke in staging, observe both stores deny).
-- **Verification:** identity set equality; a full auth matrix (each
-  credential class × allow/deny) replayed against shadow reads; custody
+- **Verification:** identity set equality. A full auth matrix (each
+  credential class × allow/deny) replayed against shadow reads. Custody
   audit-chain contiguity.
 - **Cron re-homed:** none.
 - **Depends:** everything before it (deliberately).
@@ -2482,7 +2482,7 @@ evidence:
   onboarding columns from worker 0025, UNIQUE
   `(provider, provider_subject)`, read accelerators). The Worker mirror
   surface is now the registry minus these two tables
-  (`IdentityAuthMirrorTable`); `backfill-identity-auth.ts` excludes them
+  (`IdentityAuthMirrorTable`). `backfill-identity-auth.ts` excludes them
   from the default sweep (explicit `--table` = pre-deploy catch-up ONLY).
   The other fifteen tables in this section keep the staged plan above
   unchanged.
@@ -2496,10 +2496,10 @@ evidence:
   cutover and were EMPTY in production, so there is NO backfill/reconcile
   lane and NO one-time data copy: khala-sync migration
   `0044_push_tables_hard_cut.sql` creates the twins fresh as the sole
-  authority (D1 UNIQUE/PK/CHECK ported byte-for-byte; `(user_id, updated_at
+  authority (D1 UNIQUE/PK/CHECK ported byte-for-byte, `(user_id, updated_at
   DESC)` + `(expo_push_token)` read accelerators). Store: the same
   `PaymentsLedgerDb` executor over `KHALA_SYNC_DB` (`workers/api/src/push/*`,
-  wired via `paymentsLedgerDbForEnv`); the cross-store readers
+  wired via `paymentsLedgerDbForEnv`). The cross-store readers
   `admin-ops-routes.ts` (push readiness COUNT) and
   `mobile-account-deletion-routes.ts` (push DELETE, now `DELETE … RETURNING`
   off the D1 batch) moved onto the Postgres handle too.
@@ -2510,7 +2510,7 @@ evidence:
   `@openagentsinc/sync-worker` outbox): superseded by the khala-sync
   substrate itself. Decommission path: confirm no readers, snapshot,
   drop. No Postgres twin.
-- **Verse world state:** not on `OPENAGENTS_DB`; out of scope.
+- **Verse world state:** not on `OPENAGENTS_DB`. Out of scope.
 - **Firehose streams** flagged per domain (heartbeats, `*_metric_events`,
   runtime/health snapshots, funnel event volume): re-home to Analytics
   Engine + R2, not Postgres rows.
@@ -2521,13 +2521,13 @@ The API Worker runs `crons: ["* * * * *"]` with ~23 observed tasks in the
 `scheduled` handler (`apps/openagents.com/workers/api/src/index.ts`),
 every task hitting `OPENAGENTS_DB` every minute — the fixed contention
 floor from fable §1.2 item 4. Each task re-homes **with its domain**
-(listed per domain above); consolidated view:
+(listed per domain above). Consolidated view:
 
 | Cron task | Re-homes with |
 |---|---|
 | `HydraliskGlmPoolHeartbeat.run` | KS-8.2 / Phase 0 → Analytics Engine |
-| `FleetBurnStallDetector.tick` | KS-8.1 + KS-8.2 reads; residuals KS-8.4 |
-| `ServingRateMonitor.tick` | KS-8.2 reads; `fleet_alerts` rows KS-8.4 |
+| `FleetBurnStallDetector.tick` | KS-8.1 + KS-8.2 reads. Residuals KS-8.4 |
+| `ServingRateMonitor.tick` | KS-8.2 reads. `fleet_alerts` rows KS-8.4 |
 | `PylonCapacityFunnel.recordSnapshots` | KS-8.4 |
 | `AgentDefinitionScheduler.tick` | KS-8.5 |
 | `ArtanisScheduledRunner.runTick`, `ArtanisResponder.scan`, `ArtanisResponder.compose`, `ArtanisAdmin.tick`, `ArtanisAdmin.closeoutVerifier`, `ArtanisFleet.tick` | KS-8.6 |
@@ -2541,9 +2541,9 @@ floor from fable §1.2 item 4. Each task re-homes **with its domain**
 Consolidation rules, enforced as domains move (final sweep in KS-8.19):
 
 1. **Cadence honesty:** re-homed tasks get per-task cadence (most do not
-   need every-minute; daily motion is daily). The Worker cron becomes a
+   need every-minute. Daily motion is daily). The Worker cron becomes a
    thin dispatcher (or a scheduler DO with alarms) that enqueues named
-   task runs; heavy periodic aggregates become Postgres-side scheduled
+   task runs. Heavy periodic aggregates become Postgres-side scheduled
    jobs (pg_cron on Cloud SQL) where they are pure SQL.
 2. **A task never straddles stores:** a cron task cuts over atomically
    with its domain's read cutover — never reads D1 and writes Postgres
@@ -2565,16 +2565,16 @@ straddle stores.
 
 | Wave | Issues | Theme | Rationale |
 |---|---|---|---|
-| **A — finish the hot path** | KS-8.4, KS-8.5, KS-8.6 | Pylon remainder + agent runs/traces + Artanis | Completes the June-29 failure neighborhood: after wave A the entire fleet execution/supervision write path (and 7 more cron tasks) is off D1. Highest measured write volume; verification culture already in place. "Ledger + traces" per Phase 3. |
-| **B — money** | KS-8.7, KS-8.8, KS-8.9 | Billing/Stripe → treasury/payouts/tips → inference entitlements | Low volume, highest correctness stakes, freshest reconciliation muscle; unblocks the store-straddle-free cutover of forum tips and site commerce in wave C; moves 6 more cron tasks. Entitlements (8.9) close the serving-path remainder. |
+| **A — finish the hot path** | KS-8.4, KS-8.5, KS-8.6 | Pylon remainder + agent runs/traces + Artanis | Completes the June-29 failure neighborhood: after wave A the entire fleet execution/supervision write path (and 7 more cron tasks) is off D1. Highest measured write volume. Verification culture already in place. "Ledger + traces" per Phase 3. |
+| **B — money** | KS-8.7, KS-8.8, KS-8.9 | Billing/Stripe → treasury/payouts/tips → inference entitlements | Low volume, highest correctness stakes, freshest reconciliation muscle. Unblocks the store-straddle-free cutover of forum tips and site commerce in wave C. Moves 6 more cron tasks. Entitlements (8.9) close the serving-path remainder. |
 | **C — product surfaces** | KS-8.10, KS-8.11, KS-8.12, KS-8.13 | Forum, CRM/email, Sites, Khala Code state | The Phase 3 "forum, CRM, sites" core. Big backfills, read-heavy public projections, compliance gates (suppression). KS-8.13 doubles as sync-engine adoption for threads/teams (needs KS-5/KS-6 client lanes done). |
-| **D — long tail** | KS-8.14, KS-8.15, KS-8.16, KS-8.17 | Business/referrals, training/gym, Forge, supervision tail | Cold/bursty domains; several likely write-dead tables take the snapshot-and-drop short path. Forge is self-contained and benefits from real transactions. |
+| **D — long tail** | KS-8.14, KS-8.15, KS-8.16, KS-8.17 | Business/referrals, training/gym, Forge, supervision tail | Cold/bursty domains. Several likely write-dead tables take the snapshot-and-drop short path. Forge is self-contained and benefits from real transactions. |
 | **E — core + retirement** | KS-8.18, KS-8.19 | Identity/auth, then cron consolidation sweep + D1 retirement | Auth goes last by blast-radius policy, after ~14 proven cutovers. KS-8.19 closes the epic: final cron sweep, retirement checklist, invariant registration. |
 
-Waves are sequential; issues **within** a wave may run as parallel lanes
+Waves are sequential. Issues **within** a wave may run as parallel lanes
 where their "Depends" lines allow. Reconciliation evidence must land in the
 issue before read cutover. The old per-domain soak/drop follow-ups are not
-active gates; KS-8.19 owns final D1 retirement after the domain migration
+active gates. KS-8.19 owns final D1 retirement after the domain migration
 fanout is complete.
 
 ## 6. D1 retirement checklist (KS-8.19)
@@ -2592,14 +2592,14 @@ final D1 retirement gate:
    still reconciles against this plan, table by table.
 2. **Code zero:** no production code path reaches `OPENAGENTS_DB` — grep
    gate on the binding and on `openAgentsDatabase(` outside any retained
-   staging module; the ~50 local `d1Effect` wrappers deleted.
-3. **Cron zero:** the `scheduled` handler contains no D1-touching task;
-   per-task cadences documented; the every-minute cron either removed or
+   staging module. The ~50 local `d1Effect` wrappers deleted.
+3. **Cron zero:** the `scheduled` handler contains no D1-touching task.
+   per-task cadences documented. The every-minute cron either removed or
    reduced to the thin dispatcher.
 4. **Archive:** final full D1 export snapshot to R2 (retention: 1 year)
    with a manifest mapping each table to its successor store.
-5. **Invariants:** SPEC §7 set registered in the owning `INVARIANTS.md`;
-   per-domain migration flags deleted; behavior contracts for cutover
+5. **Invariants:** SPEC §7 set registered in the owning `INVARIANTS.md`.
+   per-domain migration flags deleted. Behavior contracts for cutover
    indicators retired or repointed.
 6. **Bindings:** `OPENAGENTS_DB` removed from `wrangler.jsonc` — or, if
    6.7 applies, repointed to a **new, empty, small** staging database

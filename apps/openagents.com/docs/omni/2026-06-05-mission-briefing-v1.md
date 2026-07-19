@@ -16,19 +16,19 @@ coding, adjustment, business, and future legal-sensitive workrooms.
 
 `buildOmniMissionBriefing` projects:
 
-- what changed;
-- what was built;
-- what is blocked;
-- what needs review;
-- what was emailed;
+- what changed.
+- what was built.
+- what is blocked.
+- what needs review.
+- what was emailed.
 - what happens next.
 
 Each item carries only:
 
-- section kind;
-- customer-safe ref;
-- customer-safe summary ref;
-- status;
+- section kind.
+- customer-safe ref.
+- customer-safe summary ref.
+- status.
 - friendly display time.
 
 The briefing does not project raw ISO timestamps. It transforms time into
@@ -39,9 +39,9 @@ friendly labels such as `Just now`, `15 minutes ago`, `1 hour ago`,
 
 The projection composes already-modeled customer-safe records:
 
-- `omni_workrooms`;
-- `omni_evidence_bundles`;
-- `omni_workroom_lifecycle_decisions`;
+- `omni_workrooms`.
+- `omni_evidence_bundles`.
+- `omni_workroom_lifecycle_decisions`.
 - workroom email refs.
 
 Evidence and lifecycle decisions are passed through their customer-safe
@@ -51,17 +51,17 @@ projection functions before briefing sections are assembled.
 
 Changed:
 
-- research briefs;
-- source commits;
-- generated source;
+- research briefs.
+- source commits.
+- generated source.
 - diffs.
 
 Built:
 
-- workroom artifact refs;
-- deployment URLs;
-- screenshots;
-- test reports;
+- workroom artifact refs.
+- deployment URLs.
+- screenshots.
+- test reports.
 - receipts.
 
 Blocked:
@@ -78,12 +78,12 @@ Email:
 
 Next action:
 
-- acceptance recorded;
-- revision queue;
-- rejection review;
-- clear blocker;
-- review latest work;
-- complete;
+- acceptance recorded.
+- revision queue.
+- rejection review.
+- clear blocker.
+- review latest work.
+- complete.
 - work in progress.
 
 ## Guardrails
@@ -94,9 +94,9 @@ material, payment/wallet material, secret-like strings, or raw ISO timestamps.
 
 Mission Briefing does not:
 
-- fetch private logs;
-- infer payment settlement;
-- mark payout eligibility;
-- deploy a Site;
-- send email;
+- fetch private logs.
+- infer payment settlement.
+- mark payout eligibility.
+- deploy a Site.
+- send email.
 - mutate order or workroom state.

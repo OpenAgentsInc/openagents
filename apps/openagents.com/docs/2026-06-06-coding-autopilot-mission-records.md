@@ -17,18 +17,18 @@ The first implementation lives in
 
 `CodingAutopilotMissionRecord` stores stable refs for:
 
-- mission identity and work kind;
-- status;
-- objective stack refs;
-- owner, customer, and team refs;
-- workroom refs;
-- assignment refs;
-- route-scorecard refs;
-- account-lease refs;
-- budget refs;
-- blocker refs;
-- next-order refs;
-- latest Mission Briefing ref;
+- mission identity and work kind.
+- status.
+- objective stack refs.
+- owner, customer, and team refs.
+- workroom refs.
+- assignment refs.
+- route-scorecard refs.
+- account-lease refs.
+- budget refs.
+- blocker refs.
+- next-order refs.
+- latest Mission Briefing ref.
 - artifact refs.
 
 The record may contain raw ISO timestamps because it is backend truth. The
@@ -68,9 +68,9 @@ projection through the established briefing contract.
 
 `workers/api/src/coding-autopilot-missions.test.ts` covers:
 
-- public/customer/team/operator projections;
-- status labels;
-- friendly time labels with no raw timestamps in projections;
-- audience redaction for account leases, route scorecards, and budgets;
+- public/customer/team/operator projections.
+- status labels.
+- friendly time labels with no raw timestamps in projections.
+- audience redaction for account leases, route scorecards, and budgets.
 - fail-closed rejection of raw runner logs, provider-account refs, private repo
   refs, customer emails, and secret-shaped refs.

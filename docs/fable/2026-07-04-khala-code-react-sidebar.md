@@ -2,7 +2,7 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 
@@ -27,12 +27,12 @@ surface.
 
 The port preserves the existing sidebar behavior contracts:
 
-- active row background and no visible "Current chat" copy;
-- streaming spinner only in the timestamp slot for actually streaming threads;
-- recent-thread hotkey hints and selection cycling;
-- stored-only Codex catalog rows stay visible but disabled;
-- optimistic new-thread and rename updates appear before RPC catch-up;
-- raw internal Codex resume errors remain mapped to friendly sidebar text;
+- active row background and no visible "Current chat" copy.
+- streaming spinner only in the timestamp slot for actually streaming threads.
+- recent-thread hotkey hints and selection cycling.
+- stored-only Codex catalog rows stay visible but disabled.
+- optimistic new-thread and rename updates appear before RPC catch-up.
+- raw internal Codex resume errors remain mapped to friendly sidebar text.
 - harness badges stay removed from row chrome.
 
 The vanilla DOM renderer was deleted in the same change. Context menus still

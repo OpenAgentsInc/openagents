@@ -1,7 +1,7 @@
 # AgentCL Implications for OpenAgents
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## Why This Matters Here

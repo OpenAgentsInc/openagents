@@ -9,7 +9,7 @@ projection, Workflow DevKit slices, UI, and TUI. It did not create a Vercel
 sandbox, start a harness runtime, send a model request, or execute upstream
 tests.
 
-## TL;DR
+## TL.DR
 
 AI SDK v7 Harnesses introduce a second runtime abstraction beside models. A
 provider gives `generateText` or `streamText` a model call. A harness adapter
@@ -44,18 +44,18 @@ event/replay bridge              files and shell tools
 
 The abstraction is more rigorous than a wrapper around agent CLIs:
 
-- `HarnessV1` is a versioned adapter spec, separate from model-provider specs;
+- `HarnessV1` is a versioned adapter spec, separate from model-provider specs.
 - `HarnessAgent` is a stateless definition and every call requires an explicit
-  live `HarnessAgentSession`;
+  live `HarnessAgentSession`.
 - the framework owns sandbox acquisition and lifecycle, while the adapter owns
-  the native runtime and translation;
+  the native runtime and translation.
 - native history is authoritative, so only the newest user input crosses each
-  prompt turn instead of replaying the application's full message history;
+  prompt turn instead of replaying the application's full message history.
 - built-in runtime tools and host-executed AI SDK tools share typed tool shapes
-  but retain an execution-origin distinction;
-- lifecycle state separates between-turn resume from active-turn continuation;
+  but retain an execution-origin distinction.
+- lifecycle state separates between-turn resume from active-turn continuation.
 - bridge adapters support attach, cursor replay, disk replay, and finally lossy
-  rerun; and
+  rerun. And
 - workflow slices preserve a single UI message across function boundaries by
   suspending near the platform deadline and reopening active stream parts in
   the next slice. [schema] [source] [test]
@@ -68,28 +68,28 @@ lossless-versus-lossy recovery language. [source]
 
 The important boundaries are just as concrete:
 
-- built-in permissions default to `allow-all`; Codex supports no built-in
-  approval or filtering and therefore requires `allow-all`; [source]
+- built-in permissions default to `allow-all`. Codex supports no built-in
+  approval or filtering and therefore requires `allow-all`. [Source]
 - “runs in a sandbox” depends on the selected provider. Network policy is
   optional, `HarnessAgent` does not impose one, and `just-bash` is a JavaScript
-  virtual environment without network or kernel containment; [source]
+  virtual environment without network or kernel containment. [Source]
 - host-defined AI SDK tools execute in the host process. They receive a
   restricted sandbox handle, but their own implementation is trusted host
-  code; [source]
+  code. [Source]
 - Pi's agent runtime, credentials, model calls, session journal, and a scoped
   workspace mirror live in the host process even though its coding tools target
-  the sandbox; [source]
+  the sandbox. [Source]
 - bridge credentials are forwarded from the host into sandbox processes and a
-  256-bit bridge token travels in the WebSocket query string; [source]
+  256-bit bridge token travels in the WebSocket query string. [Source]
 - bridge replay is best-effort, per-turn, and only as durable as an append-only
-  sandbox file; corruption degrades to rerun; [source]
+  sandbox file. Corruption degrades to rerun. [Source]
 - lossy continuation may recompute in-flight work and therefore can repeat
-  side effects; [source]
+  side effects. [Source]
 - the snapshot identity truncates SHA-256 to 16 hex characters and marker
   presence, rather than a signed artifact manifest, establishes bootstrap
-  reuse; [source]
+  reuse. [Source]
 - `file-change` and compaction are projected as dynamic provider-executed tools
-  for UI compatibility, which is useful but semantically lossy; [source]
+  for UI compatibility, which is useful but semantically lossy. [Source]
 - the feature has changed rapidly since June 10, including fixes for relay
   authentication, approvals, path traversal and symlink escape, usage,
   step-ending, replay, OIDC, resume credentials, and long-turn timeouts.
@@ -98,7 +98,7 @@ The important boundaries are just as concrete:
 The central OpenAgents decision is: **adapt the separate harness plane,
 explicit session and continuation model, adapter/runtime boundary, sandbox
 provider interface, restricted tool surface, typed stream projection, and
-slice-aware recovery; reject permissive defaults, provider-optional
+slice-aware recovery. Reject permissive defaults, provider-optional
 containment, host tool execution as sandboxed execution, best-effort replay as
 exactly-once recovery, opaque resume state as a receipt, and UI-compatible
 projection as canonical execution truth.**
@@ -116,7 +116,7 @@ pull confirmed it already matched `origin/main`.
 | Commit subject       | `fix: correct misleading onToolCall return-value documentation (#17260)`              | Latest repository change              |
 | AI SDK version       | `ai@7.0.31`                                                                           | v7 release line                       |
 | Core harness version | `@ai-sdk/harness@1.0.36`                                                              | Experimental harness release          |
-| Adapter versions     | Claude `1.0.37`; Codex `1.0.38`; OpenCode `1.0.37`; Pi `1.0.36`; Deep Agents `1.0.35` | Independently released adapters       |
+| Adapter versions     | Claude `1.0.37`. Codex `1.0.38`. OpenCode `1.0.37`. Pi `1.0.36`. Deep Agents `1.0.35` | Independently released adapters       |
 | License              | Apache License 2.0                                                                    | Permissive source-study boundary      |
 | Repository scale     | 7,072 tracked files                                                                   | Overall monorepo scale                |
 | Harness corpus       | 307 tracked implementation, test, architecture, and documentation files               | Audited feature surface               |
@@ -133,12 +133,12 @@ five weeks old whose documentation explicitly warns of breaking changes.
 
 ### Evidence labels and limits
 
-- **`[source]`** — tracked implementation, documentation, or manifest;
-- **`[schema]`** — TypeScript, Zod, bridge, sandbox, lifecycle, or tool contract;
-- **`[test]`** — a tracked unit, type, integration, or end-to-end test;
-- **`[history]`** — Git history at or before the audited commit;
-- **`[target]`** — current OpenAgents source at the audited target revision;
-- **`[inferred]`** — reasoned from multiple observations; and
+- **`[source]`** — tracked implementation, documentation, or manifest.
+- **`[schema]`** — TypeScript, Zod, bridge, sandbox, lifecycle, or tool contract.
+- **`[test]`** — a tracked unit, type, integration, or end-to-end test.
+- **`[history]`** — Git history at or before the audited commit.
+- **`[target]`** — current OpenAgents source at the audited target revision.
+- **`[inferred]`** — reasoned from multiple observations. And
 - **`[limitation]`** — a source-only audit boundary.
 
 There are intentionally no `[runtime]` observations. Source cannot prove
@@ -194,7 +194,7 @@ native approvals and the adapter does not support them, the setup fails rather
 than pretending enforcement. [source]
 
 The prompt contract differs from model calls. A harness owns native history. A
-message array is reduced to the newest user message for a new turn; prior UI
+message array is reduced to the newest user message for a new turn. Prior UI
 history is not replayed. Instructions are prepended only to the first user
 input of a fresh session and not re-applied after resume. That creates two
 histories: opaque native state and projected application history. OpenAgents
@@ -204,7 +204,7 @@ should retain both with explicit lineage and loss accounting. [schema]
 
 `HarnessAgentSession` owns the adapter session, network sandbox session, and a
 bridge-port lease when sessions share a caller-owned sandbox. Its local states
-are active, detached, stopped, or destroyed; turn states are idle, running,
+are active, detached, stopped, or destroyed. Turn states are idle, running,
 awaiting approval, or suspended. A turn sequence prevents stale completion
 callbacks from changing the state of a newer turn. [source]
 
@@ -258,7 +258,7 @@ Bridge adapters declare a recipe with adapter ID, infrastructure directory,
 files, and sequential commands. The framework hashes recipe contents and a
 schema version, uses the first eight bytes of SHA-256 as a 16-character
 identity, and writes `.bootstrap-<identity>.ok` after success. Consumer
-`onBootstrap` requires an explicit `bootstrapHash`; `onSession` runs after each
+`onBootstrap` requires an explicit `bootstrapHash`. `onSession` runs after each
 fresh or resumed acquisition. Infrastructure belongs outside the user's work
 directory. [source]
 
@@ -314,9 +314,9 @@ discarded and recovery falls back to rerun. [source]
 
 Recovery therefore has four levels:
 
-1. **attach** to the same live bridge and replay after the cursor;
-2. **disk replay** from the persisted event tail;
-3. **rerun** by resuming native thread state and re-driving work; or
+1. **attach** to the same live bridge and replay after the cursor.
+2. **disk replay** from the persisted event tail.
+3. **rerun** by resuming native thread state and re-driving work. Or
 4. failure when insufficient state remains.
 
 `SandboxChannel.suspend()` freezes dispatch, drains queued frames, closes the
@@ -331,16 +331,16 @@ decision before re-driving privileged work. [source] [test] [inferred]
 Pi runs as a host library, not an in-sandbox bridge. Auth, model registry,
 settings, and journals live under a temporary host root. A process-global VFS
 maps the sandbox work path to a scoped host mirror so Pi can discover `.pi`,
-`.agents`, and `AGENTS.md`; the full tree is not mirrored. File, search, edit,
+`.agents`, and `AGENTS.md`. The full tree is not mirrored. File, search, edit,
 and bash tools are reimplemented against the restricted sandbox with path
 mapping and realpath checks. [source]
 
 Recent history is material: path traversal was fixed June 26 and the audited
 tip contains a July 17 symlink-escape fix. Same-process approval pauses can park
-a live Pi session in a module-global map; cross-process continuation persists a
+a live Pi session in a module-global map. Cross-process continuation persists a
 journal to the sandbox and reruns the in-flight tail. [history] [source]
 
-Thus “operates in a sandbox” means Pi's workspace effects target the sandbox;
+Thus “operates in a sandbox” means Pi's workspace effects target the sandbox.
 the runtime and model call remain on the host. Security claims should say so.
 [inferred]
 
@@ -373,7 +373,7 @@ approvals, step finish, turn finish, usage, and errors. Harness additions are
 native tool name, opaque file changes, compaction, warnings, and metadata.
 `runPrompt` validates calls, executes host tools, coordinates approvals, strips
 work-directory prefixes from display paths, builds telemetry, and fills a
-custom `StreamTextResult`; `generate()` drains the same machinery. [schema]
+custom `StreamTextResult`. `generate()` drains the same machinery. [schema]
 
 File changes and compaction lack native UI parts, so translation emits dynamic,
 provider-executed tool parts. That is effective compatibility but a lossy
@@ -384,14 +384,14 @@ cause, authorization, or durable receipt. [source] [inferred]
 
 | Adapter     | Placement      | Native state                     | Approval/filtering          | Continuation notes                                       |
 | ----------- | -------------- | -------------------------------- | --------------------------- | -------------------------------------------------------- |
-| Claude Code | sandbox bridge | Claude SDK conversation/workdir  | both supported              | attach/replay then SDK continue; manual compaction       |
-| Codex       | sandbox bridge | Codex thread ID/workdir          | neither for built-ins       | thread resume/rerun; automatic compaction only           |
-| OpenCode    | sandbox bridge | OpenCode session ID/server       | approvals; denial filtering | attach/replay or session resume                          |
-| Deep Agents | sandbox bridge | live LangGraph `MemorySaver`     | approvals; denial filtering | stopped conversation cannot resume; no manual compaction |
-| Pi          | host process   | host journal + sandbox workspace | both supported              | same-process park; cross-process journal rerun           |
+| Claude Code | sandbox bridge | Claude SDK conversation/workdir  | both supported              | attach/replay then SDK continue. Manual compaction       |
+| Codex       | sandbox bridge | Codex thread ID/workdir          | neither for built-ins       | thread resume/rerun. Automatic compaction only           |
+| OpenCode    | sandbox bridge | OpenCode session ID/server       | approvals. Denial filtering | attach/replay or session resume                          |
+| Deep Agents | sandbox bridge | live LangGraph `MemorySaver`     | approvals. Denial filtering | stopped conversation cannot resume. No manual compaction |
+| Pi          | host process   | host journal + sandbox workspace | both supported              | same-process park. Cross-process journal rerun           |
 
 All five accept custom host tools and skills. Uniform APIs do not imply uniform
-guarantees; every run should retain adapter, version, placement, approval,
+guarantees. Every run should retain adapter, version, placement, approval,
 filtering, compaction, stop/resume, and continuation-loss facts. [source]
 
 ## 13. Workflow slices fit long turns into serverless execution
@@ -440,12 +440,12 @@ OpenAgents already has two target-native sandbox-provider implementations:
   scopes paths to a temporary workspace, supplies explicit account homes, and
   disclaims kernel, network, and multi-tenant containment.
 - `@openagentsinc/ai-sdk-sandbox-openagents` delegates lifecycle, files,
-  processes, ports, and egress to `openagents.sandbox.v1`; requires explicit
-  account homes; binds snapshot identity to base image, repo, toolchain, agent
-  setup, profile, lockfiles, and bridge recipe; scopes paths to the workspace;
+  processes, ports, and egress to `openagents.sandbox.v1`. Requires explicit
+  account homes. Binds snapshot identity to base image, repo, toolchain, agent
+  setup, profile, lockfiles, and bridge recipe. Scopes paths to the workspace.
   and rejects missing or allow-all egress in public/untrusted lanes. [target]
 
-Both are pinned to `@ai-sdk/harness@1.0.18`; audited upstream is `1.0.36`.
+Both are pinned to `@ai-sdk/harness@1.0.18`. Audited upstream is `1.0.36`.
 Intervening history includes filtering, replay, approval, CLI relay, resume
 credential, error, finish-step, and Pi symlink hardening. Interface compatibility
 does not prove semantic compatibility across that gap. [history] [target]
@@ -460,7 +460,7 @@ denials, and exercise attach/replay/rerun and approval continuation. [inferred]
 | Mechanism                             | Stance                         | OpenAgents-native interpretation                                                          |
 | ------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
 | Provider/harness separation           | Adapt                          | Distinct model and runtime identity, version, policy, events, and receipts                |
-| Stateless agent plus explicit session | Adapt                          | One engine definition; explicit work/session handle per conversation                      |
+| Stateless agent plus explicit session | Adapt                          | One engine definition. Explicit work/session handle per conversation                      |
 | `HarnessV1` adapter seam              | Adapt with stronger boundaries | Version negotiation, native event retention, declared loss and capabilities               |
 | Sandbox provider/session split        | Adapt                          | Thin adapter over authoritative workroom lifecycle and isolation                          |
 | Restricted tool view                  | Adapt with stronger boundaries | Object attenuation plus path, process, network, secret, quota, and target policy          |
@@ -475,15 +475,15 @@ denials, and exercise attach/replay/rerun and approval continuation. [inferred]
 | Host tools described as sandboxed     | Reject                         | Trusted host code or execution moved into admitted isolated workload                      |
 | Best-effort NDJSON replay             | Reject as durability           | Transactional canonical event log and receipted cursor                                    |
 | Opaque resume state                   | Reject as proof                | Resume handle plus admission, identity, effects, recovery, and outcome receipts           |
-| Dynamic tool projection               | Reject as canonical fact       | UI compatibility only; exact file/diff/compaction lineage remains authoritative elsewhere |
+| Dynamic tool projection               | Reject as canonical fact       | UI compatibility only. Exact file/diff/compaction lineage remains authoritative elsewhere |
 
 ## 17. Recommended follow-up
 
-1. Pin exact source and package tarballs for `1.0.18` and `1.0.36`; produce a
+1. Pin exact source and package tarballs for `1.0.18` and `1.0.36`. Produce a
    spec, lifecycle, and behavior compatibility matrix.
 2. Upgrade OpenAgents adapters only under a separately admitted packet with
    exact package digests and generated contract tests.
-3. Exercise all five adapters independently; do not generalize one adapter's
+3. Exercise all five adapters independently. Do not generalize one adapter's
    approval, compaction, or recovery proof.
 4. Require public/untrusted egress policy below the adapter and verify bridge
    ingress is private, authenticated, short-lived, and redacted.
@@ -526,11 +526,11 @@ capabilities, isolation, leases, fences, canonical events, and receipts.
 
 Primary evidence included:
 
-- `architecture/harness-abstraction.md` and `architecture/sandbox-abstraction.md`;
+- `architecture/harness-abstraction.md` and `architecture/sandbox-abstraction.md`.
 - `packages/harness/src/v1`, agent/session, bridge, `SandboxChannel`, stream
-  projection, bootstrap, validation, telemetry, diagnostics, and tests;
-- the Claude Code, Codex, OpenCode, Deep Agents, and Pi harness packages;
-- Vercel and Just Bash sandbox packages, workflow harness, and TUI;
-- `content/docs/03-ai-sdk-harnesses` and provider adapter documentation;
-- harness examples for functions, Next.js, workflows, and TUI; and
+  projection, bootstrap, validation, telemetry, diagnostics, and tests.
+- the Claude Code, Codex, OpenCode, Deep Agents, and Pi harness packages.
+- Vercel and Just Bash sandbox packages, workflow harness, and TUI.
+- `content/docs/03-ai-sdk-harnesses` and provider adapter documentation.
+- harness examples for functions, Next.js, workflows, and TUI. And
 - Git history through `6cd7c74acf0d7ec84dd58a841fc0e20970d6f2e8`.

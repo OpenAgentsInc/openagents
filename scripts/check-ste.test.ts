@@ -15,6 +15,7 @@ import {
   type CheckerConfig,
 } from "./ste-core";
 import { rewriteSteSemicolons } from "./rewrite-ste-structure";
+import { rewriteSteHardForms } from "./rewrite-ste-hard-forms";
 
 const config: CheckerConfig = {
   policyRevision: "test",
@@ -202,5 +203,11 @@ describe("STE structural rewrite", () => {
         "```",
       ].join("\n"),
     );
+  });
+
+  test("replaces hard prose forms and keeps inline code", () => {
+    expect(
+      rewriteSteHardForms("It isn't authorised; use `it isn't authorised;`.\n", "descriptive"),
+    ).toBe("It is not authorized. Use `it isn't authorised;`.\n");
   });
 });

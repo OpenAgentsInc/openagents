@@ -45,13 +45,13 @@ This prevents paid retries from replacing the agent identity token.
 
 The parser returns typed states for:
 
-- missing payment header;
-- bearer auth without payment proof;
-- `X-OpenAgents-L402` payment proof with optional bearer auth;
-- standard L402 authorization;
-- legacy LSAT authorization;
-- unsupported authorization scheme;
-- malformed payment credential/proof pair;
+- missing payment header.
+- bearer auth without payment proof.
+- `X-OpenAgents-L402` payment proof with optional bearer auth.
+- standard L402 authorization.
+- legacy LSAT authorization.
+- unsupported authorization scheme.
+- malformed payment credential/proof pair.
 - collision between non-bearer `Authorization` payment material and
   `X-OpenAgents-L402`.
 
@@ -63,7 +63,7 @@ ambiguously present two payment credentials.
 
 Parse results can carry the raw L402 credential because verifier code needs it.
 Public projections never include that credential. Public projections also hide
-the proof ref; agent, customer, and operator projections can include the proof
+the proof ref. Agent, customer, and operator projections can include the proof
 ref because it is a redacted ref, not raw payment material.
 
 The projection helper rejects secret-shaped values and is covered by regression

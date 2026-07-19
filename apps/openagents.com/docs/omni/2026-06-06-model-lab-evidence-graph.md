@@ -19,14 +19,14 @@ Implementation:
 
 The graph record carries:
 
-- graph and loop refs;
+- graph and loop refs.
 - typed nodes for retained failures, candidates, training runs, model
-  artifacts, eval reruns, adapter validations, and promotion gates;
+  artifacts, eval reruns, adapter validations, and promotion gates.
 - typed edges such as `derived_from`, `produced`, `evaluated_by`,
-  `validated_by`, `gated_by`, and `supersedes`;
-- stale evidence refs and caveats;
-- blocker refs;
-- rollback posture, rollback refs, and prior node refs; and
+  `validated_by`, `gated_by`, and `supersedes`.
+- stale evidence refs and caveats.
+- blocker refs.
+- rollback posture, rollback refs, and prior node refs. And
 - read-only authority.
 
 Projection timestamps use friendly labels and do not expose raw ISO strings.
@@ -35,31 +35,31 @@ Projection timestamps use friendly labels and do not expose raw ISO strings.
 
 The graph requires:
 
-- at least one node of each core kind;
-- edges that reference nodes in the same graph;
-- every node to link to the graph loop ref;
-- no duplicate node or edge refs;
-- no self-loop or directed cycle;
-- one connected graph;
-- stale caveats when graph-level stale evidence exists;
-- stale evidence refs for stale nodes;
-- caveat refs for blocked nodes;
-- edge and node evidence refs; and
+- at least one node of each core kind.
+- edges that reference nodes in the same graph.
+- every node to link to the graph loop ref.
+- no duplicate node or edge refs.
+- no self-loop or directed cycle.
+- one connected graph.
+- stale caveats when graph-level stale evidence exists.
+- stale evidence refs for stale nodes.
+- caveat refs for blocked nodes.
+- edge and node evidence refs. And
 - ready or verified rollback posture when the graph has promotion-gate edges.
 
 ## Authority Boundaries
 
 Evidence graphs cannot:
 
-- execute evals;
-- launch training;
-- call providers;
-- install adapters;
-- spend money;
-- promote runtime behavior;
-- mutate routing;
-- mutate payouts;
-- mutate settlement; or
+- execute evals.
+- launch training.
+- call providers.
+- install adapters.
+- spend money.
+- promote runtime behavior.
+- mutate routing.
+- mutate payouts.
+- mutate settlement. Or
 - upgrade public claims.
 
 Any execution, promotion, payment, or settlement action must happen through a
@@ -69,10 +69,10 @@ separate server-authoritative workflow with explicit receipts.
 
 Supported audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public/customer/agent projections redact private node, edge, graph, loop,
@@ -86,11 +86,11 @@ timestamps.
 
 Coverage includes:
 
-- connected graph projection;
-- same-loop node validation;
-- missing-node, duplicate, cycle, and disconnected graph rejection;
-- stale evidence caveats;
-- rollback posture requirements;
-- public redaction; and
+- connected graph projection.
+- same-loop node validation.
+- missing-node, duplicate, cycle, and disconnected graph rejection.
+- stale evidence caveats.
+- rollback posture requirements.
+- public redaction. And
 - hard false eval, training, provider, adapter, payment, runtime-promotion,
   routing, payout, settlement, and public-claim mutation authority.

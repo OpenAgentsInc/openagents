@@ -5,7 +5,7 @@ described in `docs/2026-06-10-always-on-fleet-plan.md`.
 
 For Khala Code mobile-only MVP Agent Computers, use
 `apps/pylon/deploy/agent-computer/` instead. Agent Computers are isolated
-Firecracker microVMs on OpenAgents-owned GCE capacity; the Pylon runtime is only
+Firecracker microVMs on OpenAgents-owned GCE capacity. The Pylon runtime is only
 software inside the image, not the provisioned or billed unit.
 
 The script creates or starts a Google Compute Engine VM, copies a local env file
@@ -50,7 +50,7 @@ apps/pylon/deploy/gcloud/setup-pylon.sh \
 
 The default network posture is IAP-only: `--no-address` is used unless
 `--with-address` is passed. The OpenAgents project default subnet is
-`oa-lightning-us-central1`; pass `--subnet ""` only if you intentionally want
+`oa-lightning-us-central1`. Pass `--subnet ""` only if you intentionally want
 the project default network.
 
 When `~/.ssh/google_compute_engine` exists, the script passes it to
@@ -187,7 +187,7 @@ Expected: the copied account reports `readiness.state: "ready"`, the service is
 active, and the supervisor log under
 `/var/lib/openagents-pylon/.codex-supervisor/supervisor.log` shows heartbeat
 lines. Repeat the same shape for `oa-codex-codex-2`, `oa-codex-codex-3`, etc.
-Use distinct underlying ChatGPT/Codex accounts for real throughput; aliases of
+Use distinct underlying ChatGPT/Codex accounts for real throughput. Aliases of
 one account may share a rate budget.
 
 Safety boundaries:
@@ -225,10 +225,10 @@ pylon khala request \
 Expected result: a non-zero exit with JSON containing
 `target_pylon_not_authorized` (or the server's equivalent not-linked target
 reason) and no `assignmentRef`. Running the same command locally with the same
-token should produce the same authorization result; origin/IP is not authority.
+token should produce the same authorization result. Origin/IP is not authority.
 
 For an owner-approved positive smoke, replace `--pylon-ref` with a real
 caller-owned, heartbeat-fresh Codex Pylon. The successful response should include
-`assignmentRef`, `durableRequestId`, and `durableStreamUrl`; the assignment still
+`assignmentRef`, `durableRequestId`, and `durableStreamUrl`. The assignment still
 stays on the Khala coding `unpaid_smoke` path unless a separate paid-capacity
 change explicitly arms spend.

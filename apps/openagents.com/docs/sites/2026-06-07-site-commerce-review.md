@@ -29,23 +29,23 @@ source.
 
 The projection includes:
 
-- checkout products and paid actions from the Site payment catalog;
+- checkout products and paid actions from the Site payment catalog.
 - catalog refs, product/action refs, checkout paths, prices, and denomination
-  refs;
-- customer-data requirement refs and label refs, not customer values;
-- entitlement scope and spend-cap hint refs;
-- sandbox or live-provider candidate classification;
+  refs.
+- customer-data requirement refs and label refs, not customer values.
+- entitlement scope and spend-cap hint refs.
+- sandbox or live-provider candidate classification.
 - source-safe checkout UI primitive refs derived from the generated-source
-  primitive contract;
+  primitive contract.
 - current review state: needs review, accepted, held, rejected, or needs
   customer input.
 
 The projection also states that review decisions do not create:
 
-- payment authority;
-- payout authority;
-- settlement claims;
-- access changes;
+- payment authority.
+- payout authority.
+- settlement claims.
+- access changes.
 - deployment authority.
 
 ## Decision Writes
@@ -62,15 +62,15 @@ Operators can record a decision for one catalog item with:
 
 Supported decision states are:
 
-- `accepted`;
-- `held`;
-- `rejected`;
+- `accepted`.
+- `held`.
+- `rejected`.
 - `needs_customer_input`.
 
 The decision route requires:
 
-- OpenAgents admin API token;
-- `Idempotency-Key`;
+- OpenAgents admin API token.
+- `Idempotency-Key`.
 - an existing catalog item for the target Site.
 
 The decision is persisted in `site_commerce_review_decisions`. Replays with the
@@ -83,12 +83,12 @@ Generated Site source must continue to call OpenAgents product surface-hosted pa
 such as checkout intent, L402 challenge, and checkout return routes. It must
 not embed:
 
-- MDK access tokens;
-- wallet mnemonics or wallet state;
-- raw invoices, payment hashes, or preimages;
-- provider grants;
-- customer private values;
-- checkout query state;
+- MDK access tokens.
+- wallet mnemonics or wallet state.
+- raw invoices, payment hashes, or preimages.
+- provider grants.
+- customer private values.
+- checkout query state.
 - payout targets or Treasury material.
 
 The review projection rejects unsafe refs and omits raw timestamps from

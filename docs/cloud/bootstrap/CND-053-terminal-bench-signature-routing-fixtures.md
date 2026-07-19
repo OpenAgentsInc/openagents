@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -31,13 +31,13 @@ runners/py-bench-runner/fixtures/signature-routing/
 
 Each JSON file is a normalized `BenchmarkTask` with public-safe metadata:
 
-- Terminal-Bench task id;
-- retained failure family;
-- source document and preserved-run reference;
-- task checksum from the measured SHC run;
-- raw Codex reward/verifier summary from the committed report;
-- expected Probe signature ids;
-- candidate and forbidden signature ids;
+- Terminal-Bench task id.
+- retained failure family.
+- source document and preserved-run reference.
+- task checksum from the measured SHC run.
+- raw Codex reward/verifier summary from the committed report.
+- expected Probe signature ids.
+- candidate and forbidden signature ids.
 - required evidence and closeout artifacts.
 
 ## Covered Families
@@ -114,11 +114,11 @@ for the prompt/playbook layer.
 
 The tests cover:
 
-- all retained failure families have at least one fixture;
-- the expected signature is selected for `probe-codex`;
-- forbidden signatures are not selected;
+- all retained failure families have at least one fixture.
+- the expected signature is selected for `probe-codex`.
+- forbidden signatures are not selected.
 - raw Codex and Probe+Codex dry-run artifacts are comparable for the same
-  service-readiness fixture;
+  service-readiness fixture.
 - the Probe prompt addendum carries selected signature evidence without auth
   material.
 - the retained fixture evaluator shows Probe+Codex selected-signature expected
@@ -150,7 +150,7 @@ The `db-wal-recovery` fixture now has a complete account-backed learning loop on
 | Run | Auth | Signature package | Reward | Notes |
 | --- | --- | --- | ---: | --- |
 | `/home/ubuntu/oa-bench-runs/shc-probe-codex-tb2-validpackage-chatgpt-20260601/` | ChatGPT `auth.json` through `CODEX_AUTH_JSON_PATH` | `coding.sqlite_wal_recovery` loaded | `0.0` | Codex opened SQLite before copying the WAL, and SQLite removed the unreadable sidecar. |
-| `/home/ubuntu/oa-bench-runs/shc-probe-codex-tb2-validpackage-v2-chatgpt-20260601/` | ChatGPT `auth.json` through `CODEX_AUTH_JSON_PATH` | revised `coding.sqlite_wal_recovery` loaded | `1.0` | The package required DB/WAL/SHM copy-before-open; verifier passed `7/7`. |
+| `/home/ubuntu/oa-bench-runs/shc-probe-codex-tb2-validpackage-v2-chatgpt-20260601/` | ChatGPT `auth.json` through `CODEX_AUTH_JSON_PATH` | revised `coding.sqlite_wal_recovery` loaded | `1.0` | The package required DB/WAL/SHM copy-before-open. Verifier passed `7/7`. |
 
 Preserved tarballs:
 

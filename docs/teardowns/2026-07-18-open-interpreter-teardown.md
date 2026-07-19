@@ -49,7 +49,7 @@ example: real Codex or Claude Code             example: Kimi-shaped OpenAgents t
 Open Interpreter's strongest reusable ideas are:
 
 1. **Harness is a first-class axis beside provider and model.** A model family
-   can perform materially differently under a matching prompt/tool dialect;
+   can perform materially differently under a matching prompt/tool dialect.
    provider transport does not fully determine agent behavior. [source]
 2. **One explicit request-routing seam.** Chat harnesses converge in
    `harness/request.rs`, which builds the request, declares the tool-output
@@ -77,28 +77,28 @@ The source also exposes the exact failure modes OpenAgents should design out:
 
 - the core enum, TUI picker, app-server catalog, README, and harness guide are
   separate catalogs and already disagree about which harnesses exist and which
-  wire protocols they support; [source]
+  wire protocols they support. [Source]
 - the standalone TUI picker can persist harnesses incompatible with the active
   wire route, while Responses and generic Chat routing can silently fall back
-  to native/generic behavior rather than fail; [source] [inferred]
+  to native/generic behavior rather than fail. [Source] [inferred]
 - `interpreter/harness/set` accepts any string and does not validate existence,
-  compatibility, version, or semantic degradation; [schema]
+  compatibility, version, or semantic degradation. [Schema]
 - provider/model recommendation is hard-coded substring matching over IDs,
-  names, model strings, and base URLs; [source]
+  names, model strings, and base URLs. [Source]
 - the public harness DTO contains only ID, label, description, and
-  `isRecommended`; it does not expose implementation version, source,
+  `isRecommended`. It does not expose implementation version, source,
   transport matrix, capabilities, tool dialect, recovery class, fidelity,
-  known losses, or test evidence; [schema]
+  known losses, or test evidence. [Schema]
 - high-fidelity emulation embeds and maintains large foreign prompt/tool
   surfaces inside a close Codex fork, creating substantial synchronization,
-  attribution, evaluation, and drift burden; [source] [history] [inferred]
+  attribution, evaluation, and drift burden. [Source] [history] [inferred]
 - the bundled QA skill installs `agent-browser` from a moving `latest` release
-  and executes `cua-driver` installers fetched from an unpinned `main` URL;
+  and executes `cua-driver` installers fetched from an unpinned `main` URL.
   normal command approval helps, but this is not reproducible component
-  admission or computer-use containment; [source]
+  admission or computer-use containment. [Source]
 - release archives are SHA-256 checked, but the audited release workflow and
   installers expose no independent artifact signature, provenance statement,
-  or platform-signing/notarization gate; and the documented first install is a
+  or platform-signing/notarization gate. And the documented first install is a
   remote script pipe. [source] [limitation]
 
 The central OpenAgents decision is therefore:
@@ -109,7 +109,7 @@ The central OpenAgents decision is therefore:
 > thread starts, bind the exact effective policy and translator generations to
 > the run receipt, retain native and portable event planes with explicit loss
 > accounting, and fail closed rather than silently becoming “native.” Consume
-> Open Interpreter itself only as an optional pinned external runtime adapter;
+> Open Interpreter itself only as an optional pinned external runtime adapter.
 > do not import its fork or copy its foreign prompts wholesale.**
 
 ## Evidence status and audit boundary
@@ -143,13 +143,13 @@ run the release artifacts. [limitation]
 Evidence labels used below:
 
 - **`[source]`** — tracked implementation, documentation, manifest, prompt, or
-  workflow at the pinned commit;
+  workflow at the pinned commit.
 - **`[schema]`** — a typed Rust, JSON-RPC, config, tool, provider, or transport
-  contract;
-- **`[test]`** — a tracked executable test or snapshot assertion;
-- **`[history]`** — Git history at or before the pinned commit;
-- **`[target]`** — current OpenAgents source in the audited target checkout;
-- **`[inferred]`** — reasoned from multiple source observations; and
+  contract.
+- **`[test]`** — a tracked executable test or snapshot assertion.
+- **`[history]`** — Git history at or before the pinned commit.
+- **`[target]`** — current OpenAgents source in the audited target checkout.
+- **`[inferred]`** — reasoned from multiple source observations. And
 - **`[limitation]`** — something the source-only audit cannot prove.
 
 There are intentionally no `[runtime]` claims.
@@ -161,7 +161,7 @@ tree. The repository retains the Codex CLI, TUI, app-server, app-server daemon,
 exec protocol, generated app-server schemas, sandbox implementations, MCP,
 plugins, skills, hooks, memory, subagents, remote control, SQLite state, JSONL
 rollouts, code mode, model manager, telemetry, and release machinery. Product
-identity is selected in `product-info`; the binary name and home directory
+identity is selected in `product-info`. The binary name and home directory
 change, while the underlying architecture remains recognizably Codex. [source]
 
 The repository history makes the maintenance strategy unusually visible. It
@@ -176,7 +176,7 @@ already mature cross-platform agent engine and spends its differentiating work
 on provider and harness behavior. It is also an expensive long-term topology:
 every Codex change can conflict with product identity, models, config,
 sandboxing, TUI snapshots, generated protocols, prompts, tools, and release
-artifacts. The fork has almost one hundred Rust workspace members; harness
+artifacts. The fork has almost one hundred Rust workspace members. Harness
 emulation is a relatively small conceptual layer embedded in a very large
 moving engine. [source] [inferred]
 
@@ -216,16 +216,16 @@ But the implementation partly collapses recommendation back into string
 identity. `default_harness_for_provider_model` lowercases and scans provider
 ID, display name, base URL, and model string:
 
-- Messages/Anthropic/Claude → `claude-code`;
-- Kimi/Moonshot → `kimi-code`;
-- Qwen/QwQ/DashScope → `qwen-code`;
+- Messages/Anthropic/Claude → `claude-code`.
+- Kimi/Moonshot → `kimi-code`.
+- Qwen/QwQ/DashScope → `qwen-code`.
 - DeepSeek → `claude-code-bare`, explicitly because product evaluation says it
   performs better than the available DeepSeek TUI emulation. [source]
 
 This is acceptable as a UI recommendation heuristic, but unsafe as admission
 or effective selection. Strings do not prove protocol support, tool-call
 fidelity, model version, context size, or evaluated quality. A custom endpoint
-can contain a family name without implementing its behavior; a newly renamed
+can contain a family name without implementing its behavior. A newly renamed
 model can miss the heuristic. OpenAgents' semantic-routing invariant also
 forbids ad hoc keyword selection for user-facing routing. Recommendations must
 come from a typed compatibility/evaluation registry or semantic selector, and
@@ -269,12 +269,12 @@ retained even when no implementation ran. [source]
 
 `harness/routing.rs` separates transport from shaping:
 
-- native Responses uses the normal Responses client;
-- native Chat uses the generic Chat compatibility layer;
-- Claude full/bare can shape Responses, Chat, or Messages;
-- ZCode has a Messages-native builder;
-- eleven named chat harnesses use the chat request compiler;
-- Messages rejects every unsupported named harness explicitly;
+- native Responses uses the normal Responses client.
+- native Chat uses the generic Chat compatibility layer.
+- Claude full/bare can shape Responses, Chat, or Messages.
+- ZCode has a Messages-native builder.
+- eleven named chat harnesses use the chat request compiler.
+- Messages rejects every unsupported named harness explicitly.
 - WebSocket Responses is permitted only for the native Responses route.
   [source]
 
@@ -294,15 +294,15 @@ model client and chat harness emulation. `ChatHarnessTurn` carries the native
 prompt, harness choice, optional Open Interpreter guidance, model info,
 reasoning effort, thread ID, and session source. The builder returns:
 
-- a complete JSON request body;
+- a complete JSON request body.
 - `ToolKinds`, which tells the compatibility decoder how each foreign tool
-  result is represented;
-- an optional separate title-generation request; and
+  result is represented.
+- an optional separate title-generation request. And
 - a response postprocessor. [schema]
 
 Postprocessors are not cosmetic. mini-SWE-agent injects a format error when a
-model fails to emit the expected tool call; SWE-agent parses action-shaped
-assistant output into calls; Terminus 2 does similar action injection with a
+model fails to emit the expected tool call. SWE-agent parses action-shaped
+assistant output into calls. Terminus 2 does similar action injection with a
 pending-completion state. OpenCode may issue a separate title request. Other
 harnesses use provider-native function calls after request shaping. [source]
 
@@ -318,22 +318,22 @@ The emulations do much more than rename tools:
 
 - Claude includes a large Claude Code-style system prompt, full and bare tool
   profiles, session skills, startup context, todo reminders, subagent surfaces,
-  title generation, thinking/context options, and transport headers;
+  title generation, thinking/context options, and transport headers.
 - ZCode includes its own prompt, tools JSON, skills, todo and plan behavior,
-  session-context reader, subagents, compaction request, and reminders;
+  session-context reader, subagents, compaction request, and reminders.
 - current Kimi Code includes an embedded system prompt and tools JSON, runtime
   date/OS/cwd context, Open Interpreter skill injection, auto-permission
   reminders, prompt-cache keys, thinking options, image/video representation,
-  and new cron tools;
+  and new cron tools.
 - legacy Kimi CLI reconstructs AGENTS.md and skill context, background-task
-  tools, media, web, planning, and reasoning configuration;
+  tools, media, web, planning, and reasoning configuration.
 - DeepSeek TUI constructs repository context, active paths, generated project
   instructions, mode/personality prompts, checklists, diagnostics, Git and
-  broad tool-search surfaces;
+  broad tool-search surfaces.
 - Qwen adds a synthetic setup exchange with date, OS, working directory, and a
-  small folder listing;
+  small folder listing.
 - SWE-agent and Terminus 2 replace ordinary function-tool flow with parsed
-  action protocols; and
+  action protocols. And
 - `minimal` intentionally reduces the surface to a compact software-agent
   prompt and chat tools. [source]
 
@@ -384,8 +384,8 @@ compatibility are repeated:
 | --- | --- |
 | Core `Harness` enum | native plus fourteen named emulations |
 | Route resolver | knows all implemented transport routes |
-| TUI picker | lists eleven named emulations; omits `zcode`, `little-coder`, and `pi` |
-| App-server catalog | lists thirteen named emulations; omits `zcode`; marks Claude full/bare as Messages-only |
+| TUI picker | lists eleven named emulations. Omits `zcode`, `little-coder`, and `pi` |
+| App-server catalog | lists thirteen named emulations. Omits `zcode`. Marks Claude full/bare as Messages-only |
 | README | lists nine named examples and includes `zcode` |
 | Harness guide | documents a subset and says Claude supports all three wires |
 | `interpreter/harness/set` | accepts any optional string with no catalog or compatibility check |
@@ -397,7 +397,7 @@ restricts Responses to native and Messages to Claude, but the standalone
 `/harness` picker deliberately asks for all entries regardless of the active
 wire. The setter then persists the choice and starts a new chat. [source]
 
-This is not an incidental documentation bug; it is an architectural warning.
+This is not an incidental documentation bug. It is an architectural warning.
 Any feature with identity, compatibility, UI choice, API choice, routing, and
 test behavior must generate all projections from one manifest. OpenAgents'
 existing exhaustive enum classifications and ACP peer-profile parser are the
@@ -446,13 +446,13 @@ change takes effect. [schema] [inferred]
 
 OpenAgents should distinguish these commands:
 
-- **set future default** — changes profile policy only;
+- **set future default** — changes profile policy only.
 - **start thread with policy** — validates and binds one effective immutable
-  policy generation;
+  policy generation.
 - **fork thread under a different policy** — retains source lineage and emits
-  a loss/migration report;
-- **change current thread policy** — normally refused; if supported, requires a
-  safe boundary, explicit context recompilation, and a new turn generation;
+  a loss/migration report.
+- **change current thread policy** — normally refused. If supported, requires a
+  safe boundary, explicit context recompilation, and a new turn generation.
 - **recommend policy** — advisory only, with evidence and no side effect.
 
 Every run/turn receipt should contain both requested and effective harness
@@ -462,15 +462,15 @@ policy. A hidden recommendation or fallback is not acceptable. [inferred]
 
 Open Interpreter inherits a mature “one engine, many hosts” surface:
 
-- interactive TUI with `/model`, `/harness`, `/permissions`, and config tools;
-- `interpreter exec` for one-shot/headless work;
-- Codex SDK compatibility by setting `codexPathOverride: "interpreter"`;
-- Python clients launching `interpreter app-server` instead of Codex;
+- interactive TUI with `/model`, `/harness`, `/permissions`, and config tools.
+- `interpreter exec` for one-shot/headless work.
+- Codex SDK compatibility by setting `codexPathOverride: "interpreter"`.
+- Python clients launching `interpreter app-server` instead of Codex.
 - an app-server with the normal Codex contract plus typed
   `interpreter/provider/*`, `interpreter/model/*`, and
-  `interpreter/harness/*` methods;
+  `interpreter/harness/*` methods.
 - `interpreter acp` over stdio for Zed, JetBrains, and community VS Code ACP
-  clients; and
+  clients. And
 - an MCP server when another agent should invoke Open Interpreter as a tool.
   [source] [schema]
 
@@ -499,10 +499,10 @@ For OpenAgents, this creates two plausible integration paths:
 
 The ACP path is smaller and more portable. The app-server path exposes richer
 Codex-native thread and item events. Neither path licenses Open Interpreter to
-become canonical OpenAgents thread, authority, receipt, or Sync state; it is a
+become canonical OpenAgents thread, authority, receipt, or Sync state. It is a
 provider lane with exact adapter and policy identity. [target] [inferred]
 
-## 7. Provider catalog generation is good; recommendation ownership is not
+## 7. Provider catalog generation is good. Recommendation ownership is not
 
 Open Interpreter does not manually maintain every hosted model list. A Python
 generator consumes `models.dev/api.json`, restricts inclusion to supported AI
@@ -535,9 +535,9 @@ test. [target]
 
 The harness layer does not create a separate sandbox. All foreign tools execute
 through the inherited Codex sandbox and permission machinery. The docs expose
-read-only, workspace-write, and danger-full-access modes; on-request,
-untrusted, and never approval policies; Seatbelt on macOS; bubblewrap/seccomp
-and related enforcement on Linux/WSL; and native Windows enforcement where
+read-only, workspace-write, and danger-full-access modes. On-request,
+untrusted, and never approval policies. Seatbelt on macOS. Bubblewrap/seccomp
+and related enforcement on Linux/WSL. And native Windows enforcement where
 configured. They state that unrepresentable policy should fail closed.
 [source]
 
@@ -564,24 +564,24 @@ widen authority. [target]
 The README says Open Interpreter ships computer use through a QA skill. The
 skill itself instructs the model to:
 
-- test web apps with `agent-browser`;
-- test native apps with `cua-driver`;
+- test web apps with `agent-browser`.
+- test native apps with `cua-driver`.
 - install missing tools only after a network check and through the normal
-  command-approval flow;
-- snapshot before and after actions; and
+  command-approval flow.
+- snapshot before and after actions. And
 - confirm consequential purchases, messages, submissions, and deletions.
   [source]
 
 The behavior guidance is good. “A command reported success” is explicitly not
-accepted as proof; visible post-state must change. That is a useful acceptance
+accepted as proof. Visible post-state must change. That is a useful acceptance
 oracle for OpenAgents' UI automation. [source]
 
 The component path is not acceptable as a production supply-chain design:
 
-- macOS/Linux `agent-browser` downloads from GitHub `releases/latest`;
-- Windows installs the latest global npm package;
+- macOS/Linux `agent-browser` downloads from GitHub `releases/latest`.
+- Windows installs the latest global npm package.
 - `cua-driver` executes an install script fetched from the Cua repository's
-  mutable `main` branch; and
+  mutable `main` branch. And
 - no content digest, publisher signature, compatibility generation, retained
   rollback slot, or install receipt is bound before execution. [source]
 
@@ -607,12 +607,12 @@ Because this is a Codex-derived engine, the local state surface is broad:
 | User config and profiles | `config.toml`, `<profile>.config.toml` |
 | Provider/OpenAI auth | `auth.json`, environment keys, command-backed auth, keyring-backed stores where supported |
 | MCP OAuth fallback | `.credentials.json` when keyring storage is unavailable |
-| Session transcripts | dated `sessions/.../rollout-*.jsonl`; archived-session tree |
+| Session transcripts | dated `sessions/.../rollout-*.jsonl`. Archived-session tree |
 | Thread/search metadata | `state_5.sqlite` |
 | Local logs | `logs_2.sqlite` and configured log directory |
 | Goals | `goals_1.sqlite` |
 | Experimental memory state | `memories_1.sqlite` plus memory files |
-| Skills/plugins/hooks | home-scoped directories and config; trusted project `.openinterpreter` layers |
+| Skills/plugins/hooks | home-scoped directories and config. Trusted project `.openinterpreter` layers |
 | Standalone binaries | `packages/standalone/releases` plus a `current` link |
 | Ephemeral shell context | home-scoped shell snapshots removed on shutdown when cleanup succeeds |
 
@@ -633,13 +633,13 @@ bind the real runtime identity beside it. [inferred]
 The source demonstrates why harness compatibility cannot be reduced to prompt
 text and tool names:
 
-- ZCode defines a dedicated compaction prompt and parses compacted summaries;
-- legacy Kimi CLI has its own compaction prompt;
-- Claude and OpenCode may issue distinct title-generation requests;
-- Claude and ZCode track todo snapshots and inject subsequent reminders;
+- ZCode defines a dedicated compaction prompt and parses compacted summaries.
+- legacy Kimi CLI has its own compaction prompt.
+- Claude and OpenCode may issue distinct title-generation requests.
+- Claude and ZCode track todo snapshots and inject subsequent reminders.
 - Kimi Code caches its system prompt by conversation, cwd, and skill digest and
-  uses a conversation-derived provider prompt-cache key;
-- SWE-agent and Terminus maintain response grammar state; and
+  uses a conversation-derived provider prompt-cache key.
+- SWE-agent and Terminus maintain response grammar state. And
 - several harnesses translate media and tool content differently. [source]
 
 These are session semantics. A correct manifest needs state ownership and
@@ -661,7 +661,7 @@ and renamed “captured” assertions to expected-behavior language. [test]
 [history]
 
 That latest cleanup is revealing. Some DeepSeek production code had recognized
-particular fixture filenames and emitted fixture-specific paths; the audited
+particular fixture filenames and emitted fixture-specific paths. The audited
 tip removed those branches and renamed `HARNESS_LAB_FAKE_TIME` to a
 product-owned test variable. This is positive hardening, but it shows a common
 emulation trap: optimizing against captured reference traces can accidentally
@@ -674,7 +674,7 @@ OpenAgents needs a layered conformance program:
 2. **Pure translator tests:** canonical turn → exact foreign request and
    foreign stream → canonical events.
 3. **Authority tests:** every foreign tool maps to the same canonical policy
-   checks as its native equivalent; unsupported tools fail closed.
+   checks as its native equivalent. Unsupported tools fail closed.
 4. **Cross-product matrix:** policy × model version × provider × wire × OS ×
    sandbox × permission mode.
 5. **Behavioral evaluations:** representative coding tasks compared with
@@ -690,7 +690,7 @@ OpenAgents needs a layered conformance program:
 OpenAgents' existing `harness-conformance` package is a strong base, but its
 current contract proves real coding-worker runtimes: chat lifecycle, worktree
 claim/closeout, readiness, honest metering, and typed failures. Emulated
-policies need a separate conformance class; making them look like another
+policies need a separate conformance class. Making them look like another
 worker adapter would erase the exact distinction this teardown establishes.
 [target]
 
@@ -771,7 +771,7 @@ The teardown's criticisms can be reduced to eight exact boundaries:
 7. **Pin privileged components.** Browser and computer-use installers need
    digest/signature admission and rollback.
 8. **Separate recommendation from execution.** Heuristics and evaluations can
-   rank policies; only typed admission selects one.
+   rank policies. Only typed admission selects one.
 
 ## 16. Exact OpenAgents adaptation
 
@@ -805,14 +805,14 @@ An Open Interpreter process selected through ACP or app-server is a
 
 Build one Effect Schema manifest that generates:
 
-- discovery and settings projections;
-- compatibility/admission predicates;
-- provider request compiler registration;
-- tool alias schemas and canonical-intent mappings;
-- stream/result postprocessor registration;
-- compaction/title/reminder/state declarations;
-- diagnostics and public-safe receipt projection;
-- conformance/evaluation matrices; and
+- discovery and settings projections.
+- compatibility/admission predicates.
+- provider request compiler registration.
+- tool alias schemas and canonical-intent mappings.
+- stream/result postprocessor registration.
+- compaction/title/reminder/state declarations.
+- diagnostics and public-safe receipt projection.
+- conformance/evaluation matrices. And
 - documentation tables.
 
 Unknown fields fail closed. A manifest is immutable and content-addressed.
@@ -844,13 +844,13 @@ Keep the existing five-capability worker harness suite for real Codex, Claude
 Code, Grok, and future runtime adapters. Add a sibling enum-exhaustive policy
 suite for emulations:
 
-- request and stream translation;
-- canonical tool authority equivalence;
-- compatibility and no-fallback law;
-- context/compaction/state ownership;
-- model/provider evaluation evidence;
-- exact usage for auxiliary calls;
-- requested/effective policy receipts; and
+- request and stream translation.
+- canonical tool authority equivalence.
+- compatibility and no-fallback law.
+- context/compaction/state ownership.
+- model/provider evaluation evidence.
+- exact usage for auxiliary calls.
+- requested/effective policy receipts. And
 - fork/upgrade/recovery loss reports.
 
 Adding a policy kind should red the sweep until every projection and matrix row
@@ -863,8 +863,8 @@ The fastest honest experiment is not reimplementing its foreign prompts. Add a
 research-stage, exact-version Open Interpreter adapter behind the existing ACP
 or Codex app-server lane, then compare:
 
-- native OpenAgents/Codex behavior;
-- Open Interpreter native behavior; and
+- native OpenAgents/Codex behavior.
+- Open Interpreter native behavior. And
 - named Open Interpreter emulations on admitted provider/model pairs.
 
 Retain Open Interpreter's native event envelope privately, project portable
@@ -893,12 +893,12 @@ recovery, and benchmark truth. [inferred]
 Foreign calls decode into canonical OpenAgents intents. Canonical outcomes are
 then encoded back. The translator cannot:
 
-- create new filesystem/network/secret authority;
-- treat a model reminder as approval;
-- mark work accepted or delivered;
-- invent usage or native events;
-- write Sync state directly;
-- change placement; or
+- create new filesystem/network/secret authority.
+- treat a model reminder as approval.
+- mark work accepted or delivered.
+- invent usage or native events.
+- write Sync state directly.
+- change placement. Or
 - bypass the ordinary request processor.
 
 The outer run retains authority manifest, effective-containment receipt,
@@ -925,7 +925,7 @@ through the normal roadmap/issue process, the dependency order should be:
    branded foreign prompt.
 7. **Desktop projection:** show runtime, model, policy, compatibility, losses,
    and containment separately.
-8. **Promotion:** admit additional policies independently; no “supports Open
+8. **Promotion:** admit additional policies independently. No “supports Open
    Interpreter harnesses” umbrella claim.
 
 ## 18. Detailed source map
@@ -949,7 +949,7 @@ through the normal roadmap/issue process, the dependency order should be:
 | Codex SDK compatibility | `docs/sdk.md`, `scripts/test-codex-sdk-compat.sh` |
 | Sandbox and hooks | `docs/sandbox.md`, `docs/hooks.md`, inherited sandbox crates |
 | Computer-use QA | `codex-rs/skills/src/assets/samples/qa-testing/SKILL.md` |
-| State | rollout/core/state/config/login/RMCP crates; `docs/config.md` |
+| State | rollout/core/state/config/login/RMCP crates. `docs/config.md` |
 | Release/install | `.github/workflows/rust-release.yml`, `scripts/install/*` |
 
 ## Final recommendation
@@ -969,7 +969,7 @@ the displayed choice diverge from what executed. [source] [inferred]
 OpenAgents should therefore keep two explicit planes:
 
 - **runtime adapters** for real external agent engines, preserving native
-  sessions, events, capabilities, and losses; and
+  sessions, events, capabilities, and losses. And
 - **emulated harness policies** compiled inside an owned runtime, preserving
   canonical authority while adapting the model-facing dialect.
 

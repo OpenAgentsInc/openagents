@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -129,7 +129,7 @@ These are useful operational lessons, not benchmark scores.
 | Attempt | Result | Cause |
 | --- | --- | --- |
 | Bare task slug `--task openssl-selfsigned-cert` | No trial started | Harbor v0.13 expects registry task refs in `org/name` form. Use `terminal-bench/openssl-selfsigned-cert`. |
-| Docker without Compose v2 | No trial completed | Harbor invoked `docker compose`; `docker.io` alone did not provide the plugin. |
+| Docker without Compose v2 | No trial completed | Harbor invoked `docker compose`. `docker.io` alone did not provide the plugin. |
 | `--model gpt-5-codex` with ChatGPT auth | Trial errored, reward 0 | Codex returned `400`: that model was not supported with the ChatGPT account auth mode used for this run. |
 
 ## Interpretation

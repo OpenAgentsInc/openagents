@@ -11,15 +11,15 @@ The implementation lives in
 Generated static and Workers for Platforms Sites can now describe source-safe
 checkout UI primitives for:
 
-- checkout buttons;
-- checkout forms;
-- product cards;
-- paid action prompts;
-- tip affordances;
-- deposit affordances;
-- subscription affordances;
-- success states;
-- cancel states;
+- checkout buttons.
+- checkout forms.
+- product cards.
+- paid action prompts.
+- tip affordances.
+- deposit affordances.
+- subscription affordances.
+- success states.
+- cancel states.
 - entitlement states.
 
 The contract is declarative. It references catalog refs, product/action IDs,
@@ -36,8 +36,8 @@ private data, or checkout result query state.
 `siteCheckoutUiPrimitivesFromCatalog` derives common primitives from the
 versioned Site payment catalog:
 
-- each product gets a product card, checkout button, and checkout form;
-- each paid action gets a paid action prompt and checkout button;
+- each product gets a product card, checkout button, and checkout form.
+- each paid action gets a paid action prompt and checkout button.
 - each contract gets success, cancel, and entitlement state primitives.
 
 The generated primitives point at
@@ -48,11 +48,11 @@ paths. Agents receive metadata refs only in agent/operator projections.
 
 The decoder rejects:
 
-- success/cancel URLs with query strings or fragments;
-- checkout result state such as `checkout_id`;
-- raw invoices or payment-secret-shaped values;
-- customer private values such as emails;
-- provider grants or wallet material;
+- success/cancel URLs with query strings or fragments.
+- checkout result state such as `checkout_id`.
+- raw invoices or payment-secret-shaped values.
+- customer private values such as emails.
+- provider grants or wallet material.
 - non-local checkout/action paths.
 
 This keeps generated Site source deployable without smuggling hosted payment

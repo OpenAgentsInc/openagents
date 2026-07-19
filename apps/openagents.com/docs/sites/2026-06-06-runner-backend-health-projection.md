@@ -16,25 +16,25 @@ It keeps failover policy separate from health projection.
 
 `workers/api/src/runner-backend-health-projection.ts` models:
 
-- backend availability;
-- enabled and configured state;
-- health gates;
-- capacity refs;
-- queue-depth refs;
-- cold-start refs;
-- cost tier refs;
-- billing caveat refs;
-- smoke refs;
-- operator diagnostic refs;
+- backend availability.
+- enabled and configured state.
+- health gates.
+- capacity refs.
+- queue-depth refs.
+- cold-start refs.
+- cost tier refs.
+- billing caveat refs.
+- smoke refs.
+- operator diagnostic refs.
 - public summary refs.
 
 ## Projection Rules
 
 Public and customer projections expose only:
 
-- backend kind;
-- high-level availability;
-- public summary ref;
+- backend kind.
+- high-level availability.
+- public summary ref.
 - safe caveat refs for failed gates.
 
 They do not expose queue depth, cold-start details, cost tiers, capacity
@@ -49,10 +49,10 @@ material and failover policy refs.
 
 This issue does not:
 
-- select failover policy;
-- dispatch any backend;
-- bill a live run;
-- expose live Cloudflare Container observability;
+- select failover policy.
+- dispatch any backend.
+- bill a live run.
+- expose live Cloudflare Container observability.
 - publish customer-facing backend internals.
 
 Those remain separate policy, runtime, and operator-dashboard concerns.

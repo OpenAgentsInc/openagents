@@ -14,10 +14,10 @@ runtime package entry point.
 
 `runProbeRetainedBenchmarkCandidate` consumes:
 
-- a Probe benchmark assignment;
-- a retained Terminal-Bench fixture;
-- an optional `psionic.probe_gepa_candidate_manifest.v1` candidate manifest;
-- optional selected Blueprint signature refs;
+- a Probe benchmark assignment.
+- a retained Terminal-Bench fixture.
+- an optional `psionic.probe_gepa_candidate_manifest.v1` candidate manifest.
+- optional selected Blueprint signature refs.
 - optional projected tool refs.
 
 The adapter decodes the assignment, validates the candidate manifest, projects
@@ -39,8 +39,8 @@ for new runtime authority.
 
 The candidate safety boundary must keep:
 
-- `no_new_runtime_authority: true`;
-- non-empty inherited runtime authority refs;
+- `no_new_runtime_authority: true`.
+- non-empty inherited runtime authority refs.
 - `public_claim_upgrade_authority: false`.
 
 Probe treats the candidate as an optimization artifact. It can change prompt and
@@ -64,13 +64,13 @@ snapshot.
 
 Candidate closeouts include:
 
-- candidate hash in `probe-closeout.json`;
-- selected Blueprint signatures;
-- assignment tool-menu ref plus projected tool-menu snapshot;
-- Probe candidate import refs in `candidate-ref.json`;
-- candidate component refs derived from component hashes;
-- verifier result refs in `artifact-refs.json`;
-- failure classification and retained-failure refs;
+- candidate hash in `probe-closeout.json`.
+- selected Blueprint signatures.
+- assignment tool-menu ref plus projected tool-menu snapshot.
+- Probe candidate import refs in `candidate-ref.json`.
+- candidate component refs derived from component hashes.
+- verifier result refs in `artifact-refs.json`.
+- failure classification and retained-failure refs.
 - policy findings for candidate import boundary checks.
 
 The closeout writer now accepts optional `candidateComponentRefs` and
@@ -81,11 +81,11 @@ without adding a new schema-breaking file.
 
 `packages/runtime/tests/benchmark-candidate-execution.test.ts` covers:
 
-- baseline and supplied GEPA candidate runs against the same retained fixture;
-- candidate hash and candidate refs in closeout output;
-- candidate component refs and verifier result refs;
-- rejection of candidate text that requests new Blueprint/runtime authority;
-- rejection of projected tool-menu refs outside policy;
+- baseline and supplied GEPA candidate runs against the same retained fixture.
+- candidate hash and candidate refs in closeout output.
+- candidate component refs and verifier result refs.
+- rejection of candidate text that requests new Blueprint/runtime authority.
+- rejection of projected tool-menu refs outside policy.
 - rejection of candidate-selected signatures outside assignment authority.
 
 The full runtime suite currently passes with `bun test`.

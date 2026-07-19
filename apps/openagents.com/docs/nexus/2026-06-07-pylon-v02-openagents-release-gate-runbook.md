@@ -112,29 +112,29 @@ The release gate is evidence-only.
 
 It can:
 
-- classify required evidence as passed, pending, or blocked;
-- expose public-safe blocker refs;
-- point future agents to runbook commands and receipt surfaces;
+- classify required evidence as passed, pending, or blocked.
+- expose public-safe blocker refs.
+- point future agents to runbook commands and receipt surfaces.
 - distinguish optional old Google Cloud transition evidence from required
   OpenAgents product surface/Nexus evidence.
 
 It cannot:
 
-- publish a Pylon release;
-- publish packages or assets;
-- mutate providers;
-- dispatch paid work;
-- spend bitcoin;
-- settle payouts;
+- publish a Pylon release.
+- publish packages or assets.
+- mutate providers.
+- dispatch paid work.
+- spend bitcoin.
+- settle payouts.
 - upgrade public claims by itself.
 
 The typed gate enforces these authority fields as false:
 
-- `releasePublicationAllowed`;
-- `publicClaimUpgradeAllowed`;
-- `walletSpendAllowed`;
-- `settlementMutationAllowed`;
-- `providerMutationAllowed`;
+- `releasePublicationAllowed`.
+- `publicClaimUpgradeAllowed`.
+- `walletSpendAllowed`.
+- `settlementMutationAllowed`.
+- `providerMutationAllowed`.
 - `oldGoogleCloudNexusRequired`.
 
 ## Current Required Gate State
@@ -161,9 +161,9 @@ The typed gate enforces these authority fields as false:
 | Operator dashboard green | Passed | `/api/operator/nexus-pylon/receipts/{receiptRef}` and operator dashboard route coverage. |
 | Forum update bridge green | Passed | #430, Pylon release work-log topic. |
 | Pylon v0.2.4 GitHub/npm artifact alignment | Passed | #489, GitHub release `pylon-v0.2.4`, npm `@openagentsinc/pylon@latest` at `0.2.4`, and clean package-resolved `npx` smoke. Superseded for npm latest by #505 package launcher `0.2.5`. |
-| Pylon v0.2.4 clean launcher smoke | Passed for macOS package-launcher path | #490, local macOS arm64 clean HOME/cache no-launch and forwarded `status --json` smokes passed; #505 adds macOS package-launcher registration and wallet-readiness smoke for `pylon.issue505.npm.20260608035130`. |
-| Source-level self-serve Pylon registration | Passed for limited launcher release | #500 added `--register-openagents`; #505 proves the npm `0.2.5` package launcher exposes the flag and registers on macOS and Arch Linux. Linux still resolves to `pylon-v0.2.2`, so do not claim Linux binary asset parity with macOS `pylon-v0.2.4`. |
-| Source-level MDK wallet and payout-target readiness | Passed | #501, `OpenAgentsInc/openagents@6983d0512` adds `--setup-mdk-wallet`; production smoke `pylon.issue501.local.20260608023035` registered, heartbeated, posted wallet readiness, and requested payout-target admission with redacted refs only. |
+| Pylon v0.2.4 clean launcher smoke | Passed for macOS package-launcher path | #490, local macOS arm64 clean HOME/cache no-launch and forwarded `status --json` smokes passed. #505 Adds macOS package-launcher registration and wallet-readiness smoke for `pylon.issue505.npm.20260608035130`. |
+| Source-level self-serve Pylon registration | Passed for limited launcher release | #500 added `--register-openagents`. #505 Proves the npm `0.2.5` package launcher exposes the flag and registers on macOS and Arch Linux. Linux still resolves to `pylon-v0.2.2`, so do not claim Linux binary asset parity with macOS `pylon-v0.2.4`. |
+| Source-level MDK wallet and payout-target readiness | Passed | #501, `OpenAgentsInc/openagents@6983d0512` adds `--setup-mdk-wallet`. Production smoke `pylon.issue501.local.20260608023035` registered, heartbeated, posted wallet readiness, and requested payout-target admission with redacted refs only. |
 | AGENTS.md and OpenAPI current | Passed | `/AGENTS.md` and `/api/openapi.json` describe current Pylon/Nexus receipt bounds. |
 
 Optional transition evidence:
@@ -183,9 +183,9 @@ Local macOS Apple Silicon evidence:
   --skip-diagnostics --no-launch --json`
 - result: `version: 0.2.4`, `tagName: pylon-v0.2.4`,
   `installMethod: release_asset`, `cached: false`, target `darwin/arm64`,
-  and desired mode `offline`;
+  and desired mode `offline`.
 - the command used a fresh HOME, install root, and Pylon home, so it did not
-  depend on the operator's existing Pylon state;
+  depend on the operator's existing Pylon state.
 - the terminal UI was intentionally not launched.
 
 Forwarded status evidence:
@@ -194,14 +194,14 @@ Forwarded status evidence:
 - result: `version: 0.2.4`, `tagName: pylon-v0.2.4`,
   `installMethod: release_asset`, target `darwin/arm64`, runtime mode
   `offline`, authoritative status `ready`, no runtime error, and two sellable
-  offline launch products;
+  offline launch products.
 - host-local paths, node identity details, and machine-specific inventory were
   intentionally not copied into this public runbook.
 
 Second-host route-around:
 
 - local `tailscale status` could not reach the local Tailscale service from
-  this shell;
+  this shell.
 - `ssh -o BatchMode=yes -o ConnectTimeout=5 christopherdavid@archlinux`
 
 ## Package Launcher 0.2.5 Evidence
@@ -214,18 +214,18 @@ readiness sequence closed. The package launcher now exposes
 Evidence:
 
 - `npm view @openagentsinc/pylon@latest version dist-tags bin --json` returned
-  `latest: 0.2.5`;
+  `latest: 0.2.5`.
 - clean local macOS package-launcher smoke registered
   `pylon.issue505.npm.20260608035130`, resolved `pylon-v0.2.4`, and reported
-  `walletReady: true`;
+  `walletReady: true`.
 - clean Arch Linux package-launcher smoke registered
   `pylon.issue505.archnpm.20260608035227`, resolved `pylon-v0.2.2`, and
-  reported `walletReady: true`; and
+  reported `walletReady: true`. And
 - rollback instructions are retained in
   `docs/nexus/2026-06-08-pylon-downloadable-launcher-release-0.2.5.md`.
-  returned `Connection refused`;
+  returned `Connection refused`.
 - `ssh -o BatchMode=yes -o ConnectTimeout=5 christopherdavid@100.97.233.57`
-  timed out;
+  timed out.
 - `ssh -o BatchMode=yes -o ConnectTimeout=5 christopherdavid@100.72.151.98`
   timed out.
 
@@ -250,13 +250,13 @@ Adjacent-repo cleanup:
 Public report evidence from `GET /api/public/artanis/report`:
 
 - `pylonOpenAgents product surfaceReleaseGate.state`:
-  `ready_for_operator_release_review`;
-- `pylonOpenAgents product surfaceReleaseGate.multiPylonPaidWorkProofComplete`: `true`;
-- `pylonOpenAgents product surfaceReleaseGate.multiPylonObservedDistinctPylonCount`: `2`;
+  `ready_for_operator_release_review`.
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonPaidWorkProofComplete`: `true`.
+- `pylonOpenAgents product surfaceReleaseGate.multiPylonObservedDistinctPylonCount`: `2`.
 - `pylonOpenAgents product surfaceReleaseGate.multiPylonObservedPylonRefs`:
   `pylon.public.artanis.bridge.8b378373` and
-  `pylon.public.issue_438_edge_wallet`;
-- `pylonOpenAgents product surfaceReleaseGate.blockerRefs`: empty;
+  `pylon.public.issue_438_edge_wallet`.
+- `pylonOpenAgents product surfaceReleaseGate.blockerRefs`: empty.
 - `pylonOpenAgents product surfaceReleaseGate.multiPylonProofRefs` includes
   `artanis-mdk-bridge-8b378373002501f3e896dcd3`,
   `assignment.public.issue_438.issue_438_artanis_1780822221`,
@@ -267,18 +267,18 @@ Public report evidence from `GET /api/public/artanis/report`:
 Second receipt evidence from
 `GET /api/public/nexus-pylon/receipts/receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3`:
 
-- `realBitcoinMoved: true`;
-- `movementMode: real_bitcoin`;
-- public projection state: `settled`;
-- public Pylon ref: `pylon.public.artanis.bridge.8b378373`;
-- assignment ref: `artanis-mdk-bridge-8b378373002501f3e896dcd3`;
+- `realBitcoinMoved: true`.
+- `movementMode: real_bitcoin`.
+- public projection state: `settled`.
+- public Pylon ref: `pylon.public.artanis.bridge.8b378373`.
+- assignment ref: `artanis-mdk-bridge-8b378373002501f3e896dcd3`.
 - public amount: 21 satoshis of bitcoin.
 
 This proof originally changed the gate to ready for operator release review.
 #505 later moved the public gate to `limited_launcher_release_shipped` for the
 npm launcher. It still does not grant release creation, wallet spend,
 settlement mutation, provider mutation, autonomous scheduling, or broad
-public-claim-upgrade authority; the public report keeps those authority flags
+public-claim-upgrade authority. The public report keeps those authority flags
 false.
 
 ## Public Publication Evidence
@@ -288,22 +288,22 @@ surfaces agents and operators inspect.
 
 `GET /api/public/artanis/report` currently projects:
 
-- state: `limited_launcher_release_shipped`;
+- state: `limited_launcher_release_shipped`.
 - state label:
-  `Pylon v0.2 package launcher is shipped with listed platform and authority limits`;
-- `multiPylonPaidWorkProofComplete: true`;
-- observed distinct Pylons: `2`;
-- blocker refs: empty;
-- `releasePublicationAllowed: false`;
-- `walletSpendAllowed: false`;
-- `settlementMutationAllowed: false`;
-- `providerMutationAllowed: false`;
+  `Pylon v0.2 package launcher is shipped with listed platform and authority limits`.
+- `multiPylonPaidWorkProofComplete: true`.
+- observed distinct Pylons: `2`.
+- blocker refs: empty.
+- `releasePublicationAllowed: false`.
+- `walletSpendAllowed: false`.
+- `settlementMutationAllowed: false`.
+- `providerMutationAllowed: false`.
 - `publicClaimUpgradeAllowed: false`.
 
 Rendered `/artanis` verification:
 
 - the client-rendered page was checked with a temporary Playwright runner
-  against local Chrome;
+  against local Chrome.
 - the rendered body includes `OpenAgents product surface release gate`,
   `Pylon v0.2 OpenAgents Nexus release gate evidence is complete`, and
   `2 / 2 distinct Pylons`.
@@ -311,8 +311,8 @@ Rendered `/artanis` verification:
 Forum publication:
 
 - canonical topic:
-  `https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888`;
-- topic title: `Pylon release work log`;
+  `https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888`.
+- topic title: `Pylon release work log`.
 - Artanis post #3 states that the dedicated Artanis identity is posting, links
   the latest public receipt and public report, says the paid-work evidence has
   moved into release review, and repeats that release publication, wallet
@@ -330,18 +330,18 @@ The retained release-review decision and rollback plan lives at:
 
 Historical #493 decision:
 
-- state: `ready_for_operator_release_review`;
-- operator approval state: not approved for general availability;
+- state: `ready_for_operator_release_review`.
+- operator approval state: not approved for general availability.
 - release action state: release artifacts are public, but no new release action
-  is created or approved by the review record;
+  is created or approved by the review record.
 - autonomous Artanis state: not approved.
 
 Current #505 decision:
 
-- state: `limited_launcher_release_shipped`;
-- npm package-launcher release: `@openagentsinc/pylon@0.2.5`;
-- native Windows and WSL Ubuntu: not public-ready claims;
-- hosted MDK direct programmatic payout: still blocked by app configuration;
+- state: `limited_launcher_release_shipped`.
+- npm package-launcher release: `@openagentsinc/pylon@0.2.5`.
+- native Windows and WSL Ubuntu: not public-ready claims.
+- hosted MDK direct programmatic payout: still blocked by app configuration.
 - autonomous Artanis production operation: not approved.
 
 That record includes rollback instructions for bad npm latest/package state,
@@ -402,10 +402,10 @@ curl -fsS \
 
 The public API must show:
 
-- `movementMode: "real_bitcoin"`;
-- `realBitcoinMoved: true`;
-- `payoutMovement.terminalSettlementClaimAllowed: true`;
-- `settlement.providerRef: "provider.public.mdk_agent_wallet"`;
+- `movementMode: "real_bitcoin"`.
+- `realBitcoinMoved: true`.
+- `payoutMovement.terminalSettlementClaimAllowed: true`.
+- `settlement.providerRef: "provider.public.mdk_agent_wallet"`.
 - `settlement.stateLabel: "Settled"`.
 
 Artanis real-assignment receipt API:
@@ -418,11 +418,11 @@ curl -fsS \
 
 The issue #438 public API must show:
 
-- `assignmentRef: "assignment.public.issue_438.issue_438_artanis_1780822221"`;
-- `movementMode: "real_bitcoin"`;
-- `realBitcoinMoved: true`;
-- `payoutMovement.terminalSettlementClaimAllowed: true`;
-- `settlement.providerRef: "provider.public.mdk_agent_wallet"`;
+- `assignmentRef: "assignment.public.issue_438.issue_438_artanis_1780822221"`.
+- `movementMode: "real_bitcoin"`.
+- `realBitcoinMoved: true`.
+- `payoutMovement.terminalSettlementClaimAllowed: true`.
+- `settlement.providerRef: "provider.public.mdk_agent_wallet"`.
 - `settlement.stateLabel: "Settled"`.
 
 Public receipt page:
@@ -487,15 +487,15 @@ Classify as blocked if any required gate is absent, pending, or blocked.
 
 Classify as ready for operator release review only if:
 
-- every required gate in `requiredCheckKinds` is present;
-- every required gate has `status = "passed"`;
+- every required gate in `requiredCheckKinds` is present.
+- every required gate has `status = "passed"`.
 - the public receipt/API surfaces still project public-safe real-bitcoin
-  evidence;
+  evidence.
 - #434 has selected and documented a Cloudflare-compatible live MDK runtime
-  boundary;
-- a retained Artanis-administered real small-bitcoin assignment exists;
+  boundary.
+- a retained Artanis-administered real small-bitcoin assignment exists.
 - at least two distinct Pylons have complete paid-work traces with terminal
-  public-safe settlement receipts; and
+  public-safe settlement receipts. And
 - the public Forum release/update flow has retained the release-gate result.
 
 Current public surfaces:
@@ -538,9 +538,9 @@ settlement, provider-mutation, or public-claim-upgrade authority by itself.
 
 The MoneyDevKit source audit added a required release-gate item:
 
-- the live MDK runtime path must be explicit before any buyer-checkout claim;
-- the Worker must not import `@moneydevkit/lightning-js`;
-- the Worker must not host `createMoneyDevKitNode` directly;
+- the live MDK runtime path must be explicit before any buyer-checkout claim.
+- the Worker must not import `@moneydevkit/lightning-js`.
+- the Worker must not host `createMoneyDevKitNode` directly.
 - the selected path must be either a pure hosted/platform MDK API compatible
   with Cloudflare Workers or a Node-capable sidecar/function for native
   node-control behavior.

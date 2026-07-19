@@ -2,7 +2,7 @@
 
 This is the long-form background behind the [root README](../README.md): why the
 project is shaped the way it is, how it got here, and the growth model. The README
-is the short version; this is the argument.
+is the short version. This is the argument.
 
 ## The thesis: verification is the load-bearing wall
 
@@ -24,7 +24,7 @@ So everything in this repo is organized around closing that gap:
 - **Payment follows proof.** Contributors get paid for accepted work — value can
   move as platform credits, card-funded balance, or bitcoin/Lightning, to anyone
   (human or agent) without an intermediary deciding who deserves an account. The
-  rail is a detail; the discipline is not: "paid" (payer-side evidence) is not
+  rail is a detail. The discipline is not: "paid" (payer-side evidence) is not
   "settled" (recipient received spendable value), and neither is "accepted work."
 - **Agents are first-class economic participants.** Agents register themselves,
   post in the Forum, coordinate work, file findings, and earn for their owners —
@@ -34,7 +34,7 @@ The atomic unit of this economy is not the chat turn and not the "skill" (a
 packaged capability). It is the **accepted outcome**: a task scoped in advance,
 executed wherever execution is cheapest, graded against a rubric, recorded in a
 receipt, and settled to everyone who contributed. A skill describes what a system
-*can* do; an accepted outcome is what a stranger actually *pays* for. The unit is
+*can* do. An accepted outcome is what a stranger actually *pays* for. The unit is
 the same whether the work is done by a human, a machine, or a swarm of both — it
 cares only that "done" was defined, the result met it, and the proof exists.
 
@@ -57,7 +57,7 @@ OpenAgents has been built in public since 2023 across a video series that now
 spans 240+ episodes — from the first Laravel chat-with-PDF app, through GitHub
 coding agents, a plugin system with Lightning payments, an agent store, the AutoDev
 coding product, mobile and local models, and distributed compute and data markets.
-The product has been reset several times; the thesis has not. Every reset
+The product has been reset several times. The thesis has not. Every reset
 re-converged on the same idea: open, inspectable agents, with everyone who
 contributes paid proportionally for what they prove.
 
@@ -71,7 +71,7 @@ machine work to leave behind.
 
 A company's fate is set by two numbers — how fast it grows and how long that growth
 can continue. You earn the rate by making something people love enough to tell
-their friends; you earn the duration by being in a market big enough to keep
+their friends. You earn the duration by being in a market big enough to keep
 absorbing that love for years. The market here — reliable agentic work, priced and
 settled as accepted outcomes — is most of the economy, eventually. So the whole job
 is the growth rate, and OpenAgents pursues it with two engines on two clocks.
@@ -80,7 +80,7 @@ is the growth rate, and OpenAgents pursues it with two engines on two clocks.
   people building it and their closest friends — curing a short, concrete list of
   daily frustrations power users actually feel — and the shareable object is not a
   clever transcript but **accepted code**: a merged diff with tests, a preview, a
-  review trail, a cost record, and a receipt. Delighted users tell other users; the
+  review trail, a cost record, and a receipt. Delighted users tell other users. The
   rings widen only as fast as receipts justify.
 
 - **The agent engine** runs on software time. Agents have no Dunbar limit, can be
@@ -92,15 +92,15 @@ is the growth rate, and OpenAgents pursues it with two engines on two clocks.
   humans "your agent could do this" and agents "there is real demand here" at the
   same time.
 
-The two engines reinforce each other: a human user becomes a contributor node; a
-coding mission that saturates one person fans out to the agent labor market;
+The two engines reinforce each other: a human user becomes a contributor node. A
+coding mission that saturates one person fans out to the agent labor market.
 accepted work becomes verified traces that train better agents that produce more
-accepted work. The human engine supplies trust, revenue, and taste; the agent
+accepted work. The human engine supplies trust, revenue, and taste. The agent
 engine supplies scale, data, and reach. The same discipline governs both —
 machine-speed growth means a broken settlement path fails at machine speed too, so
 the rule is to wire one full loop (work in, outcome accepted, payment out, public
 receipt) for a stranger before opening the floodgate. A payment a recipient cannot
-dereference is not a payment; it is a bug wearing money.
+dereference is not a payment. It is a bug wearing money.
 
 The longer-form arguments behind this live in
 [`docs/autopilot-coder/`](autopilot-coder): the growth-rate case

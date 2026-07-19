@@ -54,7 +54,7 @@ exist:
 | `scopeRef` | Bounded deliverable scope, exclusions, acceptance criteria, and due window. |
 | `promiseRef` | Per-customer service promise or accepted-outcome contract naming the committed deliverable. |
 | `receiptPlanRef` | Planned evidence bundle: artifacts, review decisions, handoff refs, and metric receipts expected at closeout. |
-| `privacyTier` | `standard`, `regulated_private`, or stricter; peer eligibility must match or exceed it. |
+| `privacyTier` | `standard`, `regulated_private`, or stricter. Peer eligibility must match or exceed it. |
 | `redactionPolicyRef` | Corpus/redaction policy for any context that could leave the customer workspace. |
 | `approvalRef` | Explicit customer/operator approval to route the matter to a named external peer. |
 
@@ -80,7 +80,7 @@ auditable trust evidence:
   support, regulated-data restrictions, raw-log retention policy, and incident
   contact.
 - **Quality history:** accepted/rejected outcome counts, review-minutes
-  burden, rework rate, on-time rate, and dispute refs. Counts are public-safe;
+  burden, rework rate, on-time rate, and dispute refs. Counts are public-safe.
   evidence details are owner/customer-private.
 
 No peer can receive regulated or customer-identifying context merely because
@@ -150,7 +150,7 @@ changes incentives and dispute handling:
   path under the existing business receipt model.
 - **Peer share:** a percentage or fixed amount is computed from the accepted
   outcome, not merely from offer acceptance.
-- **Platform cut:** recorded as a policy ref with versioned terms; public copy
+- **Platform cut:** recorded as a policy ref with versioned terms. Public copy
   may mention a platform cut only after the policy and settlement receipt
   exist.
 - **Holdback:** a configurable holdback covers review, customer acceptance,

@@ -6,19 +6,19 @@ the generated schema authority and product/provider policy.
 
 It provides:
 
-- an exact registry for all 23 stable manifest members and their support state;
-- a data-driven peer launched through the production bounded stdio transport;
+- an exact registry for all 23 stable manifest members and their support state.
+- a data-driven peer launched through the production bounded stdio transport.
 - concurrent multi-session, bidirectional, fragmentation, malformed-frame,
-  lifecycle, capability, and resource-pressure oracles;
+  lifecycle, capability, and resource-pressure oracles.
 - complete stable content/update/stop/tool variant inventories, plus private
-  retention of unknown future variants;
+  retention of unknown future variants.
 - deterministic, redacted native transcripts and checked coverage,
   compatibility declarations, plus an actually executed compatibility/fault
-  report keyed by the pinned Git revision and platform;
+  report keyed by the pinned Git revision and platform.
 - broker-reference MCP fixtures proving invalid/expired refusal and immediate
-  secret redaction; and
+  secret redaction. And
 - Grok replay-load and Cursor resume/mode/config fixtures that pin the
-  replay-to-live lifecycle barrier without claiming live-binary support; and
+  replay-to-live lifecycle barrier without claiming live-binary support. And
 - explicitly opt-in diagnostic probes for `grok agent stdio` and Cursor
   `agent acp`.
 
@@ -87,17 +87,17 @@ Set `ACP_RELEASE_OUTPUT` to an absolute `.json` path beneath
 `compatibility/live/` to retain its closed-schema, redacted receipt. The runner
 does not retain prompts, responses, session IDs, auth material, or absolute
 paths. Its artifact is deliberately marked `candidate-live` and has no power to
-change the release matrix or promote either peer; a human-reviewed matrix edit
+change the release matrix or promote either peer. A human-reviewed matrix edit
 and the fail-closed `check:release` gate remain mandatory. The Cursor lane also
 proves client-side `cursor_login` cancellation using the ordinary HOME and
-stopping before `authenticate`; it never creates an empty HOME or changes login
+stopping before `authenticate`. It never creates an empty HOME or changes login
 or keychain state. Its exact-binary extension qualification registers only the
-four allowlisted Cursor methods and retains aggregate observation counts; an
+four allowlisted Cursor methods and retains aggregate observation counts. An
 unobserved extension remains blocked rather than inferred from a prompt. The
 same rule applies to permission qualification: only an option actually offered
 by the peer may be selected, and zero reverse calls remain zero live evidence.
 Cursor approval and refusal run in separate pinned processes with an empty
-allow/deny policy stored only in the disposable repository's `.cursor/cli.json`;
+allow/deny policy stored only in the disposable repository's `.cursor/cli.json`.
 the runner never changes the user's global Cursor configuration.
 The Grok qualification additionally enables bounded filesystem and simulated
 terminal handlers only inside the disposable repository, forces only its new
@@ -106,7 +106,7 @@ and retains method counts rather than file, command, terminal, or response
 content. It never changes global Grok configuration.
 The shared runtime also preserves notification and prompt-completion `_meta` as
 private native evidence. Candidate receipts expose only metadata-presence and
-usage-presence counts; they never export token values, model/session IDs, or
+usage-presence counts. They never export token values, model/session IDs, or
 other metadata contents.
 
 After packaging Desktop, the separately armed peer journey proves real app
@@ -122,7 +122,7 @@ ACP_DESKTOP_RELEASE_LIVE=1 ACP_DESKTOP_RELEASE_PEER=<grok-or-cursor> \
 The checked live records beneath `compatibility/live/` pin the installed
 commands, full reported builds, executable/installation-closure digests, wire
 version, advertised auth methods, and capability keys. The release matrix adds
-the deeper redacted peer runs described in the human ledger; every unexercised
+the deeper redacted peer runs described in the human ledger. Every unexercised
 required scenario remains an explicit blocker to a `supported` claim.
 
 Each probe emits one machine-readable diagnostic result with command, binary

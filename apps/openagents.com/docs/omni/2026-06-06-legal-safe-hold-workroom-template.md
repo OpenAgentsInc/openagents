@@ -21,18 +21,18 @@ upgrade a private/legal projection into a public projection.
 
 `OmniLegalSafeHoldTemplate` records:
 
-- template ref;
-- version ref;
-- approval policy refs;
-- hold policy refs;
-- scoping requirement refs;
-- source requirement refs;
-- legal review requirement refs;
-- release policy refs;
-- closeout requirement refs;
-- evidence requirement refs;
-- proof policy refs;
-- required artifact refs; and
+- template ref.
+- version ref.
+- approval policy refs.
+- hold policy refs.
+- scoping requirement refs.
+- source requirement refs.
+- legal review requirement refs.
+- release policy refs.
+- closeout requirement refs.
+- evidence requirement refs.
+- proof policy refs.
+- required artifact refs. And
 - caveat refs.
 
 The default fixture is `OMNI_LEGAL_SAFE_HOLD_TEMPLATE_FIXTURE`.
@@ -41,32 +41,32 @@ The default fixture is `OMNI_LEGAL_SAFE_HOLD_TEMPLATE_FIXTURE`.
 
 `OmniLegalSafeHoldWorkroomRecord` records:
 
-- client refs;
-- matter refs;
-- jurisdiction refs;
-- source refs;
-- scoping refs;
-- legal-review refs;
-- hold refs;
-- release refs;
-- decline refs;
-- closeout refs;
-- evidence refs;
-- blocker refs;
-- caveat refs; and
+- client refs.
+- matter refs.
+- jurisdiction refs.
+- source refs.
+- scoping refs.
+- legal-review refs.
+- hold refs.
+- release refs.
+- decline refs.
+- closeout refs.
+- evidence refs.
+- blocker refs.
+- caveat refs. And
 - operator diagnostic refs.
 
 The state model keeps these steps separate:
 
-- intake;
-- safe hold recorded;
-- scoping recorded;
-- source-backed summary ready;
-- legal review requested;
-- legal review recorded;
-- released;
-- declined;
-- closed; and
+- intake.
+- safe hold recorded.
+- scoping recorded.
+- source-backed summary ready.
+- legal review requested.
+- legal review recorded.
+- released.
+- declined.
+- closed. And
 - blocked.
 
 That separation matters because a hold is not scoping, scoping is not a
@@ -81,11 +81,11 @@ The default authority block is
 
 It explicitly denies:
 
-- automatic execution;
-- external send;
-- filing;
-- legal advice claims;
-- payment settlement; and
+- automatic execution.
+- external send.
+- filing.
+- legal advice claims.
+- payment settlement. And
 - public projection upgrade.
 
 `omniLegalSafeHoldAuthorityIsContractOnly` returns true only for records using
@@ -103,18 +103,18 @@ release, decline, closeout, and diagnostic refs.
 
 The contract rejects refs containing:
 
-- legal-sensitive data;
-- client identity;
-- matter data;
-- privileged or confidential refs;
-- raw legal documents;
-- raw filing material;
-- raw source payloads;
-- provider accounts, grants, payloads, or tokens;
-- private repo refs;
-- raw runner logs;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material; and
+- legal-sensitive data.
+- client identity.
+- matter data.
+- privileged or confidential refs.
+- raw legal documents.
+- raw filing material.
+- raw source payloads.
+- provider accounts, grants, payloads, or tokens.
+- private repo refs.
+- raw runner logs.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -123,14 +123,14 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/omni-legal-safe-hold-workrooms.test.ts` covers:
 
-- schema/projection decoding;
-- friendly time projection;
-- contract-only authority;
+- schema/projection decoding.
+- friendly time projection.
+- contract-only authority.
 - no automatic execution, external send, filing, legal advice claim, payment
-  settlement, or public projection upgrade authority;
+  settlement, or public projection upgrade authority.
 - public redaction of client/matter/source/review/hold/release/decline/
-  closeout/workroom refs;
+  closeout/workroom refs.
 - hold, scoping, source summary, legal review, release, decline, and closeout
-  separation; and
+  separation. And
 - unsafe client, matter, confidential, privileged, raw document, provider,
   private repo, wallet/payment, raw log, and timestamp rejection.

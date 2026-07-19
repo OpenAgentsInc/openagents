@@ -61,7 +61,7 @@ Metadata checked on 2026-06-04:
 | `@foldkit/devtools-mcp`    | `0.9.0`                               | peers exactly on `effect 4.0.0-beta.66`                         | blocked                                       |
 | `@foldkit/vite-plugin`     | `0.7.0`                               | peers exactly on `effect 4.0.0-beta.66`                         | blocked                                       |
 | `@effect/platform-browser` | `beta=4.0.0-beta.78`                  | beta peers on `effect ^4.0.0-beta.78`                           | only viable as part of a full beta-line move  |
-| `@effect/vitest`           | `latest=0.29.0`, `beta=4.0.0-beta.78` | latest peers on Effect 3; beta peers on `effect ^4.0.0-beta.78` | defer until repo line moves or beta 70 exists |
+| `@effect/vitest`           | `latest=0.29.0`, `beta=4.0.0-beta.78` | latest peers on Effect 3. Beta peers on `effect ^4.0.0-beta.78` | defer until repo line moves or beta 70 exists |
 
 Current result: do not upgrade Foldkit, Foldkit devtools, Foldkit Vite plugin,
 `@effect/platform-browser`, or `@effect/vitest` in this issue. The latest

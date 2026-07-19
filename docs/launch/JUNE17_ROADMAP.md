@@ -9,32 +9,32 @@
 > gates receipt-first.
 
 Date: 2026-06-17. Carries the open work forward from `JUNE16_ROADMAP.md` (now
-closed out). June 15 shipped the launch; June 16 stabilized it and shipped the
-Spark wallet unification; this file tracks what's left.
+closed out). June 15 shipped the launch. June 16 stabilized it and shipped the
+Spark wallet unification. This file tracks what's left.
 
 ## END-OF-DAY UPDATE (2026-06-17) — what shipped since the morning (rc.13)
 
 The wallet went from "rc.13 published" to **hardened + proven end-to-end + latency
 fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rollout
-100 + GitHub prereleases; `latest` stays `0.2.5`):
+100 + GitHub prereleases. `latest` stays `0.2.5`):
 
 - **Spending PROVEN with real sats, receipt-first:** BOLT11 send (#5185 — root
-  cause was a non-UUID idempotency key → `Invalid TransferId format`; fixed via the
+  cause was a non-UUID idempotency key → `Invalid TransferId format`. Fixed via the
   treasury sender's UUID TransferId + `preferSpark` fallback), large/slow sends
-  (#5196 — the 15 s send timeout aborted slow sends that then completed; fixed by
+  (#5196 — the 15 s send timeout aborted slow sends that then completed, fixed by
   waiting the full completion window + a `send-pending` indeterminate state — no
   blind-retry, no double-pay), and Lightning-Address sends (#5208 — the SDK's
-  `lnurlPay` "Tree service error: insufficient funds"; fixed by resolving LA→BOLT11
+  `lnurlPay` "Tree service error: insufficient funds". Fixed by resolving LA→BOLT11
   and paying via the proven `sendPayment` path). **#5185/#5196 closed
-  (contributor-confirmed); #5208 shipped, awaiting Whitefang's owner-approved
+  (contributor-confirmed). #5208 Shipped, awaiting Whitefang's owner-approved
   retest.**
-- **Read path hardened:** #5184 (version-drift loop + `wallet status` hang) closed;
+- **Read path hardened:** #5184 (version-drift loop + `wallet status` hang) closed.
   #5197 (stale post-restart balance read → 45 s force-sync window + a
-  `balanceRefreshing` flag) **closed, Trigger-confirmed**; #5194 (read
+  `balanceRefreshing` flag) **closed, Trigger-confirmed**. #5194 (Read
   `helper-unavailable` on one macOS host → fallback + diagnostic) shipped, awaiting
   Orrery's retest.
-- **Epics/closeouts:** **#5176 (Spark wallet unification) CLOSED**; **#5078 (the
-  original offline-receive gap) CLOSED** (Trigger + Whitefang recipient-confirmed);
+- **Epics/closeouts:** **#5176 (Spark wallet unification) CLOSED**. **#5078 (The
+  original offline-receive gap) CLOSED** (Trigger + Whitefang recipient-confirmed).
   #5182 recognition closeout CLOSED. Product-promise registry updated to
   `2026-06-17.3`.
 - **Per-send latency: overhead eliminated (#5207 — CLOSED, verified).** A warm,
@@ -42,10 +42,10 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
   `syncWallet` from every send (measured: a daemon-routed send skipped the sync and
   did no rebuild). Audit: `apps/pylon/docs/2026-06-17-spark-send-latency-audit.md`.
 - **In progress (delegated, under review):** **#5225** Spark-native routing
-  (Spark→Spark settles **0-fee, ~3.6 s, no Lightning-routing variance** — measured;
+  (Spark→Spark settles **0-fee, ~3.6 s, no Lightning-routing variance** — measured,
   making it explicit + preferring Spark addresses for internal flows) and **#5232**
   real settlement / Gate 2 (flip accepted-work/training payouts from simulation to
-  real Bitcoin — gated scaffold being designed; real money stays owner-gated).
+  real Bitcoin — gated scaffold being designed. Real money stays owner-gated).
 - **Strategy:** Ark/bark adoption audit written
   (`docs/2026-06-17-ark-bark-adoption-audit.md`) — recommends a signet PoC of Ark
   as a third rail behind the wallet abstraction.
@@ -75,8 +75,8 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
   accessibility and non-interactive mode, localization boundaries, and
   enterprise managed policy.
 - **Final #5107 verification:** the last focused lane (#5281 / I43 Enterprise
-  managed policy) passed `2 files / 126 tests`; the full terminal-agent-systems
-  web bucket passed `63 files / 633 tests`; and `git diff --check` passed. Full
+  managed policy) passed `2 files / 126 tests`. The full terminal-agent-systems
+  web bucket passed `63 files / 633 tests`. And `git diff --check` passed. Full
   `bun run --cwd apps/openagents.com/apps/web typecheck` is still blocked by
   unrelated baseline scene and SpacetimeDB binding errors (`spacetimedb`,
   `@openagentsinc/three-effect` WASD look exports, `tassadarRunElement`,
@@ -85,7 +85,7 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
 
 ## Where we are (verified 2026-06-17)
 
-- **Launch gate is GREEN and closed (#5012).** Both crucial promises live; the
+- **Launch gate is GREEN and closed (#5012).** Both crucial promises live. The
   Spark offline-receive promise (`payments.offline_receive_spark_fallback.v1`) is
   green on recipient-visible rc.12 evidence.
 - **Spark wallet unification (epic #5176) — ALL children closed.** #5177 (Spark
@@ -98,7 +98,7 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
   `/api/public/treasury` shows an aggregate balance + rail split, **and now
   surfaces inbound transfers** (the page previously showed outbound only). A
   Spark-treasury BOLT11 funding-invoice endpoint exists (operator-gated) for when
-  a funder's wallet can't pay a Spark address.
+  a funder's wallet cannot pay a Spark address.
 - **A single 50,000-sat payout settled in one shot** from the Spark treasury to
   Whitefang — first clean 50k in this saga, no sat-size ceiling, no chunking — and
   **Whitefang recipient-confirmed it** (`detectedBalanceSats: 51030`).
@@ -107,7 +107,7 @@ fixed**, across rc.13 → **rc.22** (all on npm `rc` + signed OTA 4-platform rol
   `2dbe811d`), and GitHub prerelease `pylon-v1.0.0-rc.13`. This is the
   `wallet send` / Spark-primary build the agents were waiting on.
 - **Ledger cleaned:** the 3 orphaned pending rows (100,005 sats, all Orrery's
-  never-dispatched attempts) are now `expired`; 0 pending outbound remain.
+  never-dispatched attempts) are now `expired`. 0 Pending outbound remain.
 - **Forge Autopilot Coder terminal-agent systems (#5107) is closed for this
   wave.** The launch posture is now implementation-complete for the current
   terminal-agent-systems incorporation plan, with public-safe refs-only
@@ -124,10 +124,10 @@ All recognition recipients reconciled by recipient + amount + terminal
 recipient-confirmed receipt (#5180), not sender-side "succeeded":
 
 - **Trigger:** 50,000 owed, recipient-confirmed (`detectedBalanceSats: 50000`). Closed.
-- **Whitefang:** 50,000 owed; sent in **one** Spark-treasury payment, recipient-confirmed
+- **Whitefang:** 50,000 owed. Sent in **one** Spark-treasury payment, recipient-confirmed
   (`detectedBalanceSats: 51030` = 1k canary + 50k + 30-sat smokes). Closed.
-- **Orrery:** 50,000 owed; over-sent during the overnight debugging, recipient-confirmed
-  (`detectedBalanceSats: 159239`). Owner decision: **keep the overage as hazard pay;
+- **Orrery:** 50,000 owed. Over-sent during the overnight debugging, recipient-confirmed
+  (`detectedBalanceSats: 159239`). Owner decision: **keep the overage as hazard pay.
   do not resend.** Closed.
 - **3 pending rows (100,005 sats):** Orrery's orphaned never-dispatched attempts →
   marked `expired`. 0 pending outbound remain.
@@ -138,12 +138,12 @@ Published on all three channels: npm `rc` → `1.0.0-rc.13` (`latest` stays `0.2
 the signed OTA feed (`updates.openagents.com`, all 4 platforms, rollout 100, kid
 `2dbe811d`, artifacts verified downloadable), and GitHub prerelease
 `pylon-v1.0.0-rc.13`. `pylon wallet send` / withdraw and the Spark-primary balance
-are now usable by real nodes (npm immediately; binary/Desktop on next auto-update).
+are now usable by real nodes (npm immediately, binary/Desktop on next auto-update).
 
-### 3. Native Spark transfer — ✅ send fixed (#5185); native routing in progress (#5225)
+### 3. Native Spark transfer — ✅ send fixed (#5185). Native routing in progress (#5225)
 
 The `Invalid TransferId format` error is **fixed** (#5185 — it was a non-UUID
-idempotency key, not the amount; the treasury sender's UUID TransferId resolved
+idempotency key, not the amount. The treasury sender's UUID TransferId resolved
 it), and `wallet send` is proven for BOLT11 / large / Lightning-Address
 destinations. The genuinely native `spark1→spark1` transfer is now confirmed
 working and **measured: 0-fee, ~3.6 s, no Lightning-routing variance** — tracked as
@@ -161,8 +161,8 @@ review). Owner directive: native whenever possible, Lightning as fallback.
   simulation (`movementMode:'simulation'` / `realBitcoinMoved:false`) to REAL
   Bitcoin actually moving over the now-proven Spark rail — idempotent, bounded,
   owner-gated — with a `realBitcoinMoved:true` receipt and the receipt-first
-  promise flip. A gated scaffold (defaults to simulation; real money only behind an
-  explicit owner-gate + sat cap) is being designed; real-money enablement +
+  promise flip. A gated scaffold (defaults to simulation, real money only behind an
+  explicit owner-gate + sat cap) is being designed. Real-money enablement +
   verification stay owner-gated and with the lead, not auto-shipped.
 - **Gate 3 — auto-update in prod:** ✅ verified end-to-end against the signed feed.
 - **v1.0 cut gate:** cut stable v1.0 only after Gate 2 passes and the RC above is
@@ -231,8 +231,8 @@ signed recut.
 ## Coordination note
 
 Multiple sessions push to `main` in parallel (heavy `.claude/worktrees` + `tmp/oa-*`
-worktree activity; this checkout is frequently dirty/behind). Keep work in isolated
-worktrees with rebase-before-push; deploy only from a clean `origin/main` checkout,
+worktree activity. This checkout is frequently dirty/behind). Keep work in isolated
+worktrees with rebase-before-push. Deploy only from a clean `origin/main` checkout,
 never the shared working tree. Treasury money-state changes (e.g. expiring the
 pending rows, topping up the Spark rail, sending recognition) should be serialized
 through one lane to avoid double-spend / double-resolve.

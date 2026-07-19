@@ -8,7 +8,7 @@ partial sync + permission fanout.
 (replicache.dev/strategies/row-version), summarized in
 `docs/fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`
 §4.2/§5 Phase 4. We were already on step 3 of Replicache's backend ladder
-(per-space ≈ per-scope versions); this is step 4, adapted to our scope
+(per-space ≈ per-scope versions). This is step 4, adapted to our scope
 model and our hybrid live path.
 **Code:** `packages/khala-sync-server/src/cvr-service.ts` (+ migration
 `0007_khala_sync_cvrs.sql`), Worker route
@@ -37,19 +37,19 @@ Adapted to our model (vs vanilla Replicache):
   keyed alongside the group.
 - **Row version = the row's per-scope changelog version** (the version of
   the entity's latest changelog row), not a per-row counter. We already
-  have commit-ordered dense versions per scope (SPEC §2.2); no new
+  have commit-ordered dense versions per scope (SPEC §2.2). No new
   version-bump machinery is needed.
 - **The "client view" is the authorized row set**: latest non-tombstone
   row per entity at the snapshot, filtered by a row-level visibility
   predicate (the `isEntityVisible` seam — today scope-level access via the
   KS-7.1 resolver is the only gate and the predicate defaults to
-  all-visible; when entity-level permissions arrive they plug into this
+  all-visible. When entity-level permissions arrive they plug into this
   seam and retraction is already structural).
 
 ## 2. The diff pull
 
 `POST /api/sync/cvr-pull` (flag-gated). Client sends `cvrVersion` (the CVR
-its durable state was last reconciled to; absent ⇒ reset pull) plus its
+its durable state was last reconciled to. Absent ⇒ reset pull) plus its
 `drift` rows (§5). Server, in ONE `REPEATABLE READ` transaction:
 
 1. **Snapshot** — read `khala_sync_scopes.last_version` as the snapshot
@@ -66,7 +66,7 @@ its durable state was last reconciled to; absent ⇒ reset pull) plus its
    semantics). Never guess what an unknown client holds.
 4. **Set-diff** — `puts` = current rows whose version is greater than
    their base version (or absent from the base), with full post-images in
-   canonical JSON (byte-equal to what bootstrap would serve); `dels` =
+   canonical JSON (byte-equal to what bootstrap would serve). `dels` =
    base keys not in the current set.
 5. **Store the new CVR** (the exact set the client now equals) at
    `max(cvr_version)+1`, prune versions older than the newest
@@ -74,7 +74,7 @@ its durable state was last reconciled to; absent ⇒ reset pull) plus its
    `{ mode, puts, dels, cvrVersion, cursor }`.
 
 Client apply (session `cvrRecovery` path): `reset` ⇒ `resetScope` with
-`puts` at the cursor; `diff` ⇒ dels+puts as synthesized confirmed entries
+`puts` at the cursor. `diff` ⇒ dels+puts as synthesized confirmed entries
 at the cursor through the overlay (store apply + pending-mutation rebase,
 exactly like a log page — an empty diff still advances the durable
 cursor). Then stitch as always: `logPage(afterVersion = cursor)` → live.
@@ -103,7 +103,7 @@ unambiguously). Justification for our sizes:
 
 - Our scopes are bounded by construction: fleet-run cockpits, threads,
   personal workrooms — tens to low thousands of entities. At ~40 bytes per
-  entry, 5k entries ≈ 200 KB jsonb; Postgres TOASTs it transparently, one
+  entry, 5k entries ≈ 200 KB jsonb. Postgres TOASTs it transparently, one
   row read/write per pull.
 - A CVR is read whole and written whole per pull — the access pattern has
   no per-entry lookups, so a normalized side table
@@ -112,7 +112,7 @@ unambiguously). Justification for our sizes:
 - **Graduation trigger:** row sets past ~10⁵ entries (jsonb rows in the
   tens of MB), or a need for *partial* CVR updates / server-side chunk
   hashing (§10). Then move `entries` to a side table or a hash-chunked
-  layout; the wire contract does not change.
+  layout. The wire contract does not change.
 
 Retention: each pull prunes versions ≤ newest − `CVR_RETAINED_VERSIONS`
 (8). A client referencing a pruned version degrades to a reset-mode pull —
@@ -122,7 +122,7 @@ janitor over abandoned client groups.
 ## 4. Fast path vs slow path
 
 The CVR pull is the **SLOW/RECOVERY path only**. Live `DeltaFrame`s and
-`logPage` catch-up remain the primary delivery channel; nothing about them
+`logPage` catch-up remain the primary delivery channel. Nothing about them
 changes. The session uses the CVR pull exactly where v1 uses the full
 re-bootstrap: the `must_refetch` recovery (cursor behind the retained
 window, `access_changed`, server-ordered refetch). The very first sync of
@@ -157,7 +157,7 @@ widens the diff base with it (max version wins). Soundness argument:
   `version ≤ base[key]`, meaning the client applied (or was handed at
   reset) that row's latest image already.
 
-The drift upload is bounded by activity since the last pull; above
+The drift upload is bounded by activity since the last pull. Above
 `maxDriftEntries` (5000) the client just requests a reset pull. The
 client's CVR reference is session-lifetime, in-memory: after restart,
 plain bootstrap, or denial it is `null` and the next pull is reset-mode —
@@ -171,12 +171,12 @@ persistence is a follow-up (§10), not a correctness requirement.
   works — the CVR pull reads only that derivation plus the scope counter,
   so compaction can never break a pull (unlike log serving, which fails
   closed behind the window — invariant 6, unchanged).
-- Compacted **tombstones** are the rows the log can no longer deliver;
+- Compacted **tombstones** are the rows the log can no longer deliver.
   the CVR diff retracts them structurally (§2). Long-offline clients
   therefore recover with a diff proportional to what actually changed,
   instead of a full snapshot download.
 - `khala_sync_cvrs` has its own retention (§3), independent of the
-  changelog window. The two never reference each other's rows; the only
+  changelog window. The two never reference each other's rows. The only
   shared object is the scope counter.
 
 ## 7. Wire + flag summary
@@ -185,11 +185,11 @@ persistence is a follow-up (§10), not a correctness requirement.
   clientGroupId, cvrVersion?, drift? }` →
   `CvrPullResponse { mode: reset|diff, puts, dels, cvrVersion, cursor }`.
 - Route: `POST /api/sync/cvr-pull`, same actor auth + KS-7.1 scope gate +
-  error taxonomy as bootstrap; `no-store`. **Flag OFF ⇒ 404**,
+  error taxonomy as bootstrap. `no-store`. **Flag OFF ⇒ 404**,
   indistinguishable from an unregistered route.
 - Server flag: env `KHALA_SYNC_CVR=1` (`isKhalaSyncCvrEnabled` — the
   literal `"1"` only).
-- Client flag: `KhalaSyncSessionOptions.cvrRecovery` (default `false`);
+- Client flag: `KhalaSyncSessionOptions.cvrRecovery` (default `false`).
   additionally requires the transport to provide `cvrPull` (optional
   member — existing transports/fakes stay valid). Any pull failure except
   an access denial falls back to the plain bootstrap, so a flagged client
@@ -201,16 +201,16 @@ persistence is a follow-up (§10), not a correctness requirement.
 Per pull, one transaction:
 
 - one index scan producing latest-per-entity rows, capped at
-  `maxRowSet` (+1 overflow sentinel; default 50 000 — beyond it the pull
-  refuses with a typed error and the client uses the paged bootstrap);
+  `maxRowSet` (+1 overflow sentinel, default 50 000 — beyond it the pull
+  refuses with a typed error and the client uses the paged bootstrap).
 - one CVR row read (≤ one jsonb of `maxRowSet` entries) + one write +
-  one bounded prune;
+  one bounded prune.
 - response size O(changed rows + retracted rows), NOT O(scope) — that is
-  the entire point vs re-bootstrap;
+  the entire point vs re-bootstrap.
 - request size O(drift), client-capped at `maxDriftEntries`.
 
 Concurrent pulls for one (group, scope) can collide on the new
-`cvr_version` primary key; the loser gets a retryable 503. Pulls are the
+`cvr_version` primary key. The loser gets a retryable 503. Pulls are the
 recovery path — client groups issue them serially in practice.
 
 ## 9. Verification (the acceptance)
@@ -237,7 +237,7 @@ server history, including fallback and denial behavior) lives in
   exchanged before entries, for row sets past the jsonb threshold (§3).
 - **Entity-level authorization wiring**: connect the Worker's real
   permission model to `isEntityVisible` when scopes gain row-level
-  visibility; the retraction mechanics are already tested.
+  visibility. The retraction mechanics are already tested.
 - **Flag graduation**: enable on staging, measure pull sizes vs bootstrap
   on fleet-run scopes, then consider making CVR the default recovery path
   (SPEC §3 note stays additive until then).

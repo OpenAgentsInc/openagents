@@ -163,14 +163,14 @@ with undocumented internals or unpublished limits.
 | Save version | Codex saves a deployable version associated with a source Git commit. | `site_versions` records commit SHA, generated source archive, build artifact refs, migrations, checksum, and review status. |
 | Deploy version | Codex deploys a saved version and returns a production URL. | `site_deployments` promotes a saved version to `sites.openagents.com/<slug>` or a future custom hostname. |
 | Inspect versions | Codex can list/inspect saved versions and deployment status. | Operator UI and APIs list versions, diffs, source refs, artifact refs, build status, deployment URL, and rollback candidates. |
-| Hosting runtime | Sites hosts Cloudflare Worker-compatible ES module output. | Generated apps target Worker-compatible ES modules first; static-only sites use Worker Static Assets or R2-backed static serving. |
+| Hosting runtime | Sites hosts Cloudflare Worker-compatible ES module output. | Generated apps target Worker-compatible ES modules first. Static-only sites use Worker Static Assets or R2-backed static serving. |
 | Metadata file | `.openai/hosting.json` links source to a hosted project and binding names. | `.openagents/site.json` links repo source to `siteId`, `projectId`, D1 binding, R2 binding, access mode, target runtime, and last saved version. |
 | D1 | Sites uses D1 for durable structured data. | Per-site D1 is represented by dedicated D1 databases when needed, or by D1 table namespaces for MVP when a dedicated database is not provisioned yet. |
 | R2 | Sites uses R2 for files and uploads. | Per-site R2 prefixes or buckets store uploads, generated assets, source archives, build bundles, screenshots, and file metadata. |
 | Workspace identity | Sites can use workspace-authenticated user identity. | Access-controlled sites use OpenAuth/OpenAgents product surface session identity and optional customer/team membership. |
-| Public/external auth | Sites can support public sign-in or external identity provider projects. | Later phase supports public visitor auth through OpenAuth or site-owned auth adapters; MVP supports public anonymous and OpenAgents-authenticated modes. |
+| Public/external auth | Sites can support public sign-in or external identity provider projects. | Later phase supports public visitor auth through OpenAuth or site-owned auth adapters. MVP supports public anonymous and OpenAgents-authenticated modes. |
 | Access modes | `admins_only`, `workspace_all`, `custom`. | `owner_admins`, `openagents_core`, `customer_owner`, `custom_users`, `public` where `public` is explicit and review-gated. Mapping preserves OpenAI modes while adding public launch semantics. |
-| Secrets/env | Hosted env vars and secrets are managed outside source and require redeploy. | `site_env_vars` stores non-secret metadata; secrets live in Cloudflare secrets/Secrets Store or encrypted operator-owned config, never in source or docs. |
+| Secrets/env | Hosted env vars and secrets are managed outside source and require redeploy. | `site_env_vars` stores non-secret metadata. Secrets live in Cloudflare secrets/Secrets Store or encrypted operator-owned config, never in source or docs. |
 | Admin governance | Workspace admins can enable/disable Sites and published sites. | OpenAgents core admins can enable/disable the product, disable a site, revoke deployment, change access, and audit versions. |
 | Review before share | Review source, migrations, build, audience, secrets, URL. | A release checklist is required before deploy or access widening. |
 
@@ -306,13 +306,13 @@ the visible "Send your agent to this Site" loop. The first shipped card is on
 
 The card is a public discovery aid, not an authorization grant. It includes:
 
-- a stable title, version, Site slug/title/URL when public;
-- the Site proof URL when available;
+- a stable title, version, Site slug/title/URL when public.
+- the Site proof URL when available.
 - canonical links to `/.well-known/openagents.json`, `/api/openapi.json`, and
-  `https://openagents.com/AGENTS.md`;
-- copyable instructions for browser or CLI agents;
+  `https://openagents.com/AGENTS.md`.
+- copyable instructions for browser or CLI agents.
 - public allowed actions such as proof inspection, OpenAPI inspection, status
-  summarization, site-improvement proposals, and owner-review requests;
+  summarization, site-improvement proposals, and owner-review requests.
 - caveats for missing proof or missing deployment URL.
 
 The projection degrades safely when a Site has no public proof or active
@@ -339,7 +339,7 @@ wording changes, and the proof field or Site section being improved.
 
 The challenge is explicitly proposal-only until scoped contribution APIs and
 owner-claim flows are live. Funding, Lightning, L402, bounty, and reward
-settlement paths are marked `planned_not_live`; no accepted outcome, payment,
+settlement paths are marked `planned_not_live`. No accepted outcome, payment,
 reward, or settlement is claimed without a receipt.
 
 The canonical agent instructions are served at:
@@ -355,8 +355,8 @@ mirrors the canonical document hash through `docs.instructionSha256`.
 
 The same document now includes copyable public dry-run examples for:
 
-- Codex or ChatGPT-style coding agents;
-- generic browser/API agents;
+- Codex or ChatGPT-style coding agents.
+- generic browser/API agents.
 - first-Site challenge participants.
 
 The examples point agents to the manifest, OpenAPI docs, `https://openagents.com/AGENTS.md`, and the OTEC challenge URL while repeating the no-secrets,
@@ -384,9 +384,9 @@ Implementation note, June 5, 2026:
   manifest, bounded logs, truncation metadata, findings, blockers, warnings,
   evidence refs, and customer-safe status/next action.
 - The checker and validator do not clone, execute a live build, adapt, save, or
-  deploy a project yet; that remains the import-run, hosted build runner, and
+  deploy a project yet. That remains the import-run, hosted build runner, and
   save/deploy automation work.
-| Preview pricing | OpenAI is free during preview; future pricing unknown. | OpenAgents launch is free public beta for selected orders, then credit-priced through the existing billing ledger and Stripe checkout. |
+| Preview pricing | OpenAI is free during preview. Future pricing unknown. | OpenAgents launch is free public beta for selected orders, then credit-priced through the existing billing ledger and Stripe checkout. |
 
 ## Cloudflare Primitive Mapping
 
@@ -860,12 +860,12 @@ Operator steps:
    `software_order_id` pointing to Ben's order.
 3. Generate a first static site version from the request.
 4. Include at minimum:
-   - first-viewport OTEC/SWAC floating datacenter signal;
+   - first-viewport OTEC/SWAC floating datacenter signal.
    - concrete sections for ocean thermal energy, SWAC cooling, gigawatt-scale
      floating datacenter operations, environmental concerns, commercial
-     rationale, and contact/action;
-   - no fake technical claims beyond what the prompt supports;
-   - no private customer data;
+     rationale, and contact/action.
+   - no fake technical claims beyond what the prompt supports.
+   - no private customer data.
    - OpenAgents attribution if product policy wants it.
 5. Save the version.
 6. Operator reviews content, links, assets, mobile layout, and public URL.
@@ -899,12 +899,12 @@ linked to a Site:
 
 It must not show:
 
-- raw runner logs;
-- provider account refs;
-- callback tokens;
-- hidden prompts;
-- private build logs;
-- shell output;
+- raw runner logs.
+- provider account refs.
+- callback tokens.
+- hidden prompts.
+- private build logs.
+- shell output.
 - Cloudflare API details.
 
 ### Admin Overview
@@ -921,14 +921,14 @@ The current admin overview should gain:
 
 The first operator detail page should show:
 
-- order/customer summary;
-- slug and URL;
-- status and access mode;
-- generate/save/deploy buttons;
-- versions table;
-- deployments table;
-- storage bindings;
-- environment key list without secret values;
+- order/customer summary.
+- slug and URL.
+- status and access mode.
+- generate/save/deploy buttons.
+- versions table.
+- deployments table.
+- storage bindings.
+- environment key list without secret values.
 - audit events.
 
 ## Security And Governance
@@ -1096,7 +1096,7 @@ Implementation note, June 4, 2026:
   repository, output contract, preflight checklist, and OTEC-ready generation
   goal while rejecting secret-shaped packet content.
 - Generation requests record `site_generation.requested` events and can link
-  an Autopilot run through `actor_run_id`; generated artifacts still become
+  an Autopilot run through `actor_run_id`. Generated artifacts still become
   deployable only by saving a normal `autopilot_generated` Site version.
 
 ### Slice 6: Customer And Operator UI
@@ -1123,7 +1123,7 @@ Implementation note, June 4, 2026:
   summaries, storage binding summary, and latest event summary.
 - The logged-in admin UI includes a Sites panel with lifecycle state and
   controls. Generate posts to the operator generation endpoint and refreshes
-  overview state; save/deploy/rollback/disable are visible but disabled until
+  overview state. Save/deploy/rollback/disable are visible but disabled until
   the overview screen collects the required artifact or version input.
 
 ### Slice 7: Full Workers For Platforms Parity
@@ -1180,7 +1180,7 @@ Implementation note, June 4, 2026:
 - Issue #65 added typed operator governance APIs for Site environment values,
   access grants, redacted event projection, deployment disable, and rollback.
 - Secret environment values accept and store secret refs only. Plain values are
-  rejected when they contain secret-shaped material; public/admin overview
+  rejected when they contain secret-shaped material. Public/admin overview
   projections expose environment keys and kinds, never values.
 - Public deploys and public access widening require a completed launch
   checklist covering source, build, audience, secrets, and URL review.

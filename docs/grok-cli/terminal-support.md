@@ -60,8 +60,8 @@ your local clipboard.
 | Environment | Notes |
 | --- | --- |
 | **WezTerm** | Add `config.enable_kitty_keyboard = true` to `wezterm.lua`, restart — fixes `Ctrl+Enter` (interject) and `Shift+Enter` (newline) |
-| **VS Code / Cursor / Windsurf / Zed terminals** | Cannot distinguish `Shift+Enter` from `Enter`; use `Alt+Enter` for newlines (also over SSH) |
-| **Zellij** | Intercepts many Ctrl chords. On Zellij 0.41+, "Unlock-First (non-colliding)" preset (`Ctrl+O` → `c` → Change Mode Behavior); `Ctrl+G` temporarily unlocks Zellij |
+| **VS Code / Cursor / Windsurf / Zed terminals** | Cannot distinguish `Shift+Enter` from `Enter`. Use `Alt+Enter` for newlines (also over SSH) |
+| **Zellij** | Intercepts many Ctrl chords. On Zellij 0.41+, "Unlock-First (non-colliding)" preset (`Ctrl+O` → `c` → Change Mode Behavior). `Ctrl+G` temporarily unlocks Zellij |
 | **Apple Terminal** | `Ctrl+O` interjects (no Kitty keyboard protocol for `Ctrl+Enter`) |
 
 ## No fullscreen, or mouse scrolling stops

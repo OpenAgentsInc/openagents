@@ -35,7 +35,7 @@ platform: GitHub OAuth cannot be scripted headlessly (no test GitHub account
 credentials exist in this environment, and completing real OAuth requires a
 real account, a real browser session, and — for a fresh GitHub account —
 possibly 2FA). `SignedInThreadSmoke.yaml` therefore stays blocked on a seeded
-account exactly as already documented; see §3 for exactly what unblocks it.
+account exactly as already documented. See §3 for exactly what unblocks it.
 
 ### 1.2 Real React Native component-mount coverage (bun test, no device needed)
 
@@ -67,7 +67,7 @@ the straight line:
   the FULL suite ran, even though the new file passed in isolation. Fixed by
   a rule now documented in the test file's own header: only `mock.module` a
   dependency that NO other test file needs for real (verified by grep before
-  writing each mock); use a locally-scoped fake (a `globalThis.fetch` swap,
+  writing each mock). Use a locally-scoped fake (a `globalThis.fetch` swap,
   restored in `afterAll`) for anything else. A second, subtler instance of
   the same class of bug surfaced during this same pass: `tests/crash-
   reporting.test.tsx` globally mocks `khala-text` to a different host-tag
@@ -146,7 +146,7 @@ an ambient, undocumented, hard-to-reproduce signed-in simulator state. See
 | Gap | Blocker | What unblocks it |
 |---|---|---|
 | A scriptable, repeatable `SignedInThreadSmoke.yaml` run (either platform) | No seeded public-safe test GitHub account exists in this environment | Owner provisions a disposable test GitHub account, signs in once via the app, and captures `EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID`/`EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` (or an equivalent captured Khala Sync bearer) for CI/agent use — see `~/work/NEEDS_OWNER.md` |
-| A full straight-line Maestro flow (sign-in through a completed cloud-executed turn + push notification) | (a) the seeded-account gap above, AND (b) #8474-#8479 (credit-gated dispatch policy, private-repo checkout, isolation posture, branch/PR writeback, metering) are not all landed yet behind #8473's org-executor spine | Land (a) plus the remaining C-lane issues; this doc's flow should be extended the moment both are true — tracked here explicitly rather than silently assumed |
+| A full straight-line Maestro flow (sign-in through a completed cloud-executed turn + push notification) | (a) the seeded-account gap above, AND (b) #8474-#8479 (credit-gated dispatch policy, private-repo checkout, isolation posture, branch/PR writeback, metering) are not all landed yet behind #8473's org-executor spine | Land (a) plus the remaining C-lane issues. This doc's flow should be extended the moment both are true — tracked here explicitly rather than silently assumed |
 | The zero-balance -> purchase-sheet paywall moment | IAP is postponed for the first MVP build (2026-07-06 owner decision) | N/A until IAP client work (#8481) resumes post-MVP |
 | A nightly nightly-matrix analog for mobile | Needs (1) above plus a scheduling surface | Post-MVP-adjacent follow-up once the seeded account exists |
 
@@ -170,4 +170,4 @@ bun run architecture:check  # no dependency violations (251 modules, 698 deps)
 ```
 
 Re-ran the full `bun test` suite 4 times in a row to confirm the fixes above
-were not order-dependent flakes; all 4 runs green.
+were not order-dependent flakes. All 4 runs green.

@@ -13,19 +13,19 @@ execute those effects.
 
 The v1 record stores:
 
-- action kind;
-- approval policy ref;
-- Program Run ref;
-- proposed effect ref;
-- evidence refs;
-- context pack refs;
-- source authority refs;
-- summary ref;
-- tool refs;
-- redacted receipt refs;
-- dry-run requirement state;
-- approval state;
-- execution and failure receipt refs, which are always null at proposal intake;
+- action kind.
+- approval policy ref.
+- Program Run ref.
+- proposed effect ref.
+- evidence refs.
+- context pack refs.
+- source authority refs.
+- summary ref.
+- tool refs.
+- redacted receipt refs.
+- dry-run requirement state.
+- approval state.
+- execution and failure receipt refs, which are always null at proposal intake.
 - explicit direct-execution guardrail flags.
 
 Probe proposals land as `pending_approval` with `approvalState: "pending"`.

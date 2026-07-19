@@ -17,19 +17,19 @@ operator explicitly says to start.
 
 Ben asked for the next revision to:
 
-- switch the Site to light mode with a white background;
-- pull in non-copyrighted web images where possible;
-- center the concept around a mostly submerged 1000m tower;
-- show an inner pipe bringing up cold deep seawater;
-- describe the server area around that pipe;
-- use approximate dimensions of 20m pipe diameter and 40m total tower diameter;
-- mention environmental benefits from bringing up mineral-rich deep seawater;
-- mention water aeration and inexpensive seawater mineral mining;
-- use the 50m above-water portion for housing, tourism, or similar uses;
-- frame future towers as the seed of new cities in international waters;
-- mention UHPC, geopolymers, and shotcrete inside airforms;
+- switch the Site to light mode with a white background.
+- pull in non-copyrighted web images where possible.
+- center the concept around a mostly submerged 1000m tower.
+- show an inner pipe bringing up cold deep seawater.
+- describe the server area around that pipe.
+- use approximate dimensions of 20m pipe diameter and 40m total tower diameter.
+- mention environmental benefits from bringing up mineral-rich deep seawater.
+- mention water aeration and inexpensive seawater mineral mining.
+- use the 50m above-water portion for housing, tourism, or similar uses.
+- frame future towers as the seed of new cities in international waters.
+- mention UHPC, geopolymers, and shotcrete inside airforms.
 - keep the Site simple, inspiring, and investor-focused rather than deeply
-  technical; and
+  technical. And
 - mention that equatorial and some other locations avoid hurricane exposure.
 
 ## Visual Asset Guardrail
@@ -37,14 +37,14 @@ Ben asked for the next revision to:
 Issue #149 is now implemented in the OpenAgents product surface lifecycle path:
 
 - task packets call out visual asset requirements when the customer request or
-  operator notes ask for images;
+  operator notes ask for images.
 - build validation blocks image-required candidates that only contain text,
-  CSS, SVG, or CSS-only diagrams;
+  CSS, SVG, or CSS-only diagrams.
 - direct Autopilot artifact callbacks check open revision feedback and the
-  assignment objective before setting `customer_review_ready`;
+  assignment objective before setting `customer_review_ready`.
 - if images are required and missing, the version may be saved, but it is not
   activated as customer-review-ready and does not trigger the review-ready
-  transactional email;
+  transactional email.
 - an operator waiver requires `metadata.visualAssetWaiverReason` on the artifact
   receipt.
 

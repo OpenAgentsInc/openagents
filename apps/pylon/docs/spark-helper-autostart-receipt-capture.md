@@ -51,7 +51,7 @@ implemented as `verifySparkHelperAutostartReceipt`.
 - `serializeSparkHelperAutostartReceipt(receipt)` — **new**: canonical,
   deterministic JSON (fixed key order over the closed allowlist, trailing
   newline), independent of object key insertion order. Two captures of the same
-  observation serialize identically; two genuinely independent captures differ at
+  observation serialize identically. Two genuinely independent captures differ at
   least in `observedAt`.
 
 ## Capture procedure (normal contributor, self-serve)
@@ -63,7 +63,7 @@ implemented as `verifySparkHelperAutostartReceipt`.
    target (`address-ready` or offline `cached-address-ready`).
 4. Capture: call `captureSparkHelperAutostartReceipt(receive, observedAt, opts)`
    and persist `result.serialized` **verbatim** only when `result.captured` is
-   true. Do **not** hand-edit it; the function has already self-verified the
+   true. Do **not** hand-edit it. The function has already self-verified the
    artifact (and its serialized round-trip) against the audit gate. If
    `result.captured` is false, fix the reported `result.reasons` — no artifact is
    written.
@@ -92,7 +92,7 @@ The audit fails (and the artifact must be rejected) on any of:
 ## What this does NOT do (honesty)
 
 - It does **not** capture a real receipt, start a helper, spawn a process, move
-  funds, or touch the wallet. The flag stays off; live behavior is unchanged.
+  funds, or touch the wallet. The flag stays off. Live behavior is unchanged.
 - It does **not** clear `spark_helper_autostart_receipt_missing`. Green still
   requires a REAL captured receipt for ≥1 normal contributor that passes
   `verifySparkHelperAutostartReceipt` with `clearsBlocker === true`, plus the

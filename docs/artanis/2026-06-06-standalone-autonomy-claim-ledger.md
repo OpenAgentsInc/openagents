@@ -17,16 +17,16 @@ runtime.
 
 The implemented areas are:
 
-- autonomous loop;
-- operator steering;
-- Forum communication;
-- Pylon campaign;
-- Nexus/Pylon administration;
-- Model Lab stewardship;
-- work routing;
-- spend authority;
-- bitcoin rewards;
-- accepted-work payout;
+- autonomous loop.
+- operator steering.
+- Forum communication.
+- Pylon campaign.
+- Nexus/Pylon administration.
+- Model Lab stewardship.
+- work routing.
+- spend authority.
+- bitcoin rewards.
+- accepted-work payout.
 - settlement.
 
 ## Claim States
@@ -55,17 +55,17 @@ that could be confused with final settlement.
 The current example ledger projects:
 
 - measured autonomous loop projection, because `/artanis` and the loop contract
-  exist as public-safe records;
-- verified operator steering and approval-gate contracts;
-- verified Forum communication contracts and Artanis Forum taxonomy;
-- measured R10 Pylon campaign state;
-- planned Nexus/Pylon administration adapters;
-- verified Model Lab stewardship through public report contracts;
-- modeled work routing, because proposals exist but dispatch authority does not;
-- blocked spend authority until an operator-approved spend gate exists;
-- blocked bitcoin rewards until the Forum reward smoke exists;
+  exist as public-safe records.
+- verified operator steering and approval-gate contracts.
+- verified Forum communication contracts and Artanis Forum taxonomy.
+- measured R10 Pylon campaign state.
+- planned Nexus/Pylon administration adapters.
+- verified Model Lab stewardship through public report contracts.
+- modeled work routing, because proposals exist but dispatch authority does not.
+- blocked spend authority until an operator-approved spend gate exists.
+- blocked bitcoin rewards until the Forum reward smoke exists.
 - prohibited accepted-work payout claims until public accepted-work receipt
-  chains exist;
+  chains exist.
 - prohibited settlement claims until public settlement receipt chains exist.
 
 ## Public Projection
@@ -78,7 +78,7 @@ Code lives in:
 
 The public Artanis report now includes both:
 
-- `standaloneClaims`: the full standalone autonomy ledger;
+- `standaloneClaims`: the full standalone autonomy ledger.
 - `r10Claims`: the narrower R10 Pylon campaign ledger.
 
 The `/artanis` page renders standalone autonomy claims before R10 campaign
@@ -89,11 +89,11 @@ the current Pylon campaign.
 
 The ledger rejects:
 
-- non-`agent_artanis` identity;
-- missing required claim areas;
+- non-`agent_artanis` identity.
+- missing required claim areas.
 - provider, runner, wallet, payment-secret, customer, email, private repo,
   secret, raw prompt, raw log, raw payload, raw source archive, and raw
-  timestamp material;
+  timestamp material.
 - unsafe Forum copy refs.
 
 Evidence-sensitive claims are lowered by the shared claim-state contract when
@@ -111,11 +111,11 @@ Coverage lives in:
 
 The tests cover:
 
-- every required standalone autonomy claim area;
-- measured, verified, planned, modeled, blocked, and prohibited projections;
-- honest bitcoin reward, accepted-work payout, and settlement claims;
-- lowering of false verified claims when evidence is missing;
+- every required standalone autonomy claim area.
+- measured, verified, planned, modeled, blocked, and prohibited projections.
+- honest bitcoin reward, accepted-work payout, and settlement claims.
+- lowering of false verified claims when evidence is missing.
 - rejection of non-Artanis identity, missing required areas, unsafe Forum copy
   refs, raw timestamps, provider material, runner material, wallet material,
-  payment material, and customer material;
+  payment material, and customer material.
 - `/artanis` using `standaloneClaims` alongside `r10Claims`.

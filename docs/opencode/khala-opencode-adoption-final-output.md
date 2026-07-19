@@ -1,7 +1,7 @@
 # OpenCode Adoption Lane — Planning Memo
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Historical planning export from 2026-06-25. For implementation, use the
@@ -28,7 +28,7 @@ vs paid frontier.)
 
 The config is valid. OpenCode's `ConfigV2.Provider.Info` schema (at `packages/core/src/config/provider.ts` in the opencode repo) uses `api: { type: "aisdk", package: string, url?, settings? }`. The GTM doc's JSON maps directly: `npm` → `package`, `options` → `settings`. The OpenCode docs (`providers.mdx`) confirm the `@ai-sdk/openai-compatible` pattern matches any `/v1/chat/completions` endpoint.
 
-Direct chat-completions smoke is **verified**: a plain request to `openagents/khala` returned `200`, reported `usage.total_tokens: 399`, and the public counter increased by exactly 399. Full OpenCode tool-loop smoke is gated on the #6232 compatibility fix (content arrays + tool-call payloads; see runbook).
+Direct chat-completions smoke is **verified**: a plain request to `openagents/khala` returned `200`, reported `usage.total_tokens: 399`, and the public counter increased by exactly 399. Full OpenCode tool-loop smoke is gated on the #6232 compatibility fix (content arrays + tool-call payloads, see runbook).
 
 **Operational recipe** (current published repo recipe, includes `tool_call: true` and the clean selector path):
 
@@ -63,7 +63,7 @@ Key verification:
 
 | Property | Status |
 |---|---|
-| Base URL format matches provider schema | Confirmed — `baseURL` maps to `settings.baseURL` in the AISDK provider; the provider schema accepts `Record<string, unknown>` in `settings` |
+| Base URL format matches provider schema | Confirmed — `baseURL` maps to `settings.baseURL` in the AISDK provider. The provider schema accepts `Record<string, unknown>` in `settings` |
 | `{env:OPENAGENTS_API_KEY}` syntax | Confirmed — OpenCode docs document the `{env:VAR}` syntax |
 | Model key `khala` plus `api.id: "openagents/khala"` sends the upstream model id | Confirmed — the AI SDK's `languageModel(api.id)` sends `api.id` as the `model` field in the POST body |
 | Direct chat + token accounting | **Verified** — 399-token delta confirmed on public counter |
@@ -91,7 +91,7 @@ The GTM doc flags the **model-key double-doubling problem**: with provider id `o
 By using model key `khala` and overriding `api.id` to `openagents/khala`, the TUI selector renders `openagents/khala` (clean!) while the upstream still sends `{"model": "openagents/khala"}` to our API. OpenCode's `packages/core/src/plugin/provider/opencode.ts:125` confirms `if (config.id !== undefined) model.api.id = config.id` — the per-model `api.id` override is supported.
 
 The **provider preset** (upstream PR) is a separate, later item. The one-config
-recipe is now published in repo docs; an upstream PR against OpenCode's built-in
+recipe is now published in repo docs. An upstream PR against OpenCode's built-in
 provider list can remove the need to hand-write the JSON later.
 
 ### 3. Quota/Error UX
@@ -110,7 +110,7 @@ The free tier (2,000 requests / 2,500,000 tokens per UTC day) is enforced by `de
 | Over request quota | 402 — OpenCode should show the error message cleanly, not crash |
 | Over token quota | Same 402 path |
 | Exhausted and then reset next UTC day | Next request within quota succeeds |
-| Mint a second key from same IP | Allowed up to 25/day; 26th gets 429 `free_key_mint_rate_limited` |
+| Mint a second key from same IP | Allowed up to 25/day. 26Th gets 429 `free_key_mint_rate_limited` |
 
 **Risk**: OpenCode may not handle a 402 gracefully in all paths (model listing vs. chat completion). Need to test and possibly document a workaround (e.g., "if you see a 402, top up or wait for your daily quota to reset"). Big Pickle (the default free OpenCode model) has no quota gate — Khala must make the quota ceiling legible, or users who hit the 2,000-request/2.5M-token ceiling will silently fall back to Big Pickle rather than top up.
 
@@ -158,8 +158,8 @@ In order of execution:
 | Item | Resolution |
 |---|---|
 | Model key `openagents/khala` → doubled selector | Resolved: use model key `khala`, `api.id: "openagents/khala"`, and selector `openagents/khala` |
-| 402 handling in OpenCode | Test and document; may need an OpenCode issue if unhandled. Big Pickle has no quota gate — users hitting Khala's free ceiling will compare unfavorably |
+| 402 handling in OpenCode | Test and document. May need an OpenCode issue if unhandled. Big Pickle has no quota gate — users hitting Khala's free ceiling will compare unfavorably |
 | Big Pickle baseline | **Missing from this doc** — added. Khala must beat Big Pickle on cost-per-accepted-outcome and verified-rate. Add a GYM ladder rung comparing Khala vs Big Pickle on the OpenCode coding-agent surface |
 | Runbook already exists | `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` points to `docs/opencode/opencode-khala-recipe.md` |
 | Upstream preset PR | Deferred until the one-config recipe is verified |
-| Promise gate for public copy | Owner-gated; runbook is internal until green |
+| Promise gate for public copy | Owner-gated. Runbook is internal until green |

@@ -34,7 +34,7 @@ The new app is pure local Xcode (see the spec, Section 8).
 | Pylon pairing / node steering / projections | **Dropped** (out of scope for Khala v1) |
 | `expo-secure-store` for credentials | iOS Keychain (`Security`) |
 | MMKV non-secret state | none in v1 |
-| Local build + own OTA (`updates.openagents.com`) | Local Xcode build only; no OTA (native Swift can't OTA) |
+| Local build + own OTA (`updates.openagents.com`) | Local Xcode build only. No OTA (native Swift cannot OTA) |
 | Bundle id `com.openagents.autopilot-mobile` | `com.openagents.khala` |
 
 ## References updated for the retirement
@@ -42,7 +42,7 @@ The new app is pure local Xcode (see the spec, Section 8).
 Tracked references in this repo that pointed at the old path were updated to
 note the retirement and point at the Khala app/spec where relevant. Several of
 those are dated historical audits (e.g. `docs/launch/…`, `docs/autopilot-coder/…`)
-that describe past state; those are left as historical record and were not
+that describe past state. Those are left as historical record and were not
 rewritten. The active places that should not dangle (repo-root `AGENTS.md`
 mobile policy, the new app's own docs) reference Khala.
 
@@ -54,5 +54,5 @@ mobile policy, the new app's own docs) reference Khala.
 - **Root workspace `~/work/CLAUDE.md`** still references
   `clients/khala-ios/AutopilotRemoteControl` as "the current mobile operator path."
   That file lives in a **different repo** (the root workspace), so it was not
-  edited here; it should be updated separately to point at `clients/khala-ios/Khala`
+  edited here. It should be updated separately to point at `clients/khala-ios/Khala`
   (or to note that the mobile operator surface was retired).

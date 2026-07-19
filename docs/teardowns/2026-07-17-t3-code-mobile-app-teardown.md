@@ -17,11 +17,11 @@ uses the newer pin and follows the phone path end to end.
 
 Evidence labels:
 
-- **[source]** — observed in the pinned source tree;
-- **[schema]** — encoded in a typed wire or persistence contract;
-- **[docs]** — stated by T3 Code's checked-in documentation;
-- **[test]** — asserted by a checked-in test or automation harness;
-- **[inferred]** — an architectural conclusion from several observations;
+- **[source]** — observed in the pinned source tree.
+- **[schema]** — encoded in a typed wire or persistence contract.
+- **[docs]** — stated by T3 Code's checked-in documentation.
+- **[test]** — asserted by a checked-in test or automation harness.
+- **[inferred]** — an architectural conclusion from several observations.
 - **[limitation]** — a boundary on what this source audit proves.
 
 No T3 service, Clerk account, relay, push provider, device, or credential was
@@ -38,20 +38,20 @@ wire contracts, then independently implements phone/tablet navigation and five
 native interaction hosts. At this pin, the app can:
 
 1. discover, pair with, authenticate to, and retain multiple T3 execution
-   environments;
-2. browse projects and archived/current threads across those environments;
+   environments.
+2. browse projects and archived/current threads across those environments.
 3. create a project or task, select provider/model/runtime settings, and start
-   or continue agent work;
+   or continue agent work.
 4. stream the normalized thread feed, answer provider questions, approve tool
-   calls, and steer the active session;
+   calls, and steer the active session.
 5. browse project files, render source/Markdown/image/web content, inspect and
-   comment on diffs, and invoke typed Git branch/commit/push actions;
+   comment on diffs, and invoke typed Git branch/commit/push actions.
 6. attach to a thread-scoped interactive terminal through a native
-   Ghostty-derived VT surface;
+   Ghostty-derived VT surface.
 7. queue messages durably while disconnected and drain them after the matching
-   environment reconnects;
+   environment reconnects.
 8. receive agent-aware notifications and deep-link to the exact environment and
-   thread; and
+   thread. And
 9. surface activity through iOS widgets/Live Activities, app shortcuts, and
    system share targets. [source] [schema]
 
@@ -116,12 +116,12 @@ application shell. [source]
 
 There are three side-by-side application identities:
 
-- `development` — Expo dev client, `t3code-dev` scheme;
-- `preview` — persistent internal preview, `t3code-preview` scheme; and
+- `development` — Expo dev client, `t3code-dev` scheme.
+- `preview` — persistent internal preview, `t3code-preview` scheme. And
 - `production` — store identity, `t3code` scheme. [source] [docs]
 
 Native modules make Expo Go insufficient. Local builds prebuild native iOS or
-Android projects; preview/production profiles also exist for EAS. The app uses
+Android projects. Preview/production profiles also exist for EAS. The app uses
 fingerprint-compatible OTA runtime selection so a JavaScript update cannot be
 delivered to a binary missing required native code. [source] [docs]
 
@@ -142,13 +142,13 @@ native persistence and presentation. [source] [schema]
 
 The shared runtime supplies:
 
-- environment-scoped atom families and queries;
+- environment-scoped atom families and queries.
 - connection resolution, authorization, generation fencing, reconnect, and
-  wakeups;
-- cached shell/thread snapshots followed by sequenced WebSocket deltas;
-- schema-versioned persistence abstractions;
+  wakeups.
+- cached shell/thread snapshots followed by sequenced WebSocket deltas.
+- schema-versioned persistence abstractions.
 - typed commands with parallel, serial, single-flight, latest-only, or keyed
-  scheduling semantics; and
+  scheduling semantics. And
 - state families for projects, threads, filesystem, Git/VCS, review, preview,
   terminal, provider models, archived threads, and orchestration. [source]
 
@@ -166,7 +166,7 @@ real cross-platform product parity, but not one executable component model.
 ## 4. Environment discovery, pairing, and access
 
 The application is multi-environment from the beginning. An environment is a
-server-owned execution location; an endpoint is one way to reach it. The
+server-owned execution location. An endpoint is one way to reach it. The
 mobile registry can retain several endpoint profiles and present their
 connection phase independently. [schema] [source]
 
@@ -187,7 +187,7 @@ can enumerate and revoke pairing links and client sessions. [schema]
 The connection catalog is transport-neutral. A phone can reach a server over
 direct `ws://`/`wss://` endpoints, including LAN and Tailscale addresses. The
 desktop shell can advertise Tailscale endpoints or construct an SSH-forwarded
-server endpoint; the mobile client still consumes an ordinary server URL and
+server endpoint. The mobile client still consumes an ordinary server URL and
 does not embed an SSH implementation. [source]
 
 The iOS application declares local-network usage and currently permits
@@ -198,7 +198,7 @@ privately certified endpoints if the user configures them. [source]
 ### 4.3 T3 Connect
 
 T3 Connect is optional and disappears when its public Clerk/relay configuration
-is absent. When configured, Clerk authenticates the user; the relay discovers
+is absent. When configured, Clerk authenticates the user. The relay discovers
 linked environments and mints scoped access. Mobile generates a DPoP key,
 exchanges a relay bootstrap for a proof-bound environment token, and opens a
 WebSocket with a short-lived, single-purpose ticket rather than placing the
@@ -220,12 +220,12 @@ relay. Direct endpoint paths remain the self-hosted escape hatch. [limitation]
 
 The root native stack makes the workbench route-addressable. Major routes are:
 
-- Home/current threads and archived threads;
-- Thread detail;
-- thread Terminal, Review, Files tree, and individual File;
-- Git overview, commit, branches, and confirmation sheets;
-- Connections and Add Environment;
-- New Task plus repository/local-project destination flows; and
+- Home/current threads and archived threads.
+- Thread detail.
+- thread Terminal, Review, Files tree, and individual File.
+- Git overview, commit, branches, and confirmation sheets.
+- Connections and Add Environment.
+- New Task plus repository/local-project destination flows. And
 - Settings for environments, appearance, client storage, authentication,
   waitlist, and legal documents. [source]
 
@@ -253,15 +253,15 @@ cards, a rich composer, worktree context, and navigation to repository tools.
 
 Implemented control paths include:
 
-- create a new task for a selected project/repository;
-- choose available provider/model/runtime inputs exposed by the environment;
-- send a new turn or continue the selected thread;
-- display streaming provider-normalized messages and activity;
-- answer structured user-input requests;
-- approve or reject pending tool requests;
-- stop/cancel active work where the server exposes the command;
-- archive, unarchive, or delete threads;
-- inspect project/thread work logs and worktree identity; and
+- create a new task for a selected project/repository.
+- choose available provider/model/runtime inputs exposed by the environment.
+- send a new turn or continue the selected thread.
+- display streaming provider-normalized messages and activity.
+- answer structured user-input requests.
+- approve or reject pending tool requests.
+- stop/cancel active work where the server exposes the command.
+- archive, unarchive, or delete threads.
+- inspect project/thread work logs and worktree identity. And
 - use attachments, file/path context, share-sheet input, and composer commands.
   [source]
 
@@ -277,15 +277,15 @@ change. [source] [inferred]
 T3 does not stop at chat. The mobile controller projects the server-owned
 workspace into several typed surfaces:
 
-- searchable/browsable file tree;
-- source file viewer with syntax highlighting;
-- Markdown, image, and web-preview handling;
-- review model over checkpoint/worktree diff data;
-- per-file additions/deletions and file navigation;
-- selected-line review comments that can re-enter the composer;
-- Git overview and branch selection;
+- searchable/browsable file tree.
+- source file viewer with syntax highlighting.
+- Markdown, image, and web-preview handling.
+- review model over checkpoint/worktree diff data.
+- per-file additions/deletions and file navigation.
+- selected-line review comments that can re-enter the composer.
+- Git overview and branch selection.
 - commit, push, pull, publish, and confirmation flows gated by server
-  capability/readiness; and
+  capability/readiness. And
 - progress overlays and stale/error presentation for mutations. [source]
 
 The native review surface draws large diffs in Swift/Kotlin while JavaScript
@@ -294,7 +294,7 @@ purpose-built foreign host rather than trying to render a desktop diff DOM on a
 phone. [source]
 
 The phone still trusts server-side repository authority. It does not receive a
-raw host root and independently run Git; it sends typed actions scoped to the
+raw host root and independently run Git. It sends typed actions scoped to the
 selected environment/project/thread/worktree. [source] [inferred]
 
 ## 8. A real interactive terminal
@@ -318,13 +318,13 @@ handoff to Desktop. [inferred]
 
 Mobile persistence uses Expo SQLite for schema-versioned client data and Expo
 SecureStore for credentials. Cached shell/thread projections allow the app to
-paint retained state before live synchronization; connection generations and
+paint retained state before live synchronization. Connection generations and
 ordered sequences prevent an old stream from silently becoming current.
 [source]
 
 The thread outbox persists queued messages before exposing them in the in-memory
-atom. Mutations are serialized; updates cannot resurrect an item removed by a
-concurrent successful drain; clearing one environment is scoped; and the drain
+atom. Mutations are serialized. Updates cannot resurrect an item removed by a
+concurrent successful drain. Clearing one environment is scoped. And the drain
 waits for the corresponding environment connection. [source] [test]
 
 This is durable offline submission intent, not offline agent execution. The
@@ -338,13 +338,13 @@ T3 extends control beyond the foreground app:
 
 - Expo Notifications registers an authorized mobile endpoint with the selected
   environment/relay and routes notification taps to an exact environment and
-  thread;
+  thread.
 - iOS `AgentActivity` widgets/Live Activities show current agent state on the
-  lock screen and Dynamic Island-class surfaces;
-- an iOS widget can receive frequent updates and push-backed activity;
-- app shortcuts open recent/new-task flows;
+  lock screen and Dynamic Island-class surfaces.
+- an iOS widget can receive frequent updates and push-backed activity.
+- app shortcuts open recent/new-task flows.
 - the system share extension accepts text, URLs, and images into a durable
-  inbox, then opens the real new-task flow; and
+  inbox, then opens the real new-task flow. And
 - Android notification and adaptive/monochrome icon configuration is present.
   [source]
 
@@ -357,8 +357,8 @@ catalog and navigation state. [source] [inferred]
 | Module | Responsibility | Boundary |
 | --- | --- | --- |
 | `t3-composer-editor` | Native multiline composer/input behavior | Native text system emits controlled editor revisions to React Native |
-| `t3-markdown-text` | Selectable rich Markdown/code text and file icons | JavaScript prepares content; native iOS text layout handles selection/rendering |
-| `t3-native-controls` | Native header buttons and keyboard commands | Platform chrome/commands only; domain actions remain typed callbacks |
+| `t3-markdown-text` | Selectable rich Markdown/code text and file icons | JavaScript prepares content. Native iOS text layout handles selection/rendering |
+| `t3-native-controls` | Native header buttons and keyboard commands | Platform chrome/commands only. Domain actions remain typed callbacks |
 | `t3-review-diff` | High-performance native diff drawing and interaction | Review model/selection stay in application state |
 | `t3-terminal` | Ghostty-derived VT parsing/rendering/input on iOS/Android | PTY/process remain server-side |
 
@@ -381,12 +381,12 @@ path when tools are installed. [test] [docs]
 
 The strongest end-to-end artifact is the app-store screenshot harness. It:
 
-1. creates three disposable real T3 servers and Git repositories;
+1. creates three disposable real T3 servers and Git repositories.
 2. seeds deterministic threads, activities, terminal history, diffs, and
-   pending outbox items;
-3. pairs clean app installations through the production connection flow;
-4. opens the real Home, Thread, Terminal, Review, and Environments routes;
-5. captures iPhone, iPad, Android phone, and Android tablet light/dark matrices;
+   pending outbox items.
+3. pairs clean app installations through the production connection flow.
+4. opens the real Home, Thread, Terminal, Review, and Environments routes.
+5. captures iPhone, iPad, Android phone, and Android tablet light/dark matrices.
    and
 6. validates dimensions, color mode, file size, count, and store-slot
    constraints. [test] [docs]
@@ -407,7 +407,7 @@ users” must therefore remain separate status claims. [docs]
 - Bootstrap pairing credentials are distinct from ordinary client sessions.
 - Relay access uses DPoP proof-of-possession rather than bearer possession
   alone.
-- Credentials use platform secure storage; projection caches use SQLite.
+- Credentials use platform secure storage. Projection caches use SQLite.
 - The phone never becomes the provider credential or process host.
 - Server operations cross schema-validated typed contracts.
 - Cached/offline state is modeled separately from connected authoritative
@@ -455,7 +455,7 @@ Strengthen rather than copy:
    action behind revocable capability grants and durable outcomes.
 3. Preserve fail-closed containment and expose requested versus effective
    policy.
-4. Keep Google Cloud/owned infrastructure authority; do not import T3's
+4. Keep Google Cloud/owned infrastructure authority. Do not import T3's
    Cloudflare Tunnel/EAS/GitHub Actions topology.
 5. Make the stable object a portable coding session that can change hosts,
    rather than an environment-local thread reachable from several clients.

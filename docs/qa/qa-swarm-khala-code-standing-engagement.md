@@ -2,7 +2,7 @@
 
 Date: 2026-07-02
 Status: historical public-safe case-study seed and weekly-report contract for
-issue #8066; current receipt admission is unresolved and the web projection is
+issue #8066. Current receipt admission is unresolved and the web projection is
 `inconclusive`.
 This document does not flip a product promise green, publish a price, or claim
 hosted QA Swarm self-service is generally available.
@@ -18,7 +18,7 @@ The customer-one engagement report is the QA Swarm run projection for Khala Code
   `PUT /api/operator/qa-swarm/runs/{runRef}` with public readback at
   `GET /api/public/qa-swarm/runs/{runRef}`. The page polls the public-safe
   projection only while its execution is scheduled/running and stops after a
-  bounded number of attempts. The two URLs above are committed fixtures; other
+  bounded number of attempts. The two URLs above are committed fixtures. Other
   valid run refs come from the publication store.
 - Declared source artifact: `artifact.khala_code.qa_status_surface.latest`
 - Declared weekly report ref: `artifact.qa_swarm.weekly_report.khala_code.latest`
@@ -46,7 +46,7 @@ Khala Code QA loop as a weekly report:
   coverage/frontier refs, perf refs, test refs, and strict issue refs.
 - Resolve every receipt through the shared
   `qa_swarm.receipt_resolver.v1` boundary before marking an Arbiter edge
-  `evidence_backed`; string shape alone is never admission.
+  `evidence_backed`. String shape alone is never admission.
 - Carry behavior-contract registry status: the enforced contracts for the
   surface (ids + statements from
   `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, human doc
@@ -126,7 +126,7 @@ found three concrete items:
 That is the honest case-study claim: the first audit pass caught two
 main-branch regression-test gaps and one product robustness bug. The two stale
 visual-smoke gaps were fixed in the audit landing commits recorded by
-`ROADMAP_QA.md`; the cockpit degradation remains a tracked product fix in the
+`ROADMAP_QA.md`. The cockpit degradation remains a tracked product fix in the
 QA roadmap until its regression scenario lands.
 
 ## Findings Ledger

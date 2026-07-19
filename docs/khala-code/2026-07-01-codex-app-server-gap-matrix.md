@@ -30,13 +30,13 @@ the behavior small.
 | Row | Decision | Slash commands | Stable app-server methods | Experimental methods | Gap or adapter |
 | --- | --- | --- | --- | --- | --- |
 | `thread-turn-session-lifecycle` | `covered_by_app_server` | `/review`, `/rename`, `/new`, `/archive`, `/delete`, `/resume`, `/fork`, `/compact`, `/goal` | `review/start`, `thread/name/set`, `thread/start`, `thread/archive`, `thread/delete`, `thread/resume`, `thread/fork`, `thread/compact/start`, `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/read`, `thread/list`, `turn/start`, `turn/steer`, `turn/interrupt` | None | Use Codex thread, turn, review, compact, and goal APIs directly. |
-| `mode-h-headless-jsonl-live-smoke` | `khala_adapter_with_test` | None | `thread/start`, `turn/start`, `turn/interrupt` | None | Khala owns the Mode H JSONL projection over Codex app-server notifications; the armed live smoke decodes every emitted JSONL event against the checked `KhalaCodeHeadlessThreadEvent` schema and records issue #8035 as the live evidence ref. |
+| `mode-h-headless-jsonl-live-smoke` | `khala_adapter_with_test` | None | `thread/start`, `turn/start`, `turn/interrupt` | None | Khala owns the Mode H JSONL projection over Codex app-server notifications. The armed live smoke decodes every emitted JSONL event against the checked `KhalaCodeHeadlessThreadEvent` schema and records issue #8035 as the live evidence ref. |
 | `settings-ecosystem-account-surfaces` | `covered_by_app_server` | `/model`, `/permissions`, `/experimental`, `/usage`, `/mcp`, `/app`, `/apps`, `/plugins`, `/logout` | `model/list`, `modelProvider/capabilities/read`, `permissionProfile/list`, `experimentalFeature/list`, `experimentalFeature/enablement/set`, `account/usage/read`, `account/rateLimits/read`, `account/rateLimitResetCredit/consume`, `account/read`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/tool/call`, `mcpServer/oauth/login`, `config/mcpServer/reload`, `app/list`, `plugin/list`, `plugin/read`, `plugin/installed`, `account/logout`, `config/read`, `config/value/write`, `config/batchWrite`, `configRequirements/read` | None | Khala owns the web settings panels, but values and mutations remain Codex app-server state. |
 | `desktop-local-ui-adapters` | `khala_adapter_with_test` | `/copy`, `/raw`, `/status`, `/debug-config`, `/title`, `/quit`, `/exit`, `/feedback`, `/rollout`, `/clear`, `/test-approval` | `config/read`, `account/usage/read`, `feedback/upload`, `getAuthStatus`, `getConversationSummary` | None | Tiny desktop adapters for browser selection, window title, visible transcript, local status, and debug diagnostics. |
 | `tui-preferences-and-appearance` | `covered_by_app_server` | `/keymap`, `/vim`, `/statusline`, `/theme`, `/pets`, `/personality` | `config/read`, `config/value/write`, `config/batchWrite` | None | Khala now wraps Codex-owned config keys for keymap, Vim default mode, statusline, theme, pet, pet anchor, and personality. Rich picker metadata remains `codex.app_server.gap.tui_preferences`. |
 | `workspace-knowledge-memory-and-import` | `upstream_app_server_gap` | `/memories`, `/skills`, `/import`, `/hooks`, `/init`, `/debug-m-drop`, `/debug-m-update` | `skills/list`, `skills/config/write`, `skills/extraRoots/set`, `hooks/list`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/readHistories`, `fs/readFile`, `fs/writeFile`, `fs/getMetadata` | None | Khala now wraps the stable app-server methods for settings/actions and import diagnostics. Remaining gap: `codex.app_server.gap.memory_and_import_management` for TUI-owned `/memories`, `/init`, and debug memory semantics. |
 | `multi-agent-side-conversation-and-plan` | `upstream_app_server_gap` | `/approve`, `/plan`, `/agent`, `/subagents`, `/side`, `/btw` | `turn/steer`, `thread/fork`, `thread/inject_items`, `thread/approveGuardianDeniedAction`, `thread/metadata/update`, `thread/read` | None | `/btw` now dispatches active-turn side notes through `turn/steer`. `/approve`, `/plan`, `/agent`, `/subagents`, and `/side` return typed unavailable state under `codex.app_server.gap.side_agent_plan_controls` until Codex exposes narrower app-server control methods. |
-| `ide-file-mention-and-diff` | `covered_by_app_server` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | Khala now projects bounded mention candidates, remote diff content, and IDE status from app-server methods; `codex.app_server.gap.ide_mentions_diff` remains only for richer IDE mutation/metadata beyond the current wrapper slice. |
+| `ide-file-mention-and-diff` | `covered_by_app_server` | `/ide`, `/diff`, `/mention` | `fuzzyFileSearch`, `gitDiffToRemote`, `fs/readDirectory`, `fs/readFile`, `config/read` | None | Khala now projects bounded mention candidates, remote diff content, and IDE status from app-server methods. `codex.app_server.gap.ide_mentions_diff` remains only for richer IDE mutation/metadata beyond the current wrapper slice. |
 | `windows-sandbox-setup-and-readable-roots` | `upstream_app_server_gap` | `/setup-default-sandbox`, `/sandbox-add-read-dir` | `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `config/read`, `config/value/write` | None | `codex.app_server.gap.windows_sandbox_read_roots` |
 | `background-terminal-management` | `khala_adapter_with_test` | `/ps`, `/stop` | None | `thread/backgroundTerminals/list`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/terminate` | Khala wraps Codex's experimental background terminal methods directly: `/ps` lists with bounded pagination, `/stop` and `/clean` request cleanup, and the RPC action path can terminate an explicit app-server `processId`. Stable product copy still tracks `codex.app_server.gap.background_terminals` until Codex stabilizes the methods. |
 
@@ -58,7 +58,7 @@ GitHub issues, or protocol notes:
 - `codex.app_server.gap.side_agent_plan_controls`: expose side-conversation,
   subagent, plan-edit, and auto-review controls as app-server methods or
   metadata. Khala's current wrapper slice only sends `/btw` active-turn side
-  notes through `turn/steer`; the remaining controls stay explicitly
+  notes through `turn/steer`. The remaining controls stay explicitly
   unavailable instead of emulating Codex TUI state.
 - `codex.app_server.gap.ide_mentions_diff`: expose richer IDE mutation and
   metadata beyond the current bounded app-server-backed mention/diff/status
@@ -83,10 +83,10 @@ bun test clients/khala-code-desktop/tests/codex-app-server-gap-matrix.test.ts \
 
 The matrix test enforces that:
 
-- every Codex slash command is present exactly once;
-- every stable app-server method exists in the generated Codex schema;
+- every Codex slash command is present exactly once.
+- every stable app-server method exists in the generated Codex schema.
 - experimental background terminal methods stay labeled experimental and route
-  through a tested Khala adapter;
+  through a tested Khala adapter.
 - every TUI-local behavior has either a named upstream gap or a tested Khala
-  adapter rationale;
+  adapter rationale.
 - this human-readable document contains every row id and upstream gap id.

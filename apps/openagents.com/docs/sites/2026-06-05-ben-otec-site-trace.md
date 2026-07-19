@@ -39,11 +39,11 @@ roadmap work.
 
 This first version is a static concept Site. It intentionally:
 
-- uses only public/product-safe claims;
+- uses only public/product-safe claims.
 - avoids private runner logs, provider account refs, auth grants, raw Exa
-  payloads, source archives, customer-private data, tokens, or secrets;
-- links to the public proof and agent challenge;
-- marks the build and deployment state through Site/version/deployment records;
+  payloads, source archives, customer-private data, tokens, or secrets.
+- links to the public proof and agent challenge.
+- marks the build and deployment state through Site/version/deployment records.
 - does not claim accepted contributions, payments, rewards, verified customer
   delivery, or settlement beyond the deployment record itself.
 
@@ -83,7 +83,7 @@ Activation record:
 - SQL file: `docs/sites/2026-06-05-ben-otec-production-activation.sql`
 - D1 database: `openagents-autopilot`
 - Execution date: `2026-06-05`
-- Result: 8 queries processed; 16 rows read; 32 rows written
+- Result: 8 queries processed. 16 Rows read. 32 Rows written
 - D1 bookmark:
   `00000061-0000f59c-00005081-ad181d64202d9d29d32641f13735badd`
 
@@ -102,7 +102,7 @@ Verified deployed public proof state after activation:
 ## Verification
 
 The deployed Site returned `HTTP/2 200` with `content-type:
-text/html; charset=utf-8` and `cache-control: public, max-age=60`.
+text/html. Charset=utf-8` and `cache-control: public, max-age=60`.
 
 Positive content smoke:
 

@@ -9,7 +9,7 @@ informed: OpenAgents contributors, agents, and release operators
 # Ship Khala mobile as native SwiftUI with local Apple tooling
 
 > Superseded 2026-07-14. The SwiftUI client was removed. The current mobile
-> boundary is `apps/openagents-mobile`; use
+> boundary is `apps/openagents-mobile`. Use
 > `docs/deploy/openagents-mobile-production-release.md`. The decision body below
 > is retained as historical context.
 

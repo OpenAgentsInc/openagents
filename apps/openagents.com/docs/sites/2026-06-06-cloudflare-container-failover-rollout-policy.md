@@ -16,14 +16,14 @@ It models failover decisions separately from backend health projection.
 
 `workers/api/src/runner-failover-policy.ts` adds:
 
-- failover triggers;
-- decision statuses;
-- safe failover decision receipts;
-- blocked gate refs;
-- previous and selected backend refs;
-- trust tier;
-- customer-safe status refs;
-- automatic-failover requested/effective fields;
+- failover triggers.
+- decision statuses.
+- safe failover decision receipts.
+- blocked gate refs.
+- previous and selected backend refs.
+- trust tier.
+- customer-safe status refs.
+- automatic-failover requested/effective fields.
 - private-material checks.
 
 ## Decision Rules
@@ -32,15 +32,15 @@ SHC remains primary by default.
 
 Container can be selected only when:
 
-- an operator explicitly selected Container;
-- the runner policy enables the Container backup lane;
-- Container is enabled;
-- class name, Durable Object binding, and image refs are configured;
-- staging smoke passed;
-- operator policy approval exists;
-- capacity gate is green;
-- cost gate is approved;
-- workload trust is low or medium;
+- an operator explicitly selected Container.
+- the runner policy enables the Container backup lane.
+- Container is enabled.
+- class name, Durable Object binding, and image refs are configured.
+- staging smoke passed.
+- operator policy approval exists.
+- capacity gate is green.
+- cost gate is approved.
+- workload trust is low or medium.
 - live automatic failover approval exists when automatic failover was requested.
 
 Sensitive workloads are never routed to Container in this policy. If a
@@ -51,15 +51,15 @@ only when the explicit GCloud reference path is ready. Otherwise it blocks.
 
 Each decision emits:
 
-- previous backend kind and safe ref;
-- selected backend kind and safe ref;
-- trigger;
-- trust tier;
-- reason refs;
-- blocked gate refs;
-- automatic failover requested/effective flags;
-- receipt ref;
-- public summary ref;
+- previous backend kind and safe ref.
+- selected backend kind and safe ref.
+- trigger.
+- trust tier.
+- reason refs.
+- blocked gate refs.
+- automatic failover requested/effective flags.
+- receipt ref.
+- public summary ref.
 - customer-safe status ref.
 
 Receipts must not include raw provider data, callback tokens, source archives,
@@ -79,7 +79,7 @@ approval is explicitly present.
 
 This issue does not:
 
-- enable automatic live Container failover in production;
-- route sensitive work to Containers;
-- deploy or run a Container image;
+- enable automatic live Container failover in production.
+- route sensitive work to Containers.
+- deploy or run a Container image.
 - change customer-visible claims about live runner infrastructure.

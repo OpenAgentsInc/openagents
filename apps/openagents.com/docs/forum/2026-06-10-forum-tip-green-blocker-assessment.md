@@ -38,12 +38,12 @@ No registry edit is made in this issue without the required transition receipt.
 
 The route and unit coverage exist. The remaining gap is live evidence:
 
-1. create a direct-tip attempt in recovery-pending or observed state;
+1. create a direct-tip attempt in recovery-pending or observed state.
 2. receive a real MDK/provider callback at
-   `POST /api/forum/paid-actions/mdk/webhooks`;
+   `POST /api/forum/paid-actions/mdk/webhooks`.
 3. verify the callback promotes the attempt to a public recipient-wallet-direct
-   settled receipt;
-4. replay the callback and prove receipt totals are not duplicated;
+   settled receipt.
+4. replay the callback and prove receipt totals are not duplicated.
 5. retry the payer submission and prove it converges to the callback receipt.
 
 This requires a funded live smoke and exact webhook/provider configuration. It

@@ -4,7 +4,7 @@
 generated from approved targeted-remake briefs.
 
 This is the first generation-side ledger in the targeted outreach lane. It
-does not run a generator yet; it defines the durable contract a generator must
+does not run a generator yet. It defines the durable contract a generator must
 write to after using an approved remake brief and source authority pack.
 
 ## Data Model
@@ -13,14 +13,14 @@ The D1 table is `targeted_site_remake_preview_generations`.
 
 Each record links:
 
-- campaign, prospect/domain, and remake brief;
-- quality audit, static capture, rendered capture, and provider adapter refs;
-- source authority pack ref;
-- generated artifact/source refs;
-- candidate Site project and Site version refs;
-- concept preview URL;
-- generation receipt or failure ref;
-- concept-only generation constraints;
+- campaign, prospect/domain, and remake brief.
+- quality audit, static capture, rendered capture, and provider adapter refs.
+- source authority pack ref.
+- generated artifact/source refs.
+- candidate Site project and Site version refs.
+- concept preview URL.
+- generation receipt or failure ref.
+- concept-only generation constraints.
 - legal-sensitive flag and timestamps.
 
 Preview states are:

@@ -8,7 +8,7 @@ This document records the enforceable isolation contract for Khala Code mobile
 Agent Computers. It implements §4 of
 `docs/khala-code/2026-07-06-agent-computers-strategy.md` and replaces every
 prior "hosted Pylon" or exe.dev persistent-VM posture. The Pylon runtime is
-software inside the image; the provisioned, metered, and isolated unit is the
+software inside the image. The provisioned, metered, and isolated unit is the
 Agent Computer.
 
 ## Contract
@@ -16,7 +16,7 @@ Agent Computer.
 - **Unit of isolation:** one Firecracker microVM per admitted work context
   (`user + thread + repo binding`). The Worker sends `work_context_ref` plus
   optional `thread_ref` and `repo_binding_ref` in the placement request. The
-  control plane must echo the same work-context ref in its placement binding;
+  control plane must echo the same work-context ref in its placement binding.
   a missing or mismatched binding fails closed before the Worker projects an
   Agent Computer.
 - **Lifecycle:** the control plane owns requested → provisioning → ready →
@@ -40,7 +40,7 @@ Agent Computer.
   well as SCM credentials.
 - **Writeback:** branch/PR publication uses the brokered user GitHub
   authorization and may push only scoped task branches. Force-push refspecs are
-  disallowed; permission failures surface as typed refs rather than leaking Git
+  disallowed. Permission failures surface as typed refs rather than leaking Git
   output or falling back to ambient credentials.
 - **Network/projection:** Agent Computers serve no inbound traffic. Progress
   flows out over authenticated OpenAgents connections. Public data may include
@@ -100,5 +100,5 @@ connects their own account and asks an Agent Computer to run that owner's own
 repo/thread task. It does not sell, rent, pool, lend, or route the subscription
 to other users or to OpenAgents org demand. The broker path vends only
 short-lived material for the owner-matched work context and reclaim destroys
-the scratch home; any future provider-specific ToS change must update this
+the scratch home. Any future provider-specific ToS change must update this
 document and `apps/openagents.com/INVARIANTS.md` before widening behavior.

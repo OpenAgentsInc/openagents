@@ -13,7 +13,7 @@ enrollment, host movement, and UI remain later packets.
 
 The package deliberately has no field for a host path, provider-native session
 ID, process ID, socket, credential, auth home, or raw secret. Decoding proves
-shape; `auditPortableSessionSnapshot` proves cross-record invariants.
+shape. `auditPortableSessionSnapshot` proves cross-record invariants.
 
 `PortableCapabilityBroker` consumes the frozen lease shape without adding a
 credential field. Its records bind owner, session, attachment generation,
@@ -24,6 +24,6 @@ only inside the injected vault-to-target callback and is absent from snapshots,
 outcomes, evidence, prompts, Sync/checkpoint projections, artifacts, and
 diagnostics. Reissue requires a fresh destination source-grant ref after the
 source grant is revoked and its target installation is wiped.
-Construction requires an idempotent durable evidence sink; an operation does
+Construction requires an idempotent durable evidence sink. An operation does
 not report completion without appending its redacted evidence to the PORT-01
 authority composition.

@@ -56,7 +56,7 @@ at target ladder rungs.
 ## Non-negotiable spine rules
 
 1. One account across surfaces.
-2. One credits ledger; many fill rails (IAP, Stripe, crypto/Lightning,
+2. One credits ledger. Many fill rails (IAP, Stripe, crypto/Lightning,
    sales grants).
 3. One Khala Sync data plane — no screen-scraping between apps.
 4. One Agent Computers execution substrate for cloud work.
@@ -67,7 +67,7 @@ at target ladder rungs.
 ## Desktop vector (remember)
 
 - **Do:** agent console + fleet + inbox + verification instruments.
-- **Don't:** VS Code feature war as product identity.
+- **Do not:** VS Code feature war as product identity.
 - Editor is the manager's magnifying glass.
 
 ## Mobile vector (remember)
@@ -88,7 +88,7 @@ Verticals = connectors + corpus + verification rubric. Never forks.
 
 ## Vocabulary cheat sheet
 
-| Say | Don't say |
+| Say | Do not say |
 | --- | --- |
 | Blueprint | ontology (other vendor's word) |
 | Agent computer | generic "sandbox" without isolation claims |

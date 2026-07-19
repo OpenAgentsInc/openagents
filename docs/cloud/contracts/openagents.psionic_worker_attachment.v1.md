@@ -34,7 +34,7 @@ detail
 - `sandbox`
 
 Ready workers are projected into the matching `openagents.cloud_node.v1`
-capability lane. Crashed workers degrade only their own product row; they do not
+capability lane. Crashed workers degrade only their own product row. They do not
 force whole-node degradation unless the local attachment file itself is corrupt.
 
 ## Execution Receipt

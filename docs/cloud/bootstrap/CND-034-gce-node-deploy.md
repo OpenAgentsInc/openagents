@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -59,12 +59,12 @@ scripts/gcp-node-deploy-vm.sh \
 
 The VM uses:
 
-- Container-Optimized OS;
-- no external IP;
-- IAP-only SSH from the bootstrap firewall rule;
-- service account `oa-node-<env>`;
+- Container-Optimized OS.
+- no external IP.
+- IAP-only SSH from the bootstrap firewall rule.
+- service account `oa-node-<env>`.
 - Artifact Registry image
-  `REGION-docker.pkg.dev/PROJECT_ID/oa-cloud/oa-node:IMAGE_TAG`;
+  `REGION-docker.pkg.dev/PROJECT_ID/oa-cloud/oa-node:IMAGE_TAG`.
 - systemd unit `openagents-oa-node.service`.
 
 ## Status

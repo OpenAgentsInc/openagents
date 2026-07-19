@@ -33,7 +33,7 @@ bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --json
 It prints two layers:
 
 - the operational smoke result (`PASS` / `FAIL` / `SKIP`) for each route-level
-  leg; and
+  leg. And
 - the **#5520 Phase-1 gate matrix** (`PROVEN` / `UNPROVEN`) for the named
   acceptance criteria.
 
@@ -48,13 +48,13 @@ bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete --jso
 
 `--require-complete` exits non-zero unless all of these are `PROVEN`:
 
-- Stripe TEST card -> checkout -> webhook -> credit balance;
+- Stripe TEST card -> checkout -> webhook -> credit balance.
 - operator-grant USD->msat bridge (a useful bridge check, not a Stripe
-  substitute);
-- funded metered inference decrement plus charge receipt;
+  substitute).
+- funded metered inference decrement plus charge receipt.
 - referral source/capture/claim/paid-event/accrual plus staging/test payout
-  settlement;
-- honest inert/scaffold responses for the new Ep239 surfaces; and
+  settlement.
+- honest inert/scaffold responses for the new Ep239 surfaces. And
 - product-promise honesty: no Ep239 target promise has flipped green on staging
   without the matching receipt.
 
@@ -75,7 +75,7 @@ the route smoke itself had no `FAIL`s.
 
 ## Step 0 — Get a staging agent token
 
-Register a fresh agent. Use a **unique** `displayName` every time; never reuse a
+Register a fresh agent. Use a **unique** `displayName` every time. Never reuse a
 `slug`/`externalId` from a prior registration.
 
 ```sh
@@ -153,7 +153,7 @@ curl -s -X POST "$B/api/omni/operator/billing/inference-credit" \
   live — a 401, not a 404). The prod admin token is rejected on staging by
   design.
 - This path proves the operator credit-grant and USD→msat bridge seam. It does
-  **not** prove the issue's Stripe TEST card path; the gate matrix keeps
+  **not** prove the issue's Stripe TEST card path. The gate matrix keeps
   `card_to_credit_stripe_test` `UNPROVEN` until Option B runs.
 
 ### Option B — self-serve Stripe TEST purchase (browser session)
@@ -163,9 +163,9 @@ then buy USD credit with the Stripe test card and bridge it to spendable msat:
 
 1. Sign in at `$B` (browser). **Blocked until the owner widens the auth-issuer
    allowlist for the staging callback — see Owner actions.**
-2. Buy a credit package via the billing page; at Stripe checkout use test card
+2. Buy a credit package via the billing page. At Stripe checkout use test card
    `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP.
-3. The checkout → webhook → credit path lands the USD credit; then
+3. The checkout → webhook → credit path lands the USD credit. Then
    `POST /api/billing/inference-credit` (browser session) bridges USD → spendable
    msat for your own account. Include the fulfilled checkout session as
    `sourceCheckoutSessionId` so the bridge stamps the grant with card-origin
@@ -183,7 +183,7 @@ curl -s "$B/api/public/billing/stripe-checkout-receipts/$STRIPE_CHECKOUT_RECEIPT
 Only `resolution.status: "ok"` with `sessionMode: "test"`,
 `paymentState: "paid"`, `fulfillmentState: "fulfilled"`, and
 `creditLedgerState: "credited"` proves the #5520 card→credit Stripe TEST leg.
-`pending` means payment or webhook-created credit is not yet proven; `invalid`
+`pending` means payment or webhook-created credit is not yet proven. `invalid`
 means stored checkout fulfillment and the credit ledger disagree.
 
 Feed the same evidence into the push-button smoke:
@@ -207,7 +207,7 @@ curl -s "$B/api/public/inference/card-credit-spend-receipts/$CARD_SPEND_RECEIPT_
 
 The response is honest about incomplete chains: `pending.purchase`,
 `pending.grant`, or `pending.spend` means #5520/#5512 are still unproven for
-that checkout session; `invalid` means the stored chain violated provenance or
+that checkout session. `invalid` means the stored chain violated provenance or
 conservation. Only `resolution.status: "ok"` is evidence for the
 card→credit→inference-spend receipt.
 
@@ -234,9 +234,9 @@ are live, not 404). They cannot be driven headlessly with an agent token.
 Once a balance exists, a metered request decrements `usd_credit_msat` and writes
 a usage receipt. Note: a free-eligible Gemini request is eaten by the free pool
 and will **not** decrement until the account's free taste/allowance is exhausted
-(an unclaimed account has ~$0.50 of taste; Gemini Flash is ~30 micros/call, so
+(an unclaimed account has ~$0.50 of taste, Gemini Flash is ~30 micros/call, so
 the taste covers thousands of calls). A premium model (`claude-*`, requires the
-owner allowlist) meters immediately; an over-allowance Gemini request also
+owner allowlist) meters immediately. An over-allowance Gemini request also
 meters.
 
 ```sh
@@ -271,7 +271,7 @@ live-at-read staleness contract. It deliberately omits account ids, amounts,
 idempotency keys, Stripe session ids, invoices, preimages, wallet material,
 provider payloads, and raw prompts.
 
-## Capability 4 — Referral (cross-category accrual; payout stays inert)
+## Capability 4 — Referral (cross-category accrual, payout stays inert)
 
 The referral system attributes a referred visitor, then accrues
 cross-category eligibility on that visitor's paid/credit events. The payout
@@ -279,11 +279,11 @@ adapter is **owner-armed and stays inert** — do **not** try to settle a payout
 
 - Capture leg: `GET /r/site/<sourceId>` or `GET /r/invite/<inviteId>` sets the
   pending-referral cookie and redirects. An **unknown** source/invite returns
-  **404** by design; a real referral source/invite must exist first, and
+  **404** by design. A real referral source/invite must exist first, and
   creating one requires an authenticated (browser-session) owner flow.
 - Claim + accrual: the referred visitor signs in (browser) to claim the pending
-  attribution; subsequent paid/credit events accrue cross-category eligibility.
-- Dashboard: `GET /api/inference/referral/dashboard` (browser session; returns
+  attribution. Subsequent paid/credit events accrue cross-category eligibility.
+- Dashboard: `GET /api/inference/referral/dashboard` (browser session, returns
   **401** to a bare agent token — live, not 404) shows accrued eligibility.
 - Payout dispatch: `POST /api/operator/inference/referral/payout/:ref/dispatch`
 
@@ -314,11 +314,11 @@ The smoke keeps `referral_accrual_and_test_settlement` `UNPROVEN` unless the
 public receipt resolves as a settled referral payout receipt on the staging
 Worker. Route-gating checks alone (unknown referral 404 + dashboard 401) are
 not enough for #5520 completion.
-is admin-gated AND owner-armed; it stays inert. Do not attempt to settle.
+is admin-gated AND owner-armed. It stays inert. Do not attempt to settle.
 
 Because the full referral chain (create source → capture → claim → paid event →
 dashboard) is browser-session-driven, an external agent-tester can confirm the
-**capture redirect and the live (401/404) gating** today; the end-to-end accrual
+**capture redirect and the live (401/404) gating** today. The end-to-end accrual
 needs the browser sign-in owner action below.
 
 The push-button smoke treats live 401/404 referral gating as a route-level
@@ -327,7 +327,7 @@ cross-category accrual, and staging/test payout-settlement chain runs.
 
 ## Capability 5 — New Ep239 surfaces (honest inert/scaffold responses)
 
-These are armed on staging (flags on; production leaves them off). Confirm each
+These are armed on staging (flags on, production leaves them off). Confirm each
 returns its honest inert/scaffold response, not a 404.
 
 ```sh
@@ -351,7 +351,7 @@ curl -s -X POST "$B/v1/sandboxes" \
 ```
 
 - Expected: markets/marketplace HTTP 200 with the projection JSON
-  (`marketplace` reports `inert:true`, `promiseState:"planned"`, `products:[]`);
+  (`marketplace` reports `inert:true`, `promiseState:"planned"`, `products:[]`).
   fine-tuning/sandbox HTTP 200 with the scaffold object (`metered:false`,
   `receipt_ref:null`) — these provision nothing and produce no paid result,
   which is correct and honest. The related promises stay red until a

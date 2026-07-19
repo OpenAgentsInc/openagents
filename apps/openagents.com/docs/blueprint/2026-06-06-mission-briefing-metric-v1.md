@@ -18,25 +18,25 @@ provider-account internals into customer/public surfaces.
 
 `BlueprintMissionBriefingMetricRecord` ties feedback to:
 
-- briefing ref;
-- workroom ref;
-- optional Program Run ref;
-- receipt refs;
-- scorecard refs;
-- reviewer kind;
-- elapsed-time bucket;
-- comprehension result;
-- missing-context refs;
-- follow-up action;
-- public-safe feedback summary ref;
+- briefing ref.
+- workroom ref.
+- optional Program Run ref.
+- receipt refs.
+- scorecard refs.
+- reviewer kind.
+- elapsed-time bucket.
+- comprehension result.
+- missing-context refs.
+- follow-up action.
+- public-safe feedback summary ref.
 - optional private feedback-note ref.
 
 Elapsed-time buckets are:
 
-- `under_30s`;
-- `under_1m`;
-- `under_2m`;
-- `over_2m`;
+- `under_30s`.
+- `under_1m`.
+- `under_2m`.
+- `over_2m`.
 - `not_understood`.
 
 ## Projections
@@ -51,13 +51,13 @@ refs but still reject raw secrets and raw logs.
 
 `aggregateBlueprintMissionBriefingMetrics` returns safe counts:
 
-- total records;
-- under-two-minute count and percent;
-- understood, partial, and not-understood counts;
-- understood percent;
-- counts by reviewer kind;
-- counts by elapsed bucket;
-- counts by follow-up action;
+- total records.
+- under-two-minute count and percent.
+- understood, partial, and not-understood counts.
+- understood percent.
+- counts by reviewer kind.
+- counts by elapsed bucket.
+- counts by follow-up action.
 - improvement-needed flag.
 
 The aggregate is intentionally count-only so it can appear in roadmap,
@@ -67,12 +67,12 @@ operator, or future product dashboards without leaking reviewer notes.
 
 The metric loop does not:
 
-- persist records by itself;
-- mutate workrooms;
-- approve or reject work;
-- trigger retries;
-- send emails;
-- deploy Sites;
+- persist records by itself.
+- mutate workrooms.
+- approve or reject work.
+- trigger retries.
+- send emails.
+- deploy Sites.
 - affect payment or payout eligibility.
 
 Persistence, dashboards, and release-gate consumption can build on this

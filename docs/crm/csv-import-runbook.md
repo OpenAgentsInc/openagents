@@ -24,7 +24,7 @@ under their own tenant ref — the same engine, isolated.
 
 ## CSV format
 
-First row is a header. Recognized columns (case/spacing/hyphen-insensitive;
+First row is a header. Recognized columns (case/spacing/hyphen-insensitive,
 first matching synonym wins):
 
 | Field | Accepted headers |
@@ -48,7 +48,7 @@ imported contact is added to that list.
 - Each row resolves to exactly one of: **imported** (new), **updated** (email
   already in this tenant), **duplicate** (seen earlier in this file), or
   **failed** (missing/invalid email, or a write error).
-- A `crm_source_import_runs` audit row records the run with all counts; the
+- A `crm_source_import_runs` audit row records the run with all counts. The
   response returns the same summary plus a small email sample and per-line
   errors. A header with no recognizable email column fails the whole run.
 

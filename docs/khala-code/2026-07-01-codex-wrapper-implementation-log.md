@@ -12,11 +12,11 @@ Khala Code Desktop now has a typed Codex harness readiness projection for the
 main user Codex session. The probe checks:
 
 - the Codex command source (`PATH`, `KHALA_CODE_CODEX_BINARY`,
-  `KHALA_CODE_CODEX_COMMAND`, or explicit test input);
-- `codex --version` availability and version text;
-- the main user Codex home (`CODEX_HOME` or default `~/.codex`);
+  `KHALA_CODE_CODEX_COMMAND`, or explicit test input).
+- `codex --version` availability and version text.
+- the main user Codex home (`CODEX_HOME` or default `~/.codex`).
 - `auth.json` presence, JSON shape, and token-field presence without exposing
-  token values;
+  token values.
 - the distinction between the main user Codex home and isolated Pylon fleet
   worker homes.
 
@@ -54,7 +54,7 @@ The desktop RPC now exposes:
 - `codexAppServerRestart()`
 
 The desktop app constructs one host and disposes it on process exit or signal.
-The host does not auto-start during ordinary readiness polling; later issues can
+The host does not auto-start during ordinary readiness polling. Later issues can
 use it as the kernel for thread and turn lifecycle without spawning Codex from
 every status check.
 
@@ -75,16 +75,16 @@ or `KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME=1`.
 
 The desktop host now has a Codex chat runtime that:
 
-- starts `thread/start` for new desktop sessions;
+- starts `thread/start` for new desktop sessions.
 - persists desktop `sessionId` to Codex `threadId` mappings in
-  `~/.khala-code/codex-sessions.json` by default;
-- resumes persisted sessions with `thread/resume`;
-- sends user prompts through `turn/start`;
+  `~/.khala-code/codex-sessions.json` by default.
+- resumes persisted sessions with `thread/resume`.
+- sends user prompts through `turn/start`.
 - streams `item/agentMessage/delta`, `item/started`, `item/completed`, and
-  `turn/completed` notifications back into the existing transcript event model;
+  `turn/completed` notifications back into the existing transcript event model.
 - exposes RPC methods for `codexThreadStart`, `codexThreadResume`,
   `codexThreadList`, `codexTurnStart`, `codexTurnSteer`,
-  `codexTurnInterrupt`, and `codexThreadCompact`;
+  `codexTurnInterrupt`, and `codexThreadCompact`.
 - maps the desktop stop action to Codex `turn/interrupt`.
 
 The browser shell now keeps the desktop session id stable in local storage so a
@@ -107,17 +107,17 @@ while streaming updates into the existing transcript event model.
 
 The renderer covers:
 
-- user messages when replaying history;
-- agent messages and deltas;
-- reasoning summaries and text deltas;
-- plan deltas;
-- command execution output and final status;
-- file change and patch update lifecycle;
-- MCP and dynamic tool calls;
-- collab/subagent tool calls and subagent activity;
+- user messages when replaying history.
+- agent messages and deltas.
+- reasoning summaries and text deltas.
+- plan deltas.
+- command execution output and final status.
+- file change and patch update lifecycle.
+- MCP and dynamic tool calls.
+- collab/subagent tool calls and subagent activity.
 - web search, image view, sleep, image generation, review mode, and context
-  compaction items;
-- command, file-change, permission, and auto-review approval prompts;
+  compaction items.
+- command, file-change, permission, and auto-review approval prompts.
 - safe diagnostic cards for unknown future Codex item variants.
 
 The browser transcript now renders Codex item cards with distinct status styling,
@@ -144,7 +144,7 @@ gates, inline arguments, grouping, and dispatch coverage.
 
 The desktop RPC now exposes:
 
-- `slashCommandList()` for palette/autocomplete metadata with availability;
+- `slashCommandList()` for palette/autocomplete metadata with availability.
 - `slashCommandDispatch()` for executing slash commands as commands instead of
   prompt text.
 
@@ -158,7 +158,7 @@ tracked dependency instead of silently degrading to chat prompts.
 The browser composer now shows a compact slash-command palette when the draft
 starts with `/`, disables commands unavailable in the current Codex-equivalent
 state, and intercepts slash command submit before ordinary chat turn startup.
-Client-owned commands such as copy, clear, and status run in the desktop shell;
+Client-owned commands such as copy, clear, and status run in the desktop shell.
 the rest use the app-server or report their explicit dependency.
 
 Validation:
@@ -180,9 +180,9 @@ approval requests.
 The approval response builder pins Codex's generated protocol shapes:
 
 - command decisions: `accept`, `acceptForSession`, `decline`, `cancel`,
-  `acceptWithExecpolicyAmendment`, and `applyNetworkPolicyAmendment`;
+  `acceptWithExecpolicyAmendment`, and `applyNetworkPolicyAmendment`.
 - file-change decisions: `accept`, `acceptForSession`, `decline`, and
-  `cancel`;
+  `cancel`.
 - permission grants: turn-scoped, session-scoped, strict turn review, and
   empty-permission decline responses.
 
@@ -216,7 +216,7 @@ The desktop RPC exposes:
 - `codexSettingsRead()` to fan out across `config/read`, `model/list`,
   `modelProvider/capabilities/read`, `permissionProfile/list`,
   `configRequirements/read`, `account/usage/read`, and
-  `collaborationMode/list`;
+  `collaborationMode/list`.
 - `codexConfigValueWrite()` to persist a single Codex config key through
   `config/value/write` and then re-read the app-server settings projection.
 
@@ -230,7 +230,7 @@ The desktop shell now has a `Settings` sidebar view with Codex-backed controls
 for model, reasoning effort, service tier, permission profile, and personality,
 plus readouts for provider capabilities, approval policy, reviewer, sandbox
 mode, usage, and managed requirements. Writes go through app-server config
-mutation only; denial responses surface as local status instead of falling back
+mutation only. Denial responses surface as local status instead of falling back
 to a Khala-local preference cache.
 
 Validation:
@@ -251,12 +251,12 @@ app-server thread APIs.
 The desktop runtime now supports:
 
 - `thread/list` with search, archived filtering, active-thread projection, and
-  cwd/project grouping;
-- `thread/read` with optional turn loading;
+  cwd/project grouping.
+- `thread/read` with optional turn loading.
 - `thread/resume` transcript restoration through the Codex ThreadItem
-  projector;
+  projector.
 - `thread/fork` with forked thread id persistence for the active desktop
-  session;
+  session.
 - `thread/archive`, `thread/unarchive`, `thread/delete`, and `thread/name/set`
   lifecycle operations.
 
@@ -264,7 +264,7 @@ The shared thread projector preserves Codex thread ids, session ids,
 fork/parent relationships, model provider, source, cwd grouping, runtime
 status, recency timestamps, and derived badges for running, failed, forked,
 child, and git-backed threads. Search and grouping are read-only projections
-over `thread/list`; they do not mutate Codex state.
+over `thread/list`. They do not mutate Codex state.
 
 Selecting a thread calls `thread/resume`, persists the active Codex thread id,
 and replaces the visible transcript with messages replayed from Codex turns.
@@ -286,13 +286,13 @@ Khala Code Desktop now treats the Codex app-server config surface as the source
 of truth for TUI preference and appearance state. The shared settings projection
 adds a Codex-owned `appearance` block for:
 
-- `tui.keymap`;
-- `tui.vim_mode_default`;
-- `tui.status_line`;
-- `tui.status_line_use_colors`;
-- `tui.theme`;
-- `tui.pet`;
-- `tui.pet_anchor`;
+- `tui.keymap`.
+- `tui.vim_mode_default`.
+- `tui.status_line`.
+- `tui.status_line_use_colors`.
+- `tui.theme`.
+- `tui.pet`.
+- `tui.pet_anchor`.
 - `personality`.
 
 The settings panel renders these controls alongside the existing model and
@@ -303,7 +303,7 @@ theme preference state.
 
 Slash-command parity for `/keymap`, `/vim`, `/statusline`, `/theme`, `/pets`,
 `/pet`, and `/personality` now resolves to Codex config calls instead of gap
-results. No-arg commands load `config/read`; `/pet <id>` writes `tui.pet`; and
+results. No-arg commands load `config/read`. `/pet <id>` writes `tui.pet`. And
 `/keymap <json>` writes `tui.keymap` through `config/value/write`.
 
 Validation:
@@ -337,10 +337,10 @@ Direct pass-through RPCs now cover Codex ecosystem actions without a Khala-side
 runtime fork:
 
 - skill roots and enablement: `skills/extraRoots/set`,
-  `skills/config/write`;
+  `skills/config/write`.
 - marketplace and plugin operations: `marketplace/add`,
   `marketplace/remove`, `marketplace/upgrade`, `plugin/install`, and
-  `plugin/uninstall`;
+  `plugin/uninstall`.
 - MCP operations: `mcpServer/resource/read`, `mcpServer/tool/call`,
   `mcpServer/oauth/login`, and `config/mcpServer/reload`.
 
@@ -365,8 +365,8 @@ Khala Code Desktop now makes the runtime split explicit in the desktop RPC
 contract. Backend projections carry `runtimeMode`, and tool catalogs carry both
 `runtimeMode` and `catalogKind`:
 
-- default: `codex_harness` with `codex_harness_supplemental`;
-- opt-in legacy: `khala_native_runtime` with `khala_native_legacy`;
+- default: `codex_harness` with `codex_harness_supplemental`.
+- opt-in legacy: `khala_native_runtime` with `khala_native_legacy`.
 - Codex turn responses are labeled `codex_app_server`.
 
 The default `toolCatalog()` no longer exposes Codex-equivalent Khala tools. It
@@ -380,7 +380,7 @@ the Codex harness:
 The full Khala-native registry still exists for explicit legacy/fallback mode
 and tests, but filesystem, shell, patch, and local search helpers are labeled
 `legacy_codex_equivalent`. Normal desktop chat submit does not fall back to that
-runtime when Codex app-server is missing; it fails on the Codex path instead.
+runtime when Codex app-server is missing. It fails on the Codex path instead.
 When the user explicitly sets `KHALA_CODE_DESKTOP_RUNTIME=khala_native_runtime`
 or `KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME=1`, the returned transcript
 starts with a visible system banner explaining that the legacy Khala-native
@@ -417,7 +417,7 @@ accounts as `Worker Codex accounts`.
 isolated Pylon worker homes. The new `codexFleetPromoteThread()` RPC wraps
 `spawnCodexInstances()` for promotion from a current Codex thread into a swarm
 fanout request. The request requires an origin `sessionId`/`threadId`, an
-explicit objective, and `includeTranscript: false`; it only carries allowed
+explicit objective, and `includeTranscript: false`. It only carries allowed
 public refs and an optional user-written summary into the worker prompt.
 
 Inbox assignment routing now uses worker metadata: approval blockers become
@@ -454,7 +454,7 @@ hook, `KHALA_CODE_HEADLESS_INTERRUPT_AFTER_MS`, that calls the Codex
 The preview and smoke docs now state which harness each lane exercises:
 
 - `smoke:composer-visual` / `smoke:composer-visual-preview` is a preview UI
-  geometry lane labeled `preview_ui_codex_harness_shell`; it does not submit a
+  geometry lane labeled `preview_ui_codex_harness_shell`. It does not submit a
   model turn and does not exercise legacy Khala shell/process tools.
 - `smoke:codex-spawn-live` is the guarded Pylon/Codex worker delegation lane
   labeled `pylon_codex_spawn_live`.
@@ -486,7 +486,7 @@ Khala-native fallback guard.
 The new guarded live smoke is exposed as `smoke:codex-parity-live`. By default it
 returns a structured skip result without touching Codex. With
 `KHALA_CODE_DESKTOP_CODEX_PARITY_LIVE_SMOKE=1` or `--require-live`, it fails
-loudly if Codex is missing or unauthenticated; otherwise it starts app-server,
+loudly if Codex is missing or unauthenticated. Otherwise it starts app-server,
 creates and resumes a temporary thread, starts a harmless turn, attempts
 `turn/interrupt`, and shuts down cleanly.
 
@@ -511,8 +511,8 @@ The desktop README now starts with the Codex install/sign-in flow, documents the
 missing-Codex and missing-auth next steps, links the audit/parity/positioning
 docs plus epic #7780, and separates:
 
-- the primary user Codex session (`CODEX_HOME` or default `~/.codex`);
-- isolated Pylon worker Codex homes for Fleet;
+- the primary user Codex session (`CODEX_HOME` or default `~/.codex`).
+- isolated Pylon worker Codex homes for Fleet.
 - explicit legacy Khala-native fallback mode.
 
 The user-facing status and panel copy now matches that contract. Missing Codex
@@ -539,8 +539,8 @@ human-readable companion doc at
 to the same pinned Codex reference commit as the broader parity contract and
 splits every slash command into one of three decisions:
 
-- stable Codex app-server coverage;
-- a tiny Khala desktop adapter with tests;
+- stable Codex app-server coverage.
+- a tiny Khala desktop adapter with tests.
 - a named upstream app-server gap.
 
 The new `codex-app-server-gap-matrix.test.ts` fixture enforces that every Codex
@@ -568,7 +568,7 @@ Status: implemented
 Khala Code now maps `/mention`, `/diff`, and `/ide` to Codex app-server instead
 of treating them as open parity gaps. `/mention <query>` and the
 `codexMentionCandidates` composer RPC call `fuzzyFileSearch` with the current
-workspace root and return bounded candidate lists; bare `/mention` and empty
+workspace root and return bounded candidate lists. Bare `/mention` and empty
 composer mention queries use `fs/readDirectory` for bounded directory browsing.
 `/diff` calls `gitDiffToRemote` and renders the returned patch through the
 existing diff transcript renderer, with an explicit empty-diff state. `/ide`

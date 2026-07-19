@@ -6,7 +6,7 @@ Status: canonical design proposal with an implemented bounded `0.1` profile,
 review/admission artifacts, deterministic compiler, one narrow Bun-test
 adapter, normalized receipts, owned runner, and read-only hosted Observatory.
 Rich semantic planning and broader browser/device/formal adapters remain
-unimplemented; release and public-claim authority remain deliberately separate.
+unimplemented. Release and public-claim authority remain deliberately separate.
 
 Reference implementation studied:
 official `gokulrajaram/ProductSpec` at `9ef2654` (parser `0.19.0`, document
@@ -24,10 +24,10 @@ Working OpenAgents product/compiler name: **Observer**
 Create **AssuranceSpec**, a separate, human-reviewable companion to
 ProductSpec.
 
-- A **Product Spec** commits product intent and can index external evidence
+- A **ProductSpec** commits product intent and can index external evidence
   against stable AC/EVAL/SM IDs with Related Artifacts. A link is not a
   verdict.
-- An **Assurance Spec** commits proof design: what evidence would justify
+- An **AssuranceSpec** commits proof design: what evidence would justify
   believing each relevant claim, in which environments, against which
   falsifiers, at which proof rung.
 - An **Assurance Manifest** is the deterministic, immutable verification IR
@@ -45,7 +45,7 @@ ProductSpec.
 - The product-promise registry remains the only authority for public claims.
 
 The proposed authored filename is `<name>.assurance-spec.md`. The public
-protocol is AssuranceSpec; **Observer** is the OpenAgents semantic planner,
+protocol is AssuranceSpec. **Observer** is the OpenAgents semantic planner,
 compiler, and product codename. A future multi-project evidence surface can be
 called **Observatory**. Product branding must not become protocol vocabulary.
 
@@ -101,16 +101,16 @@ different lifecycle.
 
 Assurance is also a separate concern:
 
-- product intent and proof design change for different reasons;
-- one Product Spec can have multiple assurance profiles without changing the
-  product claim;
+- product intent and proof design change for different reasons.
+- one ProductSpec can have multiple assurance profiles without changing the
+  product claim.
 - QA techniques, environments, falsifiers, permissions, and evidence policies
-  are implementation-adjacent and often organization-specific;
-- a generated JSON manifest alone would hide semantic judgment from reviewers;
+  are implementation-adjacent and often organization-specific.
+- a generated JSON manifest alone would hide semantic judgment from reviewers.
 - a `custom-assurance` section would round-trip but have no portable semantic
-  contract;
+  contract.
 - `tool_metadata` is private/export-stripped and is not a safe home for
-  normative proof obligations;
+  normative proof obligations.
 - pretending prose-to-test planning is deterministic would make model judgment
   look like compiler output.
 
@@ -134,7 +134,7 @@ QA layer.
 
 | Shape | Useful property | Fatal ambiguity |
 | --- | --- | --- |
-| ProductSpec custom section | One file, immediately round-trips | Mixes product intent with enforcement intent; QA churn ambiguously changes `spec_revision` |
+| ProductSpec custom section | One file, immediately round-trips | Mixes product intent with enforcement intent. QA churn ambiguously changes `spec_revision` |
 | New ProductSpec QA block | Strong parsing and locality | Makes the core product-intent standard framework- and environment-aware |
 | Generated manifest only | Strictly executable | Hides semantic judgment and encourages generated-oracle authority |
 | New independent standard immediately | Clean governance | Premature before dogfood and an independent implementation |
@@ -164,13 +164,13 @@ one non-OpenAgents implementation demonstrate portability.
 8. **Unsupported means typed gap.** It never means skip-and-green.
 9. **Formal proof is bounded.** A checker proves the stated model boundary and
    grants no runtime or release authority.
-10. **Receipts report; people and policy decide.** No manifest, test, swarm, or
+10. **Receipts report. People and policy decide.** No manifest, test, swarm, or
     verifier can approve its own work.
 11. **Public evidence is a projection.** Private source, targets, prompts,
     credentials, screenshots, traces, and customer data remain private unless
     separately approved and redacted.
-12. **Conformance is interoperability, not quality.** A valid Assurance Spec
-    can still contain a weak proof plan; a conforming runner can still observe
+12. **Conformance is interoperability, not quality.** A valid AssuranceSpec
+    can still contain a weak proof plan. A conforming runner can still observe
     a failure.
 13. **Links are not verdicts.** A ProductSpec Related Artifact is a durable
     pointer. It does not prove reachability, authenticity, freshness,
@@ -212,7 +212,7 @@ Suggested frontmatter:
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "openagents-observer"
 assurance_revision: 1
-title: "OpenAgents Observer Assurance Spec"
+title: "OpenAgents Observer AssuranceSpec"
 artifact_type: "product_assurance"
 author: "OpenAgents"
 created_at: "2026-07-13T00:00:00Z"
@@ -237,18 +237,18 @@ private customer data.
 The proposed mandatory section IDs, in order, are:
 
 1. `assurance_objective` — what confidence this artifact is designed to
-   establish, and what it explicitly cannot establish;
-2. `subject` — exact source ProductSpec and other normative subject bindings;
+   establish, and what it explicitly cannot establish.
+2. `subject` — exact source ProductSpec and other normative subject bindings.
 3. `risk_model` — harms, forbidden outcomes, failure classes, and applicable
-   invariants;
+   invariants.
 4. `assurance_scope` — in/out/cut across surfaces, seams, environments, proof
-   rungs, and assurance domains;
+   rungs, and assurance domains.
 5. `environments` — required environment-profile references and capability
-   constraints;
-6. `obligations` — the criterion-to-proof graph;
-7. `gates` — activation and aggregate release-proof expressions;
+   constraints.
+6. `obligations` — the criterion-to-proof graph.
+7. `gates` — activation and aggregate release-proof expressions.
 8. `evidence_policy` — required evidence, freshness, independence, retention,
-   and public-safety rules;
+   and public-safety rules.
 9. `authority_boundaries` — who may admit, verify, waive, accept, release, and
    change public claims.
 
@@ -272,7 +272,7 @@ Suggested optional canonical sections:
 `assurance_scope` is deliberately separate from ProductSpec scope. ProductSpec
 scope answers what product is being built. Assurance scope answers which
 claims, risks, surfaces, environments, and proof rungs this proof plan covers.
-It cannot declare a ProductSpec item out of scope; it can only expose an
+It cannot declare a ProductSpec item out of scope. It can only expose an
 assurance gap or reviewed not-applicable disposition.
 
 ### 3.3 Structured blocks
@@ -290,13 +290,13 @@ Proposed fenced-block identifiers:
 - `assurancespec-authority`
 
 Do not create one enormous nested block. Each block should have a narrow schema
-and a stable location. Human-readable prose explains the reasoning; the block
+and a stable location. Human-readable prose explains the reasoning. The block
 contains only fields that a validator, compiler, reviewer, or projection must
 compare.
 
 ## 4. Exact subject and criterion binding
 
-An Assurance Spec is meaningless if it can drift to a different subject while
+An AssuranceSpec is meaningless if it can drift to a different subject while
 retaining green evidence. The subject block must pin:
 
 ```yaml
@@ -321,10 +321,10 @@ intent-bearing frontmatter, sections, structured AC/EVAL/SM items, stable IDs,
 attachments a typed classifier proves are evidence-only plus explicitly
 non-intent provenance timestamps. Unknown fields are intent-bound by default.
 The projection and byte-normalization rules are versioned and
-conformance-tested; a Markdown deletion heuristic is forbidden.
+conformance-tested. A Markdown deletion heuristic is forbidden.
 
 Changed `spec_revision`, intent digest, targeted item ID, or targeted item
-meaning makes the Assurance Spec stale. A document-digest-only change with the
+meaning makes the AssuranceSpec stale. A document-digest-only change with the
 same revision and intent digest does not by itself rewrite proof intent. It
 reports `evidence_index_changed` only after a typed semantic diff proves that
 only classified evidence attachments and permitted provenance fields changed.
@@ -332,7 +332,7 @@ Until the canonical projection is implemented, exact document-digest mismatch
 still requires explicit rebind or a pre-bound stable evidence-index link.
 
 These digests are proposed Assurance-layer semantics. Current OpenAgents
-Desktop runs remain exact-document-digest pinned; an evidence-only byte edit
+Desktop runs remain exact-document-digest pinned. An evidence-only byte edit
 puts the old run into `revision_mismatch`, with its receipts retained as
 historical evidence under the old identity.
 
@@ -341,7 +341,7 @@ with `AC-<number>` IDs and Success Metrics with `SM-<number>` IDs. Optional AI
 evals, when present, use `EVAL-<number>` IDs. Related Artifacts may target those
 exact IDs. The OpenAgents local parser and revision-6 MVP still use an older
 local profile
-with author-visible IDs such as `CW-AC-04`; that profile is a bootstrap subject,
+with author-visible IDs such as `CW-AC-04`. That profile is a bootstrap subject,
 not a portable item-level Evidence Loop claim.
 
 For a legacy/local-profile ProductSpec, a compatibility importer may propose a
@@ -364,7 +364,7 @@ treat `CW-AC-04` as `AC-4`.
 ## 5. The assurance obligation model
 
 An obligation is a reviewed proof claim, not a generated test filename. One
-criterion may require many obligations; one obligation may support several
+criterion may require many obligations. One obligation may support several
 criteria when the relationship is explicit.
 
 Minimum fields for a proof-designed obligation to become ready for admission
@@ -452,8 +452,8 @@ remain advisory because they measure executed code, not claim coverage.
 
 Three coverage ledgers must stay distinct:
 
-1. criterion → obligation traceability;
-2. obligation × environment execution coverage;
+1. criterion → obligation traceability.
+2. obligation × environment execution coverage.
 3. reachable state/action/surface frontier coverage.
 
 None can round up another. A 100% traceability table whose oracles are weak is
@@ -463,19 +463,19 @@ not a release proof.
 
 Each required oracle declares a falsifier appropriate to its claim:
 
-- known-bad input or fixture;
-- targeted source or configuration mutation;
-- wrong-side seam double;
-- invalid lifecycle sequence;
-- weakened formal invariant;
-- deliberately inaccessible UI state;
-- timeout, restart, disconnect, permission, or resource failure;
+- known-bad input or fixture.
+- targeted source or configuration mutation.
+- wrong-side seam double.
+- invalid lifecycle sequence.
+- weakened formal invariant.
+- deliberately inaccessible UI state.
+- timeout, restart, disconnect, permission, or resource failure.
 - counterexample promoted from model checking or exploration.
 
 The correct candidate must satisfy the oracle and the falsifier must be
-refuted. Accepting both yields `oracle_unsound`; inability to execute the
+refuted. Accepting both yields `oracle_unsound`. Inability to execute the
 falsifier yields `INCONCLUSIVE`, not green. Sensitivity evidence belongs in a
-receipt and can go stale independently from the Assurance Spec.
+receipt and can go stale independently from the AssuranceSpec.
 
 ### 5.3 Seam declarations
 
@@ -483,13 +483,13 @@ A seam is its own obligation. Its typed `seam` declaration must name:
 
 - both real client and server, renderer and host, process and persistence
   artifact, or other connected sides as distinct `side_a_ref` and
-  `side_b_ref` repository artifacts;
+  `side_b_ref` repository artifacts.
 - the route, protocol, wire contract, or lifecycle boundary crossed as
-  `boundary_ref`;
-- the environment tier;
-- a wiring-level oracle;
+  `boundary_ref`.
+- the environment tier.
+- a wiring-level oracle.
 - a falsifier that breaks the relationship rather than only one isolated
-  component;
+  component.
 - at least one `qualifying_evidence_refs` entry, in addition to the evidence
   kinds that qualify.
 
@@ -497,21 +497,21 @@ Mock-only tests of both components do not satisfy the seam. A qualifying test
 imports/drives the real code from both sides, or a receipt proves the actual
 end-to-end connection. Generic adequacy assessment marks a seam-domain
 obligation that omits this declaration, repeats one side as both sides, or
-names no qualifying evidence as not design-ready; manifest compilation rejects
+names no qualifying evidence as not design-ready. Manifest compilation rejects
 it fail closed.
 
 ### 5.4 Formal obligations
 
 A formal block must declare:
 
-- the narrow production contract it abstracts;
-- the model boundary and omitted state;
-- model/checker/configuration refs;
-- properties and invariants;
-- bounds and fairness assumptions;
-- a mutation or deliberately weakened property;
-- the expected counterexample;
-- the preserved counterexample fixture;
+- the narrow production contract it abstracts.
+- the model boundary and omitted state.
+- model/checker/configuration refs.
+- properties and invariants.
+- bounds and fairness assumptions.
+- a mutation or deliberately weakened property.
+- the expected counterexample.
+- the preserved counterexample fixture.
 - the mapped runtime regression.
 
 A passing model means only that the bounded model satisfied the declared
@@ -530,19 +530,19 @@ assurance/environments/<name>.assurance-environment.json
 
 A profile should contain:
 
-- profile ID, format version, revision, and digest;
-- owner (`first_party` or `external`);
+- profile ID, format version, revision, and digest.
+- owner (`first_party` or `external`).
 - target class: fixture, local, preview, staging, release artifact, device, or
-  production;
-- mutability: read-only, isolated-write, explicitly-armed-write, or blocked;
-- OS, architecture, runtime, framework, renderer, browser/device versions;
-- typed capabilities;
-- immutable snapshot policy or dynamic deployment binding;
+  production.
+- mutability: read-only, isolated-write, explicitly-armed-write, or blocked.
+- OS, architecture, runtime, framework, renderer, browser/device versions.
+- typed capabilities.
+- immutable snapshot policy or dynamic deployment binding.
 - authentication strategy using credential refs or environment-variable names,
-  never secret values;
-- fresh-identity, reset, restart, isolation, and revocation behavior;
-- data classification, evidence visibility, retention, and redaction policy;
-- permitted and forbidden actions;
+  never secret values.
+- fresh-identity, reset, restart, isolation, and revocation behavior.
+- data classification, evidence visibility, retention, and redaction policy.
+- permitted and forbidden actions.
 - required native commands or service endpoints.
 
 Framework detection can propose a profile. A reviewer admits it. No filename,
@@ -558,18 +558,18 @@ AssuranceSpec stays framework-neutral by putting native mechanics behind typed
 adapters. A conforming adapter exposes:
 
 1. `describe` — identity, version, digest, supported techniques,
-   capabilities, and schemas;
-2. `validate` — typed incompatibilities and missing capabilities;
+   capabilities, and schemas.
+2. `validate` — typed incompatibilities and missing capabilities.
 3. `compile` — pure conversion from an admitted obligation and environment
-   profile to execution units;
+   profile to execution units.
 4. `execute` — perform an execution unit within explicitly granted
-   capabilities;
-5. `normalize` — convert native results into standard receipts;
+   capabilities.
+5. `normalize` — convert native results into standard receipts.
 6. `publicProject` — create a separately redacted public-safe projection.
 
 There is deliberately no adapter operation that semantically interprets
 ProductSpec prose. That judgment occurs when agents propose and reviewers admit
-the Assurance Spec.
+the AssuranceSpec.
 
 Adapter references are locked by version and content digest. An adapter cannot
 expand target permissions beyond its environment profile. Unsupported
@@ -579,20 +579,20 @@ capabilities emit typed gaps, never implicit skips.
 
 AssuranceSpec needs a lifecycle separate from observed test state:
 
-- `proposed` — authored or agent-generated, not executable policy;
-- `admitted` — exact revision/digest approved by recognized review policy;
-- `superseded` — replaced by a later admitted revision;
+- `proposed` — authored or agent-generated, not executable policy.
+- `admitted` — exact revision/digest approved by recognized review policy.
+- `superseded` — replaced by a later admitted revision.
 - `retired` — intentionally no longer active.
 
 For implementation conformance, distinguish:
 
-- `structurally_valid` — parses and validates against the format;
-- `reviewed` — has portable review annotations for required axes;
+- `structurally_valid` — parses and validates against the format.
+- `reviewed` — has portable review annotations for required axes.
 - `admitted_for_execution` — an external policy recognizes the review set and
   emits an admission receipt.
 
 Validity does not imply adequate proof design. Review does not imply authority.
-Admission is an external policy decision bound to the exact Assurance Spec
+Admission is an external policy decision bound to the exact AssuranceSpec
 revision and digest.
 
 ### 8.1 Portable review annotations
@@ -618,17 +618,17 @@ targets:
 
 Recommended axes:
 
-- subject fidelity;
-- criterion traceability;
-- risk coverage;
-- oracle adequacy;
-- falsifier strength;
-- seam reality;
-- environment fidelity;
-- evidence sufficiency;
-- verifier independence;
-- public safety;
-- authority containment;
+- subject fidelity.
+- criterion traceability.
+- risk coverage.
+- oracle adequacy.
+- falsifier strength.
+- seam reality.
+- environment fidelity.
+- evidence sufficiency.
+- verifier independence.
+- public safety.
+- authority containment.
 - feasibility.
 
 Annotations are portable opinions. They become admission only when an external
@@ -640,17 +640,17 @@ The stable Episode 252 false-green identifiers are
 `false_green_fixture_assert`, `false_green_api_mirror`,
 `false_green_mocked_seam`, `false_green_coverage_theater`, and
 `false_green_round_up`. Validators and public projections use these exact
-identifiers; unavailable evidence never gets renamed into a passing class.
+identifiers. Unavailable evidence never gets renamed into a passing class.
 
 Calibration fixtures should include strong and weak examples, not only
 schema-valid documents:
 
-- a false green whose test repeats implementation behavior;
-- a mobile/client-server seam where both component suites pass;
-- a criterion with fixture proof but missing release proof;
-- a formal model with an over-broad claim and narrow actual boundary;
-- a valid exception with scope and expiry;
-- an oracle mutation that proves sensitivity;
+- a false green whose test repeats implementation behavior.
+- a mobile/client-server seam where both component suites pass.
+- a criterion with fixture proof but missing release proof.
+- a formal model with an over-broad claim and narrow actual boundary.
+- a valid exception with scope and expiry.
+- an oracle mutation that proves sensitivity.
 - an agent-generated obligation rejected during review.
 
 These examples train reviewers and tools without turning taste into parser
@@ -672,38 +672,38 @@ compiler version
 
 A named legacy profile without a canonical intent projection may substitute the
 exact ProductSpec document digest as its normative subject digest. In that
-profile every byte change stales the Manifest; it cannot claim evidence-only
+profile every byte change stales the Manifest. It cannot claim evidence-only
 carry-forward.
 
 Normative compiler requirements:
 
-- AssuranceSpec and native source digests cover exact UTF-8 bytes; the
+- AssuranceSpec and native source digests cover exact UTF-8 bytes. The
   separately versioned ProductSpec intent projection and targeted-item digests
-  are canonical, documented, and golden-tested;
-- output uses canonical JSON with stable key and array ordering;
+  are canonical, documented, and golden-tested.
+- output uses canonical JSON with stable key and array ordering.
 - compilation performs no network, clock, random, filesystem-discovery, or
-  model calls beyond reading its declared inputs;
-- no timestamps or absolute local paths appear in output;
-- identical inputs produce byte-identical output;
-- generated IDs derive from stable source anchors or content, never time;
-- the manifest embeds all source refs and `do_not_edit: true`;
+  model calls beyond reading its declared inputs.
+- no timestamps or absolute local paths appear in output.
+- identical inputs produce byte-identical output.
+- generated IDs derive from stable source anchors or content, never time.
+- the manifest embeds all source refs and `do_not_edit: true`.
 - classified evidence Related Artifacts and the observed ProductSpec document
   digest are not normative Manifest-hash inputs. Admission and the mutable
-  Assurance Evidence Index retain that exact-document provenance;
+  Assurance Evidence Index retain that exact-document provenance.
 - the dependency graph identifies exactly which evidence becomes stale when an
-  input changes;
+  input changes.
 - golden fixtures assert exact manifest bytes.
 
 The Assurance Manifest contains resolved plans, not latest-run state:
 
-- subject revision, intent digest, targeted-item digests, and source digests;
-- resolved obligation graph;
-- target/environment bindings;
-- adapter and command digests;
-- dependency and activation graph;
-- oracle and falsifier execution units;
-- evidence requirements;
-- gate expressions;
+- subject revision, intent digest, targeted-item digests, and source digests.
+- resolved obligation graph.
+- target/environment bindings.
+- adapter and command digests.
+- dependency and activation graph.
+- oracle and falsifier execution units.
+- evidence requirements.
+- gate expressions.
 - public-safety classification.
 
 Readiness, verdict, infrastructure state, stability, freshness, human
@@ -724,7 +724,7 @@ Never collapse these axes:
 
 | Axis | Example values | Authority/source |
 | --- | --- | --- |
-| Admission | proposed, admitted, superseded, retired | Assurance Spec + admission receipt |
+| Admission | proposed, admitted, superseded, retired | AssuranceSpec + admission receipt |
 | Readiness | needs_design, planned_red, blocked, executable, not_applicable | compiled dependency projection |
 | Observation | not_run, CONFIRMED, REFUTED, INCONCLUSIVE | run receipt |
 | Infrastructure | ready, unarmed, unavailable, failed | runner receipt |
@@ -735,7 +735,7 @@ Never collapse these axes:
 
 `INCONCLUSIVE`, stale, flaky, unarmed, unavailable, missing-adapter, skipped,
 or missing evidence never rounds up to confirmed. Retry-until-green is not
-evidence; retries are bounded and visible.
+evidence. Retries are bounded and visible.
 
 A release projection is a read model over the manifest, receipts, dependency
 freshness, and external decisions. It may report that a declared gate
@@ -747,7 +747,7 @@ promote a public promise.
 Assurance Receipts remain immutable observations. A separate public-safe
 Assurance Evidence Index may select current receipt refs, preserve superseded
 history, and compute freshness. ProductSpec Related Artifacts point to that
-index or another durable artifact; link presence never becomes a pass.
+index or another durable artifact. Link presence never becomes a pass.
 
 For OpenAgents Desktop, a typed Assurance Receipt bridge must first dereference
 and validate the immutable receipt, its subject/Manifest/obligation chain,
@@ -758,7 +758,7 @@ exact ProductSpec work packet.
 
 The current host only checks that `verifierRef` differs from the host
 `evidenceProducerRef`, which it sets to the active lease executor. The bridge
-must independently check the Assurance receipt's real producer/reviewer policy;
+must independently check the Assurance receipt's real producer/reviewer policy.
 the host check does not prove authenticated identity separation. Because the
 current host verification contract has only `passed`, `REFUTED`,
 `INCONCLUSIVE`, stale, flaky, unavailable, and infrastructure-failed Assurance
@@ -766,20 +766,20 @@ results must not enter that path as verified. They remain explicit evidence
 and block, fail, or await a richer host contract.
 
 The host evidence envelope, Assurance Receipt, and native report reference one
-another; none replaces the others. Workroom packet verification and owner
+another. None replaces the others. Workroom packet verification and owner
 disposition also remain distinct from full-criterion assurance, release, and
 promise state.
 
 ### 10.2 Exception receipts
 
-The Assurance Spec defines exception policy; it does not carry live waivers as
+The AssuranceSpec defines exception policy. It does not carry live waivers as
 ordinary authored state. A separate authorized exception receipt contains:
 
-- exact subject, Assurance Spec, obligation, and environment scope;
-- reason and recognized authority;
-- issued-at and expiry/review date;
-- maximum proof rung and public-claim limitation;
-- evidence and compensating-control refs;
+- exact subject, AssuranceSpec, obligation, and environment scope.
+- reason and recognized authority.
+- issued-at and expiry/review date.
+- maximum proof rung and public-claim limitation.
+- evidence and compensating-control refs.
 - revocation/supersession refs.
 
 The obligation remains visible as unconfirmed-with-exception. An exception does
@@ -789,7 +789,7 @@ not transform missing proof into a pass.
 
 ProductSpec Decision Trace records product-intent drift. Assurance evolution
 needs a parallel optional companion. ProductSpec Related Artifacts record
-evidence pointers; neither artifact is a run log.
+evidence pointers. Neither artifact is a run log.
 
 ```text
 <name>.assurance-decision-trace.json
@@ -821,7 +821,7 @@ record both an Assurance Decision Trace event and the corresponding ProductSpec
 Decision Trace event.
 
 Until a portable assurance trace exists, ProductSpec Related Artifacts can link
-an Assurance Spec as `engineering_spec` or `other` and an Assurance Evidence
+an AssuranceSpec as `engineering_spec` or `other` and an Assurance Evidence
 Index as `other`. They must not use `product_spec`, because AssuranceSpec is a
 different standard. Potential upstream types such as `assurance_spec`,
 `test_report`, `formal_model`, or `evidence_receipt` should be proposed only
@@ -840,7 +840,7 @@ several pre-1.0 enforcement gaps in the current reference implementation.
 3. **Observed verification** — what did an exact run observe?
 
 Plane 1 returns stable structural errors and warnings. Plane 2 returns gaps and
-policy diagnostics. Plane 3 returns receipts. A schema-valid Assurance Spec is
+policy diagnostics. Plane 3 returns receipts. A schema-valid AssuranceSpec is
 not a claim that the product works.
 
 ### 12.2 Proposed stable structural codes
@@ -919,20 +919,20 @@ docs/decision-trace.md
 
 Minimum tests:
 
-- valid and invalid fixture corpus covering every stable code;
-- schema/parser/validator parity;
-- parse → serialize → parse semantic equality;
-- unsupported-version rejection;
-- unknown valid custom-section preservation;
-- nested structured-block round trips;
-- ProductSpec criterion-binding fixtures;
-- duplicate, dangling, and dependency-cycle fixtures;
-- deterministic compiler golden bytes;
-- gate evaluation fixtures separate from parser conformance;
-- environment-capability mismatch fixtures;
-- mutation/falsifier fixtures proving oracle sensitivity;
-- review-annotation and Decision Trace subject binding;
-- a self-hosting Assurance Spec for Observer itself.
+- valid and invalid fixture corpus covering every stable code.
+- schema/parser/validator parity.
+- parse → serialize → parse semantic equality.
+- unsupported-version rejection.
+- unknown valid custom-section preservation.
+- nested structured-block round trips.
+- ProductSpec criterion-binding fixtures.
+- duplicate, dangling, and dependency-cycle fixtures.
+- deterministic compiler golden bytes.
+- gate evaluation fixtures separate from parser conformance.
+- environment-capability mismatch fixtures.
+- mutation/falsifier fixtures proving oracle sensitivity.
+- review-annotation and Decision Trace subject binding.
+- a self-hosting AssuranceSpec for Observer itself.
 
 Do not repeat the remaining ProductSpec reference gaps: incomplete exhaustive
 schema/parser additional-property parity, flat-parser versus object-schema
@@ -946,11 +946,11 @@ schema-only or illustrative JSON.
 Proposed interoperability levels:
 
 - **AS-L1 Document** — parse, validate, serialize, preserve custom sections,
-  and round-trip Assurance Specs;
+  and round-trip Assurance Specs.
 - **AS-L2 Compiler** — emit schema-valid byte-stable manifests with stable IDs
-  and typed gaps;
+  and typed gaps.
 - **AS-L3 Execution** — implement at least one declared adapter, execute both
-  correct and falsifier units, and emit normalized receipts;
+  correct and falsifier units, and emit normalized receipts.
 - **AS-L4 Evidence lifecycle** — dependency freshness, independent
   verification, environment aggregation, redaction, and public projection.
 
@@ -963,36 +963,36 @@ compliant.”
 
 Keep these versions independent:
 
-- `assurance_spec_format_version` — shape of the companion standard;
-- `assurance_revision` — one subject's committed proof-design revision;
+- `assurance_spec_format_version` — shape of the companion standard.
+- `assurance_revision` — one subject's committed proof-design revision.
 - bound ProductSpec format, revision, document digest, intent digest, and item
-  identities;
-- Environment Profile format, revision, and digest;
-- adapter lock version and digest;
-- Observer/compiler package version;
-- Assurance Manifest format version;
+  identities.
+- Environment Profile format, revision, and digest.
+- adapter lock version and digest.
+- Observer/compiler package version.
+- Assurance Manifest format version.
 - Assurance Receipt format version.
 
 An `assurance_revision` bump is required when proof intent changes, including:
 
-- criterion bindings;
-- required or not-applicable obligations;
-- risk coverage;
-- proof rungs;
-- seam declarations;
-- oracle or falsifier meaning;
-- evidence, independence, gate, or exception policy;
+- criterion bindings.
+- required or not-applicable obligations.
+- risk coverage.
+- proof rungs.
+- seam declarations.
+- oracle or falsifier meaning.
+- evidence, independence, gate, or exception policy.
 - authority boundaries.
 
-A semantically equivalent test refactor does not require an Assurance Spec
+A semantically equivalent test refactor does not require an AssuranceSpec
 revision, but changes native source/command digests, produces a new manifest,
-and stales dependent evidence. Git holds the detailed diff; revision numbers
+and stales dependent evidence. Git holds the detailed diff. Revision numbers
 are portable citation handles.
 
 A ProductSpec revision, intent digest, targeted item ID, or targeted item
-meaning change stales the Assurance Spec until explicit reconciliation. A
+meaning change stales the AssuranceSpec until explicit reconciliation. A
 typed diff limited to classified evidence attachments refreshes the evidence
-projection without changing proof intent; `product_spec` dependency links are
+projection without changing proof intent. `product_spec` dependency links are
 intent-bound. Dependency analysis may preserve unaffected evidence only after
 explicit reconciliation records the surviving dependency digests. “The text
 looks close” is not reconciliation.
@@ -1016,7 +1016,7 @@ var/assurance/runs/...           # ephemeral/private receipts and artifacts
 
 Commit authored Product Specs, Assurance Specs, public-safe Environment
 Profiles, and the adapter lock. Deterministic manifests may be committed or
-regenerated and byte-compared once that repository policy is settled; either
+regenerated and byte-compared once that repository policy is settled. Either
 way, never hand-edit them. Store large or private run evidence outside Git with
 stable, redacted refs. A public Observatory reads approved projections, never
 raw private artifacts.
@@ -1028,9 +1028,9 @@ The first useful version wraps existing authoritative homes:
 | Existing artifact | AssuranceSpec role |
 | --- | --- |
 | ProductSpec criterion | Subject criterion ref |
-| ProductSpec Related Artifact | External evidence pointer to consume or publish; never a verdict |
-| Desktop ProductSpec workroom loop | Existing plan/packet/evidence workflow; register Assurance Receipt refs without replacing host state |
-| `productspec-ai-evals` | Eval obligation seed; a fractional eval threshold does not accept the whole criterion |
+| ProductSpec Related Artifact | External evidence pointer to consume or publish. Never a verdict |
+| Desktop ProductSpec workroom loop | Existing plan/packet/evidence workflow. Register Assurance Receipt refs without replacing host state |
+| `productspec-ai-evals` | Eval obligation seed. A fractional eval threshold does not accept the whole criterion |
 | Behavior contract | Durable expectation and oracle ref |
 | Planned-feature Eval Suite | Proposed or planned-red obligation seed |
 | Target adapter | Environment/adapter implementation input |
@@ -1041,22 +1041,22 @@ The first useful version wraps existing authoritative homes:
 | Distilled regression | Proposed new obligation or oracle revision |
 | TLA+/TLC model | Formal obligation plus checker adapter |
 | Arbiter and `/qa` | Receipt-backed projection only |
-| Product promise | Informative link; registry still owns the public claim |
+| Product promise | Informative link. Registry still owns the public claim |
 
 The harness does not become one monolithic runner. AssuranceSpec becomes the
-portable proof-design control plane; adapters preserve the test tools already
+portable proof-design control plane. Adapters preserve the test tools already
 native to each repository and framework.
 
 ## 16. Rollout
 
 ### PSEL-0 — ProductSpec Evidence Loop compatibility precondition
 
-- vendor current upstream `0.19.0` conformance fixtures;
+- vendor current upstream `0.19.0` conformance fixtures.
 - implement structured AC/EVAL/SM and Related Artifact parsing/validation in
-  `@openagentsinc/product-spec` without taking a runtime dependency;
-- implement and golden-test exact document and canonical intent digests;
+  `@openagentsinc/product-spec` without taking a runtime dependency.
+- implement and golden-test exact document and canonical intent digests.
 - preserve the current revision-6 MVP and its `CW-AC-*` bindings as an explicit
-  legacy-profile fixture;
+  legacy-profile fixture.
 - plan the reviewed `CW-AC-*`/semantic-metric to portable `AC-*`/`SM-*`
   ProductSpec revision, machine-readable ID mapping artifact, Decision Trace
   explanation/link, single-line criterion fixtures, and custom preservation of
@@ -1068,27 +1068,27 @@ typed evidence-attachment-only edit does not masquerade as intent drift.
 ### AS-0 — standard dossier and calibration
 
 - keep this proposal and Episode 252 exact about the implemented proposal-only
-  state;
-- generate one example Assurance Spec against a real Product Spec;
-- review strong/weak obligation and falsifier examples;
+  state.
+- generate one example AssuranceSpec against a real ProductSpec.
+- review strong/weak obligation and falsifier examples.
 - settle mandatory sections, status vocabulary, and admission policy.
 
-Current: the format dossier and generated MVP proposal exist; calibration and
+Current: the format dossier and generated MVP proposal exist. Calibration and
 admission review remain open. No runtime claim.
 
 ### AS-1 — document implementation
 
 - **implemented:** `packages/assurance-spec` schema, parser, serializer,
   structural validator, separate adequacy assessment, repository inventory,
-  and `propose`/`validate`/`coverage` CLI;
+  and `propose`/`validate`/`coverage` CLI.
 - **implemented:** deterministic one-obligation-per-criterion proposal, exact
   byte-digest/revision/path/criterion binding, stable invalid-input failures,
-  semantic round trips, and clean/dirty committed-tree inventory tests;
+  semantic round trips, and clean/dirty committed-tree inventory tests.
 - land a fuller valid/invalid conformance corpus and complete schema/parser
-  parity tests;
+  parity tests.
 - support both the explicit revision-6 legacy profile and the reconciled
-  upstream-current item model without silent ID aliasing;
-- preserve supported custom sections rather than rejecting them;
+  upstream-current item model without silent ID aliasing.
+- preserve supported custom sections rather than rejecting them.
 - add portable review annotations.
 
 Current: the bounded legacy-profile proposal slice is self-validating. Exit
@@ -1097,9 +1097,9 @@ and review-annotation work.
 
 ### AS-2 — deterministic compiler
 
-- define Environment Profile, adapter lock, Manifest, and golden schemas;
-- compile admitted source artifacts into byte-stable manifests;
-- implement dependency-based stale projections;
+- define Environment Profile, adapter lock, Manifest, and golden schemas.
+- compile admitted source artifacts into byte-stable manifests.
+- implement dependency-based stale projections.
 - do not generate native tests yet.
 
 Exit: AS-L2 and exact golden fixture bytes.
@@ -1107,8 +1107,8 @@ Exit: AS-L2 and exact golden fixture bytes.
 ### AS-3 — wrap current harnesses
 
 - add thin adapters for Bun tests, QA Runner, behavior contracts, target
-  adapters, and TLC;
-- normalize current receipts without moving their authoritative homes;
+  adapters, and TLC.
+- normalize current receipts without moving their authoritative homes.
 - demonstrate correct/falsifier execution and partial-evidence handling.
 - register one qualifying Assurance Receipt by exact ref through the Desktop
   workroom without converting non-confirming observations to `passed`.
@@ -1117,32 +1117,32 @@ Exit: one end-to-end AS-L3 dogfood packet.
 
 ### AS-4 — Effect Native and OpenAgents Desktop dogfood
 
-- use Effect Native as customer zero, not protocol shape;
-- cover shared behavior plus renderer-specific capability boundaries;
-- require real seam, release-artifact, and sensitivity evidence;
+- use Effect Native as customer zero, not protocol shape.
+- cover shared behavior plus renderer-specific capability boundaries.
+- require real seam, release-artifact, and sensitivity evidence.
 - publish only public-safe projections and stable ProductSpec Related Artifact
   refs.
 
-Exit: one admitted Assurance Spec whose release projection is independently
+Exit: one admitted AssuranceSpec whose release projection is independently
 reviewed.
 
 ### AS-5 — portability and self-hosting
 
-- implement one non-Effect project through native tooling;
-- author an Assurance Spec for Observer itself;
-- mutation-test the parser, compiler, adapter, and receipt normalizer;
+- implement one non-Effect project through native tooling.
+- author an AssuranceSpec for Observer itself.
+- mutation-test the parser, compiler, adapter, and receipt normalizer.
 - prove unsupported techniques produce gaps rather than skips.
 
 Exit: evidence that the protocol is not an OpenAgents-only wrapper.
 
 ### AS-6 — hosted service and Observatory
 
-- private hosted browser/native/device matrices;
-- opt-in public project progress/evidence pages;
-- retention, redaction, data residency, cost, and arming controls;
+- private hosted browser/native/device matrices.
+- opt-in public project progress/evidence pages.
+- retention, redaction, data residency, cost, and arming controls.
 - ProductSpec/AssuranceSpec review as a hosted service.
 
-Exit: separately priced and promise-gated service; no hosted dependency for
+Exit: separately priced and promise-gated service. No hosted dependency for
 the local OSS protocol.
 
 ## 17. Upstream and governance posture
@@ -1158,9 +1158,9 @@ intent during QA generation.
 Possible upstream contributions after dogfood are narrower now:
 
 - a first-class Related Artifact type for Assurance Specs or receipts if
-  honest use of `engineering_spec`/`other` loses interoperability;
+  honest use of `engineering_spec`/`other` loses interoperability.
 - assurance/oracle drift events if the existing Decision Trace vocabulary
-  proves insufficient;
+  proves insufficient.
 - a portable intent-projection digest only after two implementations agree on
   its exact semantics.
 

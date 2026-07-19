@@ -1,7 +1,7 @@
 # Autopilot Coder Implementation Log
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 This log records the sequential implementation of the Autopilot coder issue
@@ -47,9 +47,9 @@ Implemented:
   - `POST /api/autopilot/work`
   - `GET /api/autopilot/work/{workOrderRef}`
   - registered-agent bearer authentication through the existing customer-order
-    grant path;
-  - required `Idempotency-Key` handling for create;
-  - idempotent replay returning the original projection;
+    grant path.
+  - required `Idempotency-Key` handling for create.
+  - idempotent replay returning the original projection.
   - D1-backed store and in-memory-testable route factory.
 - Wired the route family into the Worker dispatcher.
 - Added focused tests in
@@ -195,10 +195,10 @@ Implemented:
 - Added a pure deterministic quote service in
   `apps/openagents.com/workers/api/src/autopilot-work-quote.ts`.
 - Priced persisted request inputs across:
-  - public free-slice work;
-  - paid public work;
-  - requester/Pylon-local runner preferences;
-  - OpenAgents SHC and cloud runner preferences;
+  - public free-slice work.
+  - paid public work.
+  - requester/Pylon-local runner preferences.
+  - OpenAgents SHC and cloud runner preferences.
   - privacy-tier, private-trace, and secret-broker requirements.
 - Preserved upstream persisted quotes when `quoteRef` and `quotedAmountCents`
   are present.
@@ -226,13 +226,13 @@ Implemented:
   public-safe buyer payment proof refs on Autopilot work orders.
 - Added the durable `paid_ready` state.
 - Added payment challenge projections for payable work, including:
-  - L402 `WWW-Authenticate` challenge headers;
-  - MDK checkout intent/url refs;
+  - L402 `WWW-Authenticate` challenge headers.
+  - MDK checkout intent/url refs.
   - deterministic quote refs and amount cents.
 - Changed unpaid payable create/replay responses to return HTTP 402 while
   preserving the durable work order and quote.
 - Verified idempotent paid retries:
-  - L402 proof via `X-OpenAgents-L402`;
+  - L402 proof via `X-OpenAgents-L402`.
   - MDK checkout proof via `X-OpenAgents-MDK-Checkout-Proof`.
 - Promoted paid retries to `paid_ready` without treating buyer payment as
   worker payout, acceptance, settlement, deploy, or public-claim authority.
@@ -445,11 +445,11 @@ Implemented:
   - `capability.pylon.local_codex`
   - `capability.pylon.local_coding_agent`
 - Updated the Pylon placement selector so requester-local execution requires:
-  - owner-linked Pylon;
-  - fresh online heartbeat;
-  - compatible client version;
-  - wallet readiness;
-  - assignment readiness;
+  - owner-linked Pylon.
+  - fresh online heartbeat.
+  - compatible client version.
+  - wallet readiness.
+  - assignment readiness.
   - local coding-agent readiness.
 - Added `localExecutionReady` to Pylon placement candidate projections.
 - Preserved secret boundaries: local capability is represented only by public
@@ -545,10 +545,10 @@ Implemented:
 - Added needs-input guidance for local-only or Pylon-only policies with no
   eligible requester Pylon.
 - Added work-order `nextAction` so the API can surface:
-  - `payment_required` when the caller must pay first;
+  - `payment_required` when the caller must pay first.
   - `needs_input` when the caller must add or restart a Pylon or relax privacy
-    or runner policy;
-  - `retry_later` when a retry window is appropriate;
+    or runner policy.
+  - `retry_later` when a retry window is appropriate.
   - `ready` when placement and funding are not blocking assignment.
 - Preserved the separation between buyer payment, placement, worker payout,
   accepted-work, deploy, spend, and public-claim authority.
@@ -577,10 +577,10 @@ Implemented:
 - Ensured delivered tasks no longer synthesize fresh assignment or fallback
   lease intents.
 - Preserved authority boundaries:
-  - accepted-work authority remains false;
-  - worker payout authority remains false;
-  - deploy and spend authority remain false;
-  - Forum autopublish remains false;
+  - accepted-work authority remains false.
+  - worker payout authority remains false.
+  - deploy and spend authority remain false.
+  - Forum autopublish remains false.
   - settlement still requires a later accepted-work path.
 - Updated the hosted Gemini product-promise and launch-dashboard copy to say
   the route harness is verified while the public paid product remains red.
@@ -639,10 +639,10 @@ Implemented:
   through public-safe `taskRefs`, acceptance criteria refs, and deterministic
   assignment refs.
 - Preserved no-spend mode and authority separation:
-  - `paymentMode: "unpaid_smoke"`;
-  - Forum autopublish disabled;
-  - no deploy authority;
-  - no accepted-work authority;
+  - `paymentMode: "unpaid_smoke"`.
+  - Forum autopublish disabled.
+  - no deploy authority.
+  - no accepted-work authority.
   - no payout or settlement authority.
 - Added route coverage proving idempotent Autopilot retries do not create
   duplicate Pylon assignments.
@@ -666,16 +666,16 @@ Implemented:
   `apps/openagents.com/workers/api/src/autopilot-coding-assignment.ts`.
 - Defined the shared requester-Pylon, fallback, SHC/cloud, hosted Gemini, and
   future privacy-lane assignment payload with:
-  - ref-only objective;
-  - task kind;
-  - public GitHub repository refs;
-  - branch/write/PR/deploy/read/spend authority refs;
-  - allowed tool kinds;
-  - auth refs;
-  - acceptance criteria refs;
-  - budget, quote, payment challenge, spend-cap, timeout, and settlement mode;
+  - ref-only objective.
+  - task kind.
+  - public GitHub repository refs.
+  - branch/write/PR/deploy/read/spend authority refs.
+  - allowed tool kinds.
+  - auth refs.
+  - acceptance criteria refs.
+  - budget, quote, payment challenge, spend-cap, timeout, and settlement mode.
   - trace policy that explicitly forbids raw prompts, provider payloads,
-    runner logs, and source archives;
+    runner logs, and source archives.
   - closeout schema for diffs, test/blocker evidence, result refs, and
     no-self-acceptance.
 - Added mapping from current Autopilot task records plus requester-Pylon and
@@ -709,8 +709,8 @@ Implemented:
 - Extended the Pylon assignment API with a worker closeout event separate from
   operator accepted-work closeout:
   - worker closeout can submit artifact, proof, build, test, result, blocker,
-    and closeout refs;
-  - worker closeout moves the assignment to `closeout_submitted`;
+    and closeout refs.
+  - worker closeout moves the assignment to `closeout_submitted`.
   - worker closeout does not grant accepted-work, payout, settlement, deploy,
     spend, or Forum autopublish authority.
 - Updated Pylon assignment polling to consume current OpenAgents assignment
@@ -719,11 +719,11 @@ Implemented:
 - Added bearer-token client support for registered-agent Pylon loops while
   preserving the signed-header path for local harnesses.
 - Added bounded no-spend Pylon runtime execution that:
-  - polls a public assignment;
-  - accepts it after local admission checks;
-  - submits progress;
-  - submits artifact/proof refs;
-  - submits a public-safe worker closeout;
+  - polls a public assignment.
+  - accepts it after local admission checks.
+  - submits progress.
+  - submits artifact/proof refs.
+  - submits a public-safe worker closeout.
   - records local closeout state without raw logs, local paths, wallet
     material, provider payloads, or source archives.
 - Added proof-trace and visibility handling for `worker_closeout` events.
@@ -749,9 +749,9 @@ Implemented:
   artifact, blocker, build, preview, proof, result, summary, and test refs.
 - Added a Pylon worker-closeout ingestion helper that:
   - infers the Autopilot `workOrderRef` and `taskRef` from the Pylon assignment
-    and normalized coding assignment payload;
-  - verifies the assignment owner matches the Autopilot agent user;
-  - validates that all projected closeout refs are public-safe;
+    and normalized coding assignment payload.
+  - verifies the assignment owner matches the Autopilot agent user.
+  - validates that all projected closeout refs are public-safe.
   - records the closeout through the Autopilot work store as `delivered`.
 - Wired the Pylon `worker_closeout` route to the Autopilot closeout ingester in
   production.
@@ -816,12 +816,12 @@ Implemented:
 - Added `apps/openagents.com/workers/api` script
   `smoke:autopilot-coder:no-spend`.
 - Added a named smoke test that drives the no-spend path through route calls:
-  - public Autopilot work submission;
-  - requester Pylon placement;
-  - durable Pylon assignment creation;
-  - Pylon assignment acceptance;
-  - worker closeout submission;
-  - Autopilot delivered detail/event recovery;
+  - public Autopilot work submission.
+  - requester Pylon placement.
+  - durable Pylon assignment creation.
+  - Pylon assignment acceptance.
+  - worker closeout submission.
+  - Autopilot delivered detail/event recovery.
   - owner-granted review acceptance.
 - Added retained projection redaction scanning for private paths,
   wallet/payment material, provider payloads, raw prompts/logs/source archives,
@@ -837,7 +837,7 @@ Verification:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4617`
 
-Status: implemented for the signed L402 route boundary; live external payment
+Status: implemented for the signed L402 route boundary. Live external payment
 movement remains a separate verifier/smoke gap.
 
 Implemented:
@@ -845,16 +845,16 @@ Implemented:
 - Replaced Autopilot L402 proof-ref-only funding with signed credential
   verification against the stored work order.
 - Derived the Autopilot L402 challenge from durable work-order state:
-  - quote amount and currency;
-  - challenge ref;
-  - request-body digest;
-  - owner, agent, and work-order scope refs;
-  - endpoint and product refs;
+  - quote amount and currency.
+  - challenge ref.
+  - request-body digest.
+  - owner, agent, and work-order scope refs.
+  - endpoint and product refs.
   - 15-minute expiry.
 - Added private `x-openagents-l402-credential` issuance on `402` responses
   when the MDK route signing boundary is configured.
 - Added an explicit payment verifier hook that fails closed when missing or
-  rejected; a signed credential alone no longer funds payable work.
+  rejected. A signed credential alone no longer funds payable work.
 - Kept MDK checkout proof headers payment-required until checkout creation and
   reconciliation are wired.
 - Tightened payment persistence so only unpaid `payment_required` work can move
@@ -873,7 +873,7 @@ Verification:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4618`
 
-Status: implemented as a CI-safe paid route smoke; live external payment
+Status: implemented as a CI-safe paid route smoke. Live external payment
 movement remains part of the real paid-work epic.
 
 Implemented:
@@ -882,14 +882,14 @@ Implemented:
   `smoke:autopilot-coder:paid`.
 - Added a named smoke test that drives the payable public path through route
   calls and the Pylon API:
-  - payable Autopilot work submission;
-  - signed L402 `402` challenge;
-  - verifier-approved paid retry with the same idempotency key;
-  - funded work projection;
-  - requester Pylon assignment recovery;
-  - Pylon assignment acceptance;
-  - worker closeout submission;
-  - Autopilot delivered detail/event recovery;
+  - payable Autopilot work submission.
+  - signed L402 `402` challenge.
+  - verifier-approved paid retry with the same idempotency key.
+  - funded work projection.
+  - requester Pylon assignment recovery.
+  - Pylon assignment acceptance.
+  - worker closeout submission.
+  - Autopilot delivered detail/event recovery.
   - owner-granted review acceptance.
 - Projected funded Pylon coding assignments as
   `payable_pending_settlement`, while the normalized coding assignment budget
@@ -910,7 +910,7 @@ Verification:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4619`
 
-Status: complete for the CI-safe no-spend Pylon execution contract; staging/live
+Status: complete for the CI-safe no-spend Pylon execution contract. Staging/live
 deployment remains a separate environment run.
 
 Implemented across child issues:
@@ -944,7 +944,7 @@ Verification:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4620`
 
-Status: complete for the repo-level paid route verification contract; staging
+Status: complete for the repo-level paid route verification contract. Staging
 or live external payment movement remains a deployment/integration smoke gap.
 
 Implemented:
@@ -953,11 +953,11 @@ Implemented:
   buyer-payment ledger store is configured.
 - Added `verifyAutopilotL402PaymentProofFromBuyerLedger`, which accepts paid
   retries only when the buyer-payment ledger has:
-  - a redeemed record for the signed challenge;
-  - the same public-safe proof ref supplied by the paying agent;
-  - an issued receipt;
-  - an active entitlement covering the signed L402 scopes;
-  - matching product, challenge, and amount refs;
+  - a redeemed record for the signed challenge.
+  - the same public-safe proof ref supplied by the paying agent.
+  - an issued receipt.
+  - an active entitlement covering the signed L402 scopes.
+  - matching product, challenge, and amount refs.
   - a matched reconciliation event.
 - Wired the production Autopilot route to the D1 buyer-payment ledger verifier.
 - Upgraded the paid Autopilot Coder smoke to use the ledger verifier instead
@@ -990,7 +990,7 @@ Implemented:
   and Pylon clients can render lane/meter state from typed data.
 - Bound route tests to the free-lane guarantee: requester-Pylon work creates a
   no-spend assignment, has no payment challenge, and writes zero buyer debit
-  rows; SHC fallback projects the metered lane.
+  rows. SHC fallback projects the metered lane.
 
 Verification:
 
@@ -1025,7 +1025,7 @@ Verification:
 - `cd apps/pylon && bun test tests/control-protocol.test.ts tests/assignment.test.ts`
 
 Note: direct `bunx tsc -p tsconfig.json --noEmit` in `apps/pylon` remains
-blocked by preexisting repo-wide node16/import-extension and TUI type issues;
+blocked by preexisting repo-wide node16/import-extension and TUI type issues.
 the focused runtime tests and script syntax/dry-run checks pass.
 
 ## RK1 / Issue #4805: Shared Agent Runtime Kernel Schema
@@ -1047,7 +1047,7 @@ Implemented:
   raw shell logs, provider payloads, secrets, and local paths before
   persistence or projection.
 - Covered every filed event tag. The filed RK1 tag list contains 32 tags even
-  though the prose says 31; the implementation preserves and tests all listed
+  though the prose says 31. The implementation preserves and tests all listed
   tags.
 
 Verification:
@@ -1105,7 +1105,7 @@ Implemented:
 - Emitted `model.*`, `tool.*`, `run.completed`, `run.interrupted`,
   `run.failed`, and `run.cancelled` kernel events end to end.
 - Added deterministic test language-model/toolkit layers.
-- Kept tool selection typed by `allowedToolRefs`; no prompt keyword inference
+- Kept tool selection typed by `allowedToolRefs`. No prompt keyword inference
   is used for adapter or tool routing.
 
 Verification:
@@ -1136,11 +1136,11 @@ Implemented:
   authority.
 - Added Stripe SetupIntent creation and succeeded-SetupIntent save handling.
   OpenAgents stores Stripe customer/payment-method IDs plus brand/last4/expiry
-  only; raw card data remains with Stripe.
+  only. Raw card data remains with Stripe.
 - Added the auto-top-up policy API and an off-session PaymentIntent trigger
   that writes exactly one idempotent positive ledger row on success.
 - Recorded missing-card, declined-card, skipped, and monthly-cap events. A
-  declined or missing-card path pauses the policy; a cap-reached path leaves
+  declined or missing-card path pauses the policy. A cap-reached path leaves
   the out-of-credits suspend/cancel/notify behavior intact.
 - Updated the logged-in Billing page to show card status, policy values,
   cap usage, event history, and actions for card setup, enable/disable, and
@@ -1259,7 +1259,7 @@ Timing rule:
   issues carry remaining operational hardening.
 - MVP-gating proof or door-open claims should wait for their relevant Pack A
   receipts.
-- Closed rungs should not be reopened only to hold operational debt; cross-link
+- Closed rungs should not be reopened only to hold operational debt. Cross-link
   the relevant Pack A issue and clarify the claim boundary instead.
 
 ## Pack A Chronos / Issues #4814, #4815, #4820: Runtime Supervision Events
@@ -1296,7 +1296,7 @@ Verification:
 - `bun run --cwd apps/openagents.com/workers/api typecheck` is currently
   blocked by unrelated pre-existing errors in
   `src/autopilot-decision-routes.test.ts` and
-  `src/autopilot-rate-limit-rotation-smoke.test.ts`; no reported error
+  `src/autopilot-rate-limit-rotation-smoke.test.ts`. No reported error
   references the Chronos files.
 
 Deferred to Gate:
@@ -1316,7 +1316,7 @@ Readiness assessment:
 - Reviewed
   `docs/autopilot-coder/terminal-agent-systems/2026-06-11-terminal-agent-systems-operationalization-roadmap.md`.
 - Checked the current open issue set with `gh issue list`. The remaining open
-  Autopilot set is #4768, #4771, #4772, #4777, #4781, #4782, #4783, and #4786;
+  Autopilot set is #4768, #4771, #4772, #4777, #4781, #4782, #4783, and #4786.
   #4749 remains open as a separate W3 evaluation issue.
 - M8 (#4766) and M9 (#4767) are now closed, while M13 provider peers (#4771)
   remains open. That matches the roadmap trigger for Pack B: credential,
@@ -1385,7 +1385,7 @@ Remaining boundary:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4777`
 
-Status: market-key signing blocker cleared; live negotiated labor job remains
+Status: market-key signing blocker cleared. Live negotiated labor job remains
 open for independent-provider execution and settlement evidence.
 
 Implemented and verified:
@@ -1403,7 +1403,7 @@ Implemented and verified:
   event `d480e175984bb3afafa92162438c9b56a1399b5631f9f88110fea11673520327`.
 - Queried the owned market relay by event id and confirmed the kind-5934 event
   is retrievable.
-- Polled the work request eight times over two minutes; it remained `open`
+- Polled the work request eight times over two minutes. It remained `open`
   with zero offers and no accepted quote.
 - The #4773-backed row was later expired after #4773 closed, so the live
   order book is correctly empty again and P1/P5 need a fresh currently-open
@@ -1461,7 +1461,7 @@ Implemented:
   `user`, `device`, and `runtime` layers.
 - Added safe effective config projections for provider, budget, approval,
   telemetry, retention, and routing decisions. The projection exposes config
-  refs, caveat refs, source layers, value tags, blocker refs, and denial refs;
+  refs, caveat refs, source layers, value tags, blocker refs, and denial refs.
   it does not expose raw environment values or secrets.
 - Missing required settings and invalid values now resolve to typed blockers
   instead of silent fallback.
@@ -1790,7 +1790,7 @@ Verification:
 
 Issue: `https://github.com/OpenAgentsInc/openagents/issues/4837`
 
-Status: implemented and closed by `9730f6728`; this follow-up pass verified
+Status: implemented and closed by `9730f6728`. This follow-up pass verified
 the state and synchronized the roadmap/docs.
 
 Implemented:
@@ -1820,7 +1820,7 @@ Issue context:
   `gh issue view --comments`.
 - Rechecked #4755-#4786 and #4813-#4837 issue states via `gh issue view`.
 
-Status: docs-only synchronization; no new GitHub issues opened.
+Status: docs-only synchronization. No new GitHub issues opened.
 
 Implemented:
 
@@ -1849,7 +1849,7 @@ Issue context:
 - Rechecked the TUI composer path, Codex SDK executor, local Codex CLI flags,
   and current open issues.
 
-Status: docs-only correction plus GitHub issue filing; no product promise,
+Status: docs-only correction plus GitHub issue filing. No product promise,
 runtime behavior, or invariant changed.
 
 Implemented:
@@ -1881,7 +1881,7 @@ Issue context:
 - Owner decision: use the official TypeScript SDK rather than a raw
   `codex exec` parser for this path.
 
-Status: source implementation for the supervised daily-driver composer path;
+Status: source implementation for the supervised daily-driver composer path.
 local dangerous mode remains #4840.
 
 Implemented:
@@ -1890,7 +1890,7 @@ Implemented:
   `@openai/codex-sdk`, probes Codex readiness before starting a thread, opens
   `runStreamed()` in the selected working directory, and reports structured
   event, usage, command, and file-change counts.
-- Replaced the TUI composer hard-code to OpenCode with a backend seam; the
+- Replaced the TUI composer hard-code to OpenCode with a backend seam. The
   default dashboard and attach mode now receive a Codex backend from
   `apps/pylon/src/index.ts`.
 - Documented the source behavior in `apps/pylon/README.md`,
@@ -1906,11 +1906,11 @@ Verification:
 Issue context:
 
 - #4840: add local-only dangerous Codex mode for supervised Pylon dev.
-- Owner decision: keep using the official TypeScript SDK; model the CLI
+- Owner decision: keep using the official TypeScript SDK. Model the CLI
   dangerous bypass as SDK `sandboxMode: "danger-full-access"` plus
   `approvalPolicy: "never"`.
 
-Status: source implementation for the local dashboard composer only;
+Status: source implementation for the local dashboard composer only.
 assignment/provider/headless paths remain bounded.
 
 Implemented:
@@ -1942,7 +1942,7 @@ Issue context:
 - #4841: add `pylon dev doctor --json` for repo, instruction, account, and
   execution-mode context.
 
-Status: source implementation for the CLI/projection source; pane rendering
+Status: source implementation for the CLI/projection source. Pane rendering
 and check/reload loop were follow-up work in this entry. The visible pane was
 implemented later under #4838.
 
@@ -1973,7 +1973,7 @@ Issue context:
 - Searched the terminal-agent systems roadmap for stale "ready to file",
   "can close", and Pack A/B/C pending-action language.
 
-Status: docs-only synchronization; no new GitHub issues opened.
+Status: docs-only synchronization. No new GitHub issues opened.
 
 Implemented:
 
@@ -1999,7 +1999,7 @@ Issue context:
   the main Autopilot Coder docs, Pylon Codex/Claude bridge docs, release
   records, and the current Pylon CLI/work-requester implementation.
 
-Status: docs-only readiness audit; no product promise or runtime invariant
+Status: docs-only readiness audit. No product promise or runtime invariant
 changed.
 
 Implemented:
@@ -2027,7 +2027,7 @@ Issue context:
 - Owner asked to extend the Pylon/Codex day-to-day readiness audit with a
   suggestion for a mode that helps improve Pylon from inside Pylon.
 
-Status: docs-only addendum; no product promise, route, runtime behavior, or
+Status: docs-only addendum. No product promise, route, runtime behavior, or
 invariant changed.
 
 Implemented:
@@ -2085,7 +2085,7 @@ Issue context:
   to carry Codex/Fable/Claude requester intent through the Autopilot
   work-order lane.
 - Owner decision: keep the local daily-driver Codex path SDK-first. This issue
-  hardens the network work-order lane; it does not replace the local
+  hardens the network work-order lane. It does not replace the local
   supervised `pylon dev` / composer path.
 
 Status: source implementation for the work-order CLI/API path.
@@ -2096,13 +2096,13 @@ Implemented:
   The CLI rejects missing, non-SHA, all-zero, and all-one placeholder commits.
 - Added a public GitHub commit preflight before posting
   `/api/autopilot/work`, so unresolvable commits fail before submission.
-- Added `--adapter codex|claude_agent|fable`; Fable maps to the Claude Agent
+- Added `--adapter codex|claude_agent|fable`. Fable maps to the Claude Agent
   lane with `profile.claude_agent.fable`.
 - Carried requester adapter/profile intent through work request validation,
   task records, Pylon assignment synthesis, and normalized coding assignment
   selection.
 - Preserved the platform dual-capability default of Claude for intent-less
-  orders; owner Codex-primary work should use `--adapter codex` or local Dev
+  orders. Owner Codex-primary work should use `--adapter codex` or local Dev
   Mode.
 - Rejected placeholder commit pins at the server work-request boundary and
   downstream normalized coding-assignment boundary.
@@ -2166,7 +2166,7 @@ Issue context:
   parser.
 
 Status: source implementation for local supervised dashboard composer
-selection. This does not implement Claude `bypassPermissions`; that remains
+selection. This does not implement Claude `bypassPermissions`. That remains
 the #4845 permissive-mode issue.
 
 Implemented:
@@ -2181,7 +2181,7 @@ Implemented:
   keeping Codex as the default.
 - Preflighted `probeClaudeAgentReadiness()` before launching SDK sessions.
 - Ran Claude in the active repo cwd and kept raw SDK session ids local for
-  resume; TUI/footer output uses hashed session refs only.
+  resume. TUI/footer output uses hashed session refs only.
 - Labeled Claude sessions as `Claude` / `Claude (<model>)`, so a configured
   Fable model is visible without creating a separate Fable adapter.
 - Updated the context projection to treat configured Claude-primary mode as
@@ -2208,17 +2208,17 @@ Implemented:
   permission-system equivalent of Codex `danger-full-access`.
 - Explicit opt-in only: `pylon --claude-danger` or
   `"dev": { "claudeExecutionMode": "local_supervised_danger" }` read by the
-  new `loadClaudeDevConfig()`; requesting `bypassPermissions` without the
+  new `loadClaudeDevConfig()`. Requesting `bypassPermissions` without the
   execution mode throws
   `blocker.claude.local_supervised_danger_requires_opt_in`.
 - settingSources decision recorded: bounded mode keeps `settingSources: []`
-  executor-style isolation; danger mode loads `settingSources: ["project"]`
+  executor-style isolation. Danger mode loads `settingSources: ["project"]`
   so the owner's own `CLAUDE.md`/`.claude` layers are active exactly when
   they have opted into watching an unrestricted session.
 - `Claude DANGER` TUI label plus `mode | permissions` status line and footer.
 - `pylon work`, `pylon assignment`, `pylon provider`, `pylon node`, and
   `pylon attach` reject `--claude-danger` with
-  `blocker.claude.local_supervised_danger_public_path`; danger flags are
+  `blocker.claude.local_supervised_danger_public_path`. Danger flags are
   per-lane, so `--codex-danger` can never select a permissive Claude session.
 - `loadClaudeAgentConfig()` documented and tested as the assignment-safe
   surface that never reads a permissive mode.
@@ -2237,7 +2237,7 @@ Implemented:
 
 - Dev-doctor `claudeAgent` section gains `executionMode`, `permissionMode`,
   and `dangerPublicPathBlockerRef` (set while the permissive mode is active,
-  naming the typed public-path blocker); `pylonConfig` gains
+  naming the typed public-path blocker). `pylonConfig` gains
   `claudeDevOverlayRef` (`config.pylon.dev.claude_local_supervised_danger`).
 - `pylon dev doctor --json` accepts `--claude-danger` alongside
   `--codex-danger`.

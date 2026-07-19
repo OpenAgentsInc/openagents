@@ -1,7 +1,7 @@
 # Machine Studying Source Map
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Primary source: <https://jacobxli.com/blog/2026/machine-studying/>
@@ -47,7 +47,7 @@ Read date: June 17, 2026
    - Allows studying to modify either weights or harness state.
    - Emphasizes that test-time corpus access remains available.
 
-3. Can't the agent just search the corpus?
+3. Cannot the agent just search the corpus?
    - Argues that search depends on prior knowledge and can be misdirected by
      stale or conflicting priors.
    - Uses a model-name example to illustrate the danger of confident priors.

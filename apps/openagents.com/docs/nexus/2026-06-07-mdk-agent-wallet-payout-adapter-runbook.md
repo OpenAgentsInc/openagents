@@ -1,7 +1,7 @@
 # MDK Agent-Wallet Payout Adapter Runbook
 
-Status: local agent-wallet adapter boundary implemented; #431 proved a real
-two-wallet bitcoin movement through OpenAgents product surface authority; #503 adds a separate
+Status: local agent-wallet adapter boundary implemented. #431 Proved a real
+two-wallet bitcoin movement through OpenAgents product surface authority. #503 Adds a separate
 Worker-safe hosted MDK payout adapter for accepted Pylon work and a production
 `mdk_agent_wallet` settlement bridge receipt for accepted Pylon work. The
 hosted-MDK direct payout lane remains blocked by the MoneyDevKit app's
@@ -21,10 +21,10 @@ operator-controlled or Pylon-local.
 
 The strict command boundary covers:
 
-- shared send-readiness preflight, for original-wallet-home and balance checks;
-- `balance`, as necessary but not sufficient send-readiness evidence;
-- `receive`, for invoice creation where needed;
-- `send`, for payout dispatch;
+- shared send-readiness preflight, for original-wallet-home and balance checks.
+- `balance`, as necessary but not sufficient send-readiness evidence.
+- `receive`, for invoice creation where needed.
+- `send`, for payout dispatch.
 - `payments`, for history and reconciliation.
 
 Every command returns JSON stdout. The adapter parses that JSON with Effect
@@ -32,16 +32,16 @@ schemas and rejects invalid output before it can affect ledger records.
 
 The adapter stores only bounded references:
 
-- wallet ref;
-- executor ref;
-- bucketed balance-readiness ref;
-- payout intent ref;
-- payout attempt ref;
-- redacted invoice ref;
-- redacted payment ref;
-- amount;
-- status;
-- event refs; and
+- wallet ref.
+- executor ref.
+- bucketed balance-readiness ref.
+- payout intent ref.
+- payout attempt ref.
+- redacted invoice ref.
+- redacted payment ref.
+- amount.
+- status.
+- event refs. And
 - public-safe projection JSON.
 
 If an operator or agent supplies a payout destination string, classify it first
@@ -55,28 +55,28 @@ It must never treat parser output as payout dispatch authority by itself.
 
 It must not store or print:
 
-- wallet mnemonic;
-- wallet config;
-- raw invoice;
-- payment preimage;
-- raw payment hash;
-- exact wallet balance;
-- raw payout target;
-- daemon stdout containing private material;
+- wallet mnemonic.
+- wallet config.
+- raw invoice.
+- payment preimage.
+- raw payment hash.
+- exact wallet balance.
+- raw payout target.
+- daemon stdout containing private material.
 - local wallet home path when that path reveals a user identity.
 
 ## Failure Classification
 
 The adapter classifies command failures into bounded reasons:
 
-- `command_timeout`;
-- `daemon_unavailable`;
-- `invalid_json`;
-- `insufficient_balance`;
-- `insufficient_outbound_capacity`;
-- `mnemonic_restore_not_send_ready`;
-- `payment_failed`;
-- `reconciliation_mismatch`;
+- `command_timeout`.
+- `daemon_unavailable`.
+- `invalid_json`.
+- `insufficient_balance`.
+- `insufficient_outbound_capacity`.
+- `mnemonic_restore_not_send_ready`.
+- `payment_failed`.
+- `reconciliation_mismatch`.
 - `send_readiness_unknown`.
 
 Route and operator surfaces should show those bounded reasons, not raw stderr,
@@ -103,26 +103,26 @@ npx @moneydevkit/agent-wallet@latest payments
 
 Before `send`, the adapter requires the shared send-readiness helper. The
 helper blocks mnemonic-only restore mode before `balance` and before any send
-attempt. Positive balance and receive readiness are public-safe hints only; live
+attempt. Positive balance and receive readiness are public-safe hints only. Live
 payout dispatch requires an explicitly original funded wallet home until MDK
 documents a restore/sync repair path that proves outbound capacity.
 
 Do not paste the mnemonic, raw invoice, preimage, raw payment hash, wallet
 state, or raw destination into issues, docs, logs, Forum posts, public
 receipts, or D1. Do not paste exact wallet balances into public or durable
-readiness records; use `balance.mdk_agent_wallet.minimum_satisfied` or
+readiness records. Use `balance.mdk_agent_wallet.minimum_satisfied` or
 `balance.mdk_agent_wallet.minimum_not_satisfied`.
 
 For a real two-wallet smoke, use:
 
-1. an isolated OpenAgents treasury test wallet;
-2. an isolated Pylon edge test wallet;
-3. an explicit spend cap;
+1. an isolated OpenAgents treasury test wallet.
+2. an isolated Pylon edge test wallet.
+3. an explicit spend cap.
 4. a payout target approval whose private destination is resolved locally by
-   the executor, not stored in OpenAgents product surface;
-5. a payout intent in the OpenAgents product surface ledger;
-6. adapter dispatch through `TreasuryPaymentAuthority`;
-7. reconciliation through `payments`; and
+   the executor, not stored in OpenAgents product surface.
+5. a payout intent in the OpenAgents product surface ledger.
+6. adapter dispatch through `TreasuryPaymentAuthority`.
+7. reconciliation through `payments`. And
 8. public-safe receipt projection.
 
 The real two-wallet movement test was completed in issue #431. Do not rerun
@@ -145,7 +145,7 @@ The hosted route still goes through `TreasuryPaymentAuthority`. It requires
 accepted-work closeout, retained artifact/proof refs, fresh wallet-readiness
 evidence, payout-target approval, spend-cap policy refs, and an operator
 admin boundary before dispatch. The raw Lightning destination is accepted only
-in the authenticated request body and is passed to MDK; OpenAgents product surface stores and
+in the authenticated request body and is passed to MDK. OpenAgents product surface stores and
 returns only redacted refs.
 
 The production route has been deployed and exercised against accepted
@@ -163,8 +163,8 @@ liquidity. Retained public-safe evidence lives in
 
 The accepted-work payout proof for #503 was completed through the approved
 local `mdk_agent_wallet` bridge. A fresh local MDK agent-wallet payment moved
-real bitcoin for `assignment.public.issue502.20260608024927`; the Pylon posted
-public-safe `payment_receipt` and `settlement_status` refs; and the operator
+real bitcoin for `assignment.public.issue502.20260608024927`. The Pylon posted
+public-safe `payment_receipt` and `settlement_status` refs. And the operator
 settlement bridge produced:
 
 ```text
@@ -180,7 +180,7 @@ https://openagents.com/nexus-pylon/receipts/receipt.nexus_pylon.settlement.assig
 
 As of issue #556, public and agent-facing surfaces must expose the explicit
 MDK payout-mode gate before making payout claims. Hosted direct payout remains
-blocked by `blocker.mdk.hosted_programmatic_payouts_disabled`; the live
+blocked by `blocker.mdk.hosted_programmatic_payouts_disabled`. The live
 accepted-work settlement claim is limited to
 `local_mdk_agent_wallet_bridge`. See
 `docs/nexus/2026-06-08-mdk-payout-mode-gate.md`.

@@ -1,7 +1,7 @@
 # Tassadar Executor-Trace Homework Internal Wiring
 
 This note records the OpenAgents-side wiring for issue #4684. It is an
-internal/contributor-facing work contract only; it does not publish a Tassadar
+internal/contributor-facing work contract only. It does not publish a Tassadar
 capability claim, registry promise, AGENTS.md capability row, marketing copy, or
 public acceptance verdict projection.
 
@@ -33,7 +33,7 @@ Executor closeouts must provide:
 - worker receipt ref
 
 `tassadarExecutorTraceVerificationChallengeRequest` refuses same-device replay.
-The resulting challenge uses `exact_trace_replay`; a green verdict requires the
+The resulting challenge uses `exact_trace_replay`. A green verdict requires the
 sampled-window replay digest to match the trace commitment digest.
 
 ## Current Status

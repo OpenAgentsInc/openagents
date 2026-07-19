@@ -7,11 +7,11 @@ OpenAI-compatible backends.
 
 The core owns:
 
-- messages and content parts;
-- normalized provider events;
-- token usage accounting;
-- model request envelopes;
-- named tool definitions;
+- messages and content parts.
+- normalized provider events.
+- token usage accounting.
+- model request envelopes.
+- named tool definitions.
 - local tool dispatch and tool-result projection.
 
 Backend-specific code should lower this core contract into provider wire

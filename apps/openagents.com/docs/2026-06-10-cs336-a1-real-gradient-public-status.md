@@ -13,12 +13,12 @@ settlement receipts.
 
 Psionic must expose a connector-consumable lane:
 
-- `psion_cs336_a1_real_gradient_v1`;
-- TinyStories/OWT shard inputs for CS336 A1;
-- real-gradient training, not the bounded finite-difference reference trainer;
-- public-safe Freivalds commitment refs for gradient closeouts;
-- public-safe merge and eval refs;
-- validation-loss points tied to receipt/source refs;
+- `psion_cs336_a1_real_gradient_v1`.
+- TinyStories/OWT shard inputs for CS336 A1.
+- real-gradient training, not the bounded finite-difference reference trainer.
+- public-safe Freivalds commitment refs for gradient closeouts.
+- public-safe merge and eval refs.
+- validation-loss points tied to receipt/source refs.
 - worker closeout refs that the Worker can bind to verification challenges.
 
 Until that exists, public run summaries keep
@@ -34,11 +34,11 @@ leaderboard rows directly for plan-step-11 consumers.
 
 The projection carries:
 
-- the Psionic lane ref and requirement refs;
-- the two-real-contributor-device requirement;
-- Freivalds, gradient closeout, merge, and eval refs;
-- validation-loss-under-budget status and loss curve points;
-- leaderboard rows derived from public leases and verified challenge refs;
+- the Psionic lane ref and requirement refs.
+- the two-real-contributor-device requirement.
+- Freivalds, gradient closeout, merge, and eval refs.
+- validation-loss-under-budget status and loss curve points.
+- leaderboard rows derived from public leases and verified challenge refs.
 - scope boundaries that this A1 rehearsal does not replace the Qwen fine-tune
   gate in #4670 and cannot flip first-real-training-run copy green alone.
 

@@ -58,22 +58,22 @@ material.
 
 This slice does not:
 
-- debit Stripe credits;
-- configure a live MDK sidecar or hosted platform route;
-- create payout intents;
-- mark accepted work paid;
-- settle provider payouts;
+- debit Stripe credits.
+- configure a live MDK sidecar or hosted platform route.
+- create payout intents.
+- mark accepted work paid.
+- settle provider payouts.
 - alter Artanis, Pylon, Treasury, or Nexus authority.
 
 ## Tests
 
 The regression tests cover:
 
-- settle after success;
-- retryable failure before charge;
-- pending until artifact receipt;
-- active entitlement allow path;
-- existing receipt/entitlement idempotent settled projection;
-- expired challenge blocking;
-- invalid credential payment-required projection;
+- settle after success.
+- retryable failure before charge.
+- pending until artifact receipt.
+- active entitlement allow path.
+- existing receipt/entitlement idempotent settled projection.
+- expired challenge blocking.
+- invalid credential payment-required projection.
 - raw payment material rejection.

@@ -15,7 +15,7 @@ carry raw ChatGPT/Codex tokens, API keys, device auth IDs, code verifiers, or
 | `user_ref` / `organization_ref` / `project_ref` | Worker-owned actor scope. |
 | `provider_account_ref` | Sanitized OpenAgents provider-account ref. |
 | `grant_ref` | Short-lived grant ref selected for one session. |
-| `provider_secret_ref` | Server-side secret-store ref such as `secret://...`; never raw credential content. |
+| `provider_secret_ref` | Server-side secret-store ref such as `secret://...`. Never raw credential content. |
 | `requested_mode` | `exec`, `mcp_server`, or `sdk_thread`. |
 | `issued_at_ms` / `expires_at_ms` | TTL. Current contract rejects grants longer than two hours. |
 | `audit_context` | Non-secret source context such as issue/run/workroom refs. |
@@ -24,9 +24,9 @@ carry raw ChatGPT/Codex tokens, API keys, device auth IDs, code verifiers, or
 
 `openagents.codex_auth_receipt.v1` records:
 
-- grant materialization;
-- `codex login status` checks;
-- VM-local auth cleanup;
+- grant materialization.
+- `codex login status` checks.
+- VM-local auth cleanup.
 - failure decisions.
 
 Receipts include only refs, decision, reason, and digests. They do not include

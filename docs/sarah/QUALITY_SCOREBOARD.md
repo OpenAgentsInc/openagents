@@ -12,7 +12,7 @@ evidence** decide.
 `schemaVersion`: `sarah-take-scoreboard.v1`
 
 - Schema + validator + Markdown renderer + `score-take` CLI:
-  `packages/sarah-take-scoreboard` (Effect Schema; tests run in the sweep as
+  `packages/sarah-take-scoreboard` (Effect Schema, tests run in the sweep as
   `test:sarah-take-scoreboard`).
 - Checked-in scoreboards (JSON + rendered md + `index.ndjson`):
   `docs/sarah/scoreboards/` — see its README for the workflow and the current
@@ -21,7 +21,7 @@ evidence** decide.
 
 An earlier same-day draft (`openagents.sarah.quality_scoreboard.v1`, an
 `apps/sarah/scripts/quality-scoreboard.mjs` validator) was consolidated into
-this package so there is exactly one scoreboard schema; nothing had been
+this package so there is exactly one scoreboard schema. Nothing had been
 recorded against the draft schema when it was removed.
 
 ## Sections
@@ -55,5 +55,5 @@ bun packages/sarah-take-scoreboard/src/cli.ts emit docs/sarah/scoreboards/<take>
 ```
 
 Pair with the SQ-8 closeout (`docs/sarah/GPU_MEDIA_RUN_CLOSEOUT.md`) for
-host/cost receipts; the scoreboard's operational-gates section embeds that
+host/cost receipts. The scoreboard's operational-gates section embeds that
 checklist.

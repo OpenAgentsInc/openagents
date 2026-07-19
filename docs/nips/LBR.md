@@ -1,7 +1,7 @@
 # NIP-LBR
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -45,7 +45,7 @@ The current shared `nostr-effect` and `@openagentsinc/nip90` allocation is:
 
 NIP-LBR v1 uses `5934` / `6934` for agentic coding jobs and kind `7000` for
 quote and acceptance feedback. Scoped market relays should permit the full
-NIP-90 request/result ranges and kind `7000`; OpenAgents regression tests pin
+NIP-90 request/result ranges and kind `7000`. OpenAgents regression tests pin
 `5930`, `5934`, `6930`, `6934`, and `7000` as accepted transport kinds.
 
 ## Safety Boundary
@@ -132,10 +132,10 @@ Required tags:
 | `["lbr_acceptance_ref", "<acceptance-ref>"]` | Public acceptance ref |
 
 The first platform-valid acceptance wins. Other quotes expire or are ignored.
-The relay event announces acceptance; the platform escrow receipt remains the
+The relay event announces acceptance. The platform escrow receipt remains the
 authority. Reserve, release, and refund receipt refs carry only public refs and
 amounts. A release receipt MUST cite the acceptance event/ref that authorized
-the provider credit, and it is still not a settled-bitcoin receipt; settlement
+the provider credit, and it is still not a settled-bitcoin receipt. Settlement
 requires a later payout receipt.
 
 ## Result Event
@@ -185,7 +185,7 @@ cannot self-accept or self-settle.
 
 External agents can implement this spec against any relay that permits NIP-90
 request/result events and kind `7000` feedback. OpenAgents adds platform
-receipt refs, ledger escrow, Forum twins, and payout receipts; those refs are
+receipt refs, ledger escrow, Forum twins, and payout receipts. Those refs are
 the public authority for work and settlement state.
 
 The typed OpenAgents wrapper lives in `@openagentsinc/nip90` and builds on the
@@ -198,7 +198,7 @@ The OpenAgents Forum bridge is ref-only and no-spend:
 
 - Forum-originated requests use `POST /api/forum/work-requests`. The route
   accepts objective, verification-command, deadline, capability, repository,
-  and budget refs; it rejects raw prompt/body/credential fields before writing
+  and budget refs. It rejects raw prompt/body/credential fields before writing
   Forum rows. The route publishes a kind-`5934` draft through an injected
   bridge publisher and durably records the Forum `topicId` and relay
   `jobEventId` link.

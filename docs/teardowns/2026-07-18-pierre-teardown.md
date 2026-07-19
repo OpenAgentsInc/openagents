@@ -30,7 +30,7 @@ The recommendation is deliberately specific:
    virtualization. [source]
 2. **Evaluate `@pierre/trees` as a direct, exactly pinned dependency** for the
    Desktop workspace explorer, but keep it behind a stronger beta gate. The
-   public package is `1.0.0-beta.5`; its architecture is unusually good, but its
+   public package is `1.0.0-beta.5`. Its architecture is unusually good, but its
    prerelease status means OpenAgents must prove Electron behavior, keyboard
    and screen-reader behavior, streaming mutation correctness, and large-repo
    performance before making it the release surface. [source] [limitation]
@@ -41,8 +41,8 @@ The recommendation is deliberately specific:
    pattern behind an OpenAgents bridge.** Effect Native's `Theme` and Khala
    token catalog remain whole-product authority. Pierre's Shiki/VS Code theme
    object should supply syntax, editor, diff, and tree colors inside the IDE
-   subtree; it must not become a competing application theme. [target]
-5. **Depend; do not vendor.** Preserve Apache-2.0 licenses and the tree
+   subtree. It must not become a competing application theme. [target]
+5. **Depend. Do not vendor.** Preserve Apache-2.0 licenses and the tree
    package's NOTICE, pin versions and lockfile integrity, isolate the packages
    behind an owned adapter, track upstream, and prefer upstream fixes. A fork
    is an emergency option after a demonstrated blocker, not the starting
@@ -50,12 +50,12 @@ The recommendation is deliberately specific:
 6. **Keep Pierre projection-only.** OpenAgents remains canonical for workspace
    files, Git state, session identity, patch provenance, approvals, accepted
    outcomes, and receipts. Tree gestures and diff controls emit typed intents
-   back to the engine; they never gain direct filesystem, Git, shell, or
+   back to the engine. They never gain direct filesystem, Git, shell, or
    acceptance authority. [target]
 
 This is a strong “use as-is behind an adapter” recommendation, not an
 implementation authorization. Fast Follow research may record the evidence and
-candidate shape; dependency admission and product mutation still require the
+candidate shape. Dependency admission and product mutation still require the
 owning work packet and target-local acceptance. [limitation]
 
 ## Evidence status and audit boundary
@@ -153,8 +153,8 @@ matching OpenAgents Desktop's React 19 runtime. [source]
 Pierre accepts three useful classes of input:
 
 1. two complete `FileContents` objects, converted with `parseDiffFromFile` via
-   `jsdiff`;
-2. raw Git/unified patch text, converted with `parsePatchFiles`;
+   `jsdiff`.
+2. raw Git/unified patch text, converted with `parsePatchFiles`.
 3. arbitrary complete files rendered without a diff.
 
 `FileDiffMetadata` is a JSON-compatible projection containing the current and
@@ -214,17 +214,17 @@ than assumed from Vite development. [inferred]
 
 `CodeView` is much more than a list of `<FileDiff>` components. It owns:
 
-- an item array plus stable `id -> item` and renderer-instance mappings;
-- estimated and measured per-file metrics;
-- a virtual window and sticky-header state;
-- incremental layout invalidation from the first dirty item;
-- item-, line-, range-, and absolute-position scroll targets;
+- an item array plus stable `id -> item` and renderer-instance mappings.
+- estimated and measured per-file metrics.
+- a virtual window and sticky-header state.
+- incremental layout invalidation from the first dirty item.
+- item-, line-, range-, and absolute-position scroll targets.
 - dynamic smooth scrolling whose destination is re-derived while measurements
-  change;
+  change.
 - scroll anchors that preserve the first fully visible content when wrapping,
-  annotations, expansion, or asynchronous measurement changes height;
+  annotations, expansion, or asynchronous measurement changes height.
 - a capped DOM element pool, including a pending pool that waits for
-  externally owned React slot children to unmount safely;
+  externally owned React slot children to unmount safely.
 - selection, focus correction, pointer-event suppression during sensitive
   interactions, and reduced-motion behavior.
 
@@ -241,7 +241,7 @@ scrolling under annotations, or a file navigator. [target]
 
 The replacement path should keep the fallback for degraded mode and route rich
 eligible patches through Pierre. Large patches should stop being discarded
-solely because they are expensive to paint; canonical payload bounds and
+solely because they are expensive to paint. Canonical payload bounds and
 pagination remain an engine concern, while Pierre makes the admitted visible
 slice tractable. [inferred]
 
@@ -249,12 +249,12 @@ slice tractable. [inferred]
 
 The library exposes:
 
-- line and range selection callbacks;
-- line annotations and injected row hooks;
-- custom file headers, gutters, hunk separators, and annotation content;
-- accept/reject hunk utilities and consumer-rendered controls;
-- context expansion for collapsed hunks;
-- deep-linkable scroll targets;
+- line and range selection callbacks.
+- line annotations and injected row hooks.
+- custom file headers, gutters, hunk separators, and annotation content.
+- accept/reject hunk utilities and consumer-rendered controls.
+- context expansion for collapsed hunks.
+- deep-linkable scroll targets.
 - parse and render support for unresolved merge-conflict regions and
   sequential resolution.
 
@@ -266,7 +266,7 @@ but bind each comment or apply action to its own review subject and authority
 record. [source] [target]
 
 Accept/reject UI is particularly easy to overread. Pierre gives the consumer a
-place and utility for the control; it does not decide whether a hunk may be
+place and utility for the control. It does not decide whether a hunk may be
 applied, whether the working tree still matches, whether another agent owns the
 path, or whether the result was observed. OpenAgents must resolve those checks
 before acknowledging completion. [limitation]
@@ -311,20 +311,20 @@ alternating base/candidate runs, and pixel plus accessibility evidence. [target]
 ### The public boundary is paths, not node objects
 
 The tree package's central design decision is the right one: callers speak in
-canonical slash-delimited path strings; internal numeric IDs never cross the
+canonical slash-delimited path strings. Internal numeric IDs never cross the
 public boundary. The same implementation ships through vanilla, React, SSR,
 and web-component entry points and renders inside a shadow root. [source]
 
 Its public model supports:
 
-- add, move, remove, reset, and batch mutation;
-- open, update, and close search;
-- Git status updates;
-- configurable icons;
-- path lookup, focus, multi-selection, and scroll-to-path;
-- rename and drag/drop;
-- context-menu and row-decoration composition;
-- explicit cleanup;
+- add, move, remove, reset, and batch mutation.
+- open, update, and close search.
+- Git status updates.
+- configurable icons.
+- path lookup, focus, multi-selection, and scroll-to-path.
+- rename and drag/drop.
+- context-menu and row-decoration composition.
+- explicit cleanup.
 - prepared raw or presorted input for large/repeated trees.
 
 React adds `FileTree`, `useFileTree`, selection/search hooks, and selector-based
@@ -346,22 +346,22 @@ published artifact. [source]
 
 Internally, it uses several techniques worth learning from:
 
-- segment interning avoids repeating path fragments;
-- numeric IDs and structure-of-arrays typed storage improve dense scans;
-- dedicated child indexes avoid reparsing strings for topology operations;
-- subtree and visible-subtree counts let the engine answer slice requests;
+- segment interning avoids repeating path fragments.
+- numeric IDs and structure-of-arrays typed storage improve dense scans.
+- dedicated child indexes avoid reparsing strings for topology operations.
+- subtree and visible-subtree counts let the engine answer slice requests.
 - a reverse-ID sweep computes open-tree counts without a separate traversal
-  stack for presorted input;
-- typed arrays hold projection parent, position-in-set, and set-size metadata;
-- the visible `path -> index` map is built lazily only when requested;
+  stack for presorted input.
+- typed arrays hold projection parent, position-in-set, and set-size metadata.
+- the visible `path -> index` map is built lazily only when requested.
 - semantic mutation events distinguish canonical topology change from visible
-  projection change and report honest visible-count deltas;
-- stable cleanup preserves IDs, while aggressive cleanup may compact them;
-- `StaticPathStore` omits mutation APIs for read-heavy cases;
+  projection change and report honest visible-count deltas.
+- stable cleanup preserves IDs, while aggressive cleanup may compact them.
+- `StaticPathStore` omits mutation APIs for read-heavy cases.
 - asynchronous child loading is an explicit attempt lifecycle rather than an
   implicit Promise hidden behind expansion.
 
-Flattening empty directories changes only the visible projection; it never
+Flattening empty directories changes only the visible projection. It never
 rewrites canonical topology or mutation paths. That small invariant prevents a
 common class of rename, drag/drop, selection, and persistence bugs. [source]
 
@@ -415,11 +415,11 @@ inside the shadow root as an escape hatch. [source]
 The isolation is useful for an IDE surface embedded in a large product shell,
 but it creates real integration work:
 
-- global CSS and Tailwind utilities do not style internal rows;
-- design tokens must cross through variables or the theme helper;
+- global CSS and Tailwind utilities do not style internal rows.
+- design tokens must cross through variables or the theme helper.
 - focus rings, context menus, drag previews, tooltips, and command routing must
-  be tested across the boundary;
-- automated selectors and accessibility inspection need shadow-aware tooling;
+  be tested across the boundary.
+- automated selectors and accessibility inspection need shadow-aware tooling.
 - raw CSS injection is too powerful for repository or plugin-provided data.
 
 The adapter should own all `unsafeCSS`, preferably use none, and expose stable
@@ -456,8 +456,8 @@ collapse:
    variables, diff options, annotation surfaces, and worker caches.
 
 This lets a picker list hundreds of names without loading theme JSON. A stable
-theme name is the persisted key; a descriptor supplies metadata and a lazy
-loader; the resolved object is used only when colors or Shiki are needed.
+theme name is the persisted key. A descriptor supplies metadata and a lazy
+loader. The resolved object is used only when colors or Shiki are needed.
 [source]
 
 ### Resolver and controller
@@ -467,18 +467,18 @@ loads, supports synchronous warm reads, can seed resolved themes into a worker,
 registers only if absent when composing catalogs, and can clear resolved and
 in-flight state without discarding loader registration. [source]
 
-`ThemeController` owns `light`, `dark`, or `system` mode; separate selected
-theme names for light and dark; resolved color scheme; OS media-query changes;
-optional persistence; and SSR-safe operation. Its React layer is thin. [source]
+`ThemeController` owns `light`, `dark`, or `system` mode. Separate selected
+theme names for light and dark. Resolved color scheme. OS media-query changes.
+optional persistence. And SSR-safe operation. Its React layer is thin. [source]
 
 `normalizeThemeColors` is pure, frozen, WeakMap-memoized, and idempotent. It
 fills mechanical fallbacks for editor/sidebar/input surfaces, Git decorations,
-and focus outlines; repairs a hover background that would erase text; and
+and focus outlines. Repairs a hover background that would erase text. And
 deliberately leaves selection-background opinion to the consumer. [source]
 
 DiffsHub demonstrates the complete composition. A `ThemeSource` resolves and
-retains theme state; app chrome derives its own tokens; the file tree maps the
-resolved theme to CSS; the diff viewer receives the Shiki theme; and the worker
+retains theme state. App chrome derives its own tokens. The file tree maps the
+resolved theme to CSS. The diff viewer receives the Shiki theme. And the worker
 pool is seeded with the same resolved theme. Tree data and diff item data remain
 separate so comment updates do not rebuild the tree. [source]
 
@@ -522,16 +522,16 @@ must share a pole. [source]
 Tests simulate Machado-style color-vision deficiency under linear and gamma
 conventions, measure CIEDE2000 separation, and check WCAG contrast. Tier-one
 signals such as diff add/delete, merge conflict, and terminal red/green require
-Delta E of at least 11; diagnostics and core syntax require at least 8; Git
+Delta E of at least 11. Diagnostics and core syntax require at least 8. Git
 status can be advisory because it also carries letter badges. Body text targets
 4.5:1 contrast and meaningful signal colors 3:1. [test]
 
 OpenAgents should take this as a release criterion:
 
-- added/deleted, success/failure, and conflict states need non-color cues;
-- CVD simulation belongs in the checked theme corpus;
-- diff colors must be tested after alpha compositing on the actual surface;
-- focus, selection, syntax, annotation, and Git status must be tested together;
+- added/deleted, success/failure, and conflict states need non-color cues.
+- CVD simulation belongs in the checked theme corpus.
+- diff colors must be tested after alpha compositing on the actual surface.
+- focus, selection, syntax, annotation, and Git status must be tested together.
 - high contrast and reduced motion remain separate requirements.
 
 The useful lesson is not “ship Pierre Dark.” It is “turn editor color
@@ -544,19 +544,19 @@ and diffs operating together on streamed Git patches. [source]
 
 Its pipeline is:
 
-1. fetch a patch as a `ReadableStream`;
+1. fetch a patch as a `ReadableStream`.
 2. split complete files at `diff --git` boundaries without waiting for the
-   whole patch;
-3. parse each complete file into `FileDiffMetadata`;
-4. append a `CodeViewItem` with a path-derived ID;
+   whole patch.
+3. parse each complete file into `FileDiffMetadata`.
+4. append a `CodeViewItem` with a path-derived ID.
 5. update line statistics, a path-to-item map, comment index, and Git status in
-   one accumulator pass;
+   one accumulator pass.
 6. publish diff items at a short cadence while publishing the larger tree less
-   often and in larger batches;
+   often and in larger batches.
 7. link successive tree snapshots so an append-only consumer can apply a delta
-   instead of rebuilding `PathStore`;
-8. navigate from a tree path to the matching `CodeView` item;
-9. keep annotation updates out of tree state;
+   instead of rebuilding `PathStore`.
+8. navigate from a tree path to the matching `CodeView` item.
+9. keep annotation updates out of tree state.
 10. deep-link selected lines through a URL hash.
 
 The loader uses explicit browser work budgets and publish intervals, including
@@ -603,14 +603,14 @@ its domain model:
 
 The most economical first integration is not a wholesale IDE rewrite. It is:
 
-1. retain `WorkbenchFileChangeItem` and the plain `<pre>` fallback;
+1. retain `WorkbenchFileChangeItem` and the plain `<pre>` fallback.
 2. add an owned adapter that parses eligible complete unified diffs into Pierre
-   metadata with content-derived cache keys;
-3. render a single-file `FileDiff` inside the current card;
-4. add a multi-file `CodeView` for the aggregate turn/worktree review surface;
-5. add `FileTree` when the canonical workspace-file projection is available;
+   metadata with content-derived cache keys.
+3. render a single-file `FileDiff` inside the current card.
+4. add a multi-file `CodeView` for the aggregate turn/worktree review surface.
+5. add `FileTree` when the canonical workspace-file projection is available.
 6. connect selection, navigation, comment, apply, rename, and drop gestures to
-   existing or newly admitted typed commands;
+   existing or newly admitted typed commands.
 7. gate the rich surface on worker readiness and fall back honestly when the
    package or payload cannot render.
 
@@ -625,34 +625,34 @@ The boundary should expose OpenAgents types and hide Pierre types from callers.
 
 Candidate responsibilities:
 
-- turn canonical patch subjects into `FileDiffMetadata`/`CodeViewItem`;
+- turn canonical patch subjects into `FileDiffMetadata`/`CodeViewItem`.
 - derive immutable cache keys from content, path, language, and renderer
-  revision;
-- translate canonical workspace projections into prepared tree input;
-- map canonical Git status into Pierre's visual vocabulary;
-- map Effect Native/editor themes into Pierre diff and tree props;
-- own worker creation and packaged-Electron URLs;
-- translate Pierre callbacks into typed OpenAgents intents;
-- attach review subject IDs and projection revisions to every action;
-- own fallback behavior, diagnostics, and metrics;
+  revision.
+- translate canonical workspace projections into prepared tree input.
+- map canonical Git status into Pierre's visual vocabulary.
+- map Effect Native/editor themes into Pierre diff and tree props.
+- own worker creation and packaged-Electron URLs.
+- translate Pierre callbacks into typed OpenAgents intents.
+- attach review subject IDs and projection revisions to every action.
+- own fallback behavior, diagnostics, and metrics.
 - export no direct filesystem, Git, shell, or acceptance capability.
 
 The adapter should not:
 
-- persist a second canonical tree or patch database;
-- let Pierre item IDs become durable session IDs;
-- let UI completion imply mutation success;
-- accept arbitrary `unsafeCSS` or theme loaders from workspaces;
-- import `@pierre/path-store`;
+- persist a second canonical tree or patch database.
+- let Pierre item IDs become durable session IDs.
+- let UI completion imply mutation success.
+- accept arbitrary `unsafeCSS` or theme loaders from workspaces.
+- import `@pierre/path-store`.
 - make the libraries available on mobile or canvas hosts that cannot satisfy
-  their DOM/shadow-root contracts;
+  their DOM/shadow-root contracts.
 - flatten provider-native patch facts that remain necessary for receipts.
 
 ## Adoption gates
 
 ### Gate 1: legal and supply chain
 
-- Pin exact package versions; do not use caret ranges for the initial gate.
+- Pin exact package versions. Do not use caret ranges for the initial gate.
 - Capture resolved integrity and transitive dependency inventory.
 - Include Apache-2.0 license texts and `@pierre/trees` NOTICE in Desktop's
   third-party notice artifact.
@@ -674,44 +674,44 @@ The adapter should not:
 
 - added, deleted, modified, pure rename, changed rename, mode change, binary or
   unsupported file, no-final-newline, partial patch, large hunk, long line,
-  Unicode, CRLF, submodule, and merge-conflict cases;
-- split/unified, wrap/scroll, expanded/collapsed, full/partial context;
+  Unicode, CRLF, submodule, and merge-conflict cases.
+- split/unified, wrap/scroll, expanded/collapsed, full/partial context.
 - streaming append, duplicate path entries, item rename, status patch, and
-  stale update rejection;
-- one file, thousands of files, and hundreds of thousands of tree paths;
+  stale update rejection.
+- one file, thousands of files, and hundreds of thousands of tree paths.
 - selection, deep link, comment annotation, accept/reject intent, rename,
-  drag/drop, and cancellation;
+  drag/drop, and cancellation.
 - workspace generation change while an interaction is pending.
 
 ### Gate 4: accessibility
 
-- full keyboard navigation and command parity;
-- focus visibility across shadow DOM and React slots;
+- full keyboard navigation and command parity.
+- focus visibility across shadow DOM and React slots.
 - correct tree, treeitem, level, position, set-size, selection, and expansion
-  announcements;
-- screen-reader reading order for split/unified diffs and annotations;
-- high contrast, reduced motion, 200% zoom, and reflow;
-- CVD separation plus non-color cues for Git/diff/terminal status;
+  announcements.
+- screen-reader reading order for split/unified diffs and annotations.
+- high contrast, reduced motion, 200% zoom, and reflow.
+- CVD separation plus non-color cues for Git/diff/terminal status.
 - context menus and drag/drop have keyboard alternatives.
 
 ### Gate 5: performance and evidence
 
-- alternate baseline/current packaged builds against fixed corpora;
+- alternate baseline/current packaged builds against fixed corpora.
 - record startup, time-to-first-tree, time-to-first-highlighted-diff, scroll
   frame time, long tasks, memory high-water, worker warm/cold cost, and update
-  latency;
-- preserve a scroll-position checksum and pixel baselines;
-- require multiple retained runs and report median plus spread;
-- test annotation and wrap-induced reflow, not only a static highlighted file;
+  latency.
+- preserve a scroll-position checksum and pixel baselines.
+- require multiple retained runs and report median plus spread.
+- test annotation and wrap-induced reflow, not only a static highlighted file.
 - keep raw evidence linked to the exact release commit.
 
 ### Gate 6: authority
 
-- every gesture carries workspace generation and canonical subject identity;
-- stale projections fail visibly;
-- rename/drop/apply are admitted engine commands, not renderer mutations;
-- completion waits for observed engine outcome;
-- conflicts remain unresolved until canonical state says otherwise;
+- every gesture carries workspace generation and canonical subject identity.
+- stale projections fail visibly.
+- rename/drop/apply are admitted engine commands, not renderer mutations.
+- completion waits for observed engine outcome.
+- conflicts remain unresolved until canonical state says otherwise.
 - review acceptance stays outside the producing agent and outside Pierre.
 
 ## Other repository lessons worth taking
@@ -813,7 +813,7 @@ The following are reasoned estimates, not maintainer statements.
 
 | Surface                              | Decision                      | Why                                                                              | Primary risk                                                       |
 | ------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `@pierre/diffs` single-file review   | direct pinned evaluation      | Large capability gain over current `<pre>` renderer; React 19 supported          | Worker/package behavior in Electron                                |
+| `@pierre/diffs` single-file review   | direct pinned evaluation      | Large capability gain over current `<pre>` renderer. React 19 supported          | Worker/package behavior in Electron                                |
 | `@pierre/diffs` aggregate `CodeView` | direct pinned evaluation      | Hard virtualization, pooling, anchoring, comments, and navigation already solved | Memory and stale cache identity                                    |
 | `@pierre/trees` explorer             | direct pinned beta evaluation | Strong path-first engine and large-tree posture                                  | Beta API and shadow-DOM accessibility                              |
 | `@pierre/path-store`                 | reject direct use             | Private and intentionally inlined                                                | Unsupported coupling/fork pressure                                 |
@@ -845,7 +845,7 @@ from Effect Native/Khala application tokens to a resolved Shiki/VS Code editor
 theme and feed the same object to diffs, workers, trees, and adjacent review
 chrome.
 
-The expected end state is simple: Pierre owns fast DOM projection; OpenAgents
+The expected end state is simple: Pierre owns fast DOM projection. OpenAgents
 owns truth.
 
 ## Source inventory

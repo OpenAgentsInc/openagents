@@ -22,18 +22,18 @@ generated locally from `schema.json`. The SDK's own generator consumes
 `schema.unstable.json`, and its shipped schema hash is byte-identical to this
 release's unstable artifact. Therefore:
 
-- `.` and `./stable` expose stable types, stable methods, and runtime codecs;
+- `.` and `./stable` expose stable types, stable methods, and runtime codecs.
 - `./unstable` is a physically separate import containing unstable-only types
-  and the reviewed unstable inventory;
+  and the reviewed unstable inventory.
 - `./extensions/grok` and `./extensions/cursor` keep vendor-prefixed method
   identity outside both upstream namespaces, with versioned method inventories,
-  lossless envelope codecs, and an explicit peer-profile gate; and
+  lossless envelope codecs, and an explicit peer-profile gate. And
 - SDK method constants are not re-exported as OpenAgents' stable authority.
 
 Runtime validation uses the pinned JSON Schema through AJV. Every schema
 definition is compilable as a codec, while `decodeAcpMethodPayload` binds
 method direction and request/notification phase to the generated manifest.
-Decoded and rejected messages retain a lossless `private-native` raw envelope;
+Decoded and rejected messages retain a lossless `private-native` raw envelope.
 ordinary failure details include schema paths/reasons, never payload values.
 Unknown future variants are retained for private diagnosis but cannot mutate
 canonical OpenAgents state until a reviewed codec/profile exists.
@@ -75,7 +75,7 @@ an explicit peer/version gate.
 
 `packages/grok-harness` and `packages/cursor-agent-runtime` compose peer-specific
 behavior over this shared package. New shared protocol code must import this
-package; it must not add hand-written stable ACP declarations to either peer.
+package. It must not add hand-written stable ACP declarations to either peer.
 Advertised filesystem and terminal capabilities remain false until authority
 brokers install the complete reverse-handler set and fresh peer evidence enables
 the corresponding grant.

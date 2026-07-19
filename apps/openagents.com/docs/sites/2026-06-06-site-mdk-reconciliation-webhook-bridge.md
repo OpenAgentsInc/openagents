@@ -62,11 +62,11 @@ configured through the hosted OpenAgents product surface boundary.
 
 Agent and customer projections show only the safe reconciliation state:
 
-- buyer payment reconciliation status;
+- buyer payment reconciliation status.
 - challenge/product/receipt refs where already allowed by the buyer-payment
-  ledger projection;
-- hosted checkout projection with raw invoice and payment hash refs omitted;
-- clean checkout return state;
+  ledger projection.
+- hosted checkout projection with raw invoice and payment hash refs omitted.
+- clean checkout return state.
 - reason refs for fake-provider or verification-gated behavior.
 
 Operator projections can include safe provider refs such as provider ref,
@@ -77,11 +77,11 @@ ref. They still never include raw provider payloads or secret-bearing values.
 
 The bridge rejects inputs or projections containing:
 
-- raw provider webhook payloads;
-- MDK credentials, access tokens, webhook secrets, or mnemonics;
-- raw Lightning invoices, payment hashes, preimages, or wallet state;
-- provider grants, provider account payloads, provider tokens, or payout claims;
-- customer private data such as email/name/value fields;
+- raw provider webhook payloads.
+- MDK credentials, access tokens, webhook secrets, or mnemonics.
+- raw Lightning invoices, payment hashes, preimages, or wallet state.
+- provider grants, provider account payloads, provider tokens, or payout claims.
+- customer private data such as email/name/value fields.
 - raw runner prompts, run logs, source archives, cookies, OAuth material, or
   bearer tokens.
 
@@ -93,11 +93,11 @@ and raw payment/customer data rejection.
 
 This is not yet a production webhook receiver. The next slices should add:
 
-- durable webhook intake with verified provider signatures;
-- D1 idempotency/replay storage for provider event refs and body digests;
-- stale-checkout expiration sweeps;
-- Site payment receipt/public proof views;
+- durable webhook intake with verified provider signatures.
+- D1 idempotency/replay storage for provider event refs and body digests.
+- stale-checkout expiration sweeps.
+- Site payment receipt/public proof views.
 - generated Site UI that reads receipt and entitlement state after clean
-  checkout returns;
-- internal sandbox/signet smoke tests for a real MDK-backed checkout path;
+  checkout returns.
+- internal sandbox/signet smoke tests for a real MDK-backed checkout path.
 - multi-agent Forum payment/reward simulation before any public earning claims.

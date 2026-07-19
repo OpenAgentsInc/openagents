@@ -6,7 +6,7 @@ This is the live-tail delivery pipe. It tails the `khala_sync_changelog`
 (LISTEN `khala_sync_changelog_append` wake + short poll fallback) over a
 DIRECT Cloud SQL **session** connection and pushes ordered whole-version-group
 batches to the LiveHub `/append` route, which fans DeltaFrames out to
-subscribed WebSocket clients. Checkpoints advance only on a hub 2xx; delivery
+subscribed WebSocket clients. Checkpoints advance only on a hub 2xx. Delivery
 is at-least-once (the hub dedupes by version).
 
 The capture logic itself lives in
@@ -38,11 +38,11 @@ posture.
 ## Deploy shape (deliberate)
 
 - `min=max=1` — a **singleton** daemon. LISTEN/NOTIFY needs one persistent
-  session; a second instance only double-pushes (the hub dedupes by version).
+  session. A second instance only double-pushes (the hub dedupes by version).
 - `--no-cpu-throttling` — the daemon loop, LISTEN connection, and poll timer
   must run **between** HTTP requests.
 - `--add-cloudsql-instances openagentsgemini:us-central1:khala-sync-pg` —
-  mounts the connector socket; `PGHOST` points at `/cloudsql/<instance>`.
+  mounts the connector socket. `PGHOST` points at `/cloudsql/<instance>`.
 
 ## Env
 

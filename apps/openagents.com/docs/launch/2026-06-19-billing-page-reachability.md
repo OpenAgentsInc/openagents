@@ -21,16 +21,16 @@ It accompanies the catalog-driven billing-page fix on branch
    `POST /api/billing/checkout`.
 4. **Stripe Checkout.** `handleBillingCheckoutApi` →
    `StripeCheckoutService.createCreditCheckout` creates a Stripe Checkout
-   Session for the package `priceId` and returns its hosted `checkoutUrl`; the
+   Session for the package `priceId` and returns its hosted `checkoutUrl`. The
    browser is redirected there. The user pays on Stripe.
 5. **Return + webhook.** On success Stripe redirects to
    `GET /api/billing/stripe/checkout-return?session_id=...`
    (`handleBillingStripeCheckoutReturnApi`), which fulfills the session and
    303-redirects to `/billing`. Independently, Stripe calls
-   `POST /api/billing/stripe/webhook` (`handleBillingStripeWebhookApi`); on
+   `POST /api/billing/stripe/webhook` (`handleBillingStripeWebhookApi`). On
    `checkout.session.completed` it runs `fulfillCheckoutSession`, which credits
    the user's USD balance via `applyStripeCheckoutCredit` (idempotent per
-   session). Either path applies the credit; the webhook is the authoritative
+   session). Either path applies the credit. The webhook is the authoritative
    one.
 6. **Credit visible.** The next billing summary read shows the new
    `balanceCents` / `balanceFormatted`.
@@ -73,10 +73,10 @@ reject.
   `withBillingCreditPackages(...)` in `workers/api/src/billing-routes.ts`. This
   keeps the buy buttons stable after any billing action replaces
   `auth.billing`.
-- `/api/billing/checkout` no longer defaults a missing `packageId`; it returns
+- `/api/billing/checkout` no longer defaults a missing `packageId`. It returns
   `400 package_required`.
 - The web schema (`apps/web/src/domain/session.ts`) gains
-  `BillingCreditPackage` and a required `BillingSummary.packages`; the page maps
+  `BillingCreditPackage` and a required `BillingSummary.packages`. The page maps
   `billing.packages` to buy buttons.
 
 Tests: `workers/api/src/billing-routes.test.ts` covers catalog rendering from
@@ -121,7 +121,7 @@ production:
 
 Net effect: a user who clicks sign-in on the staging Worker is bounced through
 the prod issuer and lands authenticated on **production**, never on the staging
-origin. The billing page itself is reachable and correct once a session exists;
+origin. The billing page itself is reachable and correct once a session exists.
 the only thing missing on staging is a way to obtain that session **on the
 staging origin**.
 
@@ -138,17 +138,17 @@ changes, not a redesign:
 2. **Issuer allowlist (one-line code change in `index.ts`):** add
    `openagents-staging.openagents.workers.dev` to the `allow` hostname check in
    `makeAuthIssuer` so the prod issuer accepts the staging callback. (This is
-   the only code change, and it widens — not weakens — the allowlist; prod
+   the only code change, and it widens — not weakens — the allowlist. Prod
    hosts are unchanged.)
 3. **GitHub OAuth app (owner, GitHub side):** the GitHub OAuth app (client id
-   `Ov23lirHI1DWTzZ1zT1u`) is owned by the issuer; no client-secret change is
+   `Ov23lirHI1DWTzZ1zT1u`) is owned by the issuer. No client-secret change is
    needed for staging. The user-facing OAuth redirect remains the issuer's own
    callback, so no new GitHub authorized-callback entry is strictly required for
    the delegated flow. If a fully independent staging issuer is ever desired,
    that is a separate decision (separate issuer deployment + its own GitHub
    secret), not required here.
 
-No production auth behavior is changed by documenting this; do not commit the
+No production auth behavior is changed by documenting this. Do not commit the
 real GitHub secret or weaken the prod allowlist.
 
 ### Verifying the buy flow on staging before sign-in is enabled
@@ -170,6 +170,6 @@ staging two ways:
 | --- | --- |
 | Billing page renders packages from the server catalog | Fixed (this branch) |
 | Buy button sends a catalog id the server accepts | Fixed (this branch) |
-| Checkout → Stripe → webhook → credit | Works (prod; staging on TEST keys) |
+| Checkout → Stripe → webhook → credit | Works (prod, staging on TEST keys) |
 | Billing page reachable once signed in | Works |
 | Sign-in completes on the staging origin | Blocked — owner action above |

@@ -35,7 +35,7 @@ returned 401 on `GET /-/whoami` as of 2026-06-11 02:30 UTC.
 3. In `apps/pylon/package.json`: version `0.3.0-rc2` → `0.3.0`, and replace
    the `workspace:*` dep specifiers with the published versions at publish
    time (or use a publish-time rewrite).
-4. Re-run `bash scripts/release-gate.sh`; retain output.
+4. Re-run `bash scripts/release-gate.sh`. Retain output.
 5. `npm publish` from `apps/pylon`.
 6. Verify `npm install -g @openagentsinc/pylon@0.3.0` on a clean machine
    (macOS and Linux).
@@ -52,7 +52,7 @@ returned 401 on `GET /-/whoami` as of 2026-06-11 02:30 UTC.
 - No automatic Bitcoin earning, no self-serve paid work, no
   assignment-ready-network claims (earning gate copy governs).
 - No training, local-inference, or Qwen claims — local-inference and Qwen
-  products are out of scope by owner decision (2026-06-10); the training
+  products are out of scope by owner decision (2026-06-10). The training
   focus is Tassadar executor training.
 - Tassadar executor-trace copy stays scoped to the promise's safeCopy (one
   workload family, digest-pinned, receipts cited).

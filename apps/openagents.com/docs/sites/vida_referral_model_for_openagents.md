@@ -67,7 +67,7 @@ The simplest rollout is:
 | Tier 1 | Main reward recipient for direct referrals[web:168] |
 | Tier 2 | Smaller upstream recipient for referrals of referrals[web:168] |
 | Payout unit | Sats or ecash equivalent consistent with Bitcoin-only rails[file:19] |
-| Anti-abuse rule | No rewards for unfunded signups; rewards begin only after real paid activity[web:110][web:115] |
+| Anti-abuse rule | No rewards for unfunded signups. Rewards begin only after real paid activity[web:110][web:115] |
 
 ## Recommendation
 The part of VIDA worth copying is not the branding or exact language but the structure: product-native attribution, two-layer upstream logic, and rewards funded from real transaction fees.[web:111][web:115][web:168] For OpenAgents, that means a Bitcoin-only, usage-funded, Nostr-attributed referral system where participants earn only when the users or agents they bring in generate real economic activity.[file:19]

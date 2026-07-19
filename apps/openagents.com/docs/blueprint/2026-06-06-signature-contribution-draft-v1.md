@@ -17,49 +17,49 @@ path.
 
 `BlueprintSignatureContributionDraft` records:
 
-- contributor refs;
-- source refs;
-- capability summary ref;
-- intended Program family;
-- risk class;
-- proposed Program Type, Program Signature, and Module Version refs;
-- required fixture refs;
-- release gate refs;
-- review status;
-- rejection ref;
-- promotion ref;
+- contributor refs.
+- source refs.
+- capability summary ref.
+- intended Program family.
+- risk class.
+- proposed Program Type, Program Signature, and Module Version refs.
+- required fixture refs.
+- release gate refs.
+- review status.
+- rejection ref.
+- promotion ref.
 - explicit no-runtime-authority block.
 
 ## Lifecycle
 
 Supported statuses:
 
-- `draft`;
-- `submitted`;
-- `in_review`;
-- `needs_changes`;
-- `rejected`;
-- `approved_for_release_gate`;
-- `promoted`;
+- `draft`.
+- `submitted`.
+- `in_review`.
+- `needs_changes`.
+- `rejected`.
+- `approved_for_release_gate`.
+- `promoted`.
 - `archived`.
 
 Supported review states:
 
-- `not_requested`;
-- `pending`;
-- `changes_requested`;
-- `approved`;
+- `not_requested`.
+- `pending`.
+- `changes_requested`.
+- `approved`.
 - `rejected`.
 
 ## Authority Boundary
 
 Contribution drafts cannot:
 
-- execute;
-- mutate state;
-- deploy;
-- spend;
-- send email;
+- execute.
+- mutate state.
+- deploy.
+- spend.
+- send email.
 - change public claims.
 
 `BLUEPRINT_SIGNATURE_CONTRIBUTION_NO_AUTHORITY` records these denied effects.
@@ -72,12 +72,12 @@ explicit.
 `blueprintSignatureContributionDraftCanEnterReleaseGate` returns true only
 when:
 
-- the draft has no runtime authority;
-- status is `approved_for_release_gate`;
-- review status is `approved`;
-- no rejection or promotion ref is already present;
-- fixture refs are present;
-- release gate refs are present;
+- the draft has no runtime authority.
+- status is `approved_for_release_gate`.
+- review status is `approved`.
+- no rejection or promotion ref is already present.
+- fixture refs are present.
+- release gate refs are present.
 - a proposed Program Signature or Module Version ref is present.
 
 Even then, the draft still cannot run. It can only enter the release-gate path

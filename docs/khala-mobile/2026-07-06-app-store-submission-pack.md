@@ -15,7 +15,7 @@ does not have.
 ## 1. Listing copy
 
 App name, subtitle, and full description must not claim anything the promise
-registry's `safeCopy` doesn't back. Per `khala_code.mobile_mvp.v1`
+registry's `safeCopy` does not back. Per `khala_code.mobile_mvp.v1`
 (state: `planned`), the app **exists and installs**, but the full straight
 line (cloud-executed turn → credit drain → push on completion) is not yet
 end-to-end proven on a real device from a store build. Listing copy for a
@@ -44,7 +44,7 @@ today, not the eventual vision:
   > check openagents.com/docs/product-promises for the current, honest
   > status of every claim we make about this app.
 
-  The last paragraph is a deliberate, standing "don't overclaim" clause
+  The last paragraph is a deliberate, standing "do not overclaim" clause
   mirroring this repo's product-promise discipline — keep it in the
   description until `khala_code.mobile_mvp.v1` reaches `yellow` or `green`.
 - **Keywords (iOS, comma-separated, ≤100 chars):** `coding agent,github,ai
@@ -61,7 +61,7 @@ today, not the eventual vision:
 No device screenshots were captured in this pass (this environment has no
 signed-in test account with seeded credits — see §6). This is the exact
 shot list to capture once one exists, in submission order (iOS needs at
-minimum one 6.9" and one 6.5" or 5.5" set; Android needs at minimum a phone
+minimum one 6.9" and one 6.5" or 5.5" set. Android needs at minimum a phone
 set):
 
 1. **Sign-in screen** ("Nexus Beam" redesign, commit `83ad352bd3`) — hero
@@ -98,14 +98,14 @@ call, native module, and stored field (2026-07-06, current `main`):
 
 | Data category | Collected? | Linked to identity? | Used for | Notes |
 |---|---|---|---|---|
-| **GitHub identity** (GitHub user id, login, avatar via OAuth) | Yes | Yes | App functionality (sign-in, repo access) | Stored server-side per `apps/openagents.com` OpenAuth; the mobile app itself only ever holds a bearer session token in `expo-secure-store`, never a raw GitHub token. |
-| **Email address** | Yes (from GitHub's `user:email` scope, server-side only) | Yes | App functionality, account identification | Not directly read/stored by the mobile client; server-side per the OpenAuth issuer. |
-| **User content (chat messages, task descriptions, repo names/paths you choose to work in)** | Yes | Yes | App functionality (the core coding-agent product) | Synced via Khala Sync (`/api/sync/*`); this is the product itself, not incidental collection. |
-| **Purchase history** | **Not applicable today.** IAP is postponed for the first MVP build (2026-07-06 owner decision); the server IAP rail (#8482) exists but is dormant, and no client purchase UI exists (`credits-history-screen.tsx` is transaction-history for the free grant only). Re-visit this row when IAP client work (#8481) resumes. |
-| **Usage data / diagnostics** | **No third-party analytics or crash SDK exists.** `src/diagnostics/crash-reporting.ts` is a local, in-app error boundary with a pluggable reporter defaulting to a no-op (`noopKhalaCrashReporter`) — verified by grep: no `crashReporter` prop is ever passed at the app root (`src/app.tsx`), so nothing leaves the device today. Token/turn usage IS recorded server-side (`token_usage_events`) for billing purposes — that's "App functionality," not "Analytics." |
-| **Device/push token** | Yes, once a user opts in | Yes (tied to the account) | App functionality (push notifications) | `push_device_tokens` server table (#8485); currently non-functional in practice because the Expo project id is unset (see `NEEDS_OWNER.md`) — registration no-ops with `project_id_missing` until that's linked. |
+| **GitHub identity** (GitHub user id, login, avatar via OAuth) | Yes | Yes | App functionality (sign-in, repo access) | Stored server-side per `apps/openagents.com` OpenAuth. The mobile app itself only ever holds a bearer session token in `expo-secure-store`, never a raw GitHub token. |
+| **Email address** | Yes (from GitHub's `user:email` scope, server-side only) | Yes | App functionality, account identification | Not directly read/stored by the mobile client. Server-side per the OpenAuth issuer. |
+| **User content (chat messages, task descriptions, repo names/paths you choose to work in)** | Yes | Yes | App functionality (the core coding-agent product) | Synced via Khala Sync (`/api/sync/*`). This is the product itself, not incidental collection. |
+| **Purchase history** | **Not applicable today.** IAP is postponed for the first MVP build (2026-07-06 owner decision). The server IAP rail (#8482) exists but is dormant, and no client purchase UI exists (`credits-history-screen.tsx` is transaction-history for the free grant only). Re-visit this row when IAP client work (#8481) resumes. |
+| **Usage data / diagnostics** | **No third-party analytics or crash SDK exists.** `src/diagnostics/crash-reporting.ts` is a local, in-app error boundary with a pluggable reporter defaulting to a no-op (`noopKhalaCrashReporter`) — verified by grep: no `crashReporter` prop is ever passed at the app root (`src/app.tsx`), so nothing leaves the device today. Token/turn usage IS recorded server-side (`token_usage_events`) for billing purposes — that is "App functionality," not "Analytics." |
+| **Device/push token** | Yes, once a user opts in | Yes (tied to the account) | App functionality (push notifications) | `push_device_tokens` server table (#8485). Currently non-functional in practice because the Expo project id is unset (see `NEEDS_OWNER.md`) — registration no-ops with `project_id_missing` until that is linked. |
 | **Precise/coarse location** | No | — | — | No location API imported anywhere in `clients/khala-mobile`. |
-| **Contacts, photos, calendar** | No | — | — | Not requested; no corresponding Expo module installed. |
+| **Contacts, photos, calendar** | No | — | — | Not requested. No corresponding Expo module installed. |
 | **Microphone** | Requested (permission declared), **not functionally captured yet** | — | Planned: push-to-talk transcription | `NSMicrophoneUsageDescription`/`RECORD_AUDIO` are declared because the push-to-talk STT module exists, but per the QA swarm audit it is an "always-reject/always-unavailable shell" — no real audio capture ships yet. Declare the permission honestly (Apple requires disclosure for the *capability*, not just active use) but do not claim voice input works in listing copy. |
 | **Advertising / tracking (IDFA, ad networks)** | No | — | — | No ad SDK anywhere in the tree. App Tracking Transparency prompt is NOT needed. |
 
@@ -115,7 +115,7 @@ app functionality), User Content (linked, app functionality), Identifiers
 Collected.** No "Data Used to Track You" categories apply (no ATT prompt
 needed).
 
-**Recommended Play "Data safety" answers:** mirror the above; Play's form
+**Recommended Play "Data safety" answers:** mirror the above. Play's form
 additionally asks about data *sharing* with third parties — answer "No" (the
 only external processor today would be a payment processor, and IAP is
 dormant).
@@ -147,7 +147,7 @@ is not the same as "verified."
 Recommended: **4+ (iOS) / Everyone (Android/Play)**. The app has no
 user-generated public content surface, no chat with other users, no mature
 content, no gambling, no unmoderated open web browsing beyond the OS-native
-GitHub OAuth browser tab. It is a developer tool; content is limited to code
+GitHub OAuth browser tab. It is a developer tool. Content is limited to code
 and the user's own task descriptions.
 
 ## 6. App Review notes
@@ -160,7 +160,7 @@ Draft text for the "Notes for Review" field:
 > progress back to the thread.
 >
 > **Demo account:** [NEEDS_OWNER — provision a demo GitHub account and link
-> it through Khala's normal sign-in flow; it will receive the standard $10
+> it through Khala's normal sign-in flow. It will receive the standard $10
 > signup grant automatically (#8478), no manual seeding required for that
 > part]. **Credits beyond the automatic $10 grant are currently assigned
 > manually by an OpenAgents team member through our internal Aiur admin
@@ -176,7 +176,7 @@ Draft text for the "Notes for Review" field:
 > spine (#8473) but the full dispatch/metering chain (#8474-#8479) is still
 > being finished — a turn may complete slower than a production SLA, or in
 > rare cases return a typed "not yet available" error rather than a result.
-> This is expected; please retry or contact us if the demo account appears
+> This is expected. Please retry or contact us if the demo account appears
 > stuck.
 >
 > No in-app purchases exist in this build.
@@ -202,7 +202,7 @@ removes OpenAuth subject storage, marks the user/identity deleted, forfeits
 the Pool B credit balance by zeroing the server-owned balance row, records a
 short-lived deletion receipt for safe retry, and revokes the presented bearer
 token. The route is tested in
-`apps/openagents.com/workers/api/src/mobile-account-deletion-routes.test.ts`;
+`apps/openagents.com/workers/api/src/mobile-account-deletion-routes.test.ts`.
 the mobile request helper and exact policy copy are tested in
 `clients/khala-mobile/tests/mobile-openauth.test.ts`.
 
@@ -216,7 +216,7 @@ Policy copy shown in the confirmation modal:
 This App Review blocker can be marked account-deletion-complete once the
 commit containing #8502 is deployed to the Worker and included in the mobile
 build submitted for review. Internal TestFlight remains usable before that
-deploy; external TestFlight/App Review should use a build whose Settings
+deploy. External TestFlight/App Review should use a build whose Settings
 screen contains the confirmed deletion path.
 
 ## 8. TestFlight external-testing group (staging rung)
@@ -224,7 +224,7 @@ screen contains the confirmed deletion path.
 Recommended sequence, cheapest-first:
 
 1. **Internal TestFlight** (up to 100 App Store Connect team members, no
-   review needed) — usable today once a build is archived and uploaded; the
+   review needed) — usable today once a build is archived and uploaded. The
    fastest way to get the app on a real device ahead of the account-deletion
    gap being closed.
 2. **External TestFlight** (up to 10,000 testers, requires one Beta App
@@ -241,12 +241,12 @@ Recommended sequence, cheapest-first:
 | Area | Status |
 |---|---|
 | Listing copy (name/subtitle/description/keywords) | ✅ Drafted this pass, promise-gated |
-| Screenshot shot-list | ✅ Drafted; ❌ no screenshots captured (needs a seeded demo account) |
+| Screenshot shot-list | ✅ Drafted. ❌ No screenshots captured (needs a seeded demo account) |
 | Privacy nutrition label (App Store + Play) | ✅ Drafted, grounded in a real grep pass |
-| Required-reason API / privacy manifest | ✅ Documented expected auto-aggregation; ❌ not verified against a real archived `.xcarchive` (needs a full iOS prebuild+archive pass, out of this pass's Android-focused environment) |
+| Required-reason API / privacy manifest | ✅ Documented expected auto-aggregation. ❌ Not verified against a real archived `.xcarchive` (needs a full iOS prebuild+archive pass, out of this pass's Android-focused environment) |
 | Age rating | ✅ Drafted (4+ / Everyone) |
-| App Review notes | ✅ Drafted; demo account provisioning is owner-gated |
-| Account deletion | ❌ **Compliance gap** — mechanism unbuilt (known since #8483); policy copy ready; recommend a follow-up Worker-side implementation issue before a real App Store (or external TestFlight) submission |
+| App Review notes | ✅ Drafted. Demo account provisioning is owner-gated |
+| Account deletion | ❌ **Compliance gap** — mechanism unbuilt (known since #8483). Policy copy ready. Recommend a follow-up Worker-side implementation issue before a real App Store (or external TestFlight) submission |
 | TestFlight staging plan | ✅ Drafted (internal → external → full submission) |
 | ASC app record / build upload / actual submission | ❌ **Owner-gated** — no ASC account access in this environment |
 
@@ -262,6 +262,6 @@ Recommended sequence, cheapest-first:
   until it lands).
 - Link an Expo project id (`expo.extra.eas.projectId`) so push notifications
   actually register — already tracked in `NEEDS_OWNER.md` from the push-lane
-  work; repeated here because it affects the App Review notes' honesty.
+  work. Repeated here because it affects the App Review notes' honesty.
 - Perform the actual ASC metadata entry, screenshot upload (once captured),
   and first TestFlight/App Store submission.

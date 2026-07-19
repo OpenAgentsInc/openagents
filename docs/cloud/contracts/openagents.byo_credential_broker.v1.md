@@ -162,14 +162,14 @@ capability, decision, and reason only.
 The VM must release the credential slot and attempt best-effort memory wiping
 on every terminal or revocation path:
 
-- normal run completion;
-- workroom closeout;
-- user revocation from Pylon;
-- capability revocation by policy;
-- timeout;
-- cancellation;
-- process failure;
-- VM quarantine;
+- normal run completion.
+- workroom closeout.
+- user revocation from Pylon.
+- capability revocation by policy.
+- timeout.
+- cancellation.
+- process failure.
+- VM quarantine.
 - VM teardown.
 
 Release kills or detaches credential-bearing child processes, clears the
@@ -201,13 +201,13 @@ credential lifecycle.
 
 Receipts must not contain:
 
-- raw model API keys;
-- encrypted credential payloads;
-- key hashes, prefixes, suffixes, or fingerprints;
-- authorization headers or bearer tokens;
-- process environment values;
-- model SDK config files containing the key;
-- stderr/stdout snippets that include the key;
+- raw model API keys.
+- encrypted credential payloads.
+- key hashes, prefixes, suffixes, or fingerprints.
+- authorization headers or bearer tokens.
+- process environment values.
+- model SDK config files containing the key.
+- stderr/stdout snippets that include the key.
 - provider account secrets or secret-store refs for this BYO key.
 
 ## Retained Projections
@@ -279,5 +279,5 @@ or durable event payload.
 - No wallet authority or settlement credential sharing.
 - No generic secret tunnel for arbitrary files or credentials.
 - No replacement for provider-account grants such as
-  `openagents.codex_auth_grant.v1`; this contract is only for customer-origin
+  `openagents.codex_auth_grant.v1`. This contract is only for customer-origin
   model API keys sent directly to an isolated session VM.

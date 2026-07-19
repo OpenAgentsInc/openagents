@@ -3,7 +3,7 @@
 > Follow-on to [`2026-06-24-autonomous-qa-e2e-from-computer-use.md`](./2026-06-24-autonomous-qa-e2e-from-computer-use.md).
 > Vision + architecture audit. **Not a product promise or public-claim copy**, and not a
 > runtime change. It sketches what the shipped autonomous-QA + trace primitive becomes once
-> it's the front-end for a **pool of paid coding agents** orchestrated by Khala, surfaced in
+> it is the front-end for a **pool of paid coding agents** orchestrated by Khala, surfaced in
 > the Autopilot desktop Verse, and pointed at **any pull request**.
 
 ## The thesis in one line
@@ -35,7 +35,7 @@ powered by Khala** — with **autonomous QA / PR review** as the demand that jus
 
 ## The engine — a thin coordination layer over commodity infrastructure
 
-The deeper point: we don't own the hard infrastructure, and we don't need to. Cloudflare (and
+The deeper point: we do not own the hard infrastructure, and we do not need to. Cloudflare (and
 peers) already give us the primitives — **Workers** (compute), **Browser Rendering** (real
 Chrome), **Containers / Sandbox** (isolated terminals), **R2** (artifacts), **D1 / Durable
 Objects / Queues / Workflows** (state, coordination, lifecycle) — plus the world's coding agents
@@ -46,7 +46,7 @@ and models. OpenAgents is the **thin economic + coordination layer on top** that
 - **coordinates** them (Khala routes / shards / composes / verifies the work),
 - and **pays for verified work in Bitcoin** (the settlement rail), so the pool self-sustains.
 
-That's the whole engine: *pool the world's resources, coordinate them, settle in Bitcoin,
+That is the whole engine: *pool the world's resources, coordinate them, settle in Bitcoin,
 capture the synergy.* Deliberately simple — we add the **market + the orchestration + the proof**
 (verified traces), not the silicon. The moat is the coordination layer, the verified-outcome
 proof, and the Bitcoin settlement network — not owning datacenters.
@@ -63,8 +63,8 @@ desktop app should make the work *visible and shareable*:
   #6223). The desktop surfaces the resulting trace URL.
 - **Verse animation:** tie this into the **existing Pylon/Verse visualization** (the shared
   `persistentScene` / `landingSquares` energy + Pylon scene, settlement beams, agent
-  avatars). A running super-code agent = a Pylon lighting up; a verified outcome = a verify
-  glow; a Bitcoin settlement = a beam; a published trace = a portal you can click into the
+  avatars). A running super-code agent = a Pylon lighting up. A verified outcome = a verify
+  glow. A Bitcoin settlement = a beam. A published trace = a portal you can click into the
   `/trace/{uuid}` render. This is the same "show Pylon stuff" idea, now driven by **real QA
   work** instead of a demo loop.
 - **One scene, many workers:** when work is fanned out (below), the Verse shows the
@@ -76,7 +76,7 @@ coding agents, each leaving a clickable verified trace.
 
 ## 2. The pool + fan-out economics (the actual product)
 
-**Pay once → massive firepower.** The customer buys OpenAgents QA/coding capacity (credits;
+**Pay once → massive firepower.** The customer buys OpenAgents QA/coding capacity (credits,
 MPP card/crypto + Bitcoin/Spark rails are already armed). They do **not** pick a model or a
 worker. Khala **fans the work out** across a pool of paid coding-agent workers and returns a
 set of verified traces.
@@ -86,11 +86,11 @@ set of verified traces.
   justification).
 - **Khala orchestrates:** route/shard the task across eligible workers, dedupe, aggregate,
   and (for hard tasks) compose (the Conductor lane). The capability gate already ensures a
-  worker can only be named if it's receipt-eligible.
+  worker can only be named if it is receipt-eligible.
 - **Settlement:** each worker's verified outcome is **Bitcoin-settled** (the Tassadar/Spark
-  settlement leg #6011/#6023). The customer pays OpenAgents once; OpenAgents pays the workers
+  settlement leg #6011/#6023). The customer pays OpenAgents once. OpenAgents pays the workers
   per verified outcome. Margin = the spread + the orchestration value.
-- **Why customers pay:** they get *parallel firepower they can't staff* — "review all 40 open
+- **Why customers pay:** they get *parallel firepower they cannot staff* — "review all 40 open
   PRs tonight," "QA every release candidate," "audit this repo across 5 lenses" — each as a
   verified, watchable, re-runnable trace. The incentive to pay OpenAgents for *additional* QA
   is that the marginal review is cheap, parallel, and leaves proof.
@@ -103,7 +103,7 @@ distiller (session → committed e2e test). Generalize it:
 
 - For a PR, fan out review **lenses** across the pool (correctness, regressions via the
   computer-use QA flow against a preview, security, perf, test-coverage, "does it actually
-  run") — each worker produces a verified trace; Khala aggregates into one review.
+  run") — each worker produces a verified trace. Khala aggregates into one review.
 - Output per PR: a **thin status** + a link to the **rich review on our surface**
   (`/trace/{uuid}` + a comparison view), not a wall of text in the PR.
 - "Army of coding agents → a whole lot of PR review": run it across a customer's whole PR
@@ -118,8 +118,8 @@ dependency** direction (heavy artifacts on *our* surface). Options:
 | Option | What it is | Pros | Cons |
 |---|---|---|---|
 | **A. GitHub App** ("OpenAgents QA") | An installable App that posts PR reviews/checks as the app identity, via webhooks→our infra | Native, per-repo install, fine-grained perms, a real Check + review, recognizable | App review/approval, webhook surface = some GitHub coupling |
-| **B. Bot user account** (e.g. `@openagents-qa`) | A machine account that comments via a PAT | Trivial to start; a clear "OpenAgents" identity on the PR | Less integrated (no Checks API as an app), PAT mgmt, rate limits, looks less official |
-| **C. Our-surface-only** | Review lives at `/trace/{uuid}`; a human/agent drops a link | Zero GitHub coupling; fits reduce-dependency | No GitHub-native trigger or identity; weak distribution |
+| **B. Bot user account** (e.g. `@openagents-qa`) | A machine account that comments via a PAT | Trivial to start. A clear "OpenAgents" identity on the PR | Less integrated (no Checks API as an app), PAT mgmt, rate limits, looks less official |
+| **C. Our-surface-only** | Review lives at `/trace/{uuid}`. A human/agent drops a link | Zero GitHub coupling. Fits reduce-dependency | No GitHub-native trigger or identity. Weak distribution |
 
 **Recommendation — A, thin-on-GitHub + heavy-on-ours (a hybrid that respects both invariants):**
 
@@ -132,27 +132,27 @@ dependency** direction (heavy artifacts on *our* surface). Options:
   pointer — exactly the dependency posture we want.
 - The App identity makes it recognizable + installable by any team ("add OpenAgents QA to
   your repo"), which is the distribution flywheel for **paying for more QA**.
-- Keep a **bot account** only as the fallback commenter where an App isn't installed (e.g.
+- Keep a **bot account** only as the fallback commenter where an App is not installed (e.g.
   seeding review on public PRs), clearly labeled, rate-limit-aware.
 - Do **not** implement this as a GitHub Action (invariant) — the App's webhook handler runs on
   owned infra (Worker/Khala), and the agent/operator path (`pr-comment-run.ts`) remains the
   manual/agentic entry today.
 
-So: **GitHub App for trigger + identity + a thin comment; OpenAgents.com for the review,
-traces, video, and the paid pool.** GitHub is the doorway; the product is ours.
+So: **GitHub App for trigger + identity + a thin comment. OpenAgents.com for the review,
+traces, video, and the paid pool.** GitHub is the doorway. The product is ours.
 
-## Sales process — what we're actually selling (hiring Autopilot)
+## Sales process — what we are actually selling (hiring Autopilot)
 
-Customers don't buy "an agent network" or "Khala" — they **hire Autopilot to do a job**:
-coding, QA, PR review, audits. The sale is *firepower-on-demand for work they can't staff*.
+Customers do not buy "an agent network" or "Khala" — they **hire Autopilot to do a job**:
+coding, QA, PR review, audits. The sale is *firepower-on-demand for work they cannot staff*.
 
 - **Wedge: QA / PR review.** Every team has infinite PRs and finite reviewers. "Add OpenAgents
   QA to your repo → every PR gets a verified review + trace, on demand, at scale." Cheap
   marginal review, parallel, leaves proof. This is the land.
-- **Discovery:** the GitHub App ("OpenAgents QA") on a repo; public `/trace/{uuid}` links (each
-  trace is an ad); the agent-discovery surfaces (`/llms.txt`, `/openapi.json`) for agent buyers;
+- **Discovery:** the GitHub App ("OpenAgents QA") on a repo. Public `/trace/{uuid}` links (each
+  trace is an ad). The agent-discovery surfaces (`/llms.txt`, `/openapi.json`) for agent buyers.
   seeded reviews on public PRs.
-- **Buy:** one purchase of OpenAgents capacity (credits; MPP card/crypto in). No model/worker
+- **Buy:** one purchase of OpenAgents capacity (credits, MPP card/crypto in). No model/worker
   selection — *pay once for massive firepower*.
 - **Hire:** submit a job (a PR, a repo, a release) → Khala fans it out across the pool →
   verified traces back. Scale up: "review my whole backlog," "QA every RC," "audit across 5
@@ -185,10 +185,10 @@ capability.**
 - **Trace primitive** (`/trace/{uuid}`, ATIF, redaction, R2 media #6223) — the artifact each
   worker produces. ✅ shipped.
 - **qa-runner** (computer-use drivers, distiller, publish, OSS on npm) — the worker runtime. ✅
-- **Khala** — the orchestrator that fans out + composes + meters. ✅ serves; fan-out/compose
+- **Khala** — the orchestrator that fans out + composes + meters. ✅ serves. Fan-out/compose
   is the M4/M6/M7 lanes (parked as a north-star, but the *QA fan-out* is a simpler, nearer use
   of the same pool than the benchmark head-to-head).
-- **Pylon / Verse** — the worker substrate + the watchable visualization. (M4 inert; Verse
+- **Pylon / Verse** — the worker substrate + the watchable visualization. (M4 inert, Verse
   viz partial.)
 - **Payments** — MPP (card/crypto) in, Bitcoin/Spark out to workers. ✅ armed.
 - **no-GHA invariant** — the review trigger is a GitHub *App webhook → owned infra*, never a
@@ -205,12 +205,12 @@ capability.**
    thin comment/Check + link to our surface. (Owner: App registration + perms.)
 4. **Real pool fan-out** (the long pole): activate M4 Pylon-in-pool + the worker settlement
    leg so "fan out to many *paid* workers" is real, not single-machine. (Owner/compute-gated —
-   same gate as the Khala buildout; QA fan-out is a cheaper first demand than the head-to-head.)
+   same gate as the Khala buildout. QA fan-out is a cheaper first demand than the head-to-head.)
 5. **Pricing + "pay once for firepower"** packaging on the existing credits/MPP rails.
 
-**Net:** the autonomous-QA + trace unit we shipped is the atom; the product is *a paid pool of
+**Net:** the autonomous-QA + trace unit we shipped is the atom. The product is *a paid pool of
 coding agents, orchestrated by Khala, doing verified PR review at scale, watchable in the
 Verse, with the heavy artifacts on our own surface and GitHub as a thin doorway.* The nearest
-honest wins are the Autopilot-desktop trace/Verse hook and a PR-review fan-out v0; the GitHub
-App is the distribution unlock; the paid multi-worker pool is the same compute/arming gate as
+honest wins are the Autopilot-desktop trace/Verse hook and a PR-review fan-out v0. The GitHub
+App is the distribution unlock. The paid multi-worker pool is the same compute/arming gate as
 the rest of the Khala buildout.

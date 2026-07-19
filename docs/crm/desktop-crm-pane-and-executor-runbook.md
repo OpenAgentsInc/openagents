@@ -18,7 +18,7 @@ Shape the model from the read APIs with `buildCrmContactsPaneModel(...)`:
 - queue ← `GET /api/operator/crm/gmail-queue`
 
 Pure helpers (`crmContactDisplayName`, `crmRelationshipTone`,
-`summarizeCrmActivities`, `countCrmSent`) are unit-tested; the builder is
+`summarizeCrmActivities`, `countCrmSent`) are unit-tested. The builder is
 presentational. Approvals for `send_email` commands (#5986) surface here as the
 operator approval queue.
 
@@ -32,7 +32,7 @@ CRM_ADMIN_TOKEN=... node apps/openagents.com/scripts/crm-gmail-executor.mjs \
 ```
 
 For each `queued` `gmail_gws` message it sends as the operator's mailbox via
-`gws` (**draft-first**; `--send` to send live), then POSTs `gmail-writeback`
+`gws` (**draft-first**, `--send` to send live), then POSTs `gmail-writeback`
 with the `messageId` to **update the same ledger row** to `draft`/`sent` (no
 duplicate). Env mirrors the single-contact sender (`GWS_BIN`,
 `GWS_SEND_ARGS_JSON` override). Prereq: `gws auth login -s gmail` as the sending

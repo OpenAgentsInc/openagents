@@ -49,7 +49,7 @@ raw webhook body, headers, secret values, provider diagnostics, or rendered
 email content.
 
 Delivery events update matching `email_deliveries` rows by
-`provider_message_id`. `email.delivered` marks the delivery accepted;
+`provider_message_id`. `email.delivered` marks the delivery accepted.
 `email.failed`, `email.bounced`, and `email.complained` mark it failed with a
 length-limited error summary. Bounce and complaint events also create
 all-scope provider suppression records through the email preference boundary.

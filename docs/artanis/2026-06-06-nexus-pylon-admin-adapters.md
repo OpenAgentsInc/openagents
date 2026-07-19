@@ -104,12 +104,12 @@ Coverage lives in `workers/api/src/artanis-nexus-pylon-adapters.test.ts`.
 
 The tests prove:
 
-- public-safe fleet monitoring from OpenAgents product surface public Pylon stats;
-- unavailable stats become public blockers;
+- public-safe fleet monitoring from OpenAgents product surface public Pylon stats.
+- unavailable stats become public blockers.
 - adapter surface coverage includes stats, provider inventory, readiness,
   offers, assignments, run status, artifacts, acceptance, and payout/settlement
-  caveats;
-- approval-gated fake dispatch calls the intended Nexus and Pylon route refs;
-- fake dispatch receipts persist through D1 and retry idempotently;
+  caveats.
+- approval-gated fake dispatch calls the intended Nexus and Pylon route refs.
+- fake dispatch receipts persist through D1 and retry idempotently.
 - live dispatch, missing approval/eligibility, expired approval, and unsafe
   private/provider/wallet/payment/raw refs fail closed.

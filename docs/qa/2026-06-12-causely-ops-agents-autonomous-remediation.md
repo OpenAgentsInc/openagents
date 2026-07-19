@@ -54,10 +54,10 @@ and how the system verified the fix.
 This source is useful for comparing OpenAgents QA and remediation work against a
 market-facing ops-agent pattern:
 
-- event-driven background monitoring instead of manually triggered checks;
+- event-driven background monitoring instead of manually triggered checks.
 - incident context assembled from production telemetry and service dependency
-  graphs;
-- proposed or executed remediation before user-visible impact;
+  graphs.
+- proposed or executed remediation before user-visible impact.
 - a human-operable demo surface that should expose what the agent observed, why
   it chose an action, and whether remediation succeeded.
 

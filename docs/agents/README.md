@@ -16,7 +16,7 @@ grant, and instance key.
 | --- | --- | --- |
 | [Flue Framework Audit](./2026-06-16-flue-framework-openagents-audit.md) | Flue as a connector and agent-harness sidecar for provider events and durable sessions. | Worth a GitHub-first sidecar pilot, not a replacement for `openagents.com` authority. |
 | [Flue GitHub Connector Roadmap](./2026-06-16-flue-github-web-ui-integration-roadmap.md) | Ordered GitHub connector and OpenAgents web UI integration plan. | Keep GitHub first, make status visible in the web UI, and close the loop through OpenAgents-owned writeback. |
-| [Rivet Effect SDK Audit](./2026-06-17-rivet-effect-sdk-openagents-audit.md) | Rivet Actors and `@rivetkit/effect` as an Effect-native actor substrate. | Good pilot candidate for one non-authoritative actor surface; watch beta/raw-context boundaries. |
+| [Rivet Effect SDK Audit](./2026-06-17-rivet-effect-sdk-openagents-audit.md) | Rivet Actors and `@rivetkit/effect` as an Effect-native actor substrate. | Good pilot candidate for one non-authoritative actor surface. Watch beta/raw-context boundaries. |
 | [Cloudflare Agents SDK Audit](./2026-06-17-cloudflare-agents-sdk-openagents-audit.md) | Cloudflare Durable Object-backed Agents SDK as a native workroom/agent runtime. | Leading Cloudflare-native runtime candidate, but only behind OpenAgents auth and authority. |
 
 ## Runtime Map

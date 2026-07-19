@@ -8,7 +8,7 @@ Issue: [#564](https://github.com/OpenAgentsInc/openagents/issues/564)
 
 Plugin and signature marketplace revenue is blocked until OpenAgents product surface can project a
 public-safe settled usage event. Existing signature package validation is
-read-only; it does not install a package, promote a runtime, list a package,
+read-only. It does not install a package, promote a runtime, list a package,
 mutate payment state, or create payout eligibility.
 
 The launch predicate is:

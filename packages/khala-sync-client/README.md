@@ -13,10 +13,10 @@ Components (KS-5 workstream):
   (`store-core.ts`), so the semantics are identical by construction.
   Holds confirmed entities per scope, durable cursors, the
   FIFO pending-mutation queue, and client identity — **server-confirmed
-  state only** (SPEC §7 invariant 2); optimistic effects never touch disk.
+  state only** (SPEC §7 invariant 2). Optimistic effects never touch disk.
 - **Device-local authority** — ✅ shipped for native hosts in separate
   `local_identity`, `local_account_link`, and `local_entities` tables. It uses
-  `scope.device_local.*` and `LocalRevision`, never `SyncVersion`; hosted
+  `scope.device_local.*` and `LocalRevision`, never `SyncVersion`. Hosted
   session subscribe refuses that scope, and unlink never deletes local rows.
 - **Restart-safe coding drafts** — ✅ the canonical
   `openagents.coding_composer_draft.v1` snapshot persists only in native
@@ -35,14 +35,14 @@ Components (KS-5 workstream):
   remain hidden.
 - **Shared runtime commands** — ✅ deterministic exact-ref builders and
   confirmed-only client mutators for Desktop/mobile start, same-run follow-up,
-  and interrupt. Runtime admission is never optimistic truth; pending queue
+  and interrupt. Runtime admission is never optimistic truth. Pending queue
   state remains visible until the canonical runtime/agent-run projection
   reconciles.
   Named client mutators apply to an **in-memory overlay only** (the
   durable store holds server-confirmed state exclusively — Linear's
   rule). On every delta: rewind overlay, apply confirmed entries,
   re-apply still-unconfirmed mutations, reveal atomically. Mutators are
-  pure and replay-safe; server outcome wins. Verified by model-based
+  pure and replay-safe. Server outcome wins. Verified by model-based
   property tests (SPEC §8): 50 seeded random client/server interleavings
   converge to server state with zero optimistic residue, the durable
   SQLite tables are inspected directly at every step, and rebase is
@@ -53,23 +53,23 @@ Components (KS-5 workstream):
   `must_refetch` from any state (server `MustRefetchFrame` or a
   `cursor_behind_retained_window` error → reset + automatic re-bootstrap,
   bounded jittered retries). Transport is an injectable seam
-  (`KhalaSyncTransport`); the production implementation speaks the SPEC §3
+  (`KhalaSyncTransport`). The production implementation speaks the SPEC §3
   routes (`POST /api/sync/push`, `POST /api/sync/bootstrap`,
   `GET /api/sync/log`, `WS /api/sync/connect`) over fetch + WebSocket with
   bearer auth, every payload round-tripped through the khala-sync codecs.
   The durable cursor, not the connection, is the source of truth:
   reconnect resumes catch-up from `(scope, cursor)` with jittered
   exponential backoff, forever, until `unsubscribe`/`close`. The push loop
-  drains the durable FIFO queue in batches; rejections ACK in-band
-  (surfaced through `onRejection`) and never block the queue; a terminal
+  drains the durable FIFO queue in batches. Rejections ACK in-band
+  (surfaced through `onRejection`) and never block the queue. A terminal
   fault parks the queue until the next mutate/subscribe re-kick.
   `session.mutate` returns the exact assigned `MutationId`, so collection
   adapters can match in-band rejections without guessing from the current
   pending list. All timing is injected (`sleep`/`random`) — no wall-clock
-  reads in tested logic; the suite runs against a deterministic fake
+  reads in tested logic. The suite runs against a deterministic fake
   transport.
   Proven `session.revoke()` additionally closes mutation immediately, burns
-  queued hosted commands, and retracts subscribed hosted state; ordinary
+  queued hosted commands, and retracts subscribed hosted state. Ordinary
   transient `close()` preserves reconstructible cache/queue state.
 - **v1 offline contract** — online-optimistic: reads work offline, pushes
   wait for connectivity (bounded queue, honest expiry).
@@ -159,7 +159,7 @@ pool directory, which is the single-writer shape this architecture wants.
 ```
 
 - **Single writer**: the SharedWorker owns the only `opfs-sahpool`
-  connection; every multi-row semantic runs in one SQLite transaction
+  connection. Every multi-row semantic runs in one SQLite transaction
   inside the worker, exactly like desktop.
 - **Web Locks election** (`electWriter`): held-for-tab-lifetime exclusive
   lock per the Notion pattern. With a SharedWorker the election is
@@ -168,14 +168,14 @@ pool directory, which is the single-writer shape this architecture wants.
   dedicated worker and let only the elected tab's worker open the pool).
 - **`navigator.storage.persist()`** is requested exactly once, on the
   first write-class operation, so the origin's OPFS bucket is exempted
-  from best-effort eviction; a denial never fails the write.
+  from best-effort eviction. A denial never fails the write.
 - **Typed errors end-to-end**: `KhalaSyncClientStoreError` reason +
   public-safe message cross the RPC boundary intact, so callers cannot
   tell the web store from the desktop store.
 
 ### Usage
 
-Worker script (bundle as a module worker; this is the ONLY module that
+Worker script (bundle as a module worker, this is the ONLY module that
 loads the WASM bundle):
 
 ```ts
@@ -208,7 +208,7 @@ await Effect.runPromise(store.close()); // detaches THIS tab only
 ```
 
 `store.close()` detaches the tab (rejects in-flight calls, releases the
-election); it does **not** close the worker's database — other tabs share
+election). It does **not** close the worker's database — other tabs share
 it, and the connection lives for the SharedWorker's lifetime.
 
 ### Package entry points
@@ -229,7 +229,7 @@ Desktop consumers import `.` only and never see `@sqlite.org/sqlite-wasm`.
   from the overlay) once a surface actually needs it.
 - `opfs-sahpool` allows one connection per pool directory — do not open
   a second store against the same `poolDirectory` from another worker.
-- OPFS requires a secure context (HTTPS or localhost); private-browsing
+- OPFS requires a secure context (HTTPS or localhost). Private-browsing
   modes may cap or deny persistence (`persist()` is advisory).
 - No SharedWorker (Chrome for Android): run the worker entry in a
   dedicated `Worker` per tab and gate the pool open on `electWriter` so
@@ -246,10 +246,10 @@ worker RPC server (`src/web/*.test.ts`, `src/store-core.test.ts`).
 Manual browser verification (no browser CI harness in this lane): serve a
 page that runs the two snippets above from an HTTPS/localhost origin,
 then (1) write via `applyConfirmed`/`enqueueMutation` and reload — state
-must survive (OPFS); (2) open a second tab — `writerElected` resolves
+must survive (OPFS). (2) Open a second tab — `writerElected` resolves
 true in exactly one tab, and closing it hands the lock to the other
 (inspect `chrome://inspect/#workers` for the SharedWorker, and
-`navigator.locks.query()` for the `khala-sync:writer` holder); (3) check
+`navigator.locks.query()` for the `khala-sync:writer` holder). (3) Check
 DevTools → Application → Storage shows the origin as persisted after the
 first write.
 
@@ -304,12 +304,12 @@ const unsubscribe = overlay.subscribe((scope) => rerender(scope));
 
 1. **Optimistic effects never touch the durable store** (invariant 2,
    Linear's rule). `mutate` writes only the mutation _intent_ to the
-   durable FIFO queue; its effects live exclusively in the in-memory
+   durable FIFO queue. Its effects live exclusively in the in-memory
    overlay. The `entities`/`cursors` tables are written by the confirmed
    paths alone, so the local DB is always reconstructible from the server
    changelog. The property suite inspects the raw SQLite tables after
    every step to enforce this.
-2. **Apply is idempotent; the durable cursor is the source of truth**
+2. **Apply is idempotent. The durable cursor is the source of truth**
    (invariant 4). At-least-once redelivery of confirmed batches is a
    no-op on the end state (stale entry versions are skipped, an equal
    cursor is a legal redelivery), and reconnect resumes from the durable

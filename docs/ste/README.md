@@ -171,3 +171,12 @@ Run strict checks only for files that have completed conversion.
 The authorized dictionary adapter accepts a JSON object.
 The object must contain `steIssue: 9` and an `entries` array.
 Each entry must contain a `permittedForms` string array.
+
+## Final inventory
+
+The [final inventory](./final-inventory.v1.json) binds each governed path and terminal state to an exact SHA-256 digest.
+The [legacy estate disposition](./legacy-estate-disposition.md) is the STE frame for source data.
+The [P6 receipt](./p6-final-conformance-receipt.md) records the final repository result.
+
+The ledger generator validates the final inventory.
+It rejects a new path, a removed path, or a changed digest until an identified review regenerates the inventory.

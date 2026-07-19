@@ -23,7 +23,7 @@ funding, or external repo work.
   `docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md`.
   I did not stage or change it for this audit.
 - I did not create new worktrees. I also did not create a new implementation
-  branch; all work stayed on `main`, consistent with the workspace contract.
+  branch. All work stayed on `main`, consistent with the workspace contract.
 
 ## What I Completed
 
@@ -351,7 +351,7 @@ What I verified directly:
   `bunx vitest run src/orange-check-nostr-export.test.ts src/forum-routes.test.ts src/agent-owner-claim-routes.test.ts`
   — 3 files, 84 tests, all passing.
 - D2 honors the shared-Nostr rule: `orange-check-nostr-export.ts` imports from
-  `nostr-effect/nip58` and `@openagentsinc/nip90`; no parallel Nostr code. The
+  `nostr-effect/nip58` and `@openagentsinc/nip90`. No parallel Nostr code. The
   private-tier design doc landed as a doc, not shipped behavior, as delegated.
 - D4's leak regression is real: the `should_not_leak` receipt-ref test exists
   in `forum-routes.test.ts`, and the schema carries the public-safe fields
@@ -369,9 +369,9 @@ Live production checks fail for the new surfaces:
   `topicCount: 11, postCount: 18` but carries **no `activity` key at all** —
   the D4 feed is not live.
 
-Cause: this worker deploys manually (`bun run deploy` → wrangler); there is no
+Cause: this worker deploys manually (`bun run deploy` → wrangler). There is no
 CI deploy from `main`. The audit says "completed and pushed," which is
-accurate, but the prior 12-hour pass verified live routes because it deployed;
+accurate, but the prior 12-hour pass verified live routes because it deployed.
 this pass did not, and the audit should have said so explicitly. Consequence:
 the orange-check promise cannot clear `orange_check_nostr_export_missing`
 until the route is live, and #4695's closure is technically ahead of live
@@ -386,7 +386,7 @@ This is a bounded operator (or operator-approved agent) action.
 A parallel lane landed Tassadar executor work on `main` during the same
 window (`3704ba785`, `73cf42015`, `a409d5d0c`, `7bf1f01c4` — live
 executor-trace closeout on a real Pylon, milestone 1). D6 is therefore already
-moving; the continuation agent should re-read #4687's state before touching
+moving. The continuation agent should re-read #4687's state before touching
 that lane to avoid duplicating the parallel work.
 
 ## Standing Delegation
@@ -396,7 +396,7 @@ The D5-D9 order from the previous review stands, with these amendments:
 1. **D0 (new): production deploy** of the four commits, with live re-checks of
    the claim page, the orange-check export, and the activity feed, posted as
    evidence. Then propose the orange-check transition with a receipt.
-2. D5 continues as the agent planned (resume at the #4658 runbook gap check;
+2. D5 continues as the agent planned (resume at the #4658 runbook gap check,
    no duplicate docs).
 3. D6: sync with the parallel Tassadar lane's milestone-1 closeout before
    acting.

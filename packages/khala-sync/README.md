@@ -12,15 +12,15 @@ This package is the single source of truth both sides depend on:
 
 - **Branded primitives** — `SyncScope`, `SyncVersion` (per-scope dense
   monotonic server-assigned versions, starting at 1), `SyncVersionWatermark`
-  (a log position where 0 = scope start; used by `LogPage.nextCursor` and
+  (a log position where 0 = scope start, used by `LogPage.nextCursor` and
   the bootstrap snapshot `cursor` so an empty scope is representable),
   `MutationId`, `ClientId` / `ClientGroupId`, `EntityType` / `EntityId`,
   `SyncSchemaVersion`, `MutatorName`.
 - **Scope constructors** — `personalScope`, `teamScope`, `agentRunScope`,
   `threadScope`, `fleetRunScope`, `publicScope` (aligned with the
   `@openagentsinc/sync-worker` taxonomy).
-- **Changelog** — `ChangelogEntry` (post-image v1 model; deletes are
-  tombstones; apply idempotent by `(scope, version, entityType, entityId)`).
+- **Changelog** — `ChangelogEntry` (post-image v1 model, deletes are
+  tombstones. Apply idempotent by `(scope, version, entityType, entityId)`).
 - **Mutations** — `MutationEnvelope` / `MutationResult` for named,
   server-authoritative mutators with in-band rejection (rejections ACK and
   never block the client queue).
@@ -47,11 +47,11 @@ Rules (a strict subset of RFC 8785 / JCS):
 - **Key order**: object keys are sorted recursively, lexicographic by UTF-16
   code unit (plain `Array.prototype.sort` on the key strings).
 - **`undefined`**: object members whose value is `undefined` are dropped
-  (matching `JSON.stringify`); `undefined` array elements throw
+  (matching `JSON.stringify`). `undefined` array elements throw
   `CanonicalJsonError`.
 - **Numbers**: must be finite — `NaN` / `±Infinity` throw
-  `CanonicalJsonError` (with a `path` to the offending value); `-0`
-  normalizes to `0`; tokens use the shortest ES round-trip form
+  `CanonicalJsonError` (with a `path` to the offending value). `-0`
+  normalizes to `0`. Tokens use the shortest ES round-trip form
   (`JSON.stringify`), matching RFC 8785.
 - **Allowed values**: `null`, booleans, finite numbers, strings, arrays, and
   objects of those. Functions, symbols, and bigints throw

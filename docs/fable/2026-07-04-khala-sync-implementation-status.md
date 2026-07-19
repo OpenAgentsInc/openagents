@@ -6,14 +6,14 @@
 This doc records what was actually built and shipped in the ~24-hour
 fleet-delegated run of 2026-07-04, and what deliberately remains.
 
-## TL;DR
+## TL.DR
 
 Khala Sync went from design doc to **live in production in one day**: Cloud
-SQL Postgres 17 (HA, logical decoding on) behind Hyperdrive; the full sync
+SQL Postgres 17 (HA, logical decoding on) behind Hyperdrive. The full sync
 engine (contracts → substrate → mutators → capture → hub DOs → client
-store/rebase/session) deployed on `openagents.com`; the public tokens-served
+store/rebase/session) deployed on `openagents.com`. The public tokens-served
 counter serving from a Postgres projection instead of the unbounded D1
-`SUM()`; and **every domain from the D1 audit dual-writing to Postgres
+`SUM()`. And **every domain from the D1 audit dual-writing to Postgres
 twins**. A 40-writer staging load test at 2× the June-28/29 collapse shape
 produced zero overload-class failures. The only remaining KS work is the
 deliberately owner-gated destructive batch: per-domain read cutover to
@@ -24,19 +24,19 @@ Postgres serving and D1 table drops.
 - Cloud SQL instance `khala-sync-pg` (project `openagentsgemini`,
   us-central1): PostgreSQL 17.10, Enterprise, 8 vCPU / 52 GiB, REGIONAL HA,
   PITR, `wal_level=logical` (10 slots free for the future WAL-capture
-  upgrade). Databases `khala_sync_prod` + `khala_sync_staging`; roles
+  upgrade). Databases `khala_sync_prod` + `khala_sync_staging`. Roles
   `khala_app` (Hyperdrive), `khala_migrate` (owner), `khala_capture`
   (REPLICATION). TLS enforced. Secrets in the gitignored workspace
   `.secrets/khala-sync-cloudsql.env`.
 - Hyperdrive configs (prod `6cd88528…`, staging `63a375a2…`) bound as
-  `KHALA_SYNC_DB`; live prod round trips ~70–230 ms cold, faster warm.
+  `KHALA_SYNC_DB`. Live prod round trips ~70–230 ms cold, faster warm.
 - Migration runner (`packages/khala-sync-server/scripts/migrate.ts`):
-  hash-ledgered, idempotent; **migrations 0001–0028 applied to staging and
+  hash-ledgered, idempotent. **Migrations 0001–0028 applied to staging and
   prod**. (Ledger note: `0027_identity_auth_domain.sql` was renumbered to
-  0028 by a concurrent lane after application; the ledger rows were renamed
+  0028 by a concurrent lane after application. The ledger rows were renamed
   in both DBs — same sha — and the runner verified clean.)
 
-## The engine — LIVE IN PROD (Worker deployed; all closed)
+## The engine — LIVE IN PROD (Worker deployed, all closed)
 
 - **Contracts** `packages/khala-sync` — scopes/versions/cursors, changelog
   entries (canonical-JSON post-images), mutation envelopes, full wire
@@ -51,9 +51,9 @@ Postgres serving and D1 table drops.
   contract). Live prod proof: mutation applied → exact changelog row →
   byte-identical read-back.
 - **Delivery** — capture daemon (launchd `com.openagents.khala-sync-capture`
-  on the operator Mac; direct-PG LISTEN + poll; checkpoints table) (#8294);
-  `KhalaSyncHubDO` per scope with hibernating WebSockets (#8295); hub-first
-  catch-up route (#8296); bootstrap + `/api/sync/connect` (#8297).
+  on the operator Mac. Direct-PG LISTEN + poll. Checkpoints table) (#8294).
+  `KhalaSyncHubDO` per scope with hibernating WebSockets (#8295). Hub-first
+  catch-up route (#8296). Bootstrap + `/api/sync/connect` (#8297).
 - **Client** `packages/khala-sync-client` — bun:sqlite store (#8298),
   overlay/rebase with 50-seed convergence property tests (#8299), session
   state machine + HTTP/WS transport (#8300), web store on SQLite-WASM
@@ -65,12 +65,12 @@ Postgres serving and D1 table drops.
   8,370,108,795 (== D1 SUM), honest 2 s staleness, D1 fallback fail-open —
   **the unbounded full-table SUM is off the hot path** (#8304).
 - **Auth** — full scope-taxonomy resolver + access-change refetch with a
-  real revocation e2e (#8305); CVR read-set diffing behind `KHALA_SYNC_CVR`
+  real revocation e2e (#8305). CVR read-set diffing behind `KHALA_SYNC_CVR`
   with byte-equal equivalence proofs (#8306).
 - **Verification** — staging load test: 40 writers × 5.5 min + burst =
   9,909 pushes, zero failures of any kind, DB waits 100% client-RTT
-  (#8310, report `docs/khala-sync/2026-07-04-load-test-report.md`); synced-
-  surface behavior contracts (#8311); the nine SPEC §7 invariants registered
+  (#8310, report `docs/khala-sync/2026-07-04-load-test-report.md`). Synced-
+  surface behavior contracts (#8311). The nine SPEC §7 invariants registered
   with per-test citations + ops RUNBOOK (#8312).
 - **Fleet-intent enforcement** — operator pause/resume/stop/slots intents
   now steer the pylon supervisor loop exactly-once (#8332).
@@ -95,13 +95,13 @@ and contract tests against both engines:
 | Inference entitlements (29 tables, hot path) | #8320 | d1 |
 | Forum content + remainder (PMs/ACLs/trust/work-requests) | #8321, #8338 | d1 |
 | CRM/email (36 tables, PII discipline) | #8322 | d1 |
-| Sites core + remainder (51 tables; env-value secrets excluded) | #8323, #8357 | d1 |
+| Sites core + remainder (51 tables, env-value secrets excluded) | #8323, #8357 | d1 |
 | Khala Code product state (scope adoption + tombstones) | #8324, #8356 | n/a (projection) |
 | Business funnel + all order writers | #8325, #8359 | d1 |
 | Training + gym/eval remainder | #8326, #8355 | d1 |
 | Forge (16 tables, custody-safe) | #8327 | d1 |
 | Supervision long-tail (29 tables, 3 crons re-homed) | #8328 | d1 |
-| Identity/auth core (17 tables; most sensitive) | #8329 | d1 (owner-gated) |
+| Identity/auth core (17 tables, most sensitive) | #8329 | d1 (owner-gated) |
 
 Also landed along the way: the served-registry caveat PR #8314 (reviewed +
 merged), a real production regression fix in the referral engagement feed
@@ -116,7 +116,7 @@ read-serving to Postgres and then **drop D1 tables** — irreversible, spanning
 money and auth (#8362 explicitly owner-gated). Deliberately not parallelized.
 Sequence per domain: `_READS=compare` (serve D1, log drift) → zero-drift
 soak → `postgres` serving → soak → drop D1. Low-risk domains first (Artanis,
-entitlements, training); money and auth last with explicit owner sign-off.
+entitlements, training). Money and auth last with explicit owner sign-off.
 Backfills must run before any flip (RUNBOOK order).
 
 The ONE-UI epic (#8339: React + Tailwind + shadcn everywhere) runs in a
@@ -126,7 +126,7 @@ uses the ONE-UI shadcn components (`apps/openagents.com/apps/start/src/component
 ## Operational notes
 
 - The capture daemon runs on the operator Mac via launchd with a
-  secrets-sourcing wrapper (`~/.khala-sync-capture/run.sh`); re-home to the
+  secrets-sourcing wrapper (`~/.khala-sync-capture/run.sh`). Re-home to the
   GCE box when convenient (RUNBOOK).
 - Every migration must be applied to staging+prod **before** deploying a
   Worker that references its tables (grants flow automatically from

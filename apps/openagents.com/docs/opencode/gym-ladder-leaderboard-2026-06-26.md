@@ -5,7 +5,7 @@
 > the three-rung opponent ladder (Big Pickle → free models → paid frontier) on
 > the OpenCode coding surface and our axes (cost-per-accepted-outcome,
 > verified-rate, tool-call completion, wall-clock). The planning contract is
-> `docs/opencode/opencode-gym-benchmark-ladder.md`; this doc records the shipped
+> `docs/opencode/opencode-gym-benchmark-ladder.md`. This doc records the shipped
 > publishing machinery and the first published state.
 
 ## What shipped
@@ -21,7 +21,7 @@ It does not re-run or re-implement the harness — it consumes it.
 | Routes | `workers/api/src/inference/gym/ladder-routes.ts` | public GET + operator publish POST |
 | Migration | `workers/api/migrations/0240_gym_ladder_leaderboard_snapshots.sql` | snapshot table |
 | Public dereference | `GET /api/public/gym/leaderboard` | latest published ladder (no auth) |
-| Recurring publish | `POST /api/operator/gym/leaderboard` | admin-bearer; scheduler/operator publish boundary |
+| Recurring publish | `POST /api/operator/gym/leaderboard` | admin-bearer. Scheduler/operator publish boundary |
 
 ## Recurring run mechanism
 
@@ -29,7 +29,7 @@ It does not re-run or re-implement the harness — it consumes it.
 
 - `ladderRef`: `ladder.public.gym.opencode_khala_vs_field.v1`
 - `cadence`: `per_model_release` (re-run + re-publish on every significant Khala
-  model update; `weekly` and `on_demand` are also valid cadences)
+  model update. `weekly` and `on_demand` are also valid cadences)
 - `publishPath`: `/api/public/gym/leaderboard`
 - `experimentConfigId`: `gym-opencode-khala-vs-bigpickle-fixture-v1` (the
   OpenCode head-to-head matrix the owner-armed real sweep arms)
@@ -132,7 +132,7 @@ non-decision-grade report before ranking):
 
 ## NEEDS-OWNER (the gated rungs)
 
-The publishing machinery is shipped and live; the decision-grade numbers are
+The publishing machinery is shipped and live. The decision-grade numbers are
 owner-gated. To publish real rungs:
 
 - **Rung 1 (Big Pickle):** arm the OpenCode real seam and resolve + record the

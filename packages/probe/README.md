@@ -171,7 +171,7 @@ fixed. After fixing existing diagnostics, shrink it explicitly with:
 npm --prefix packages/runtime run typecheck:baseline:update
 ```
 
-The update command refuses additions; the baseline can only get smaller.
+The update command refuses additions. The baseline can only get smaller.
 
 ## Direction
 

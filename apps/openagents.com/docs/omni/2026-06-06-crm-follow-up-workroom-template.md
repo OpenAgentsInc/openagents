@@ -20,13 +20,13 @@ accepted outcomes.
 
 `OmniCrmFollowUpTemplate` records:
 
-- template ref;
-- version ref;
-- approval policy refs;
-- closeout requirement refs;
-- evidence requirement refs;
-- proof policy refs;
-- required artifact refs; and
+- template ref.
+- version ref.
+- approval policy refs.
+- closeout requirement refs.
+- evidence requirement refs.
+- proof policy refs.
+- required artifact refs. And
 - caveat refs.
 
 The default fixture is `OMNI_CRM_FOLLOW_UP_TEMPLATE_FIXTURE`.
@@ -35,34 +35,34 @@ The default fixture is `OMNI_CRM_FOLLOW_UP_TEMPLATE_FIXTURE`.
 
 `OmniCrmFollowUpWorkroomRecord` records:
 
-- workroom ref;
-- template ref;
-- contact refs;
-- company refs;
-- source refs;
-- prep packet refs;
-- draft message refs;
-- approval refs;
-- send request refs;
-- email receipt refs;
-- relationship memory refs;
-- closeout refs;
-- evidence refs;
-- blocker refs;
-- caveat refs; and
+- workroom ref.
+- template ref.
+- contact refs.
+- company refs.
+- source refs.
+- prep packet refs.
+- draft message refs.
+- approval refs.
+- send request refs.
+- email receipt refs.
+- relationship memory refs.
+- closeout refs.
+- evidence refs.
+- blocker refs.
+- caveat refs. And
 - operator diagnostic refs.
 
 The state model keeps these steps separate:
 
-- intake;
-- prep packet ready;
-- draft prepared;
-- approval requested;
-- approval recorded;
-- send prepared;
-- email receipt recorded;
-- relationship memory recorded;
-- closed; and
+- intake.
+- prep packet ready.
+- draft prepared.
+- approval requested.
+- approval recorded.
+- send prepared.
+- email receipt recorded.
+- relationship memory recorded.
+- closed. And
 - blocked.
 
 That separation matters because a draft is not approval, approval is not an
@@ -76,10 +76,10 @@ The default authority block is
 
 It explicitly denies:
 
-- email send;
-- CRM mutation;
-- external follow-up;
-- relationship-memory mutation; and
+- email send.
+- CRM mutation.
+- external follow-up.
+- relationship-memory mutation. And
 - accepted-outcome settlement.
 
 `omniCrmFollowUpAuthorityIsContractOnly` returns true only for records using
@@ -97,16 +97,16 @@ send request, relationship memory, and diagnostic refs.
 
 The contract rejects refs containing:
 
-- raw emails or email bodies;
+- raw emails or email bodies.
 - contact emails, contact names, customer names, customer emails, or phone
-  values;
-- private contact data;
-- provider accounts, grants, payloads, or tokens;
-- raw source payloads;
-- raw runner logs;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material;
-- private repo refs; and
+  values.
+- private contact data.
+- provider accounts, grants, payloads, or tokens.
+- raw source payloads.
+- raw runner logs.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material.
+- private repo refs. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -115,13 +115,13 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/omni-crm-follow-up-workrooms.test.ts` covers:
 
-- schema/projection decoding;
-- friendly time projection;
-- contract-only authority;
-- no email-send/CRM/relationship-memory mutation authority;
+- schema/projection decoding.
+- friendly time projection.
+- contract-only authority.
+- no email-send/CRM/relationship-memory mutation authority.
 - public redaction of contact/company/source/draft/receipt/memory/workroom
-  refs;
-- draft, approval, send, receipt, closeout, and relationship-memory separation;
+  refs.
+- draft, approval, send, receipt, closeout, and relationship-memory separation.
   and
 - unsafe email, private contact, customer, provider, source, secret, wallet,
   payment, private repo, raw log, and timestamp rejection.

@@ -1,7 +1,7 @@
 # Meditations: The Business Fulfillment Engine (2026-07-02)
 
-Status: synthesis + gap meditation. No promise state flips; no public copy
-changes; no client-identifying information (design partners are referred to
+Status: synthesis + gap meditation. No promise state flips. No public copy
+changes. No client-identifying information (design partners are referred to
 by vertical only, per the standing staging-surface convention).
 
 Companion: [`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) — the consolidated, issue-backed
@@ -19,12 +19,12 @@ demand signals:
 - **Customer #1 — ourselves.** Six validated coding-agent problems
   (multi-account pool + routing, background/queued agents, mobile control,
   session continuity, admin cost controls, isolated cloud VMs). Mostly built
-  at the runtime layer; not yet one product surface.
+  at the runtime layer. Not yet one product surface.
 - **A legal design partner — the first paying customer.** A four-figure pilot
   covering: a private pre-drafting workspace on compute they control, trained
-  on their own decades-deep document corpus; an automated
+  on their own decades-deep document corpus. An automated
   intake→payment→draft→attorney-review→filing funnel for one bounded document
-  product; a membership-subscription funnel; a review/admin interface; and a
+  product. A membership-subscription funnel. A review/admin interface. And a
   KPI dashboard as the scorekeeper for a value-share arrangement. Their
   renegotiation asks: contained scope, priced expansion tiers, and — pointedly
   — **a marketing program as a firm commitment**, because the automation only
@@ -78,7 +78,7 @@ hand-carrying them across at least five manual seams.
 ## 3. What exists (do not rebuild)
 
 - **Intake front door**: `/business` landing + signup form (phone field,
-  opt-in shared channel) is live; the dynamic `/autopilot` onboarding Batch 1
+  opt-in shared channel) is live. The dynamic `/autopilot` onboarding Batch 1
   shipped (Khala-driven intake conversation, typed-component SSE channel,
   closed component catalog, credit-kickoff card, one vertical overlay).
 - **Money**: Stripe Checkout + webhook + credit ledger (secrets-gated),
@@ -88,11 +88,11 @@ hand-carrying them across at least five manual seams.
   deny-by-default member gating, prefilled-workspace + engagement-tracking
   primitives, operator runbooks.
 - **Fulfillment substrate**: the fleet + Forge lanes + EXECUTION.md
-  discipline; accepted-outcome contract schema and the full omni-workroom
+  discipline. Accepted-outcome contract schema and the full omni-workroom
   family (lifecycle, evidence bundles, public proof bundles, kind templates)
-  — **built at the schema/service layer, unsurfaced (no routes, no UI)**;
-  Blueprint programs + context packs; native email-campaign engine; sites
-  builder services (no UI); agent-runs; decisions/approvals.
+  — **built at the schema/service layer, unsurfaced (no routes, no UI)**.
+  Blueprint programs + context packs. Native email-campaign engine. Sites
+  builder services (no UI). Agent-runs. Decisions/approvals.
 - **Proof**: promise registry + verifier, evidence bundle schemas, exact
   token accounting, public counters.
 - **Verticalized QA**: the QA Swarm product plan (first sellable
@@ -108,11 +108,11 @@ Ordered by where it bites in the funnel:
    unreachable without it.
 2. **Payment→provision→promise wiring.** Checkout success does not yet create
    the prefilled workspace + per-customer **service promise**. The decided
-   design (credits kickoff as process trigger; service promises homed on
+   design (credits kickoff as process trigger, service promises homed on
    accepted-outcome contracts with `committed_deliverables`, SLA terms, and a
    mirrored fulfillment-receipt verifier) is specced, undone.
 3. **A published rate card.** Three buyable packages with fixed scopes and
-   receipt plans (`ROADMAP_AFTER` A0.2). Nothing self-serve is priced today;
+   receipt plans (`ROADMAP_AFTER` A0.2). Nothing self-serve is priced today.
    volume-bonus credit tiers exist as an internal offer only.
 4. **Corpus ingestion + redaction.** No scoped read-only connectors (cloud
    drive, mail, calendar), no PII/PHI redaction service in the tree — yet
@@ -127,12 +127,12 @@ Ordered by where it bites in the funnel:
    inventory-aware campaigns) exists as demos with hardcoded animations, not
    as workflows with real generation, real review gates, real receipts.
 7. **Native sites + email + lists as first-class fulfillment outputs.**
-   Builder services and campaign engine exist; authoring UI, forms/lists
+   Builder services and campaign engine exist. Authoring UI, forms/lists
    schema, and the site→list→sequence loop do not.
 8. **Professional review gates.** The approval ladder (draft → suggest →
    execute-with-approval → trusted) and a professional-reviewer role
    (attorney/practitioner sign-off with receipts) — schema exists in
-   decisions/workroom lifecycle; the reviewer-facing surface does not.
+   decisions/workroom lifecycle. The reviewer-facing surface does not.
 9. **Fulfillment agents.** The cron loop that services each promise (CRM
    load, stakeholder flagging, daily forward motion, client comms) is
    designed, not built. It should be built **on the harness-agnostic
@@ -157,7 +157,7 @@ Ordered by where it bites in the funnel:
     platform hole: promised sends must be tracked objects with owners and
     due states, surfaced in the weekly pipeline review.
 14. **Case-study + demand engine.** Every engagement should yield a
-    public-safe writeup with real receipts (A0.9); vertical landing pages
+    public-safe writeup with real receipts (A0.9). Vertical landing pages
     (legal brand live first) wired to real application POSTs, booking, and
     follow-up email — on the newly optimized landing-page stack (site-speed
     lane budgets apply to these pages too).
@@ -169,7 +169,7 @@ Ordered by where it bites in the funnel:
   services engine, primary revenue) and shares single tasks with AW-2 (the
   first-dollar spine: same Stripe arming sitting), AW-3 (A3.1 redaction is
   the same service as our ingestion redaction), AW-6 (A6.4
-  services↔product compounding; A0.9 case studies), and AW-8 (pricing).
+  services↔product compounding. A0.9 case studies), and AW-8 (pricing).
   Where ROADMAP_AFTER states the *proof obligation* ("a price on a page",
   "first on-platform `business.*` receipt"), ROADMAP_BIZ states the *plumbing
   that makes the proof repeatable*. Kill-criteria alignment: the agency-trap
@@ -190,7 +190,7 @@ Ordered by where it bites in the funnel:
   services business model (packages, price bands, scaling levers) that the
   rate card and pipeline ops implement.
 - **`2026-07-02-come-for-the-tool-stay-for-the-network.md`** — the user
-  motion; services engagements feed its demand evidence and its first paid
+  motion. Services engagements feed its demand evidence and its first paid
   users.
 - **`2026-07-02-harness-agnostic-background-agent-definitions-audit.md`** —
   `agent_definition.v1` is the substrate for fulfillment agents (BF-5): a
@@ -205,10 +205,10 @@ Ordered by where it bites in the funnel:
   give it typed objects to supervise.
 - **`2026-07-02-site-speed-lane-spec.md` + the theme-reset audits** — the
   optimized landing-page stack the funnel pages must ride (perf budgets apply
-  to `/business` and vertical pages; one uniform theme).
+  to `/business` and vertical pages. One uniform theme).
 - **`2026-07-01-product-promises-khala-code-launch-alignment.md`** — copy/
   promise gates: no BF surface ships copy implying capability whose backing
-  record is red/planned; per-customer service promises may not commit
+  record is red/planned. Per-customer service promises may not commit
   deliverables backed by red capabilities.
 - **`2026-07-02-khala-code-install-path-audit.md` /
   `2026-07-01-khala-code-summary-and-analysis.md`** — the tool motion's
@@ -220,20 +220,20 @@ Ordered by where it bites in the funnel:
 1. **One engine, config per vertical.** Connectors + grounding corpus +
    verification rubric are the only per-vertical slots. If a vertical needs
    bespoke screens, the thesis is failing.
-2. **Grounded or it doesn't ship.** Nothing asserted or published without the
-   customer's own corpus/data behind it; redaction before external inference
+2. **Grounded or it does not ship.** Nothing asserted or published without the
+   customer's own corpus/data behind it. Redaction before external inference
    for regulated data, always.
 3. **Approval before anything external.** Human sign-off gates every send,
-   publish, filing, and spend; professional-reviewer gates where a license is
+   publish, filing, and spend. Professional-reviewer gates where a license is
    on the line. The permission model is the product.
 4. **Receipts everywhere.** Every stage emits a receipt someone outside the
-   company could have caused; the registry is the scoreboard; demand
+   company could have caused. The registry is the scoreboard. Demand
    provenance (internal vs external) typed at the ledger.
 5. **Operator minutes → fleet compute.** Every workstream must reduce the
    marginal operator cost of an engagement, or it is agency-building.
 6. **Honest surfaces.** No fake animations, no seeded data presented as live,
    no scarcity/projection theater outside clearly-labeled vertical funnels.
-7. **Commitments are objects.** A promised deliverable that isn't tracked is
+7. **Commitments are objects.** A promised deliverable that is not tracked is
    a future apology.
 
 ## 7. Episode 246 addendum (2026-07-03)
@@ -257,6 +257,6 @@ from the owner's chair and adds two concrete inputs:
   through this same engine (intake → scoped engagement → receipted run →
   shareable proof), with the dogfood engagement's receipts as the sales
   collateral. The owner's win condition — "close the gap between what
-  I've been saying and what we're shipping" — is principle 4 (receipts
+  I've been saying and what we are shipping" — is principle 4 (receipts
   everywhere) elevated to the company's definition of success, applied
   "all up and down the business" through Autopilot.

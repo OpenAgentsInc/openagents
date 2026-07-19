@@ -1,6 +1,6 @@
 # Autopilot Task: Stripe Effect Service Implementation
 
-Status: complete; merged, production config-gated
+Status: complete. Merged, production config-gated
 
 Target repo: `OpenAgentsInc/openagents`
 
@@ -61,7 +61,7 @@ paths unless the runner explicitly grants another path. Do not use broad glob
 patterns, absolute paths, `state/*`, `node_modules`, `.bun`, package caches, or
 local-only reference repo paths. Treat `projects/repos/stripe-node` and
 `projects/repos/effect-cf` as foreground-operator reference material only if
-they are absent from the remote checkout; use the packet, tracked audits, local
+they are absent from the remote checkout. Use the packet, tracked audits, local
 repo source, installed package types without traversing package caches, and
 official Stripe docs instead. The run must emit the required `result.md`
 artifact if implementation completes or if it blocks.
@@ -127,21 +127,21 @@ After the Autopilot follow-up did not land the helper correction, the
 foreground operator applied the narrow review fix directly on PR #54:
 
 - commit `3c107bc9`: fixed the missing-config route test helper by adding a
-  real `null` sentinel for "omit the injected Stripe dependency";
+  real `null` sentinel for "omit the injected Stripe dependency".
 - commit `c20fc4ab`: hardened the Stripe checkout return path so missing or
-  broken Stripe config cannot strand a returning user on an error response;
+  broken Stripe config cannot strand a returning user on an error response.
 - merge commit `c7054fd4`: merged PR #54 into `main`.
 
 Merged implementation highlights:
 
 - typed Stripe config, client, customer, checkout, webhook, and billing-credit
-  Effect service boundaries;
-- Stripe Checkout Session creation for configured credit packages;
+  Effect service boundaries.
+- Stripe Checkout Session creation for configured credit packages.
 - webhook and return-path fulfillment into the D1 billing ledger with
-  idempotent paid-session handling;
-- migration `0031_stripe_billing.sql`;
+  idempotent paid-session handling.
+- migration `0031_stripe_billing.sql`.
 - browser billing flow updated to redirect through hosted Stripe Checkout while
-  preserving the clean `/billing` URL invariant;
+  preserving the clean `/billing` URL invariant.
 - production remains config-gated until real environment secrets and webhook
   signing are installed and test-mode webhook fulfillment is smoke-verified.
 
@@ -163,10 +163,10 @@ Do not launch this task until the programmatic Autopilot runbook
 recommendations are complete enough for reliable delegation:
 
 - operator preflight exists and reports migrations, project/agent presence,
-  provider health, SHC health, callback config, and GitHub writeback readiness;
-- reconnect-required provider states are caught before dispatch;
-- SHC callback payload contracts and retry/backfill paths are covered;
-- run continuation attaches to the same durable goal;
+  provider health, SHC health, callback config, and GitHub writeback readiness.
+- reconnect-required provider states are caught before dispatch.
+- SHC callback payload contracts and retry/backfill paths are covered.
+- run continuation attaches to the same durable goal.
 - private goal/run observation can show current progress without exposing
   private delivery mechanics.
 
@@ -196,14 +196,14 @@ that block honest execution or reporting.
 Fully implement the Stripe Effect service audit:
 
 - replace the placeholder credit-card checkout API with Stripe Checkout
-  Sessions;
-- keep OpenAgents product surface's D1 billing ledger authoritative for Autopilot credits;
+  Sessions.
+- keep OpenAgents product surface's D1 billing ledger authoritative for Autopilot credits.
 - add typed Effect services and layers for Stripe config, client construction,
   customer management, Checkout Session creation/retrieval, webhook
-  verification, and credit fulfillment;
+  verification, and credit fulfillment.
 - append exactly one positive ledger entry for each paid Stripe credit
-  purchase;
-- keep `/billing` a clean product URL;
+  purchase.
+- keep `/billing` a clean product URL.
 - keep all Stripe secrets, webhook payloads, and provider details out of
   browser code, public projection, logs, and docs.
 
@@ -222,13 +222,13 @@ OpenAgents product surface currently has:
 
 - D1-backed `billing_accounts`, `billing_ledger_entries`,
   `billing_usage_cursors`, `billing_coupon_redemptions`, and
-  `billing_credit_notifications`;
+  `billing_credit_notifications`.
 - live launch grants, coupon credits, operator manual credits, SHC container
-  debits, Codex token debits, and out-of-credits suspension/email logic;
-- `POST /api/billing/checkout` returning a placeholder response;
+  debits, Codex token debits, and out-of-credits suspension/email logic.
+- `POST /api/billing/checkout` returning a placeholder response.
 - `GET /api/billing/summary` returning derived balance, rates, recent entries,
-  and active runs;
-- `/billing` in the logged-in product surface;
+  and active runs.
+- `/billing` in the logged-in product surface.
 - a clean URL invariant forbidding checkout/payment state in product route
   query parameters or fragments.
 
@@ -317,7 +317,7 @@ raw runner payloads in the launch payload.
 ## Autopilot Work Plan
 
 1. Read all referenced audits and billing files. Confirm the final
-   architecture before editing: Stripe is an external payment provider; D1
+   architecture before editing: Stripe is an external payment provider. D1
    remains the product credit ledger.
 2. Add Schema models and tagged errors for Stripe IDs, credit packages,
    Checkout snapshots, webhook results, credit fulfillment, and Stripe-safe
@@ -334,7 +334,7 @@ raw runner payloads in the launch payload.
    it lazily inside the layer with `Stripe.createFetchHttpClient()`, bounded
    retry/timeout settings, and no module-load secret reads.
 6. Add `StripeCustomerService` for customer mapping, creation, retrieval, and
-   email/metadata synchronization. D1 mapping is the authority; Stripe metadata
+   email/metadata synchronization. D1 mapping is the authority. Stripe metadata
    is only a recovery aid.
 7. Add `StripeCheckoutService` for creating credit Checkout Sessions,
    retrieving Sessions, and idempotently fulfilling paid Sessions. Omit
@@ -349,7 +349,7 @@ raw runner payloads in the launch payload.
 10. Replace `POST /api/billing/checkout` placeholder behavior with Checkout
     Session creation returning `checkoutUrl` and the current billing summary.
 11. Add `POST /api/billing/stripe/webhook` as the authoritative fulfillment
-    path. It must not require a browser session; Stripe signature verification
+    path. It must not require a browser session. Stripe signature verification
     is the authentication boundary.
 12. Add `GET /api/billing/stripe/checkout-return` as a callback that consumes
     `session_id`, calls the same idempotent fulfillment service, and redirects

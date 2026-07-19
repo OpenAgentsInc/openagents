@@ -2,7 +2,7 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 
@@ -74,11 +74,11 @@ bun run --cwd apps/openagents.com/workers/api test -- src/sites-tanstack-rules.t
 
 The tests prove:
 
-- builder-session fixture metadata contains the injected rules pack;
-- the behavior-contract registry mechanically validates;
-- the TS-4 Start template passes the starter sweep;
+- builder-session fixture metadata contains the injected rules pack.
+- the behavior-contract registry mechanically validates.
+- the TS-4 Start template passes the starter sweep.
 - a deliberately broken generated site fails closed on dead controls, broken
-  first-party navigation, gated marketing claims, and bundle budget;
+  first-party navigation, gated marketing claims, and bundle budget.
 - the LG-4 denylist still passes its existing outreach and model-custody
   template suites.
 

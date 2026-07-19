@@ -20,36 +20,36 @@ or operate a live wallet.
 
 `OpenAgentsPylonSettlementBridgeRecord` records:
 
-- provider assignment refs;
-- provider job refs;
-- capability snapshot refs;
-- wallet readiness summary refs;
-- buyer payment evidence refs;
-- accepted-work refs;
-- reward-intent refs;
-- payout-eligibility refs;
-- payout-dispatch refs;
-- payout-confirmation refs;
-- payout-verification refs;
-- settlement refs;
-- blocker refs;
-- caveat refs;
-- evidence refs;
-- operator diagnostic refs; and
+- provider assignment refs.
+- provider job refs.
+- capability snapshot refs.
+- wallet readiness summary refs.
+- buyer payment evidence refs.
+- accepted-work refs.
+- reward-intent refs.
+- payout-eligibility refs.
+- payout-dispatch refs.
+- payout-confirmation refs.
+- payout-verification refs.
+- settlement refs.
+- blocker refs.
+- caveat refs.
+- evidence refs.
+- operator diagnostic refs. And
 - workroom refs.
 
 The bridge keeps these states separate:
 
-- assignment;
-- capability snapshot;
-- wallet readiness checked;
-- buyer payment evidence;
-- accepted work;
-- provider reward intent;
-- payout eligibility;
-- payout dispatch;
-- payout confirmation;
-- payout verification; and
+- assignment.
+- capability snapshot.
+- wallet readiness checked.
+- buyer payment evidence.
+- accepted work.
+- provider reward intent.
+- payout eligibility.
+- payout dispatch.
+- payout confirmation.
+- payout verification. And
 - settlement.
 
 That separation matters because evidence that a buyer paid is not the same as
@@ -63,14 +63,14 @@ The default authority block is
 
 It explicitly denies:
 
-- live wallet spend;
-- payout dispatch;
-- payout-target mutation;
-- buyer-charge mutation; and
+- live wallet spend.
+- payout dispatch.
+- payout-target mutation.
+- buyer-charge mutation. And
 - settlement mutation.
 
 `openAgentsPylonSettlementBridgeCanMutateSettlement` returns false for records
-using that authority block. The bridge can report what happened elsewhere; it
+using that authority block. The bridge can report what happened elsewhere. It
 cannot make a payout happen.
 
 ## Bitcoin Terminology
@@ -94,16 +94,16 @@ refs, but still reject raw secret, wallet, and payment material.
 
 The contract rejects refs containing:
 
-- private customer data;
-- wallet material;
-- raw bitcoin payment material;
-- raw invoices;
-- payment IDs, payment proofs, preimages, and hashes;
-- payout addresses, payout destinations, and payout targets;
-- private channel state and channel monitor material;
-- provider secrets, provider payloads, and provider tokens;
-- private repo material;
-- raw logs, raw payloads, raw prompts, raw source archives, and raw emails; and
+- private customer data.
+- wallet material.
+- raw bitcoin payment material.
+- raw invoices.
+- payment IDs, payment proofs, preimages, and hashes.
+- payout addresses, payout destinations, and payout targets.
+- private channel state and channel monitor material.
+- provider secrets, provider payloads, and provider tokens.
+- private repo material.
+- raw logs, raw payloads, raw prompts, raw source archives, and raw emails. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -113,7 +113,7 @@ Projection times use friendly labels instead of raw timestamps.
 `OPENAGENTS_PYLON_SETTLEMENT_BRIDGE_CONFORMANCE_FIXTURES` contains two safe
 fixtures:
 
-- a settled provider job bridge with full evidence refs; and
+- a settled provider job bridge with full evidence refs. And
 - a buyer-payment-only bridge proving that payment evidence alone does not
   allow accepted-work, reward, payout, or settlement claims.
 
@@ -124,12 +124,12 @@ The Rust/native conformance issue can mirror these fixtures when validating
 
 `workers/api/src/pylon-settlement-bridge.test.ts` covers:
 
-- schema/projection decoding;
-- no-spend, no-dispatch, and no-settlement-mutation authority;
+- schema/projection decoding.
+- no-spend, no-dispatch, and no-settlement-mutation authority.
 - buyer payment, accepted work, reward intent, payout eligibility, payout
   dispatch, payout confirmation, payout verification, and settlement
-  separation;
+  separation.
 - public redaction of provider, wallet-readiness, payment, payout, workroom,
-  and operator diagnostic refs; and
+  and operator diagnostic refs. And
 - unsafe wallet, invoice, preimage, payout target, private channel, provider
   secret, private repo, raw payload, and raw timestamp rejection.

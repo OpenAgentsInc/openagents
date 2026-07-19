@@ -108,6 +108,7 @@
     "check:sol-doc-manifest": "node --import tsx scripts/generate-sol-doc-manifest.ts --check",
     "check:sol-docs": "node --import tsx scripts/check-sol-docs.ts",
     "generate:ste-ledger": "node --import tsx scripts/generate-ste-ledger.ts",
+    "generate:ste-final-inventory": "node --import tsx scripts/generate-ste-final-inventory.ts",
     "rewrite:ste-semicolons": "node --import tsx scripts/rewrite-ste-structure.ts --write",
     "generate:ste-baseline": "node --import tsx scripts/generate-ste-ledger.ts --refresh-baseline",
     "check:ste-ledger": "node --import tsx scripts/generate-ste-ledger.ts --check",

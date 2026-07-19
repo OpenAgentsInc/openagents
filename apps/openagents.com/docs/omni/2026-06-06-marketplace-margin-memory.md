@@ -19,33 +19,33 @@ Implementation:
 
 The memory record tracks:
 
-- accepted, rejected, refunded, and retry counts;
-- accepted outcome refs;
-- rejected and refunded outcome refs;
-- retry evidence refs;
-- revenue evidence refs;
-- gross margin evidence refs;
-- accepted revenue cents;
-- accepted gross profit cents;
-- provider payable cents;
-- settled provider cents;
-- total buyer count;
-- repeat buyer count;
-- repeat buyer signal refs;
-- review burden refs and score;
-- settlement state refs;
+- accepted, rejected, refunded, and retry counts.
+- accepted outcome refs.
+- rejected and refunded outcome refs.
+- retry evidence refs.
+- revenue evidence refs.
+- gross margin evidence refs.
+- accepted revenue cents.
+- accepted gross profit cents.
+- provider payable cents.
+- settled provider cents.
+- total buyer count.
+- repeat buyer count.
+- repeat buyer signal refs.
+- review burden refs and score.
+- settlement state refs.
 - program signature, module, tool, package, source, provider, reviewer, route,
-  and work-class refs; and
+  and work-class refs. And
 - caveat/evidence refs.
 
 The projection calculates:
 
-- acceptance rate in basis points;
-- gross margin in basis points;
-- refund rate in basis points;
-- repeat buyer rate in basis points;
-- review burden label;
-- settlement label; and
+- acceptance rate in basis points.
+- gross margin in basis points.
+- refund rate in basis points.
+- repeat buyer rate in basis points.
+- review burden label.
+- settlement label. And
 - a bounded ranking score in basis points.
 
 The score is an input for review and marketplace decisions. It does not mutate
@@ -55,13 +55,13 @@ public ranking by itself.
 
 The contract preserves distinctions between:
 
-- modeled marketplace value;
-- accepted outcomes;
-- accepted revenue;
-- accepted gross profit;
-- provider payable value;
-- settled provider value;
-- refunds; and
+- modeled marketplace value.
+- accepted outcomes.
+- accepted revenue.
+- accepted gross profit.
+- provider payable value.
+- settled provider value.
+- refunds. And
 - settlement state.
 
 Accepted revenue requires revenue evidence and accepted outcome refs. Accepted
@@ -75,13 +75,13 @@ settlement refs and fully settled provider payable value.
 
 Supported settlement states:
 
-- `modeled`;
-- `accepted`;
-- `payable`;
-- `partially_settled`;
-- `settled`;
-- `refunded`;
-- `disputed`; and
+- `modeled`.
+- `accepted`.
+- `payable`.
+- `partially_settled`.
+- `settled`.
+- `refunded`.
+- `disputed`. And
 - `unknown`.
 
 Settlement labels are projected as friendly labels, not inferred claims.
@@ -90,10 +90,10 @@ Settlement labels are projected as friendly labels, not inferred claims.
 
 Marketplace margin memory remains evidence-only. It cannot:
 
-- mutate public ranking;
-- promote modules;
-- mutate payouts;
-- mutate routing; or
+- mutate public ranking.
+- promote modules.
+- mutate payouts.
+- mutate routing. Or
 - mutate settlement.
 
 Public rank candidate flags can become true only when reviewed or promoted
@@ -104,9 +104,9 @@ projection does not change ranking state.
 
 Supported audiences are:
 
-- `public`;
-- `customer`;
-- `team`; and
+- `public`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public and customer projections redact private provider, reviewer, revenue,
@@ -122,12 +122,12 @@ raw runner logs, and raw timestamps.
 
 Coverage includes:
 
-- ranking inputs and calculated rates;
-- gross margin and ranking score calculations;
-- refund and repeat buyer rate handling;
-- review burden labels;
-- settlement labels and settlement state constraints;
-- revenue, gross margin, count, and evidence requirements;
-- audience redaction; and
+- ranking inputs and calculated rates.
+- gross margin and ranking score calculations.
+- refund and repeat buyer rate handling.
+- review burden labels.
+- settlement labels and settlement state constraints.
+- revenue, gross margin, count, and evidence requirements.
+- audience redaction. And
 - hard false public rank, module promotion, payout, routing, and settlement
   mutation authority.

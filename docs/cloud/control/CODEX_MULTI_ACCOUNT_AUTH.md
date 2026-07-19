@@ -27,7 +27,7 @@ CODEX_HOME=/home/ubuntu/.openagents-codex-accounts/provider-account_a codex logi
 CODEX_HOME=/home/ubuntu/.openagents-codex-accounts/provider-account_a codex exec ...
 ```
 
-Codex file-backed credentials live in `$CODEX_HOME/auth.json`; the default
+Codex file-backed credentials live in `$CODEX_HOME/auth.json`. The default
 `~/.codex` path is a single active account home. Logging in a second account in
 that same home can overwrite the first account. Official Codex docs also note
 that `cli_auth_credentials_store = "file"` stores credentials under
@@ -52,7 +52,7 @@ that `cli_auth_credentials_store = "file"` stores credentials under
    `codex-auth://provider-account_...` to the account-scoped home, the Worker will
    mark the account connected while the workroom still reads stale credentials.
    Copying the default `auth.json` into the account home is only an emergency
-   repair; normal login must happen directly in the provider-account home.
+   repair. Normal login must happen directly in the provider-account home.
 
 4. The user completes the login in ChatGPT/OpenAI.
 5. The broker verifies:
@@ -130,9 +130,9 @@ audit semantics.
 
 Use one VM per account only when a stronger isolation boundary is required:
 
-- separate customers with contractual isolation requirements;
-- high-risk accounts that must not share a host;
-- provider terms or rate-limit behavior require one machine identity;
+- separate customers with contractual isolation requirements.
+- high-risk accounts that must not share a host.
+- provider terms or rate-limit behavior require one machine identity.
 - incident response requires quarantining a single account and host together.
 
 The default SHC/GCP managed-node plan is one trusted VM with multiple

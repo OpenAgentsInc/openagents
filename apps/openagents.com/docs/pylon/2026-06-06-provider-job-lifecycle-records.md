@@ -16,18 +16,18 @@ The implementation lives in `workers/api/src/pylon-provider-job-lifecycle.ts`.
 
 The v1 stage model is:
 
-- `offered`;
-- `assigned`;
-- `running`;
-- `artifact_produced`;
-- `accepted`;
-- `reward_intent_recorded`;
-- `payout_dispatched`;
-- `payout_confirmed`;
-- `payout_verified`;
-- `settled`;
-- `blocked`;
-- `failed`;
+- `offered`.
+- `assigned`.
+- `running`.
+- `artifact_produced`.
+- `accepted`.
+- `reward_intent_recorded`.
+- `payout_dispatched`.
+- `payout_confirmed`.
+- `payout_verified`.
+- `settled`.
+- `blocked`.
+- `failed`.
 - `cancelled`.
 
 The model deliberately avoids saying a provider has been paid merely because a
@@ -37,13 +37,13 @@ buyer payment, an acceptance, or a reward intent exists.
 
 Lifecycle advancement requires the corresponding safe refs:
 
-- `artifact_produced` requires artifact refs;
-- `accepted` requires acceptance refs;
-- `reward_intent_recorded` requires reward-intent refs;
-- `payout_dispatched` requires payout-dispatch refs;
-- `payout_confirmed` requires payout-confirmation refs;
-- `payout_verified` requires payout-verification refs;
-- `settled` requires settlement refs and payout-verification refs;
+- `artifact_produced` requires artifact refs.
+- `accepted` requires acceptance refs.
+- `reward_intent_recorded` requires reward-intent refs.
+- `payout_dispatched` requires payout-dispatch refs.
+- `payout_confirmed` requires payout-confirmation refs.
+- `payout_verified` requires payout-verification refs.
+- `settled` requires settlement refs and payout-verification refs.
 - `blocked` requires blocker refs.
 
 ## Projection Rules
@@ -65,9 +65,9 @@ private data.
 
 The projection exposes separate booleans:
 
-- `acceptedWorkClaimAllowed`;
-- `rewardIntentClaimAllowed`;
-- `payoutDispatchClaimAllowed`;
+- `acceptedWorkClaimAllowed`.
+- `rewardIntentClaimAllowed`.
+- `payoutDispatchClaimAllowed`.
 - `settlementClaimAllowed`.
 
 These are intentionally separate so UI copy, public proof, and future
@@ -77,11 +77,11 @@ accounting receipts cannot treat accepted work as settled provider payout.
 
 `workers/api/src/pylon-provider-job-lifecycle.test.ts` covers:
 
-- settled lifecycle projection;
-- public/operator projection splits;
-- accepted/reward/payout/settlement claim separation;
-- required refs for advanced stages;
-- private provider redaction;
-- raw timestamp omission;
+- settled lifecycle projection.
+- public/operator projection splits.
+- accepted/reward/payout/settlement claim separation.
+- required refs for advanced stages.
+- private provider redaction.
+- raw timestamp omission.
 - rejection of raw payout targets, payment IDs, wallet refs, invoices,
   preimages, provider tokens, runner logs, and customer refs.

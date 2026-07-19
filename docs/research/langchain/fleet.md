@@ -8,7 +8,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** Harrison Chase, CEO of LangChain, is speaking directly to the camera in an office setting.
 
 **Transcript:** 
-"Today, we're excited to launch LangSmith Fleet. An enterprise platform for creating, using, and managing your fleet of agents. These agents have their own memory, have access to a collection of tools and skills, and can be exposed through a myriad of channels."
+"Today, we are excited to launch LangSmith Fleet. An enterprise platform for creating, using, and managing your fleet of agents. These agents have their own memory, have access to a collection of tools and skills, and can be exposed through a myriad of channels."
 
 ---
 
@@ -48,7 +48,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** A toggle switch in the tool settings is highlighted, showing the option to require human approval before a specific tool can be executed by an agent.
 
 **Transcript:** 
-"Fleet comes with robust human-in-the-loop guardrails. You can add a human-in-the-loop step before any tool call, requiring you to go in and approve that before the agent executes. This helps you be confident that your agents aren't doing potentially dangerous actions without your approval."
+"Fleet comes with robust human-in-the-loop guardrails. You can add a human-in-the-loop step before any tool call, requiring you to go in and approve that before the agent executes. This helps you be confident that your agents are not doing potentially dangerous actions without your approval."
 
 ---
 
@@ -80,7 +80,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** The integrations page shows a library of connected apps and the ability to add custom MCP (Model Context Protocol) servers.
 
 **Transcript:** 
-"It's also tool-agnostic. So if you go to the integrations page, you can see a number of built-in tools. You can also add more or add your own custom MCP server."
+"It is also tool-agnostic. So if you go to the integrations page, you can see a number of built-in tools. You can also add more or add your own custom MCP server."
 
 ---
 
@@ -104,7 +104,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** The detailed configuration page for the new Email Assistant is shown, including its schedule, channels, core instructions, and toolset.
 
 **Transcript:** 
-"So what exactly is an agent? There's a few things. So, there's a schedule that you can give an agent. This is basically a cron job that runs on some schedule with some specific instructions. There's then channels. This is how the agent interacts with the outside world. There's then the core instructions of the agent. And so if you look here, the general purpose agent as it was creating this special agent wrote up a pretty detailed set of instructions. We'll actually see how it can modify those over time. It's then got tools. So these are all done via MCP. It's got sub-agents and skills. And so these are ways of doing specialized tasks."
+"So what exactly is an agent? There is a few things. So, there is a schedule that you can give an agent. This is basically a cron job that runs on some schedule with some specific instructions. There is then channels. This is how the agent interacts with the outside world. There is then the core instructions of the agent. And so if you look here, the general purpose agent as it was creating this special agent wrote up a pretty detailed set of instructions. We'll actually see how it can modify those over time. It is then got tools. So these are all done via MCP. It is got sub-agents and skills. And so these are ways of doing specialized tasks."
 
 ---
 
@@ -112,7 +112,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** A modal window appears for confirming the agent's identity type (Claw vs. Assistant). Detailed examples are given for when to use each type.
 
 **Transcript:** 
-"Here I want this to trigger on every incoming email, so I'm going to set up an identity. Now there's two types of identities in LangSmith Fleet. First, there's the type where the agent has a fixed set of credentials. So the agent always uses these credentials regardless of who is interacting with it. So for my email assistant, I want it to always answer my emails, regardless of whether Jim emails me or Tom emails me. So I'm going to select fixed set of credentials. The other type of credentials, which I'll show a little bit later on, are user credentials. And we call these assistants. And so this is when the agents act on behalf of the user who is interacting with it. So the cleanest way to think about this is in Slack. If I expose a HR agent in Slack and I message it and Jim messages it, it should get different responses based on who is interacting with it and what it knows about each person. And so user credentials are really good when you want to scope down what the agent does and have it act on behalf of the user every time. Fixed credentials or claws are good when you want this agent to basically have its own identity. In this case, I want it to be acting as my assistant answering my emails."
+"Here I want this to trigger on every incoming email, so I'm going to set up an identity. Now there is two types of identities in LangSmith Fleet. First, there is the type where the agent has a fixed set of credentials. So the agent always uses these credentials regardless of who is interacting with it. So for my email assistant, I want it to always answer my emails, regardless of whether Jim emails me or Tom emails me. So I'm going to select fixed set of credentials. The other type of credentials, which I'll show a little bit later on, are user credentials. And we call these assistants. And so this is when the agents act on behalf of the user who is interacting with it. So the cleanest way to think about this is in Slack. If I expose a HR agent in Slack and I message it and Jim messages it, it should get different responses based on who is interacting with it and what it knows about each person. And so user credentials are really good when you want to scope down what the agent does and have it act on behalf of the user every time. Fixed credentials or claws are good when you want this agent to basically have its own identity. In this case, I want it to be acting as my assistant answering my emails."
 
 ---
 
@@ -128,7 +128,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** A gallery of pre-built templates is shown, such as LinkedIn Recruiter, Daily Calendar Brief, and Social Media AI Monitor.
 
 **Transcript:** 
-"There's a set of templates for agents that you can choose from. So these are some common use cases from social media monitors to LinkedIn recruiters to email assistants to daily briefers that we think you might want to use."
+"There is a set of templates for agents that you can choose from. So these are some common use cases from social media monitors to LinkedIn recruiters to email assistants to daily briefers that we think you might want to use."
 
 ---
 
@@ -136,7 +136,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** An agent is shown editing its own configuration file (`agents.md`) to save a user's location preference. The user has the option to approve or deny this memory update.
 
 **Transcript:** 
-"One of the really cool things about LangSmith Fleet is each agent comes with its own memory. This means that when you interact with it, it actually learns and remembers things over time. So let's interact with this and tell it some information that it should remember and use in future searches. I'm going to tell it that I always want candidates in San Francisco. You can see here that it's trying to edit a file. What is this file? This is part of its memory. So this agents.md is the set of instructions that every agent has. And they're all unique for each agent. So when it edits this, it's editing its own memory and it's remembering this: user preferences, location preference, always prioritize candidates in San Francisco. You'll notice that by default it's human-in-the-loop. So letting agents manage their own memory is really powerful but can also be a little dangerous, so by default we have this human-in-the-loop preference. If I want to change that, what I can do is I can go over here, I can click edit, I can go up to this settings tab, and then down here under memory I can toggle this on and off. So now it will always remember things by default without asking me."
+"One of the really cool things about LangSmith Fleet is each agent comes with its own memory. This means that when you interact with it, it actually learns and remembers things over time. So let's interact with this and tell it some information that it should remember and use in future searches. I'm going to tell it that I always want candidates in San Francisco. You can see here that it is trying to edit a file. What is this file? This is part of its memory. So this agents.md is the set of instructions that every agent has. And they are all unique for each agent. So when it edits this, it is editing its own memory and it is remembering this: user preferences, location preference, always prioritize candidates in San Francisco. You'll notice that by default it is human-in-the-loop. So letting agents manage their own memory is really powerful but can also be a little dangerous, so by default we have this human-in-the-loop preference. If I want to change that, what I can do is I can go over here, I can click edit, I can go up to this settings tab, and then down here under memory I can toggle this on and off. So now it will always remember things by default without asking me."
 
 ---
 
@@ -144,7 +144,7 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** The Inbox is used to manage multiple background agents simultaneously, allowing the user to unblock agents by providing approvals.
 
 **Transcript:** 
-"You'll notice there's this little inbox thing over here with two next to it. So the whole idea of Fleet is that you have a lot of agents running in parallel in the background, often acting on events. Now we don't think these agents should be fully autonomous. We think that they should ask the user for clarification, we think there should be human-in-the-loop at certain steps. And so how do you manage them? Inbox is the answer. So you can see here a list of all the runs that the agents have done, but you can also filter in to where it needs attention, where it needs approval. So if I go back to this previous chat, I can see this is the chat I had previously. By clicking accept I can now unblock the agent and it goes on its way. So the inbox is a really powerful tool for managing and working with a multitude of agents."
+"You'll notice there is this little inbox thing over here with two next to it. So the whole idea of Fleet is that you have a lot of agents running in parallel in the background, often acting on events. Now we do not think these agents should be fully autonomous. We think that they should ask the user for clarification, we think there should be human-in-the-loop at certain steps. And so how do you manage them? Inbox is the answer. So you can see here a list of all the runs that the agents have done, but you can also filter in to where it needs attention, where it needs approval. So if I go back to this previous chat, I can see this is the chat I had previously. By clicking accept I can now unblock the agent and it goes on its way. So the inbox is a really powerful tool for managing and working with a multitude of agents."
 
 ---
 
@@ -152,5 +152,5 @@ https://www.youtube.com/watch?v=t2EYd57rvQg
 **Screen Description:** The LangSmith Fleet and LangChain logos appear on a black background.
 
 **Transcript:** 
-"So that's a more detailed run-through of LangSmith Fleet. You can try it out for free at the link below."
+"So that is a more detailed run-through of LangSmith Fleet. You can try it out for free at the link below."
 

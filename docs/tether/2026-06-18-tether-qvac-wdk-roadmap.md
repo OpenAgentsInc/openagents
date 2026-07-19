@@ -1,7 +1,7 @@
 # Tether, QVAC, WDK, And OpenAgents
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -94,12 +94,12 @@ review.
 
 Keep WDK in the Tether reference lane. Extract design lessons:
 
-- small root orchestrator;
-- explicit wallet/protocol registration;
-- governed accounts;
-- default-deny operation policy;
-- simulation before execution;
-- structured policy violation errors;
+- small root orchestrator.
+- explicit wallet/protocol registration.
+- governed accounts.
+- default-deny operation policy.
+- simulation before execution.
+- structured policy violation errors.
 - disposal/teardown for sensitive wallet state.
 
 Do not import `@tetherto/wdk` into OpenAgents product code yet.
@@ -150,11 +150,11 @@ The safest immediate addition is not a wallet dependency. It is a study packet.
 
 Create a machine-studying corpus around the local Tether lane:
 
-- source manifest of Tether/QVAC/WDK/MDK repos reviewed;
+- source manifest of Tether/QVAC/WDK/MDK repos reviewed.
 - architecture questions for QVAC plugin boundaries, worker isolation, model
-  identity, registry, RAG, and delegated inference;
+  identity, registry, RAG, and delegated inference.
 - hidden repo-edit exam that asks Autopilot Coder to modify an adapter or doc
-  without vendoring upstream code;
+  without vendoring upstream code.
 - answer key focused on OpenAgents authority boundaries.
 
 This matches the launch roadmap: machine studying is internal dogfood and Forge
@@ -164,13 +164,13 @@ Autopilot Coder acceleration, not a public training claim.
 
 QVAC's strongest runtime lesson is capability declaration:
 
-- model family and version;
-- artifact digest and expected size;
-- tokenizer/config digest;
-- source kind: filesystem, HTTP, registry, P2P, cache, or bundled;
-- backend admission;
-- quantization tier;
-- benchmark refs;
+- model family and version.
+- artifact digest and expected size.
+- tokenizer/config digest.
+- source kind: filesystem, HTTP, registry, P2P, cache, or bundled.
+- backend admission.
+- quantization tier.
+- benchmark refs.
 - refusal reasons.
 
 Add this to Psionic-owned manifests before adding foreign runtime code. QVAC
@@ -185,12 +185,12 @@ benchmarks.
 
 OpenAgents should port the contract shape, not adopt QVAC as voice authority:
 
-- `SpeechToTextProvider`;
-- `TextToSpeechProvider`;
-- `VoiceActivityOrEndOfUtteranceProvider`;
-- provider metadata with model/artifact/backend facts;
-- fixed audio benchmark corpus;
-- shadow comparison against current providers;
+- `SpeechToTextProvider`.
+- `TextToSpeechProvider`.
+- `VoiceActivityOrEndOfUtteranceProvider`.
+- provider metadata with model/artifact/backend facts.
+- fixed audio benchmark corpus.
+- shadow comparison against current providers.
 - no-cloud local dev mode.
 
 Autopilot Voice keeps session, pane, command, approval, and receipt authority.
@@ -203,11 +203,11 @@ pressure. They are not job authority.
 
 Add OpenAgents-owned records for:
 
-- cached model shard availability;
-- artifact digest and source;
-- device capability class;
-- integrity-check work classes;
-- local/offline fetch strategy;
+- cached model shard availability.
+- artifact digest and source.
+- device capability class.
+- integrity-check work classes.
+- local/offline fetch strategy.
 - refusal when artifact, device, or backend facts do not match.
 
 Nexus/Pylon must keep admission, assignment, validation, accepted-work
@@ -236,13 +236,13 @@ miner/data-center flexible-load lane than to user wallet flows.
 
 Later, after v1 payout stability, define work classes for:
 
-- eval/replay;
-- artifact integrity;
-- benchmark probes;
-- embedding batches;
-- local inference batches;
-- adapter micro-windows;
-- checkpoint validation;
+- eval/replay.
+- artifact integrity.
+- benchmark probes.
+- embedding batches.
+- local inference batches.
+- adapter micro-windows.
+- checkpoint validation.
 - interruptible batch jobs.
 
 Then evaluate whether MDK-style telemetry and command contracts can inform
@@ -281,28 +281,28 @@ class has self-test receipts and legal/compliance review.
 
 Do:
 
-- keep this analysis in docs;
-- create the Tether/QVAC study packet for Autopilot Coder;
-- define Psionic capability manifest fields that QVAC pressures;
-- define the external wallet receipt adapter schema;
-- keep WDK as reference only;
-- keep Tether MDK as reference only;
+- keep this analysis in docs.
+- create the Tether/QVAC study packet for Autopilot Coder.
+- define Psionic capability manifest fields that QVAC pressures.
+- define the external wallet receipt adapter schema.
+- keep WDK as reference only.
+- keep Tether MDK as reference only.
 - continue proving real payouts and public-safe projections.
 
 Do not:
 
-- add WDK to live settlement;
-- advertise stablecoin payouts;
-- route OpenAgents product authority through QVAC;
+- add WDK to live settlement.
+- advertise stablecoin payouts.
+- route OpenAgents product authority through QVAC.
 - start a broad runtime rewrite.
 
 ### After Gate 2 Real Settlement Is Stable
 
 Do:
 
-- build a local-only WDK receipt-export spike;
-- run it against redacted accepted-work receipts;
-- test default-deny wallet-policy behavior in fixtures;
+- build a local-only WDK receipt-export spike.
+- run it against redacted accepted-work receipts.
+- test default-deny wallet-policy behavior in fixtures.
 - publish no product claim unless the receipt packet is public-safe.
 
 Decision gate:
@@ -318,9 +318,9 @@ If no, stop.
 
 Do:
 
-- add Tether/QVAC/WDK/MDK repo corpus manifests;
+- add Tether/QVAC/WDK/MDK repo corpus manifests.
 - add hidden exams around QVAC plugin architecture, WDK policy simulation, and
-  MDK telemetry contracts;
+  MDK telemetry contracts.
 - use results to improve Autopilot Coder's codebase understanding path.
 
 Decision gate:
@@ -336,9 +336,9 @@ If no, keep it internal.
 
 Do:
 
-- design an opt-in compute enrollment pilot for local-first or wallet apps;
-- start with desktop Pylon/Psionic Level 0 or Level 1 work;
-- show accepted work, rejection reasons, earnings, pause controls, and receipts;
+- design an opt-in compute enrollment pilot for local-first or wallet apps.
+- start with desktop Pylon/Psionic Level 0 or Level 1 work.
+- show accepted work, rejection reasons, earnings, pause controls, and receipts.
 - keep contributor payout Bitcoin-first.
 
 Possible partner-facing sentence:
@@ -352,10 +352,10 @@ wallet, privacy, and local-first experience.
 
 Do:
 
-- review Tether MDK worker contracts as telemetry/control references;
-- define miner/data-center capability manifests;
-- model interruptible and checkpointable workloads;
-- measure validation cost per accepted result;
+- review Tether MDK worker contracts as telemetry/control references.
+- define miner/data-center capability manifests.
+- model interruptible and checkpointable workloads.
+- measure validation cost per accepted result.
 - keep grid/flexible-load claims separate from current consumer-compute proof.
 
 ## Product-Promise Posture
@@ -370,11 +370,11 @@ tether_mdk.flexible_load_reference.v1: planned reference, no production path
 
 A future yellow promise is acceptable only after:
 
-- a schema exists;
-- a fixture exists;
-- no raw secrets are exposed;
-- OpenAgents receipt authority remains intact;
-- public copy distinguishes real from simulated settlement;
+- a schema exists.
+- a fixture exists.
+- no raw secrets are exposed.
+- OpenAgents receipt authority remains intact.
+- public copy distinguishes real from simulated settlement.
 - legal/compliance signs off on stablecoin or wallet claims.
 
 ## Final Decision

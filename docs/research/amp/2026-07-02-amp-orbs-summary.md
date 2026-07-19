@@ -1,7 +1,7 @@
 # Amp Orbs — Summary (2026-07-02)
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Sources (fetched 2026-07-02):
@@ -29,7 +29,7 @@ local resource constraints.
 - Fixed shape today: **16 CPU cores, 32 GB memory** (resource customization
   "will be supported in the future").
 - **$1.66/hour ($2.48/hour enterprise), billed by the minute.**
-- Orbs start quickly and **pause automatically when inactive**; archiving a
+- Orbs start quickly and **pause automatically when inactive**. Archiving a
   thread pauses its orb immediately. **A paused orb costs nothing.**
 
 ## What's in an orb
@@ -41,7 +41,7 @@ local resource constraints.
 - Databases: **PostgreSQL 17 and Redis** running in-box.
 - Runtimes: Bun, Node.js, npm, pnpm, Yarn, Python/pip.
 - `agent-browser` for browser automation inside the orb.
-- Anything else is installable via `apt-get`; the agent's system prompt tells
+- Anything else is installable via `apt-get`. The agent's system prompt tells
   it that it is running in an orb and how to acquire additional tools.
 
 ## Repo lifecycle hooks
@@ -56,7 +56,7 @@ the orb runtime:
   mise, installs dependencies, and writes orb-specific guidance to
   `~/.config/amp/AGENTS.md`.
 - **`.agents/resume`** — runs on wake-from-pause to restore connectivity and
-  correct system state; allowed to block **at most 10 seconds**.
+  correct system state. Allowed to block **at most 10 seconds**.
 
 ## Snapshots
 
@@ -89,7 +89,7 @@ place for an unsupervised agent, not about the VM substrate:
   `/__dev/preflight` (JSON readiness report), `/__dev/sudo` (passkey session
   testing).
 - **Unified log inbox**: services log to `.amp/in/` (an agent "scratch-pad
-  inbox"); browser console output is forwarded to server logs tagged
+  inbox"). Browser console output is forwarded to server logs tagged
   `[browser]`, so one grep covers client and server.
 - **Layered AGENTS.md**: 41 context-specific `AGENTS.md` files across the
   codebase, plus orb-specific guidance written at setup time.
@@ -109,4 +109,4 @@ Orbs are three separable things bundled into one product:
    endpoints, log inbox, layered agent docs) that make unsupervised execution
    actually converge.
 
-The substrate (1) is commodity; the leverage is in (2) and (3).
+The substrate (1) is commodity. The leverage is in (2) and (3).

@@ -1,7 +1,7 @@
 # AuthorityDelegationSpec 0.1
 
 - Class: normative design proposal
-- Status: proposed format; root profile admitted separately by current owner direction
+- Status: proposed format. Root profile admitted separately by current owner direction
 - Date: 2026-07-18
 - Owning product intent:
   [`../../specs/openagents/authority-delegation.product-spec.md`](../../specs/openagents/authority-delegation.product-spec.md)
@@ -56,7 +56,7 @@ but it cannot turn an upstream source into an instruction.
    application state, documented automation identities, staging, reversible
    mutations, and narrow target substitution before broader power.
 6. **Evidence is not authority.** A receipt may satisfy an assurance
-   obligation; it never independently grants deploy, release, spend, public
+   obligation. It never independently grants deploy, release, spend, public
    claim, custody, or settlement authority.
 7. **Authority is not evidence.** Permission to run a check or promote a
    release does not prove it passed or make an artifact releasable.
@@ -64,7 +64,7 @@ but it cannot turn an upstream source into an instruction.
    verifier, admitter, releaser, and public-claim roles are distinct whenever
    the bound AssuranceSpec or profile requires independence.
 9. **No waiting as a state.** A blocker invokes the resolution ladder. Only a
-   terminal reserved-action receipt may enter `needs_owner`; all other
+   terminal reserved-action receipt may enter `needs_owner`. All other
    blockers become workaround, substitution, implementation, narrowed claim,
    or another admitted packet.
 10. **Revocation is monotonic.** A current owner instruction, profile
@@ -72,7 +72,7 @@ but it cannot turn an upstream source into an instruction.
     explicit revocation stops new actions immediately. Already-started work
     must reach the safest bounded checkpoint and emit a receipt.
 11. **Receipts are bounded and redacted.** Record the decision, grant, target,
-    condition evaluation, outcome, and evidence refs; never record raw secrets
+    condition evaluation, outcome, and evidence refs. Never record raw secrets
     or unbounded private content.
 12. **Public claims stay evidence-bound.** Delegation may authorize a typed
     promise transition only when its existing verification gates are green. It
@@ -114,17 +114,17 @@ deny.
 
 Before mutation, an executor resolves the effective decision in this order:
 
-1. establish the actor and exact requested action;
-2. resolve the target resource and environment without secret disclosure;
-3. reject a suspended, revoked, superseded, expired, or unknown profile;
-4. find a grant that matches actor role, action, resource, and active program;
+1. establish the actor and exact requested action.
+2. resolve the target resource and environment without secret disclosure.
+3. reject a suspended, revoked, superseded, expired, or unknown profile.
+4. find a grant that matches actor role, action, resource, and active program.
 5. intersect that grant with higher instructions, invariants, resource policy,
    issue/claim ownership, runtime gates, and referenced Product/Assurance/Fast
-   Follow contracts;
-6. reject any reserved-action match or unmet condition;
-7. acquire required claim, lease, approval digest, or generation fence;
-8. execute the narrow action;
-9. emit its bounded authority receipt and any separately required evidence;
+   Follow contracts.
+6. reject any reserved-action match or unmet condition.
+7. acquire required claim, lease, approval digest, or generation fence.
+8. execute the narrow action.
+9. emit its bounded authority receipt and any separately required evidence.
 10. re-resolve before every promotion, deploy, spend, destructive action, or
     public-claim transition.
 
@@ -169,12 +169,12 @@ AssuranceSpec admitters when the source authority explicitly grants it. That
 designation does not waive independence:
 
 - the same execution identity that authored an obligation cannot verify or
-  admit that obligation;
-- the same evidence-producing run cannot impersonate a verifier;
+  admit that obligation.
+- the same evidence-producing run cannot impersonate a verifier.
 - deterministic validators may supply objective observations but cannot make
-  judgment calls outside their encoded contract;
+  judgment calls outside their encoded contract.
 - a separate clean session, separately claimed reviewer packet, or named
-  deterministic verifier must reproduce the relevant evidence;
+  deterministic verifier must reproduce the relevant evidence.
 - release remains separately gated even after assurance admission.
 
 The root profile is an owner designation. It permits distinct operating-agent
@@ -187,20 +187,20 @@ producer relabel itself as independent.
 Every profile must reserve at least:
 
 - raw secret, credential, signing-key, mnemonic, or token extraction or
-  disclosure;
+  disclosure.
 - treasury, wallet, custody, payout, payment, settlement, or irreversible
-  financial movement;
+  financial movement.
 - legal contracts, employment decisions, tax/regulatory attestations, or
-  representations requiring a natural person;
-- destructive production customer-data deletion or irreversible migration;
+  representations requiring a natural person.
+- destructive production customer-data deletion or irreversible migration.
 - identity, biometric, platform-terms, or account-recovery ceremonies that
-  require the human account holder;
-- spend above the exact profile cap;
-- weakening a security, privacy, custody, evidence, or repository invariant;
-- unsupported public claims or fabricated evidence; and
+  require the human account holder.
+- spend above the exact profile cap.
+- weakening a security, privacy, custody, evidence, or repository invariant.
+- unsupported public claims or fabricated evidence. And
 - modifying the profile to increase its own authority.
 
-Profiles may reserve more. They may not reserve less by omission; format 0.1
+Profiles may reserve more. They may not reserve less by omission. Format 0.1
 validation treats missing mandatory categories as invalid.
 
 ## Relationship to owner-action tracking
@@ -216,12 +216,12 @@ and the receipt that will close it. Broad entries such as â€œauthorize device,â€
 Format 0.1 deliberately starts as an authored profile plus deterministic
 repository validation. The implementation sequence is:
 
-1. validate the root profile and its references;
-2. use it as the standing operating contract for the admitted program;
-3. project effective grants into Full Auto work/turn records and issue claims;
-4. add a typed Effect authority service and receipt schema;
+1. validate the root profile and its references.
+2. use it as the standing operating contract for the admitted program.
+3. project effective grants into Full Auto work/turn records and issue claims.
+4. add a typed Effect authority service and receipt schema.
 5. enforce grants at GCP, release, device, provider, SCM, and public-promise
-   adapters; and
+   adapters. And
 6. add revocation, budget, liveness, and independence model checking.
 
 The initial Effect-native resolver now lives in `packages/authority/` and is

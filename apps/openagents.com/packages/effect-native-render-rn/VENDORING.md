@@ -17,7 +17,7 @@ framework, sitting next to the EN-1 web packages
 
 effect-native is **not published to npm** and ships **unbuilt TypeScript** whose
 internal packages cross-reference each other with `workspace:*`. A `github:`
-install pulls the repo root (no scoped sub-packages); a `file:` reference to the
+install pulls the repo root (no scoped sub-packages). A `file:` reference to the
 sibling `~/work/effect-native` checkout cannot resolve the `workspace:*`
 cross-refs from openagents and does not exist in CI/Metro. The only clean,
 CI-safe, Metro-safe path today is to land the source as openagents workspace
@@ -28,7 +28,7 @@ so swapping to the real published dependency later is a package.json-only change
 
 - Upstream repo: `OpenAgentsInc/effect-native`
 - Upstream commit: `f7f7fe6ed8e4245126d7149b3f3060d3d8d8c0e9` (catalog `v43`)
-- Vendored: 2026-07-14 (bumped from `6db0a67b`, catalog `v30`; earlier
+- Vendored: 2026-07-14 (bumped from `6db0a67b`, catalog `v30`, earlier
   `f8251374` `v30`, `e0c57cb` `v29`, `eb9685b` `v25`, `1aa6e364` `v19`,
   `e32b97e` `v5`)
 - Files copied verbatim: `packages/render-rn/src/**`
@@ -115,7 +115,7 @@ re-copy would destroy:
 - `effect-native-core/src/index.ts` — 12 extra app `IconName`s
   (`Agent`/`ChatCompose`/`Chats`/`Code`/`Compare`/`Folder`/`Home`/
   `NotificationBell`/`Plane`/`Settings`/`Terminal`/`Tools`) added by the
-  desktop/mobile lanes (`8ed6d166fd`, `d1abe0e81e`). NOT upstream; upstream
+  desktop/mobile lanes (`8ed6d166fd`, `d1abe0e81e`). NOT upstream. Upstream
   demand should be filed through GAPS before these are re-vendored verbatim.
 - `effect-native-render-rn/src/index.ts` — Scope-owned intent effect runtime
   (`ReactNativeRenderRuntimeOptions.runEffect`, FiberSet-backed reporter
@@ -180,7 +180,7 @@ package, then resolved conflicts by hand:
   `openagents-desktop`, not a mechanical pin bump. `icons.ts` was extended
   with the ~70 brand-new v33 icon names (verbatim upstream SVG bodies,
   re-wrapped in the file's existing template) so the type still compiles
-  against the expanded 101-name `IconName` union; none of those 70 names had
+  against the expanded 101-name `IconName` union. None of those 70 names had
   any pre-bump consumer, so there is no regression surface there. All ~19
   icon-drawing call sites across render-dom (Button loading spinner, Avatar,
   EmptyMessage, Combobox/Select/Tabs/Sidebar items, Graph markers, the new
@@ -193,7 +193,7 @@ package, then resolved conflicts by hand:
 - **render-rn**: took upstream's side for the icon glyph tables (its own
   honest-text-glyph/SF-Symbol fallback tables were already a strict superset,
   byte-identical on every overlapping name) and for the Button tone/variant/
-  size matrix rewrite (mirrors render-dom's `#78` adoption; `resolveButtonAppearance`
+  size matrix rewrite (mirrors render-dom's `#78` adoption, `resolveButtonAppearance`
   normalizes the pre-`#78` `"primary"`/`"secondary"`/`"ghost"` tokens onto their
   exact matrix equivalents, so old and new trees render identically).
 

@@ -27,12 +27,12 @@ capability_id = workroom.sidecar.scaffold
 
 It refuses:
 
-- invalid assignments;
-- assignments targeting another node id;
-- uninitialized nodes;
-- degraded or quarantined nodes;
-- nodes whose desired mode is not `online`;
-- `open_ended_labor`, which must route back through Forge/Probe;
+- invalid assignments.
+- assignments targeting another node id.
+- uninitialized nodes.
+- degraded or quarantined nodes.
+- nodes whose desired mode is not `online`.
+- `open_ended_labor`, which must route back through Forge/Probe.
 - capabilities not yet attached by later Cloud MVP issues.
 
 The accepted decision means typed local intake only. Workroom lifecycle,
@@ -49,10 +49,10 @@ forge-assignment-receipts.jsonl
 
 Each receipt records:
 
-- `decision`: `accepted` or `refused`;
-- a stable reason;
-- `assignment_digest`;
-- `receipt_digest`;
+- `decision`: `accepted` or `refused`.
+- a stable reason.
+- `assignment_digest`.
+- `receipt_digest`.
 - `emitted_at_ms`.
 
 The admin store updates `receipt_cursors.job_receipt_cursor` to the latest

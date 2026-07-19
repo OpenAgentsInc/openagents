@@ -7,17 +7,17 @@ Canonical assistant text enters through the separately grant-bound
 The visible text is sent first and never depends on synthesis success. PCM is
 fixed at signed 16-bit little-endian, 24 kHz, mono and every chunk is bound to
 the exact voice identity, assistant turn, and speech ref. Qualified speech
-emits an outcome-bound playback cancel; trivial noise/backchannels do not.
+emits an outcome-bound playback cancel. Trivial noise/backchannels do not.
 
-The Google adapter uses ADC/workload identity. Credentials, raw audio, and transcript text are never logged. Logs contain only event names and generation numbers; production metrics must remain ref-only. The service owns transcription delivery, not commands, Sync, retention, or raw-audio storage.
+The Google adapter uses ADC/workload identity. Credentials, raw audio, and transcript text are never logged. Logs contain only event names and generation numbers. Production metrics must remain ref-only. The service owns transcription delivery, not commands, Sync, retention, or raw-audio storage.
 
 ## Runtime contract
 
 - `GET /health` is an unauthenticated liveness endpoint.
 - `/v1/stream` is a binary WebSocket endpoint. It requires a service-issued HMAC grant in `X-OpenAgents-Audio-Grant` (or a WebSocket query fallback), bound to the exact voice identity and expiring within 15 minutes. Cloud Run IAM's `Authorization` identity token remains a separate outer gate.
-- Audio messages are capped at 15,360 bytes, the stricter current Google VAD/streaming guidance; AUDIO-1's 24 KB transport maximum is only an outer bound.
+- Audio messages are capped at 15,360 bytes, the stricter current Google VAD/streaming guidance. AUDIO-1's 24 KB transport maximum is only an outer bound.
 - Queues are bounded, ACK and gap frames are explicit, duplicate audio is delivery-idempotent, stale generations close, and provider streams rotate after four minutes of 16 kHz mono PCM.
-- Reconnect never assumes the same Cloud Run instance. The client resumes from its durable server-side/session authority; replay cannot open Google recognition or publish another final.
+- Reconnect never assumes the same Cloud Run instance. The client resumes from its durable server-side/session authority. Replay cannot open Google recognition or publish another final.
 
 ## Verification
 
@@ -29,12 +29,12 @@ pnpm --dir apps/openagents-audio run build:cloudrun
 
 The live smoke is intentionally gated because it incurs Google STT use. Deploy with the repository automation gcloud configuration, mint a short-lived test grant through the application authority, then send a consented non-sensitive PCM fixture. Never put a token, transcript, or audio bytes in logs or issue comments.
 
-Official constraints used by this implementation: Google STT streaming is gRPC-only; Chirp 3 supports V2 streaming, interim/final results and VAD; Cloud Run WebSockets are bounded by the request timeout and reconnect is not guaranteed to reach the same instance.
+Official constraints used by this implementation: Google STT streaming is gRPC-only. Chirp 3 supports V2 streaming, interim/final results and VAD. Cloud Run WebSockets are bounded by the request timeout and reconnect is not guaranteed to reach the same instance.
 
 ## Retained-audio storage
 
 Private, receipt-gated audio retention for AUDIO-3. Transport frames are
-coalesced upstream into bounded segments; this service accepts only segments
+coalesced upstream into bounded segments. This service accepts only segments
 covered by an active explicit retained-session receipt. It envelope-encrypts
 media before a private GCS write and keeps only exact manifests and audit
 receipts in Cloud SQL.

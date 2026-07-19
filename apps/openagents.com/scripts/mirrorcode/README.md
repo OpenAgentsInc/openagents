@@ -36,13 +36,13 @@ to the Khala OpenAI-compatible endpoint (`POST /api/v1/chat/completions`) with a
 Bearer `oa_agent_` token -- either one you pass in `OPENAI_API_KEY` or a free key
 the runner mints at `POST /api/keys/free`. The Khala endpoint is behind
 Cloudflare, which **403s the default `Python-urllib` User-Agent** (`error code:
-1010`) before the request reaches the Worker; the runner now always sends an
+1010`) before the request reaches the Worker. The runner now always sends an
 explicit `User-Agent`, so the call returns 200 and burns real tokens. The runner
 **fails loud** (nonzero exit + the exact status on stderr) when the model call is
 unauthorized (401), WAF-blocked (403), payment-gated (402), or returns zero usage
 -- it never silently produces an all-failed / 0-burn run. Every live run first
 does a one-call **burn preflight** that asserts real usage tokens before spending
-the batch; `MC_BACKSTOP_SMOKE=1` runs that preflight standalone.
+the batch. `MC_BACKSTOP_SMOKE=1` runs that preflight standalone.
 
 Problem source: the built-in **public-domain fixture set** (classic toy
 functions — sum, reverse, palindrome, factorial, gcd, FizzBuzz, …). These are
@@ -54,7 +54,7 @@ MirrorCode clone is detected and surfaced (`mirrorcodeClonePresent`,
 here.
 
 Honesty: this is a real measurement of our own model against public-domain toy
-problems; it is the smallest **real slice** that does genuine model work + records
+problems. It is the smallest **real slice** that does genuine model work + records
 traces. It is **not** the MirrorCode paper benchmark and must never be published
 as a MirrorCode score (`grade: "backstop"`, `decisionGrade: false`).
 
@@ -62,7 +62,7 @@ as a MirrorCode score (`grade: "backstop"`, `decisionGrade: false`).
 backstop as an opt-in escalation path that pulls a bounded batch of real S-bucket
 tasks when Docker + the clone are present and token/wall-clock budget allows. The
 full harness burns ≥1B tokens per sample, so it is intentionally out of the
-default backstop loop; the fixture slice is the always-available density burner.
+default backstop loop. The fixture slice is the always-available density burner.
 Solution execution is currently subprocess-isolated with a timeout but not
 container-sandboxed — harden to Docker/firecracker before running untrusted
 (non-fixture, non-own-model) candidates.
@@ -98,7 +98,7 @@ preemptible behind real external demand (#6318).
   **READ-ONLY**. Do not modify it. **Never train or RAG on the tasks.** Respect
   both canary strings (MirrorCode + BIG-Bench).
 - We run **PUBLIC tasks only** (the paper's private set is not shipped). Always
-  label results "public tasks only; private set excluded."
+  label results "public tasks only. Private set excluded."
 - Treat the public-task lane as Khala's AgentCL Generalization Gain (GG) set:
   `generalizationSet=mirrorcode_public_tasks_no_rag` and
   `memoryPolicy=no_rag_public_tasks_only`. Khala memory, training, homework,
@@ -106,7 +106,7 @@ preemptible behind real external demand (#6318).
   text, docs, tests, logs, or traces. The runner and ingest route may store only
   the public-safe score envelope.
 - **Cost/wall-clock is the dominant risk.** A real sample burns ≥1B tokens
-  (S/M) or 10B (L); the longest paper sample ran **19 days**. This runner sets
+  (S/M) or 10B (L). The longest paper sample ran **19 days**. This runner sets
   hard token + wall-clock caps FAR below those limits — it is a **smoke**, not a
   paper run. **Never** run the L bucket (`ruff`/`pkl`/`cprepro`) or `--language
   all6` here.
@@ -138,7 +138,7 @@ OPENAI_API_KEY=oa_agent_xxx ./run.sh --task numfmt_python
   as the default because #6377 requires a real S-target smoke.
 - **Endpoint-only validation:** `false_c` — the lightest target (reimplement
   `/usr/bin/false`). It is a *trivial, benchmark-excluded* target and requires
-  `--allow-trivial-smoke`; do not use it as the #6377 proof.
+  `--allow-trivial-smoke`. Do not use it as the #6377 proof.
 - **Other small real S-bucket targets:** `uuidparse_python`, `numfmt_python`,
   `choose_python`.
 - S bucket: `qsv_select, jq_simple, gron, bitwise, hexyl, uuidparse, numfmt,
@@ -200,5 +200,5 @@ otherwise.
   exact `token_usage_events` rows tagged `demand_kind=internal`,
   `demand_source=gym_mirrorcode` for the real source of truth — counter movement
   alone is never proof.
-- A fixture/illustrative run must never be published as a measurement; only a
+- A fixture/illustrative run must never be published as a measurement. Only a
   real, decision-grade run feeds the honesty-gated gym ladder (#6309).

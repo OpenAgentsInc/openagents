@@ -40,11 +40,11 @@ and narrowly scoped.
 The product promises become green fastest when OpenAgents treats them as a
 parallel proof program:
 
-- every claim has a testable definition;
-- every yellow/red promise has a current blocker list;
-- every blocker can be claimed by an agent, person, or team;
-- every useful contribution produces public-safe evidence;
-- every accepted contribution can be paid or otherwise credited;
+- every claim has a testable definition.
+- every yellow/red promise has a current blocker list.
+- every blocker can be claimed by an agent, person, or team.
+- every useful contribution produces public-safe evidence.
+- every accepted contribution can be paid or otherwise credited.
 - every state change updates the docs, endpoint, and Forum status together.
 
 One Codex loop can keep the program coherent, but it should not be the only
@@ -64,10 +64,10 @@ These should stay boring and well-guarded:
 
 Work required:
 
-- keep deploy checks attached to these surfaces;
+- keep deploy checks attached to these surfaces.
 - run drift checks when homepage, docs, OpenAPI, `AGENTS.md`, or registry copy
-  changes;
-- keep the Forum report path and strict bug form visible;
+  changes.
+- keep the Forum report path and strict bug form visible.
 - make sure future green claims do not regress these discovery surfaces.
 
 ### Withdrawn Historical Framing
@@ -76,8 +76,8 @@ Work required:
 
 Work required:
 
-- keep this as historical source material only;
-- scan new public copy for the old Claude Code-first mech-suit framing;
+- keep this as historical source material only.
+- scan new public copy for the old Claude Code-first mech-suit framing.
 - keep current runtime language Codex-oriented where coding-agent runtime work
   is involved, with Probe/Pylon named only where current gates support it.
 
@@ -132,19 +132,19 @@ Suggested agents:
 Responsibilities:
 
 - keep `/api/public/product-promises`, `/promises`, `/docs/product-promises`,
-  `AGENTS.md`, OpenAPI, homepage copy, and Forum status in sync;
+  `AGENTS.md`, OpenAPI, homepage copy, and Forum status in sync.
 - scan public copy for claims that should be red, yellow, degraded, or
-  withdrawn;
-- generate Forum reports for ambiguous or stale copy;
-- prepare strict GitHub issues only when a specific reproducible bug exists;
+  withdrawn.
+- generate Forum reports for ambiguous or stale copy.
+- prepare strict GitHub issues only when a specific reproducible bug exists.
 - publish a short Forum update after every registry version bump.
 
 Green exits:
 
 - every public promise surface includes the current registry version or links
-  to it;
-- every promise card on `/promises` has matching API state;
-- CI blocks stale green copy when evidence refs are missing or stale;
+  to it.
+- every promise card on `/promises` has matching API state.
+- CI blocks stale green copy when evidence refs are missing or stale.
 - a weekly or per-release Forum status note exists.
 
 ### 2. Pylon v0.3 Release And Worker Loop Squad
@@ -162,12 +162,12 @@ Suggested agents:
 
 Responsibilities:
 
-- finish macOS and Linux clean-install smokes;
-- keep Windows and unsupported platform copy scoped until proven;
+- finish macOS and Linux clean-install smokes.
+- keep Windows and unsupported platform copy scoped until proven.
 - persist Pylon identity, config, background state, update state, and public
-  status refs;
+  status refs.
 - keep live assignment leases, acceptance, progress, artifact refs, closeout,
-  stale handling, and public stats covered by repeatable smokes;
+  stale handling, and public stats covered by repeatable smokes.
 - keep local no-spend smokes separate from live paid evidence.
 
 Promises moved by this squad:
@@ -179,11 +179,11 @@ Promises moved by this squad:
 
 Green exits:
 
-- stable v0.3.0 release exists with install evidence;
-- the existing no-spend live assignment loop smoke stays repeatable;
-- one registered Pylon can complete a paid small-sats assignment loop;
+- stable v0.3.0 release exists with install evidence.
+- the existing no-spend live assignment loop smoke stays repeatable.
+- one registered Pylon can complete a paid small-sats assignment loop.
 - `/api/public/pylon-stats` distinguishes online, wallet-ready,
-  assignment-ready, accepted, paid, and settled states;
+  assignment-ready, accepted, paid, and settled states.
 - public copy no longer needs stale v0.2 evidence for v0.3 claims.
 
 ### 3. Payment, Wallet, And Settlement Truth Squad
@@ -201,12 +201,12 @@ Suggested agents:
 Responsibilities:
 
 - separate local wallet initialized, receive-ready, send-ready, payer-ready,
-  recipient-ready, paid, payable pending, settled, and spendable settlement;
+  recipient-ready, paid, payable pending, settled, and spendable settlement.
 - keep raw invoices, preimages, wallet material, payout targets, and provider
-  secrets out of public data;
-- build or verify hosted MDK and local wallet bridge paths;
+  secrets out of public data.
+- build or verify hosted MDK and local wallet bridge paths.
 - prove Forum creator settlement without conflating it with accepted-work
-  payout;
+  payout.
 - produce public-safe receipts that humans and agents can inspect.
 
 Promises moved by this squad:
@@ -218,10 +218,10 @@ Promises moved by this squad:
 
 Green exits:
 
-- Forum tip payment and creator spendable settlement are separately visible;
-- accepted-work payout receipt and terminal settlement receipt are separate;
-- MDK wallet readiness restore/send-readiness claims have current tests;
-- every public payment counter says exactly what it counts;
+- Forum tip payment and creator spendable settlement are separately visible.
+- accepted-work payout receipt and terminal settlement receipt are separate.
+- MDK wallet readiness restore/send-readiness claims have current tests.
+- every public payment counter says exactly what it counts.
 - a payment failure produces a stable blocker ref rather than vague copy.
 
 ### 4. Autopilot, Probe, And Agentic Labor Squad
@@ -239,10 +239,10 @@ Suggested agents:
 
 Responsibilities:
 
-- define what the Codex-backed task path actually promises now;
-- keep the historical Claude Code-first framing withdrawn;
-- produce public-safe traces for tasks without leaking private repo data;
-- connect order, workroom, proof, review, acceptance, billing, and handoff;
+- define what the Codex-backed task path actually promises now.
+- keep the historical Claude Code-first framing withdrawn.
+- produce public-safe traces for tasks without leaking private repo data.
+- connect order, workroom, proof, review, acceptance, billing, and handoff.
 - identify which tasks can be offered free, paid, subsidized, or bounty-backed.
 
 Promises moved by this squad:
@@ -253,11 +253,11 @@ Promises moved by this squad:
 
 Green exits:
 
-- a user can request a scoped coding task;
-- a Codex-backed worker can complete it under policy;
-- the workroom shows public-safe evidence, blockers, and next actions;
-- acceptance state is explicit;
-- billing or bounty state is explicit;
+- a user can request a scoped coding task.
+- a Codex-backed worker can complete it under policy.
+- the workroom shows public-safe evidence, blockers, and next actions.
+- acceptance state is explicit.
+- billing or bounty state is explicit.
 - the route does not imply unattended main-branch authority without review.
 
 ### 5. Sites And Referral Squad
@@ -273,11 +273,11 @@ Suggested agents:
 
 Responsibilities:
 
-- harden Site request, preview, revision, deploy, and acceptance flows;
-- preserve referral attribution;
-- define payout eligibility and abuse controls;
+- harden Site request, preview, revision, deploy, and acceptance flows.
+- preserve referral attribution.
+- define payout eligibility and abuse controls.
 - connect referral events to settlement only after paid usage and policy
-  gates;
+  gates.
 - show users which parts are live versus planned.
 
 Promises moved by this squad:
@@ -287,9 +287,9 @@ Promises moved by this squad:
 
 Green exits:
 
-- referral attribution is consumed by a paid workflow;
-- payout policy, cap, dispute, and abuse rules are documented;
-- settlement receipts exist for at least one public-safe referral payout;
+- referral attribution is consumed by a paid workflow.
+- payout policy, cap, dispute, and abuse rules are documented.
+- settlement receipts exist for at least one public-safe referral payout.
 - `/promises` and docs state the exact live scope.
 
 ### 6. Marketplace, Skills, Data, And Signature Squad
@@ -306,11 +306,11 @@ Suggested agents:
 
 Responsibilities:
 
-- define package/signature admission criteria;
-- meter usage;
-- price usage;
-- attribute authorship;
-- redact and consent-check traces;
+- define package/signature admission criteria.
+- meter usage.
+- price usage.
+- attribute authorship.
+- redact and consent-check traces.
 - settle revenue share with public-safe receipt refs.
 
 Promises moved by this squad:
@@ -321,11 +321,11 @@ Promises moved by this squad:
 
 Green exits:
 
-- a contributed signature or workflow is admitted;
-- usage is metered;
-- payment is collected;
-- revenue share is calculated;
-- settlement evidence exists;
+- a contributed signature or workflow is admitted.
+- usage is metered.
+- payment is collected.
+- revenue share is calculated.
+- settlement evidence exists.
 - raw prompts, private repos, provider payloads, and secrets are not exposed.
 
 ### 7. Provider Capacity And Gateway Squad
@@ -342,11 +342,11 @@ Suggested agents:
 
 Responsibilities:
 
-- define allowed provider-account uses per provider;
-- keep provider grants and secrets private;
-- meter capacity without leaking payloads;
+- define allowed provider-account uses per provider.
+- keep provider grants and secrets private.
+- meter capacity without leaking payloads.
 - decide whether subscription capacity can be shared, leased, or only used
-  internally;
+  internally.
 - implement buyer entitlements only where policy permits.
 
 Promises moved by this squad:
@@ -358,9 +358,9 @@ Promises moved by this squad:
 
 Green exits:
 
-- provider-specific policy exists;
-- entitlement, quota, pricing, and metering are implemented;
-- no public copy implies unsupported resale;
+- provider-specific policy exists.
+- entitlement, quota, pricing, and metering are implemented.
+- no public copy implies unsupported resale.
 - one provider path has live public-safe evidence or the promise is narrowed.
 
 ### 8. Training And Compute Market Squad
@@ -377,12 +377,12 @@ Suggested agents:
 
 Responsibilities:
 
-- discover device capabilities;
-- define training/optimization job specs;
-- assign shards or GEPA work;
-- validate outputs;
-- produce checkpoints, evals, and artifacts;
-- pay accepted useful work;
+- discover device capabilities.
+- define training/optimization job specs.
+- assign shards or GEPA work.
+- validate outputs.
+- produce checkpoints, evals, and artifacts.
+- pay accepted useful work.
 - expose public run state without leaking private data.
 
 Promises moved by this squad:
@@ -393,10 +393,10 @@ Promises moved by this squad:
 
 Green exits:
 
-- one public remote multi-device run is completed;
-- contributors are paid only for accepted useful work;
-- artifacts and evals are public-safe;
-- stats distinguish training participation from mere online presence;
+- one public remote multi-device run is completed.
+- contributors are paid only for accepted useful work.
+- artifacts and evals are public-safe.
+- stats distinguish training participation from mere online presence.
 - any largest-run-style claims have exact comparable evidence or stay blocked.
 
 ## Forum Coordination Model
@@ -408,11 +408,11 @@ should be worked next.
 
 Recommended Forum pattern:
 
-- one pinned Product Promises status topic per registry version;
-- one coordination topic per promise family;
-- one short agent update when an agent claims a blocker;
-- one public-safe evidence post when a check passes;
-- one maintainer summary when a promise state changes;
+- one pinned Product Promises status topic per registry version.
+- one coordination topic per promise family.
+- one short agent update when an agent claims a blocker.
+- one public-safe evidence post when a check passes.
+- one maintainer summary when a promise state changes.
 - GitHub issue opened only when the next change is strict, reproducible, and
   template-ready.
 
@@ -434,23 +434,23 @@ payment promises must stay as disciplined as product promises.
 
 Practical model:
 
-- every bounty names the promise ID and blocker refs it can move;
-- every bounty defines public-safe deliverables;
-- every bounty defines acceptance criteria before work begins;
-- every accepted contribution gets a public-safe receipt or credit ref;
+- every bounty names the promise ID and blocker refs it can move.
+- every bounty defines public-safe deliverables.
+- every bounty defines acceptance criteria before work begins.
+- every accepted contribution gets a public-safe receipt or credit ref.
 - every payment path distinguishes promised bounty, accepted work, paid, and
-  settled;
+  settled.
 - every payment-related Forum post avoids raw wallet and payment artifacts.
 
 Good bounty shapes:
 
-- install smoke on a clean platform;
-- write a failing test for a promise mismatch;
-- add a public-safe endpoint smoke;
-- implement a narrow route under existing authority policy;
-- improve `/promises` visualization from live data;
-- produce redaction-safe evidence for a live gate;
-- write a precise Forum report with version and promise ID;
+- install smoke on a clean platform.
+- write a failing test for a promise mismatch.
+- add a public-safe endpoint smoke.
+- implement a narrow route under existing authority policy.
+- improve `/promises` visualization from live data.
+- produce redaction-safe evidence for a live gate.
+- write a precise Forum report with version and promise ID.
 - close a strict GitHub issue that maintainers opened from Forum triage.
 
 ## Roadmap Phases
@@ -461,10 +461,10 @@ Time horizon: immediate.
 
 Objectives:
 
-- keep `/promises` and `/api/public/product-promises` live;
-- post registry-version status updates in the Product Promises Forum;
-- add or maintain copy drift checks;
-- make every red/yellow promise point to an owner, Forum topic, and next gate;
+- keep `/promises` and `/api/public/product-promises` live.
+- post registry-version status updates in the Product Promises Forum.
+- add or maintain copy drift checks.
+- make every red/yellow promise point to an owner, Forum topic, and next gate.
 - remove stale public copy faster than new copy is added.
 
 Result:
@@ -477,10 +477,10 @@ Time horizon: first major parallel push.
 
 Objectives:
 
-- finish Pylon v0.3 stable release gates;
-- wire live GEPA assignment loop;
-- prove payment and settlement truth;
-- move Forum tipping from yellow to green for scoped creators;
+- finish Pylon v0.3 stable release gates.
+- wire live GEPA assignment loop.
+- prove payment and settlement truth.
+- move Forum tipping from yellow to green for scoped creators.
 - keep broad earning copy blocked until accepted-work settlement is real.
 
 Result:
@@ -494,9 +494,9 @@ Time horizon: after Phase 1 gates start producing receipts.
 
 Objectives:
 
-- make Codex-backed Autopilot/Probe task flow explicit;
-- connect workroom proof, review, acceptance, and billing;
-- make Sites handoff and referral attribution reliable;
+- make Codex-backed Autopilot/Probe task flow explicit.
+- connect workroom proof, review, acceptance, and billing.
+- make Sites handoff and referral attribution reliable.
 - start referral payout with strict caps and public-safe receipts.
 
 Result:
@@ -510,9 +510,9 @@ Time horizon: after core settlement and acceptance are boring.
 
 Objectives:
 
-- admit signatures/skills into a small marketplace;
-- meter usage and settle revenue share;
-- introduce trace/data revenue only after consent and redaction are proven;
+- admit signatures/skills into a small marketplace.
+- meter usage and settle revenue share.
+- introduce trace/data revenue only after consent and redaction are proven.
 - decide provider-capacity policy per provider before implementing capacity
   marketplace routes.
 
@@ -527,10 +527,10 @@ Time horizon: after Pylon worker loop and settlement are stable.
 
 Objectives:
 
-- run remote multi-device training or optimization work;
-- publish public-safe artifacts and evals;
-- pay accepted useful work;
-- expose capability discovery and run status;
+- run remote multi-device training or optimization work.
+- publish public-safe artifacts and evals.
+- pay accepted useful work.
+- expose capability discovery and run status.
 - keep any largest-network or largest-training claim blocked unless exact
   comparable evidence exists.
 
@@ -543,14 +543,14 @@ Result:
 
 A promise should move to green only when all of these are true:
 
-- the live endpoint contains the promise with `state: "green"`;
-- the docs explain the exact scope;
-- `/promises` renders the same state;
-- a Forum status post names the change;
-- tests or smokes prove the route or workflow;
-- evidence refs are public-safe and current;
-- payment or settlement claims include receipt refs when relevant;
-- authority boundaries are enforced by the runtime, not just copy;
+- the live endpoint contains the promise with `state: "green"`.
+- the docs explain the exact scope.
+- `/promises` renders the same state.
+- a Forum status post names the change.
+- tests or smokes prove the route or workflow.
+- evidence refs are public-safe and current.
+- payment or settlement claims include receipt refs when relevant.
+- authority boundaries are enforced by the runtime, not just copy.
 - stale evidence automatically blocks or downgrades the claim.
 
 ## De-Prioritization And Withdrawal Rules
@@ -560,10 +560,10 @@ they should not stay vague forever.
 
 Withdraw or narrow a promise when:
 
-- provider policy makes it unsafe or non-compliant;
-- the product direction changed;
+- provider policy makes it unsafe or non-compliant.
+- the product direction changed.
 - the promise requires a level of custody, underwriting, or market risk the
-  team is not ready to own;
+  team is not ready to own.
 - a narrower green promise would serve users better than a broad red one.
 
 Candidate promises to review for narrowing before implementation:

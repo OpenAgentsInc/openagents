@@ -1,7 +1,7 @@
 # Khala Code Desktop QA Framework — Design
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-07-01
@@ -30,7 +30,7 @@ harness. The framework below is mostly a **marriage contract** between those
 two systems — a desktop driver for qa-runner, one scenario format that runs
 through every access mode, an oracle catalog, a determinism layer, and a
 formal-model tier for the state machines that deserve it. Everything new is
-small; the leverage is in composition. And because Khala Code Desktop becomes
+small. The leverage is in composition. And because Khala Code Desktop becomes
 the flagship native-desktop QA target, every gap we close here directly
 advances the QA-agent product line (#6181 "out-ship Factory").
 
@@ -45,11 +45,11 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
 
 ### 1.1 The QA agent (`apps/qa-runner` — shipped, epics #6174/#6181/#6206)
 
-- **Two brains.** `scriptedBrain` executes a deterministic step list; live
+- **Two brains.** `scriptedBrain` executes a deterministic step list. Live
   mode (`khala-session.ts`/`khala-driver.ts`) is a ReAct loop — one typed
-  action per turn over any OpenAI-compatible endpoint (default hosted Khala;
-  BYO model; `--fake-model` for zero-network runs). The goal-driven live loop
-  *is* the free-explore mode; scripted is the defined mode.
+  action per turn over any OpenAI-compatible endpoint (default hosted Khala,
+  BYO model. `--fake-model` for zero-network runs). The goal-driven live loop
+  *is* the free-explore mode. Scripted is the defined mode.
 - **Typed action vocabulary** (Effect Schema, `khala-action.ts`): `navigate,
   click, type, readText, waitFor, screenshot, assert, terminal_run, done,
   fail` — with one bounded corrective re-prompt on unparseable actions, then
@@ -74,7 +74,7 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
   Tier-2 async full matrix on the owned GCE runner (no GitHub Actions).
 - **Probe computer-use** (`packages/probe/.../computer-use/`): the same
   browser/terminal/fs tool family exposed as LLM tools with an action
-  timeline; unit-testable with injected fakes.
+  timeline. Unit-testable with injected fakes.
 
 ### 1.2 The desktop's automation surfaces (`clients/khala-code-desktop`)
 
@@ -93,10 +93,10 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
   drivers (`setComposerDraft`, `submitComposer`, `stopTurn`, `reset`,
   `loadGymProof`, `simulateLargePaste`, `stageAttachmentForSmoke`).
 - **Proven Playwright harness pattern** (scripts/): Bun-spawned Vite +
-  headless Chromium + `page.route("**/rpc/*")` fixture mocking; probe
+  headless Chromium + `page.route("**/rpc/*")` fixture mocking. Probe
   library for geometry, focus, reduced-motion, canvas/WebGL pixels, and
-  public-safe text; viewport matrix (desktop 1280x800, mobile 390x844,
-  dark, reduced-motion); screenshots + `summary.json` under ignored `var/`.
+  public-safe text. Viewport matrix (desktop 1280x800, mobile 390x844,
+  dark, reduced-motion). Screenshots + `summary.json` under ignored `var/`.
 - **Headless JSONL mode** (`--json`): real Codex-backed turns, stderr JSONL
   events with correlation ids, single stdout result, structured failure on
   missing Codex, `KHALA_CODE_HEADLESS_INTERRUPT_AFTER_MS` automation hook.
@@ -108,13 +108,13 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
   click→full-render, cache hits).
 - **Prior art for determinism**: `apps/autopilot-desktop/src/testing/`
   (deterministic-env, synthetic-event-service, app-replica) — the sibling
-  desktop app's harness; `@effect/vitest`/TestClock used in the Worker's MPP
+  desktop app's harness. `@effect/vitest`/TestClock used in the Worker's MPP
   tests.
 
 ### 1.3 The honest gaps
 
 1. The UI shell is **imperative DOM, not Foldkit** — no central Model/fold
-   to read or model-check; state lives in module-level variables.
+   to read or model-check. State lives in module-level variables.
 2. **No streaming over the HTTP bridge** — live-turn observation requires
    the in-page API or native socket.
 3. **No auth / no read-only mode on the bridge** — fine for localhost
@@ -123,7 +123,7 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
    the real Electrobun window is unwired (qa-runner's macOS AX backend
    exists but has never been pointed at Khala Code).
 5. **No property-based, model-based, or formal layer** — `fast-check` absent
-   repo-wide; no TLA+ specs; `app-shell.test.ts` partially asserts on
+   repo-wide. No TLA+ specs. `app-shell.test.ts` partially asserts on
    source-code text (a smell standing in for real DOM tests).
 6. **Coverage is unmeasured** — nothing tracks which RPC methods, slash
    commands, panels, settings keys, or item-card variants a test run
@@ -135,20 +135,20 @@ G-gaps and P-phases here are scheduled as the QA workstream in the unified
    abstract driver interface and must run through every access mode. Mode
    disagreement is itself a bug signal (N-version testing).
 2. **Determinism first, then exploration.** Every flake is either a real bug
-   or a harness bug; there is no third category. Explore mode generates
-   candidates; the distiller freezes what it finds into deterministic
+   or a harness bug. There is no third category. Explore mode generates
+   candidates. The distiller freezes what it finds into deterministic
    regression tests.
 3. **Honest evidence only** (inherited from qa-runner): commitments up
    front, verify from observed evidence, no fake green, artifacts always
    flush, uncertainty never rounds up.
 4. **Public-safety is an oracle, not a policy doc.** Every mode asserts the
    tripwires (no secrets/paths/raw prompts in DOM, projections, traces).
-5. **Formal models inform; they never authorize.** Per the workspace
+5. **Formal models inform. They never authorize.** Per the workspace
    invariant contract: narrow checkable contracts, bounded models,
    counterexamples become regression tests, runtime policy never weakened to
    make a model pass.
 6. **Measure everything the harness touches.** Every run emits perf samples
-   and a coverage ledger; budgets fail loudly; trends feed the optimization
+   and a coverage ledger. Budgets fail loudly. Trends feed the optimization
    loop.
 
 ## 3. Architecture: Four Access Modes, One Driver Contract
@@ -218,7 +218,7 @@ interface KhalaCodeQaDriver {
 ```
 
 `QaAction` extends qa-runner's schema with desktop verbs (`rpc_call`,
-`hotbar`, `slash_command`, `approve`, `thread_select`); `StateQuery` unifies
+`hotbar`, `slash_command`, `approve`, `thread_select`). `StateQuery` unifies
 "what the app believes" across modes so the consistency oracle (§6) can
 compare them.
 
@@ -262,8 +262,8 @@ Rules:
   CONFIRMED/REFUTED/INCONCLUSIVE semantics, so a scenario that "mostly
   worked" cannot report green.
 - **Backend tiers gate spend and risk**: `fixture` runs everywhere
-  (pre-push, CI); `live_codex` is skip-safe-by-default with env arming
-  (exactly like `smoke:codex-parity-live` today); `live_fleet` requires a
+  (pre-push, CI). `live_codex` is skip-safe-by-default with env arming
+  (exactly like `smoke:codex-parity-live` today). `live_fleet` requires a
   live Pylon and is the recording-rehearsal tier.
 - **The seed corpus is mechanical**: one lifecycle scenario per roadmap RPC
   group (threads, turns, approvals, settings/config, models/personality,
@@ -338,27 +338,27 @@ subset on every phase:
 
 | Oracle | What it asserts | Source |
 | --- | --- | --- |
-| `schema` | Every RPC response / JSONL event / bridge payload decodes against its Effect Schema; unknown fields flagged | new `KhalaCodeRpcClient` schemas (derive from `rpc.ts` types) |
+| `schema` | Every RPC response / JSONL event / bridge payload decodes against its Effect Schema. Unknown fields flagged | new `KhalaCodeRpcClient` schemas (derive from `rpc.ts` types) |
 | `consistency` | RPC state ≡ DOM state ≡ AX state (thread lists, fleet counts, gym state, runtime badges) | driver `read()` across modes |
-| `invariant` | No console errors/unhandled rejections; no zombie processes after shutdown; runtimeMode label always present; approval cards always answerable; legacy runtime only behind flags with banner | Playwright console/page-error hooks; process table; DOM |
+| `invariant` | No console errors/unhandled rejections. No zombie processes after shutdown. RuntimeMode label always present. Approval cards always answerable. Legacy runtime only behind flags with banner | Playwright console/page-error hooks. Process table. DOM |
 | `public_safe` | qa-runner tripwire + the part2 unsafe-text pattern over DOM text, traces, screenshots-adjacent metadata: no tokens, no local paths, no raw prompts | existing `assertPublicSafeResult`, `part2UiUnsafeTextPattern` |
 | `visual` | Geometry (no clipping/overlap), focus rings, reduced-motion, nonblank canvas, screenshot diffs vs blessed baselines per viewport | existing probe library + a new baseline store |
 | `perf` | Budgets on named metrics: thread-switch (exists), turn-start latency, first-render, panel-open, memory ceiling, JSONL event lag | `threadSwitchPerformance` pattern generalized (§8) |
-| `a11y` | AX tree completeness for interactive elements; keyboard-only completion of every defined scenario | Playwright accessibility snapshot + native AX backend |
-| `event` | Expected turn events arrive in order within deadlines; interrupts actually interrupt | `events()` stream (needs bridge SSE, §9 G1) |
-| `crash` | App survives; on any crash the seed/action-log/artifacts flush and the run REFUTES | qa-runner ensuring pattern |
+| `a11y` | AX tree completeness for interactive elements. Keyboard-only completion of every defined scenario | Playwright accessibility snapshot + native AX backend |
+| `event` | Expected turn events arrive in order within deadlines. Interrupts actually interrupt | `events()` stream (needs bridge SSE, §9 G1) |
+| `crash` | App survives. On any crash the seed/action-log/artifacts flush and the run REFUTES | qa-runner ensuring pattern |
 
 ## 7. The Coverage Ledger
 
 A per-run, mergeable JSON artifact counting what was exercised:
 
-- RPC methods called (of the 57) and with how many distinct argument shapes;
+- RPC methods called (of the 57) and with how many distinct argument shapes.
 - slash commands dispatched (of the full Codex registry) and their
-  availability states;
-- hotbar slots / panels opened; settings keys written; approval decision
-  kinds sent;
-- `ThreadItem` variants rendered (the parity contract enumerates them);
-- selectors clicked / screens screenshotted (for the vision mode);
+  availability states.
+- hotbar slots / panels opened. Settings keys written. Approval decision
+  kinds sent.
+- `ThreadItem` variants rendered (the parity contract enumerates them).
+- selectors clicked / screens screenshotted (for the vision mode).
 - lines/branches via Bun's coverage where cheap.
 
 The nightly report is the union across all modes and both explorers, with
@@ -369,7 +369,7 @@ version of "full coverage": measured, visible, and owned, not asserted.
 ## 8. Determinism, Measurement, And The Effect Layer
 
 - **Fixture app-server.** The chat-runtime tests already fake the Codex
-  app-server; promote that into a first-class **fixture Codex process** (a
+  app-server. Promote that into a first-class **fixture Codex process** (a
   small Bun binary speaking the app-server JSON-RPC protocol from recorded
   notification scripts, including approvals and background terminals). This
   gives Modes P/D/H a fully deterministic live-shaped backend — the single
@@ -377,13 +377,13 @@ version of "full coverage": measured, visible, and owned, not asserted.
 - **Deterministic env harness.** Port
   `apps/autopilot-desktop/src/testing/deterministic-env.ts` (+
   synthetic-event-service, app-replica) into a shared
-  `packages/khala-qa-harness`; adopt `TestClock` for time-dependent logic
+  `packages/khala-qa-harness`. Adopt `TestClock` for time-dependent logic
   (cooldowns, heartbeat freshness, interrupt timers) instead of real sleeps.
 - **Metrics registry.** Generalize `threadSwitchPerformanceSample` into a
   `qaMetrics()` reader on the window API and a `qaMetrics` RPC method: named
   counters/timers the app records anyway (turn latency, render marks via
   rAF/idle callbacks, cache hits, memory via CDP in Mode D). Budgets live in
-  scenarios; trends live in the nightly report. This is the "measure
+  scenarios. Trends live in the nightly report. This is the "measure
   everything, optimize everything" substrate — you cannot optimize what the
   harness cannot read.
   The first registry schema is `openagents.khala_code.qa_metrics.v1`, with
@@ -391,10 +391,10 @@ version of "full coverage": measured, visible, and owned, not asserted.
   `first_render.ms`, `panel.open_ms`, and `cache.hit`. The initial data-backed
   budgets are `budget.khala_code.cockpit_render.50_cards.v1`,
   `budget.khala_code.lifecycle_event_to_card.p95.v1`, and
-  `budget.khala_code.supervisor_tick.25_target.v1`; scenario `perf` oracles
+  `budget.khala_code.supervisor_tick.25_target.v1`. Scenario `perf` oracles
   consume the same budget records and fail when fixture samples exceed them.
 - **Shared harness package.** The three smoke scripts each carry duplicated
-  Vite/waitForHttp/probe helpers; extract once into the harness package so
+  Vite/waitForHttp/probe helpers. Extract once into the harness package so
   every new scenario is ~20 lines, not 400.
 
 ## 9. Property-Based, Model-Based, And Formal Tiers
@@ -402,7 +402,7 @@ version of "full coverage": measured, visible, and owned, not asserted.
 **9.1 Property-based (add `fast-check`).** Highest-value properties:
 composer editing (any sequence of type/paste/slash/attach operations never
 loses committed input and never desyncs preview from draft), thread-item
-projector (any interleaving of `item/*` deltas produces a consistent card;
+projector (any interleaving of `item/*` deltas produces a consistent card,
 already fixture-tested, generalize the generator), markdown/diff renderers
 (no crash, no HTML injection on arbitrary input).
 
@@ -411,10 +411,10 @@ Effect Schema state machines — *models* — for the app's core lifecycles,
 even though the shell is imperative DOM:
 
 - thread lifecycle: `none → starting → ready → turn_active → interrupted |
-  completed → resumed/forked/archived/deleted`;
-- approval lifecycle: `requested → answered(decision) | superseded | turn_interrupted`;
+  completed → resumed/forked/archived/deleted`.
+- approval lifecycle: `requested → answered(decision) | superseded | turn_interrupted`.
 - fleet delegate program: the six modules with their precondition/fallback
-  edges;
+  edges.
 - app-server supervisor: `idle → starting → ready → restarting → disposed`.
 
 fast-check's model-based mode then generates command sequences against the
@@ -423,11 +423,11 @@ bisimilar to the model. Every divergence is either an app bug or a model
 bug — both are wins. **This is also the argument for migrating the shell to
 Foldkit over time**: Foldkit's `main.ts`-importable pure `update` makes the
 model and the implementation the same artifact, collapsing this tier's
-maintenance cost. Recommend: new panels get written as Foldkit programs;
+maintenance cost. Recommend: new panels get written as Foldkit programs.
 the shell migrates opportunistically.
 
 **9.3 Formal verification (bounded, per the workspace contract).** TLA+ is
-for design-level state machines with interleaving; use it exactly where
+for design-level state machines with interleaving. Use it exactly where
 that bites:
 
 - **`khala.fleet.delegate`**: model the six modules, the recovery ladder
@@ -457,10 +457,10 @@ else — the oracle catalog is the broader net.
   actions. Same rules as the delegation loop: offline optimization, Gym
   admission, candidates never auto-promote.
 - **Perf regression as optimization input.** The metrics registry (§8)
-  yields per-commit trends; budgets catch regressions, and the same data
+  yields per-commit trends. Budgets catch regressions, and the same data
   ranks optimization targets (worst p95s first) instead of guessing.
 - **Scenario portfolio pruning.** Track per-scenario yield (bugs caught /
-  runtime cost); the nightly matrix orders scenarios by yield so the
+  runtime cost). The nightly matrix orders scenarios by yield so the
   cheapest most-catching tests run first (Tier-1 pre-push stays under its
   bound honestly).
 
@@ -475,16 +475,16 @@ per runtime cost.
 
 1. **G1 — Bridge events + auth.** Add `GET /rpc/events` (SSE) carrying
    `chatTurnEvent` + console/crash events over the preview bridge, and a
-   loopback bearer token + optional read-only mode. Small; unblocks Mode P
+   loopback bearer token + optional read-only mode. Small. Unblocks Mode P
    turn observation and is a productization prerequisite. (The no-auth
    full-surface bridge is fine for local dogfood but must not ship beyond
    it.)
 2. **G2 — `KhalaCodeRpcClient` + schema oracles.** Typed Effect client for
-   all 57 methods with response Schemas; the `schema` and `consistency`
+   all 57 methods with response Schemas. The `schema` and `consistency`
    oracles fall out of it.
 3. **G3 — qa-runner desktop backend.** `khala-desktop-backend.ts` in
    qa-runner: boots the app (`OPEN_WINDOW=0`, fixture or live backend),
-   composes the Chromium surface + RPC client + JSONL; headed variant arms
+   composes the Chromium surface + RPC client + JSONL. Headed variant arms
    the existing native macOS AX backend against the real Electrobun window.
 4. **G4 — Scenario DSL + driver service + shared harness package**
    (`packages/khala-qa-harness`): extract the duplicated Vite/probe helpers,
@@ -502,20 +502,20 @@ per runtime cost.
   fleet + settings. Immediate payoff: replaces `app-shell.test.ts`'s
   source-text assertions with real driven tests.
 - **P1 (week): G1 + G5 + seeded monkey.** Deterministic explore nights on
-  the fixture backend; event oracle; perf metrics registry + budgets.
+  the fixture backend. Event oracle. Perf metrics registry + budgets.
 - **P2 (week): G3 + LLM explorer + distiller wiring.** Vision mode headless
-  and headed; explore → distill → regress loop live; coverage ledger
+  and headed. Explore → distill → regress loop live. Coverage ledger
   steering both explorers.
 - **P3: model-based + formal tier.** fast-check models for thread/approval
-  lifecycles; the `khala.fleet.delegate` TLA+ spec; counterexample →
+  lifecycles. The `khala.fleet.delegate` TLA+ spec. Counterexample →
   fixture pipeline.
-- **P4: optimization + productization.** GEPA explore-policy loop; nightly
-  matrix on the owned GCE runner (Tier-2 pattern); then §12.
+- **P4: optimization + productization.** GEPA explore-policy loop. Nightly
+  matrix on the owned GCE runner (Tier-2 pattern). Then §12.
 
 ## 12. Productization Path
 
 Everything above doubles as product development for the QA agent line
-(#6181 was explicitly "out-ship Factory"; #6191 shipped the OSS package;
+(#6181 was explicitly "out-ship Factory", #6191 shipped the OSS package,
 there is a named first prospective customer in the feature-request doc):
 
 - Khala Code Desktop becomes the **flagship native-desktop QA target** —
@@ -525,12 +525,12 @@ there is a named first prospective customer in the feature-request doc):
   is precisely the driver-breadth lane (#6186) Factory's droid-control
   does not cover.
 - The **driver contract + scenario DSL** generalize: any Electrobun/Tauri/
-  web app with an RPC seam gets Mode P; anything with a URL gets Modes D/V.
+  web app with an RPC seam gets Mode P. Anything with a URL gets Modes D/V.
   "Bring your app, get a scenario corpus, an explore night, and a coverage
   ledger" is a sellable unit whose evidence chain (ATIF traces, videos,
   verdicts, receipts) already exists.
 - The **owner-gated seams stay owner-gated**: run receipts → settlement
-  (#6188) and skill emission remain INERT until deliberately flipped; the
+  (#6188) and skill emission remain INERT until deliberately flipped. The
   framework must keep producing evidence that would survive that flip
   (exact accounting, public-safe traces, verifiable verdicts).
 
@@ -539,22 +539,22 @@ there is a named first prospective customer in the feature-request doc):
 - No GitHub-hosted CI: Tier-1 bounded pre-push + Tier-2 owned-runner
   pattern stays.
 - The bridge's full-mutation surface never ships beyond loopback without
-  G1's auth; the QA framework itself must not become the unauthenticated
+  G1's auth. The QA framework itself must not become the unauthenticated
   remote-control hole.
-- Live tiers stay skip-safe-by-default with explicit env arming; fixture
+- Live tiers stay skip-safe-by-default with explicit env arming. Fixture
   tiers never touch `~/.codex`, real accounts, or spend.
-- Public-safety tripwires run in every mode; screenshots and traces are
+- Public-safety tripwires run in every mode. Screenshots and traces are
   evidence and must be redaction-checked like any projection.
-- Explore-mode discoveries become deterministic scenarios or they didn't
-  happen; "the agent saw it once" is INCONCLUSIVE, not CONFIRMED.
-- Formal models and optimizer candidates inform; the Effect authority and
+- Explore-mode discoveries become deterministic scenarios or they did not
+  happen. "The agent saw it once" is INCONCLUSIVE, not CONFIRMED.
+- Formal models and optimizer candidates inform. The Effect authority and
   the owner gate admit.
 
 ## 14. Bottom Line
 
 The perfect testing framework for Khala Code Desktop is mostly assembled
 from parts this repo already shipped: qa-runner's brains, backends,
-distiller, verifier, and evidence chain on one side; the desktop's
+distiller, verifier, and evidence chain on one side. The desktop's
 full-surface RPC bridge, in-page automation API, probe library, and
 headless JSONL contract on the other. What is genuinely new is small and
 high-leverage: an events+auth upgrade to the bridge, a typed RPC client, a
@@ -569,7 +569,7 @@ best demo.
 ## 15. Addendum — Post-Roadmap Status (2026-07-02)
 
 Written after the unified [`ROADMAP.md`](./ROADMAP.md) desktop-fleet push
-closed (WS-17 readiness gate shipped; ROADMAP_AFTER not started). This
+closed (WS-17 readiness gate shipped, ROADMAP_AFTER not started). This
 section audits what of the framework above **actually exists on `main`**,
 what a fresh hands-on run of every runnable tier produced today
 (origin/main `63c5c43b26`), what that run caught, and the honest answer to
@@ -584,17 +584,17 @@ Every G-gap and nearly every WS-6 task from §11 is implemented and on
 | --- | --- | --- |
 | G1 bridge auth + events | `clients/khala-code-desktop/src/bun/index.ts` — per-boot bearer (`x-khala-code-preview-token`, printed at boot), typed `rpc_unauthorized` / `rpc_read_only` rejections, `GET /rpc/events` SSE | **Live** (exercised today, §15.2) |
 | G2 typed RPC client + schema/consistency oracles | `packages/khala-qa-harness/src/rpc-client.ts` | **Live** |
-| G3 qa-runner desktop backend | `apps/qa-runner/src/khala-desktop-backend.ts` + `native-desktop-backend.ts` (headed AX, `QA_NATIVE_DESKTOP=1`) | Built; headed variant **never yet pointed at the real packaged app** |
+| G3 qa-runner desktop backend | `apps/qa-runner/src/khala-desktop-backend.ts` + `native-desktop-backend.ts` (headed AX, `QA_NATIVE_DESKTOP=1`) | Built. Headed variant **never yet pointed at the real packaged app** |
 | G4 scenario DSL + driver + shared package | `packages/khala-qa-harness` (`scenario.ts`, `driver.ts`, `rpc-driver.ts`, `runner.ts`, `desktop-smoke-helpers.ts`, `deterministic-env.ts`) | **Live** |
-| G5 fixture Codex app-server | `src/bun/fixture-codex-app-server.ts` (+ test); harness `real-app-fetch.ts` composes the real RPC handlers over it in-process — Mode P without a browser | **Live** |
-| G6 coverage ledger + frontier | `coverage-ledger.ts`; monkey night emits `artifacts/monkey-night-coverage-ledger.json` (RPC methods × argument shapes, hotbar panels, approval kinds) | **Live**; nightly union + zero-for-a-week auto-issue **not scheduled anywhere** |
+| G5 fixture Codex app-server | `src/bun/fixture-codex-app-server.ts` (+ test). Harness `real-app-fetch.ts` composes the real RPC handlers over it in-process — Mode P without a browser | **Live** |
+| G6 coverage ledger + frontier | `coverage-ledger.ts`. Monkey night emits `artifacts/monkey-night-coverage-ledger.json` (RPC methods × argument shapes, hotbar panels, approval kinds) | **Live**. Nightly union + zero-for-a-week auto-issue **not scheduled anywhere** |
 | T6.7 seed corpus | `seed-corpus.ts` + `KHALA_CODE_QA_SEED_CORPUS_MANIFEST` | **Live** |
 | T6.8 seeded monkey | `monkey-explorer.ts`, `monkey-night.ts` CLI | **Live** |
-| T6.9 LLM explorer | `explorer-brain.ts` (`deterministic_fixture` tier proven; `live_llm` tier typed, needs a model) | Partial |
+| T6.9 LLM explorer | `explorer-brain.ts` (`deterministic_fixture` tier proven, `live_llm` tier typed, needs a model) | Partial |
 | T6.10 live smokes | `apps/pylon` `smoke:fleet-run-live` / `smoke:fleet-run-sustained`, skip-safe, full arming contract printed on skip | **Live** (unarmed skip verified today) |
-| T6.11/T6.12 property + model-based | fast-check in harness; `model-based.ts` | **Live** |
+| T6.11/T6.12 property + model-based | fast-check in harness. `model-based.ts` | **Live** |
 | T6.13 formal tier | `specs/khala-fleet-delegate/FleetDelegateSupervisor.tla`, `specs/approval-protocol/`, `specs/session-thread-mapping/`, + mutation specs | **Live** (bounded) |
-| T6.14 perf registry + budgets | `src/shared/qa-metrics.ts` — `qaMetrics` RPC + the three budgets (`cockpit_render.50_cards`, `lifecycle_event_to_card.p95`, `supervisor_tick.25_target`) | Built; **webview samples still not reachable from the RPC in real runs** (the known T6.14 gap) |
+| T6.14 perf registry + budgets | `src/shared/qa-metrics.ts` — `qaMetrics` RPC + the three budgets (`cockpit_render.50_cards`, `lifecycle_event_to_card.p95`, `supervisor_tick.25_target`) | Built. **Webview samples still not reachable from the RPC in real runs** (the known T6.14 gap) |
 | T6.15 GEPA explore-policy | `explore-policy-gepa.ts` | Built, postponed lane (owner 2026-07-02) |
 
 ### 15.2 Fresh run evidence (all executed 2026-07-02)
@@ -605,13 +605,13 @@ Every G-gap and nearly every WS-6 task from §11 is implemented and on
 - `bun src/monkey-night.ts --runs 10 --steps 32` — **10/10 pass**, coverage
   ledger artifact written, seed+log replay refs recorded.
 - `bun test tests/*.test.ts` in the desktop — **495/495 pass**, 64 files,
-  ~5s (one non-reproducing single-test error in one of three suite runs;
+  ~5s (one non-reproducing single-test error in one of three suite runs,
   by principle 2 every flake is a bug — worth chasing when it recurs).
 - `bun test src/khala-desktop-backend.test.ts` in qa-runner — 6/6 pass.
 - **Mode P against the real bridge**: `KHALA_CODE_DESKTOP_OPEN_WINDOW=0
-  bun src/bun/index.ts` boots headless on :50021; `/health` OK; RPC with
-  the boot token succeeds; RPC without it returns typed
-  `rpc_unauthorized`; `GET /rpc/events` streams. G1 is real, not aspirational.
+  bun src/bun/index.ts` boots headless on :50021; `/health` OK. RPC with
+  the boot token succeeds. RPC without it returns typed
+  `rpc_unauthorized`. `GET /rpc/events` streams. G1 is real, not aspirational.
 - `smoke:fleet-run-live` unarmed — clean structured skip naming the full
   arming contract (`PYLON_FLEET_RUN_LIVE_ARM=1` + pins).
 
@@ -623,7 +623,7 @@ green at origin/main on 07-01 (episode-245 doc §1.1). Root causes, found
 by driving the real UI under Playwright with per-step diagnostics:
 
 1. **`smoke:part2-ui`**: the cockpit now requires the `fleetRunList` RPC
-   (WS-3 fleet-run parity). The smoke's mock table predated it; the
+   (WS-3 fleet-run parity). The smoke's mock table predated it. The
    default-500 made the cockpit render `Could not load fleet status:
    fleetRunList failed with 500` and `Worker Codex accounts` never
    appeared. Fixed in this change (mock added).
@@ -643,7 +643,7 @@ Two meta-findings matter more than the individual fixes:
   `verify`, not in any pre-push tier, and no nightly/cron exists for them
   or for the monkey night (repo-wide grep: zero automation references).
   Two roadmap lanes landed UI changes and the visual tier silently broke
-  within a day. The machine is built; **the loop is not running.**
+  within a day. The machine is built. **The loop is not running.**
 - **Cockpit robustness gap (product bug, not test bug):** one failed RPC
   (`fleetRunList`) blanks the entire cockpit, including account data that
   arrived successfully from `codexFleetStatus`. The cockpit should render

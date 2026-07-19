@@ -46,10 +46,10 @@ console.log('registry', d.version, '| total', d.promises.length, '|', JSON.strin
 - **Closing scoreboard:** the same counts recomputed from the merged
   `main`, presented as a before → after diff — explicitly name every
   record whose state or blocker set changed during the run (e.g.
-  "`foo.v1` planned → yellow; `bar.v1` cleared 2 of 3 blockers, still
+  "`foo.v1` planned → yellow. `bar.v1` cleared 2 of 3 blockers, still
   red") and the new owner-decisions-ready count in `NEEDS_OWNER.md`.
 - In fleet/wave mode the supervisor prints the opening scoreboard once at
-  wave start and the closing one after the last closeout merges; long
+  wave start and the closing one after the last closeout merges. Long
   waves should also emit interim scoreboards as each PR lands.
 
 ## Operating summary (details and exact rules live in the runbook)
@@ -61,10 +61,10 @@ console.log('registry', d.version, '| total', d.promises.length, '|', JSON.strin
    eligibility filter (runbook §2 — including *steer clear of promises
    already mapped by open issues/epics/roadmap lanes*: PROMISSORY hunts
    the hidden and overlooked, unless the user directed a specific target)
-   and the scoring formula (§3, throughline-weighted; current campaign:
+   and the scoring formula (§3, throughline-weighted. Current campaign:
    Khala Code launch).
 2. **Claim atomically.** One promiseId per claim. GitHub issue titled
-   `PROMISSORY: <promiseId>` — search open AND recently-closed first;
+   `PROMISSORY: <promiseId>` — search open AND recently-closed first.
    lower issue number wins races (§4).
 3. **Assault ladder** (§5): audit the record → decompose every blockerRef
    into BUILD / EVIDENCE / OWNER / EXTERNAL → implement fully in a fresh
@@ -88,10 +88,10 @@ console.log('registry', d.version, '| total', d.promises.length, '|', JSON.strin
   receipt-first. The success metric is *owner-decisions-ready*: promises
   one owner action from green, batched in `NEEDS_OWNER.md`.
 - planned→yellow / red→yellow only when the record's own `verification`
-  criteria are met with cited evidence; honest downgrades encouraged.
-- Never weaken a gate/test/policy to clear a blocker; never edit the
-  green-count test pin to silence a failure; never broaden public copy.
-- One promise per claim/PR; registry edits touch only your record + one
+  criteria are met with cited evidence. Honest downgrades encouraged.
+- Never weaken a gate/test/policy to clear a blocker. Never edit the
+  green-count test pin to silence a failure. Never broaden public copy.
+- One promise per claim/PR. Registry edits touch only your record + one
   note + the version constant.
-- Isolated worker homes always; never touch `~/.codex` or the live
-  `~/.claude`; public-safe prompts and evidence only.
+- Isolated worker homes always. Never touch `~/.codex` or the live
+  `~/.claude`. Public-safe prompts and evidence only.

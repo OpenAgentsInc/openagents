@@ -1,7 +1,7 @@
 # Reactor — Private Open-Model Deployment for Businesses
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -9,7 +9,7 @@ the owner pulls it forward. Do not route new work from it now.
 Date: 2026-07-04
 Status: product plan / draft in the Fable lane. **Nothing here is a product
 promise, served capability, public claim copy, or a published price.** The
-registry (`docs/promises/`) governs claims; every capability described below
+registry (`docs/promises/`) governs claims. Every capability described below
 enters as planned (or yellow where machinery already exists) through the
 normal gates. This doc flips no promise state, broadens no copy, and files
 no issues yet (§9 proposes the workstream map for a follow-up filing pass).
@@ -27,7 +27,7 @@ system.)
 Governing frames and companions:
 [`2026-07-02-bf-3-4-private-sovereign-compute-tier.md`](./2026-07-02-bf-3-4-private-sovereign-compute-tier.md)
 (the isolated-workroom/metering spec Reactor extends on-prem),
-[`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) (BF-3 provision lane; vertical config
+[`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) (BF-3 provision lane, vertical config
 packs), [`ROADMAP_AFTER.md`](./ROADMAP_AFTER.md) AW-0 (services engine),
 [`2026-07-03-apollo-outbound-sales-plan.md`](./2026-07-03-apollo-outbound-sales-plan.md)
 (Autopilot Lead Gen — Reactor becomes a target segment and upsell),
@@ -50,7 +50,7 @@ running the best open-weight models (NVIDIA Nemotron, Llama, GPT-OSS, Qwen,
 DeepSeek, Mistral, Gemma, and successors) behind the same OpenAI-compatible
 gateway shape Khala already serves, with a **typed model-provenance policy**
 the customer sets on day one: some customers will say "US-origin models
-only," some will say "Apache/MIT licenses only," some won't care — the
+only," some will say "Apache/MIT licenses only," some will not care — the
 policy is a first-class, enforced configuration object, not a sales
 conversation. On top of the private inference layer, the customer gets the
 Autopilot fulfillment machinery (workrooms, approval gates, receipts,
@@ -66,7 +66,7 @@ The Friedberg segment turned out to be one thread of an entire All-In
 episode arguing this thesis — "who owns the intelligence layer," July 4th
 weekend 2026, full summary archived at
 `docs/transcripts/external/2026-07-04-all-in-own-the-intelligence-layer.md`.
-Its framing line is the campaign in one sentence: **"You can't rent
+Its framing line is the campaign in one sentence: **"You cannot rent
 intelligence from the same place that rents it to your competitor."** The
 cleanest statements of the demand we keep hearing edge-on:
 
@@ -76,8 +76,8 @@ cleanest statements of the demand we keep hearing edge-on:
    "by handing it over… you are effectively commoditizing the asset that
    you have."
 2. **The hub/spoke model is splitting.** His picture: a few large hubs do
-   foundational training; medium hubs fine-tune enterprise-proprietary
-   models; and a **distributed spoke layer runs inference on-prem** — "a
+   foundational training. Medium hubs fine-tune enterprise-proprietary
+   models. And a **distributed spoke layer runs inference on-prem** — "a
    set of servers… in your own data center or even in your own enterprise
    IT closet."
 3. **The timeline is now.** "Everyone… is going to walk this path over the
@@ -87,7 +87,7 @@ cleanest statements of the demand we keep hearing edge-on:
    "forcing data retention… gaining immense leverage on your business,"
    with "a track record of going after their most successful customers" —
    and packages the answer as a control plane + training platform deployed
-   on customer infrastructure. The category is being named for us; our job
+   on customer infrastructure. The category is being named for us. Our job
    is to sell it with receipts.
 
 The full episode adds the numbers and precedents that make each Reactor
@@ -98,7 +98,7 @@ design choice quotable (all attributed to the show, never our claims):
    custom model for US government agencies — and **the agencies own the
    hardware, the data, and the weights**. That is the Reactor shape at
    government scale, built on the exact model family headlining our §3
-   catalog seed; Sacks framed it as a structural bet against the
+   catalog seed. Sacks framed it as a structural bet against the
    model-layer duopoly (~$60B + ~$40B ARR, nobody else meaningful).
 6. **"Safety" got redefined in our favor.** Karp's thesis, per Sacks:
    enterprise AI safety now means *the model provider cannot hoover up
@@ -113,7 +113,7 @@ design choice quotable (all attributed to the show, never our claims):
    eventually carry alongside model origin.
 7. **The vertical-capture cautionary tale is named: Figma.** Anthropic
    launched Claude Design into its own customer's category (CPO on
-   Figma's board until 3 days before launch; Figma −50% YTD), with
+   Figma's board until 3 days before launch. Figma −50% YTD), with
    Claude Science/Security/Legal/Financial/Code listed as the same move.
    "Dominate the model layer, then take the lucrative verticals" is the
    walk-up-the-stack risk every Reactor prospect is now primed to fear.
@@ -124,7 +124,7 @@ design choice quotable (all attributed to the show, never our claims):
    weights + a good harness is the cost curve, and per Calacanis's
    90%/year token-deflation call, owning the hardware makes wasting
    tokens rational. The BCG stake-raiser: half of large US companies
-   can't earn above their 8–11% cost of capital — handing alpha to a
+   cannot earn above their 8–11% cost of capital — handing alpha to a
    provider that may compete with you "is not a luxury risk, it is
    fatal."
 9. **The lock-in wave is the counter-pitch.** Microsoft ~$2.5B and Amazon
@@ -138,8 +138,8 @@ design choice quotable (all attributed to the show, never our claims):
 Our own corpus already carries the same signal from real buyers: the legal
 design partner's first ask was a private pre-drafting workspace **on compute
 they control**, trained on their own document corpus (the meditations doc,
-§1); the health-vertical exemplar has a hard redaction-before-inference
-requirement; customer #1's own problem list includes isolated VMs. BF-3.4
+§1). The health-vertical exemplar has a hard redaction-before-inference
+requirement. Customer #1's own problem list includes isolated VMs. BF-3.4
 specced the cloud-side regulated-private lane. Reactor is the same product
 one step further out: the customer's own hardware, open weights, zero
 third-party model custody.
@@ -164,7 +164,7 @@ under a managed retainer.
 audit receipts), a new money rail, a fork of the product per customer
 (config, not fork — the standing BF-4.8 rule), a resale of anyone's
 subscription capacity, or a replacement for the hosted Khala API (`openagents/khala`
-remains the hosted model surface; Reactor is customer-side deployment).
+remains the hosted model surface. Reactor is customer-side deployment).
 
 ## 3. The model catalog and the provenance policy (the differentiator)
 
@@ -179,7 +179,7 @@ Per-model metadata (the `model_provenance.v1` shape):
 | --- | --- | --- |
 | `originJurisdiction` | `us`, `eu`, `cn`, `fr`, `mixed` | Some customers (defense-adjacent, gov contractors, certain boards) mandate US/allied-origin only |
 | `developer` | `nvidia`, `meta`, `openai`, `alibaba`, `deepseek`, `mistral`, `google` | Vendor-risk review |
-| `license` | `apache-2.0`, `mit`, `llama-community`, `nvidia-open-model` | Legal sign-off; commercial-use terms |
+| `license` | `apache-2.0`, `mit`, `llama-community`, `nvidia-open-model` | Legal sign-off. Commercial-use terms |
 | `weightsOpenness` | `open-weights`, `open-weights-restricted` | Can it be air-gapped, fine-tuned, redistributed internally |
 | `trainingDataDisclosure` | `disclosed`, `partial`, `undisclosed` | Provenance-sensitive verticals |
 | `distillationLineage` | upstream model refs where known | Some "US" models distill from restricted-origin teachers — the policy must see through the label |
@@ -196,19 +196,19 @@ cost-first per task class). Examples:
 - *"No Chinese-origin models"* → exclude `cn` — Qwen/DeepSeek/Kimi/GLM out,
   everything else in.
 - *"Permissive licenses only"* → `license ∈ {apache-2.0, mit}`.
-- *"Don't care — best model per dollar"* → empty constraint set; the router
-  optimizes freely. (Many customers will pick exactly this; the point is
+- *"Do not care — best model per dollar"* → empty constraint set. The router
+  optimizes freely. (Many customers will pick exactly this, the point is
   that it is a **choice with a receipt**, not a default they never saw.)
 
 Enforcement is structural, not aspirational: the provisioner refuses to pull
-weights that violate the policy; the router refuses to route to a
-non-conforming model; every policy decision and every model
+weights that violate the policy. The router refuses to route to a
+non-conforming model. Every policy decision and every model
 install/upgrade emits a receipt naming the policy version it satisfied.
 Policy changes are versioned customer decisions with sign-off, like every
 other approval in the system. This is the semantic-selector discipline
 applied to model choice — no ad hoc "we'll only use good ones, trust us."
 
-Initial catalog seed (curation, not endorsement; every entry needs our own
+Initial catalog seed (curation, not endorsement, every entry needs our own
 eval receipts before it carries capability copy — and note the category
 validation: the Palantir–Nvidia deal builds government custom models on
 Nemotron with agency-owned weights, and Calacanis's on-air claim was that
@@ -217,7 +217,7 @@ hype, but hype pointing at our headliner): NVIDIA Nemotron family,
 Meta Llama family, OpenAI GPT-OSS, Google Gemma, Mistral/Magistral,
 Qwen family, DeepSeek family, Kimi/GLM — spanning the policy space so every
 constraint set above still resolves to a strong stack. RX-4 adds the first
-fixture eval refs for Meta Llama and OpenAI GPT-OSS only; every unrun
+fixture eval refs for Meta Llama and OpenAI GPT-OSS only. Every unrun
 model/task combination remains explicitly `not_measured`.
 
 RX-2 status (2026-07-04): `packages/reactor-contracts` now carries the
@@ -234,7 +234,7 @@ lane-neutral serving skeleton: `openagents.reactor.node_model_profile.v1`,
 model install/upgrade receipts, OpenAI-compatible route-decision receipts, and
 local token-metering receipts. The fixture server-class profile declares
 `servingLane: hydralisk`, vLLM, an offline-once-provisioned gateway, and exact
-local metering. Provisioning refuses nonconforming weights before pull; routing
+local metering. Provisioning refuses nonconforming weights before pull. Routing
 recomputes policy and refuses nonconforming models before serving, even if a
 caller presents a forged installed receipt. This is still a skeleton smoke, not
 a deployed Reactor node.
@@ -244,11 +244,11 @@ Psionic-owned task-class harness profile, `openagents.reactor.model_eval_receipt
 `openagents.reactor.eval_coverage_matrix.v1`, and
 `openagents.reactor.capability_copy_eval_decision.v1`. The seed has measured
 fixture receipts for OpenAI GPT-OSS and Meta Llama on drafting and extraction:
-GPT-OSS is labeled `rx3_served_model`; Llama is labeled
+GPT-OSS is labeled `rx3_served_model`. Llama is labeled
 `hosted_equivalent_large_model`. RAG-over-corpus, agent tool-use, and all other
 model/task cells are `not_measured`, never zero. Capability-copy decisions
 return only measured eval refs and block unmeasured task claims. This is still
-Reactor-side harness/receipt integration; Psionic runtime execution machinery
+Reactor-side harness/receipt integration. Psionic runtime execution machinery
 is not reimplemented here.
 
 RX-5 status (2026-07-04): the install/ops path now has a fleet-executable
@@ -277,8 +277,8 @@ blocked.
 RX-9 status (2026-07-04): the need-to-know access layer now has typed source
 contracts and adversarial fixtures in `packages/reactor-contracts`, plus a
 Worker-side deploy-sweep test. `openagents.reactor.need_to_know_ruleset.v1`
-is deny-by-default; hard workspace/matter/role-or-user rules run before the
-soft model-oracle plausibility verdict; receipts log who/what/scope/rule
+is deny-by-default. Hard workspace/matter/role-or-user rules run before the
+soft model-oracle plausibility verdict. Receipts log who/what/scope/rule
 version and explicitly do not log raw document content or generated summaries.
 The Bob/Alice fixture denies citation and summary leakage, denies missing
 oracle verdicts, and proves a broken allow-all rule fixture fails closed. This
@@ -378,10 +378,10 @@ honest path:
 - **It is already production-proven for us.** Hydralisk serves the live
   `openagents/khala` lane (vLLM on GCE L4) with model profiles, systemd
   runbooks, smokes, rollback, and public-safe receipts — the exact
-  operational shape a customer install needs; RX-5's runbook extends what
+  operational shape a customer install needs. RX-5's runbook extends what
   exists rather than inventing one.
 - **Customer-side operability.** A customer's own IT staff (and future
-  partner orgs) can reason about a vLLM/TensorRT deployment; hiring and
+  partner orgs) can reason about a vLLM/TensorRT deployment. Hiring and
   vendor support exist for it. "The switch button in your hand" (§7 exit
   invariant) is more credible on a stack the world already knows.
 - Hydralisk's own fail-closed discipline (explicit model revision, engine
@@ -409,15 +409,15 @@ substrate). Choose it only when its properties are the point of the deal:
 model catalog, `reactor.model_policy.v1` enforcement, the gateway surface,
 metering receipts, lifecycle events — is **lane-neutral by construction**
 (RX-2/RX-3). A Reactor node declares `servingLane: hydralisk | psionic`
-per model profile; policy enforcement and receipts are identical across
-lanes; swapping lanes is a config change with an eval-gated cutover, never
+per model profile. Policy enforcement and receipts are identical across
+lanes. Swapping lanes is a config change with an eval-gated cutover, never
 a re-integration. Sales copy never leads with the engine: customers buy
 custody, policy, and receipts — the lane is an implementation detail we
 choose per the table above, disclosed honestly in the node profile.
 
 - **BF-3.4 already defines** the isolation contract, lifecycle events, trust
   tiers, and metering receipt shape for the cloud-side regulated-private
-  lane; Reactor reuses that vocabulary with a `customer_premises` placement
+  lane. Reactor reuses that vocabulary with a `customer_premises` placement
   class rather than inventing a parallel one.
 - **The gateway shape is already our shape**: OpenAI-compatible endpoint,
   exact-only token accounting, typed policies. On-prem, the exactness
@@ -429,7 +429,7 @@ choose per the table above, disclosed honestly in the node profile.
   quoted per engagement). Reactor sells outcomes on all three, not hardware
   — hardware can be customer-procured to our spec or bundled per deal.
 
-## 5. What the customer buys (packages; modeled, owner-gated like all prices)
+## 5. What the customer buys (packages, modeled, owner-gated like all prices)
 
 | Package | Shape | Modeled band |
 | --- | --- | --- |
@@ -437,11 +437,11 @@ choose per the table above, disclosed honestly in the node profile.
 | **Reactor Pilot** | One node installed (their hardware or ours-specced), policy-conforming model set served, one real workload (e.g. the pre-drafting workspace pattern) grounded on their corpus behind their firewall, before/after receipts | $10–25k |
 | **Reactor Managed** (retainer) | Ops, upgrades, model refreshes within policy, eval regressions on their tasks, metering/KPI reporting, fulfillment-agent lanes on top | $2.5–10k/mo |
 | **Data Liberation** (quick win, standalone or bundled) | Migrate the customer's records out of walled-garden vendors into open, AI-accessible systems they control — the Mistral-named precondition ("your software vendors might block you… AI fortunately allows you to migrate quite fast"), and exactly fleet-shaped work: schema mapping, bulk export/transform, verification receipts per record class | $2.5–10k |
-| **Harness evolution add-on** | The Mutalisk loop pointed at the customer's tasks: an offline proposer evolves the *harness* (deliverable landing, tool-call repair, context/matter fidelity, loop robustness) around their frozen policy-conforming model — one mechanism per iteration, accepted only on evidence, zero weight changes. The externally-published precedent (see `docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md`): a frozen open model went 63.4%→80.1% on Harvey LAB, matching frontier quality at ~7× lower cost, with code mechanisms that **transfer across model swaps** — so the investment survives a provenance-policy change | quoted; rung zero of the improvement ladder |
-| **Fine-tune / flywheel add-on** (later) | Per-customer adaptation on their corpus and — once running — the **continuous training flywheel**: improvement from their own interaction data, inside their boundary, producing weights *they own* ("the edges of your business into AI systems your vendors and competitors cannot replicate"); includes **distill-to-fit** — shrinking models to their observed input distribution to cut serving cost. Sequenced **after** harness evolution: weights carry the work only once the harness has demonstrably flattened | quoted |
+| **Harness evolution add-on** | The Mutalisk loop pointed at the customer's tasks: an offline proposer evolves the *harness* (deliverable landing, tool-call repair, context/matter fidelity, loop robustness) around their frozen policy-conforming model — one mechanism per iteration, accepted only on evidence, zero weight changes. The externally-published precedent (see `docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md`): a frozen open model went 63.4%→80.1% on Harvey LAB, matching frontier quality at ~7× lower cost, with code mechanisms that **transfer across model swaps** — so the investment survives a provenance-policy change | quoted. Rung zero of the improvement ladder |
+| **Fine-tune / flywheel add-on** (later) | Per-customer adaptation on their corpus and — once running — the **continuous training flywheel**: improvement from their own interaction data, inside their boundary, producing weights *they own* ("the edges of your business into AI systems your vendors and competitors cannot replicate"). Includes **distill-to-fit** — shrinking models to their observed input distribution to cut serving cost. Sequenced **after** harness evolution: weights carry the work only once the harness has demonstrably flattened | quoted |
 
 The upsell path from the rest of the portfolio is natural in both
-directions: services customers with data sensitivity graduate to Reactor;
+directions: services customers with data sensitivity graduate to Reactor.
 Reactor customers consume Autopilot fulfillment, QA Swarm, and the
 marketing packages on top of their private endpoint. And Reactor is a
 **segment for Autopilot Lead Gen**: the outbound analyzer gains a
@@ -478,25 +478,25 @@ not a fork.**
 
 ## 7. Invariants (inherited + Reactor-specific)
 
-All ROADMAP_BIZ §4 invariants persist (grounded-or-it-doesn't-ship,
+All ROADMAP_BIZ §4 invariants persist (grounded-or-it-does not-ship,
 approval-before-external, config-not-fork, no demo theater, commitments are
 objects, no client-identifying info in-repo). Added:
 
 - **Customer data never leaves the boundary.** Receipts, metrics, and
-  opaque refs flow out; corpus, prompts, and outputs do not. Air-gapped
+  opaque refs flow out. Corpus, prompts, and outputs do not. Air-gapped
   mode must genuinely function (signed update bundles, no phone-home).
 - **The model policy is enforced, versioned, and receipted** — provisioner
-  and router both refuse non-conforming models; no silent substitutions,
+  and router both refuse non-conforming models. No silent substitutions,
   ever, including under incident pressure.
 - **Provenance metadata is honest.** Distillation lineage and
   training-data disclosure recorded as known/partial/unknown — never
   laundered into a cleaner answer than the upstream facts support.
 - **No compliance claims without audit receipts.** "Private" and
-  "policy-enforced" are claimable when built; "HIPAA-grade"/"sovereign"
+  "policy-enforced" are claimable when built. "HIPAA-grade"/"sovereign"
   are not, until the certification receipts exist (same rule as BF-3.4).
 - **Exact-only accounting on-prem.** Local metering reconciles like the
-  public counter does; `not_measured` over invented numbers.
-- **Open-source posture holds.** The serving layer builds on open stacks;
+  public counter does. `not_measured` over invented numbers.
+- **Open-source posture holds.** The serving layer builds on open stacks.
   customer lock-in is operational excellence and the policy/eval/receipt
   layer, never data hostage-taking — we are selling the *escape* from
   that model, and copying it would be fatal to the pitch.
@@ -506,7 +506,7 @@ objects, no client-identifying info in-repo). Added:
   switch button fully in your hand" is the posture that wins this buyer,
   and our receipts discipline makes it verifiable rather than rhetorical.
 - **Need-to-know is enforced, not assumed.** AI retrieval over a company
-  corpus surfaces need-to-know errors mercilessly; per-user access scoping
+  corpus surfaces need-to-know errors mercilessly. Per-user access scoping
   (hard rules in systems, soft rules checked by model oracles) gates every
   retrieval path before any org-wide assistant ships.
 
@@ -517,15 +517,15 @@ objects, no client-identifying info in-repo). Added:
 2. No deployed customer corpus store or customer data-custody proof. RX-9
    covers source-level access decisions over public-safe fixture refs, not a
    live customer corpus.
-3. No customer Data Liberation engagement or real vendor export has been run;
+3. No customer Data Liberation engagement or real vendor export has been run.
    RX-10 covers synthetic adapter/verification machinery only.
 4. No customer improvement-ladder run, customer interaction dataset, or
-   customer-owned distilled/fine-tuned weight artifact exists; RX-11 covers the
+   customer-owned distilled/fine-tuned weight artifact exists. RX-11 covers the
    design and internal OpenAgents dogfood receipts only.
-5. No owned eval receipts across the full catalog on all customer-shaped tasks;
+5. No owned eval receipts across the full catalog on all customer-shaped tasks.
    RX-4 covers only the initial measured fixture cells.
 6. BF-3.1/3.2 corpus ingestion + redaction remain the shared prerequisite
-   (already the BF-3 spine; Reactor raises their priority).
+   (already the BF-3 spine, Reactor raises their priority).
 7. No pricing sign-off, customer contract, compliance certification, public
    case-study copy, payout, or settlement authority. Everything above remains
    registry-planned until receipt-backed gates land.
@@ -546,20 +546,20 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 
 | Task | Description | Gate/receipt |
 | --- | --- | --- |
-| RX-1 | Registry records: `reactor.private_deployment.v1` (planned) + model-policy and provenance record family; modeled rate card staged for the owner sitting | Records live at planned; no copy |
-| RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in `packages/reactor-contracts`, with the initial curated seed and honest disclosure fields | Landed in source with resolver + tests; no runtime authority |
-| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke; no deployed node |
-| RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
-| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
-| RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh; external claims still blocked |
-| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | Closed as gated/deferred in #8280; no customer pilot claimed; reopen/new issue only with owner approval, customer-signed policy, pricing/copy posture, and receipt plan |
-| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Landed public-only analyzer config, regulated template variant, LG-7 customer config, and LG-2 quoted-pipeline coverage; no live sends |
-| RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture; no live customer corpus |
-| RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports; no customer engagement |
-| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Landed design doc, internal dogfood harness-evolution receipt, internal dogfood distill receipt, and aggregate claim blockers |
+| RX-1 | Registry records: `reactor.private_deployment.v1` (planned) + model-policy and provenance record family. Modeled rate card staged for the owner sitting | Records live at planned. No copy |
+| RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in `packages/reactor-contracts`, with the initial curated seed and honest disclosure fields | Landed in source with resolver + tests. No runtime authority |
+| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default, contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke. No deployed node |
+| RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells. Psionic runtime remains separate |
+| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke. No deployed node |
+| RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh. External claims still blocked |
+| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | Closed as gated/deferred in #8280. No customer pilot claimed. Reopen/new issue only with owner approval, customer-signed policy, pricing/copy posture, and receipt plan |
+| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Landed public-only analyzer config, regulated template variant, LG-7 customer config, and LG-2 quoted-pipeline coverage. No live sends |
+| RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture. No live customer corpus |
+| RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports. No customer engagement |
+| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit). Then input-distribution-driven model shrinking. Then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks. No capability claims until receipts | Landed design doc, internal dogfood harness-evolution receipt, internal dogfood distill receipt, and aggregate claim blockers |
 
-Sequencing: RX-1/RX-2 are paper + schemas (start now); RX-3 gates RX-5/6/7;
-RX-4 runs parallel in psionic; RX-6 (dogfood), RX-9 (need-to-know fixtures),
+Sequencing: RX-1/RX-2 are paper + schemas (start now). RX-3 gates RX-5/6/7.
+RX-4 runs parallel in psionic. RX-6 (dogfood), RX-9 (need-to-know fixtures),
 RX-10 (synthetic Data Liberation verification), and RX-11 (improvement-ladder
 dogfood receipts) precede any external pilot, per the standing pattern — we are
 always customer number one. BF-3.1/3.2 (ingestion + redaction) remain the
@@ -572,13 +572,13 @@ Source: `docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md`
 — the Mistral CEO's enterprise-sovereignty post. Mistral is the
 best-positioned direct competitor for exactly this buyer (their answer: the
 **Studio** control plane + the **Forge** training platform — note the naming
-collision with our own Forge; keep public copy unambiguous). Their argument
+collision with our own Forge. Keep public copy unambiguous). Their argument
 proceeds in five steps, and each one either validates a Reactor lane or
 hands us a missing one:
 
 1. **Open models or leverage** — closed providers forcing data retention
    "see it and learn from it" and have "a track record of going after their
-   most successful customers." Validates §1; adopted as thesis signal 1.4
+   most successful customers." Validates §1. Adopted as thesis signal 1.4
    and outbound copy raw material (their CEO making our pitch is
    third-party validation, like the Friedberg clip).
 2. **Open data systems, not just open models** — walled-garden SaaS vendors
@@ -587,9 +587,9 @@ hands us a missing one:
    Liberation** package (§5) and RX-10 — a fleet-shaped migration quick win
    that is also the natural first engagement for a customer not yet ready
    for a full Reactor install.
-3. **Need-to-know access control** — "you don't always want Bob to see what
-   Alice is doing"; hard rules in systems, soft rules checked by models.
-   Previously implicit in our workroom visibility tiers; now explicit as
+3. **Need-to-know access control** — "you do not always want Bob to see what
+   Alice is doing". Hard rules in systems, soft rules checked by models.
+   Previously implicit in our workroom visibility tiers. Now explicit as
    the access layer in §4, an invariant in §7, and RX-9. This is a genuine
    hard problem ("hard and merciless") and therefore a durable service
    margin, not a commodity feature.
@@ -605,15 +605,15 @@ hands us a missing one:
 5. **Knowledge transfer and the exit** — "we transfer knowledge… we can
    disappear once the systems are up and running… the switch button can be
    fully in your hand." Adopted as the exit-friendly invariant (§7). This
-   is where we can out-credential them: they assert it; our promise
+   is where we can out-credential them: they assert it. Our promise
    registry, receipts, and open-source posture let a customer *verify* it.
 
 Where we differ and should say so: Mistral sells its own models first and
-its zero-data-retention hosted tier second; Reactor is **model-neutral by
+its zero-data-retention hosted tier second. Reactor is **model-neutral by
 construction** — the provenance policy (§3) treats Mistral's models as
 catalog entries like Nemotron or Llama, and neutrality is exactly what a
 "no single-vendor leverage" buyer is shopping for. Their "applied AI
-engineers working hand-in-hand" is a headcount-shaped delivery model; ours
+engineers working hand-in-hand" is a headcount-shaped delivery model. Ours
 is the fleet + operator-minutes discipline (BF-9.4) — the same agency-trap
 falsifier applies to Reactor engagements as everywhere else.
 
@@ -621,9 +621,9 @@ falsifier applies to Reactor engagements as everywhere else.
 
 - No HIPAA/FedRAMP/SOC2 or "sovereign" certification claims from this doc.
 - No hosted-Khala changes: `openagents/khala` stays the single hosted model
-  surface; Reactor never forks the model story.
+  surface. Reactor never forks the model story.
 - No hardware-resale business as a primary motion (bundling per-deal only).
 - No training-data acquisition from customers — the entire point is that
-  their data stays theirs; fine-tunes belong to the customer.
-- No new money rails; billing rides the existing cloud/openagents.com
+  their data stays theirs. Fine-tunes belong to the customer.
+- No new money rails. Billing rides the existing cloud/openagents.com
   surfaces.

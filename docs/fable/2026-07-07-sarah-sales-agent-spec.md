@@ -1,14 +1,14 @@
 # Sarah — The OpenAgents Sales Agent: Spec, Audit, and Analysis
 
 Date: 2026-07-07
-Status: owner-directed product spec + audit. **Sarah** is the AI sales
+Status: owner-directed ProductSpec + audit. **Sarah** is the AI sales
 agent built into openagents.com — the evolved form of the conversational
 web-sales process designed in the blitz program and partially shipped as
 the `/autopilot` onboarding (epic #6123). This doc records the owner
 decisions, audits the prior vision and the current substrate (grounded in
 two parallel explorations run 2026-07-07: the blitz/legal-lane sales
 vision and the monorepo asset inventory), and specifies the build. Nothing
-here is promise copy; pricing figures are indicative and owner-gated; the
+here is promise copy. Pricing figures are indicative and owner-gated. The
 behavior contracts named in §10 land with their implementation lanes.
 Sequencing (MASTER_ROADMAP rev 2, owner-directed): **Sarah is Phase P1**
 — immediately after the store-submitted mobile MVP (P0) and ahead of
@@ -19,15 +19,15 @@ the P4 employee record generalizes from.
 
 > **Update (2026-07-07 night):** implementation began in a **separate
 > private repo, `OpenAgentsInc/sarah`** (standard Vercel + AI SDK canary
-> realtime stack, Next.js; deploy target **sarah.openagents.com**;
+> realtime stack, Next.js. Deploy target **sarah.openagents.com**.
 > possible later monorepo merge). The realtime speech loop already works
 > locally, which **pulls SR-4 voice to the front — v1 is voice+text**,
-> inverting §11's deferral; §5's "web (primary)" surface is
+> inverting §11's deferral. §5'S "web (primary)" surface is
 > sarah.openagents.com rather than an embedded monorepo route for now.
 > The deploy-readiness list (SR-0) and the vercel/eve framework
 > evaluation live in MASTER_ROADMAP P1 (rev 3) and the sarah repo
 > README. All authority, deal-rules, memory, and honesty requirements in
-> this spec bind the new repo unchanged; the monorepo stays the system
+> this spec bind the new repo unchanged. The monorepo stays the system
 > of record for CRM, credits, checkout, and receipts.
 
 ## 0. The owner direction (2026-07-07, recorded in essence)
@@ -35,18 +35,18 @@ the P4 employee record generalizes from.
 - We are building a **voice-based sales agent** for openagents.com to
   sell the service/package ladder. Her name is **Sarah**. She is an
   *example of an AI employee* — the pitch is "we sell AI employees," and
-  Sarah is the standing answer to "if you're so good at building AI
+  Sarah is the standing answer to "if you are so good at building AI
   employees, where are yours and what are they doing for you?"
 - Sarah is **the omnipresent sales rep**: accessible to anyone
   interacting with OpenAgents in a sales capacity. The founder is not
-  available; Sarah is taking over the sales organization.
-- **Channels:** persistent chat on the website; **email** — she checks
+  available. Sarah is taking over the sales organization.
+- **Channels:** persistent chat on the website. **Email** — she checks
   her own email, and a conversation started on the website continues if
-  the prospect corresponds by email; voice.
+  the prospect corresponds by email. Voice.
 - **Memory:** she keeps her own memory **mapped to the OpenAgents CRM**
   — we have a CRM, and she consults those memories when talking to you.
   (Owner answered the layering question: CRM as source of truth, pulled
-  on the fly; not infinite transcript recall.)
+  on the fly. Not infinite transcript recall.)
 - **Money:** she can discuss pricing, come up with deals, draft
   contracts, close deals, hand you a payment link, and take your money.
 - **Deal logic:** *no improvised discounts* — "discounts are already
@@ -55,22 +55,22 @@ the P4 employee record generalizes from.
   the fly from a module catalog (e.g. an internal-operations AI module ≈
   $10k setup — indicative). One owner-approved tactic named: push to
   **close on the call** (e.g. a pay-on-the-call incentive with a link
-  good only today); owner is open to trying tactics — as *rules*, never
+  good only today). Owner is open to trying tactics — as *rules*, never
   improvisation, and she must never be pressured into inventing deals.
-- **Credit basis:** deals are estimates in **credits**; she can sell
-  credits of any amount **up to ~$10k** in one conversation; the goal of
+- **Credit basis:** deals are estimates in **credits**. She can sell
+  credits of any amount **up to ~$10k** in one conversation. The goal of
   a first conversation is a **basic credit package purchased**. She
   plugs in one number plus the rough goals of the user — **nothing
   firmly committed**. Firm commitments / specific milestones **cost
   extra** and escalate.
-- **Contracts:** sometimes needed; she drafts, humans sign.
+- **Contracts:** sometimes needed. She drafts, humans sign.
 - **Conversation style:** qualify first (needs, pain points), then steer
-  toward the solution; **one question at a time**; gather, then pitch,
+  toward the solution. **One question at a time**. Gather, then pitch,
   guiding toward the end goal. Multi-touch is fine (loop back via
   email), but the close-on-call push is the default posture.
 - Also on the table: routing inbound *investor* interest through the
   same front door ("have you spoken with Sarah?") — qualify-and-route
-  only; see open questions.
+  only. See open questions.
 
 ## 1. What Sarah is, in one paragraph
 
@@ -113,30 +113,30 @@ is the capstone):
   (blitz Wave E). Voice was already a *priced offering* in the legal
   lane (a $1,750 two-way voice interface add-on), and the legal-MVP
   Blueprint carries **voice-safety eval fixtures** we adopt wholesale:
-  voice is never a separate authority path; transcripts are evidence,
-  not instructions; "send this to the client / file this / update
+  voice is never a separate authority path. Transcripts are evidence,
+  not instructions. "Send this to the client / file this / update
   billing" from voice is blocked with a Failure Receipt.
 - **In-conversation checkout**: quote-ready → `credit_kickoff` card →
   `POST /api/billing/checkout` → hosted checkout → webhook writes the
   idempotent ledger row → workspace + per-customer service promise
   provision hang off the payment event. Sales-led deals use the
-  two-line **setup-fee + credit-grant split**; live payment links on
+  two-line **setup-fee + credit-grant split**. Live payment links on
   `pay.openagents.com` are the proven pattern.
 - **Honesty as architecture**: the onboarding agent may only sell
-  green/operator-assisted surfaces; no service promise exceeds its
-  backing product promise; payment cards must create real ledger
-  entries; the credit meter is never theatrical.
+  green/operator-assisted surfaces. No service promise exceeds its
+  backing product promise. Payment cards must create real ledger
+  entries. The credit meter is never theatrical.
 
 ### 2.2 What actually shipped (epic #6123, closed)
 
-The command-canvas onboarding page with the `/autopilot` camera pose;
-the Khala-driven, registry-honesty-bound intake conversation; the closed
+The command-canvas onboarding page with the `/autopilot` camera pose.
+the Khala-driven, registry-honesty-bound intake conversation. The closed
 typed-component catalog **fully implemented and tested** in the gateway
 (`workers/api/src/inference/khala-component-channel.ts` — all six
 components, atomic versioned frames, schema validation, one bounded
 repair turn, leak scanning) and wired into the business-intake chat
-(`business-intake-chat-routes.ts`, emitting `business_intake_spec.v1`);
-a clickable `credit_kickoff` stubbed to checkout; the legal vertical
+(`business-intake-chat-routes.ts`, emitting `business_intake_spec.v1`).
+a clickable `credit_kickoff` stubbed to checkout. The legal vertical
 overlay. Batch 2 (credit-meter economics, model-chosen component
 streaming flipped on, payment→workspace→promise backend arming) was
 specced but not filed.
@@ -146,11 +146,11 @@ specced but not filed.
 | Dimension | #6123 onboarding today | Sarah |
 |---|---|---|
 | Identity | Anonymous flow, no persona | Named employee with a persona, an employee card, and AI disclosure |
-| Persistence | Stateless; browser holds transcript | Durable sessions; prospect ref; resumes across visits |
+| Persistence | Stateless. Browser holds transcript | Durable sessions. Prospect ref. Resumes across visits |
 | Channels | Web only | Web + her own mailbox (inbound + continuation) + voice tier |
 | Memory | None beyond the turn | CRM-mapped relationship memory, queried on the fly |
 | Pricing | One stubbed kickoff card | Deal engine: rate card, bundle rules, tactics registry, caps |
-| Money | Checkout stub | Agent-callable payment links (credits up to cap; split; Lightning), receipts, provision-on-webhook |
+| Money | Checkout stub | Agent-callable payment links (credits up to cap, split, Lightning), receipts, provision-on-webhook |
 | Authority | Implicit | Typed `ai_employee.v1` authority ladder + behavior contracts |
 | Ops | None | Aiur view: her pipeline, transcripts, receipts, escalations |
 
@@ -165,10 +165,10 @@ specced but not filed.
 - **Native CRM** (`crm_contacts/accounts/opportunities/activities`) with
   the **approval-gated command pattern** (`crm_contact_commands`:
   propose → operator approve → execute) and `send_email` as its first
-  command kind; CRM MCP surface for agents.
+  command kind. CRM MCP surface for agents.
 - **Outbound email machinery** — full ledger (`email_messages` /
   `email_deliveries` / `email_drafts`), Resend sender, campaign/sequence
-  dispatchers, drip patterns; armed behind operator flags.
+  dispatchers, drip patterns. Armed behind operator flags.
 - **Checkout substrate** — Stripe sessions (pack-priced),
   `business-checkout-kickoff.ts` with the
   `setupFeeCents + creditGrantCents === totalAmountCents` invariant into
@@ -189,29 +189,29 @@ specced but not filed.
 
 1. **Anonymous-prospect persistent identity** — no server session row,
    no durable prospect ref, nothing linking a chat to a CRM contact.
-2. **Inbound email** — no email worker/webhook; the event ledger has no
-   email source; `inbox_match` has no feed. Cross-channel continuity
+2. **Inbound email** — no email worker/webhook. The event ledger has no
+   email source. `inbox_match` has no feed. Cross-channel continuity
    does not exist.
 3. **Web voice** — nothing (a tested push-to-talk state machine and a
-   stubbed native STT module on mobile; an evidence schema
-   `omni-voice-session-evidence.ts`; no browser capture/STT/TTS/realtime
+   stubbed native STT module on mobile. An evidence schema
+   `omni-voice-session-evidence.ts`. No browser capture/STT/TTS/realtime
    anywhere). Largest net-new area.
 4. **Deal-rules engine** — volume tiers and the split contract exist as
    *facts*, but there is no typed, compiled config an agent consults to
    price an offer.
 5. **Agent-callable arbitrary-amount checkout link** — Stripe creation
-   is pack-priced; no single "payment link for $N of credits" tool.
+   is pack-priced. No single "payment link for $N of credits" tool.
 6. **Customer-facing quote/contract documents** — the accepted-outcome
-   contract is internal; no order-form generator.
+   contract is internal. No order-form generator.
 
 ## 4. Identity and persona
 
 - **Name: Sarah.** Public surfaces use the first name only. The internal
   flavor (the StarCraft homage in her full name) stays internal until
-  the naming/IP question is explicitly cleared (§14); nothing about the
+  the naming/IP question is explicitly cleared (§14). Nothing about the
   product depends on the surname.
 - **She is an AI and says so.** First contact includes plain disclosure
-  ("I'm Sarah, OpenAgents' AI sales agent"); this is a registered
+  ("I'm Sarah, OpenAgents' AI sales agent"). This is a registered
   behavior contract (§10), not copy taste. It is also the pitch: the
   disclosure *is* the demo.
 - **Employee card.** Sarah is the flagship `ai_employee.v1` instance:
@@ -219,11 +219,11 @@ specced but not filed.
   policy — rendered on an internal employee card (Aiur) and, later, a
   public-safe version ("meet Sarah") on the site, because showing her
   permission stack to prospects is showing the product.
-- **Tone:** competent, direct, warm, zero pressure theatrics; one
-  question at a time; concise answers; never bluffs — unknowns become
-  "let me check" (grounded lookup) or honest "that's not something we
+- **Tone:** competent, direct, warm, zero pressure theatrics. One
+  question at a time. Concise answers. Never bluffs — unknowns become
+  "let me check" (grounded lookup) or honest "that is not something we
   promise yet" (registry-bound). StarCraft-blue visual identity like
-  every surface; her avatar/presence treatment follows the site's HUD
+  every surface. Her avatar/presence treatment follows the site's HUD
   language, not a generic chat bubble.
 
 ## 5. Channels and the continuity model
@@ -235,8 +235,8 @@ email address is captured (offered by the prospect — Sarah asks as part
 of qualification, or via the existing `/business` form), the prospect
 ref binds to a `crm_contacts` row, and **the CRM contact becomes the
 join key across channels**. Conversation state is thereafter durable:
-web sessions resume; email replies append to the same relationship
-thread; every channel writes `crm_activities` summaries.
+web sessions resume. Email replies append to the same relationship
+thread. Every channel writes `crm_activities` summaries.
 
 - **Web (primary):** a persistent Sarah surface on openagents.com — the
   evolved `/autopilot` command canvas plus a site-wide entry point
@@ -247,24 +247,24 @@ thread; every channel writes `crm_activities` summaries.
   durable per-prospect limiter.
 - **Email:** Sarah gets her own mailbox (e.g. `sarah@openagents.com`)
   via the identity-binding pattern (her address, never a human's).
-  Outbound rides the existing email ledger; **inbound is new build**:
+  Outbound rides the existing email ledger. **Inbound is new build**:
   email routing → worker handler → `event_ledger` gains an `email`
   source → `inbox_match` trigger feeds Sarah's definition → she drafts
   a continuation reply in the same relationship thread. Inbound email
   is untrusted input (§10 ceiling applies).
 - **Voice (tier, SR-4):** push-to-talk first — browser mic → STT → the
   *same* turn route → TTS out — reusing the tested push-to-talk state
-  machine and the voice-session evidence schema; full-duplex realtime
+  machine and the voice-session evidence schema. Full-duplex realtime
   is a later upgrade behind the same route (the blitz design made the
   route transport-agnostic for exactly this). Voice is **inbound-only**
-  (prospects come to us); Sarah places no cold calls — the compliance
+  (prospects come to us). Sarah places no cold calls — the compliance
   guardrails' hardest line stays intact by construction.
 - **Explicitly later:** phone bridge, SMS (both carry the heaviest
   compliance load and add nothing to v1).
 
 ## 6. Conversation design
 
-The shipped intake interview is the spine; Sarah wraps it in a sales
+The shipped intake interview is the spine. Sarah wraps it in a sales
 posture:
 
 1. **Open + disclose.** Greeting, AI disclosure, one orienting question.
@@ -275,7 +275,7 @@ posture:
    already shipped) and to CRM memory.
 3. **Teach with proof.** What OpenAgents does, grounded in the promise
    registry and live public surfaces — claims capped at
-   green/operator-assisted; roadmap labeled roadmap (the shipped honesty
+   green/operator-assisted. Roadmap labeled roadmap (the shipped honesty
    contract, inherited verbatim).
 4. **Steer to a package.** From the intake spec, Sarah proposes: (a) a
    starter **credit package** (the default goal — one number + the
@@ -284,7 +284,7 @@ posture:
    new `quote_card` components render the offer as an artifact, not a
    paragraph.
 5. **Close on the call.** Present the checkout link (`credit_kickoff` →
-   real payment link); apply the close-on-call rule from the tactics
+   real payment link). Apply the close-on-call rule from the tactics
    registry if armed (e.g. a today-only incentive — a *rule with an
    expiry*, not an invented discount). If the prospect defers: schedule
    the follow-up, confirm the email channel, and the loop-back sequence
@@ -294,7 +294,7 @@ posture:
    the rules, anything contractual beyond the standard order form,
    investor conversations (§14), or simple "I want a human."
 
-Components: reuse the six shipped; add `quote_card` (composed package:
+Components: reuse the six shipped. Add `quote_card` (composed package:
 line items, bundle rule applied, total, expiry if tactic-armed),
 `deal_summary` (what was agreed, in plain language, receipt-linked), and
 `contract_review` (order-form draft + signature handoff). Same closed
@@ -304,29 +304,29 @@ catalog discipline: schema-validated, bounded repair, fallback renderer.
 
 The owner's constraint is the design: **pricing is configuration, never
 generation.** A typed, versioned, owner-signed config the persona
-program consults; Sarah's pricing utterances must trace to a rule ref.
+program consults. Sarah's pricing utterances must trace to a rule ref.
 
 - **Rate card / module catalog:** named modules with owner-set prices
   (e.g. *Internal Operations AI module — $10k setup* as the indicative
   shape), each mapped to the service ladder and to the promise state
-  that caps what may be claimed about it. Every price is a config row;
+  that caps what may be claimed about it. Every price is a config row.
   a missing price is "I'll get you a firm number" + escalation, never a
   guess.
 - **Bundle rules:** structured unlocks only — e.g. `bundle of 3+ large
   modules → 25% off the bundle` (the owner's example). Deny-precedence:
   if no rule matches, no discount exists.
 - **Credit volume tiers (already law):** the existing prepay bonus
-  tiers ($1,000–2,999 → +10%; $3,000–4,999 → +20%; $5,000+ → +35%) and
+  tiers ($1,000–2,999 → +10%, $3,000–4,999 → +20%, $5,000+ → +35%) and
   the ~5% Bitcoin discount (stacking, independent) compile in as-is —
   these ARE the "discounts baked into the product."
 - **Tactics registry:** owner-approved, individually-armed plays with
   typed parameters — v1 candidate: `close_on_call` (incentive %, link
-  TTL, eligible packages). Tactics are rules with receipts; arming one
-  is an owner action; Sarah can never combine tactics beyond what the
+  TTL, eligible packages). Tactics are rules with receipts. Arming one
+  is an owner action. Sarah can never combine tactics beyond what the
   config allows.
 - **Caps and escalation thresholds:** per-transaction cap **$10k**
-  (owner-set; above it → human close with Sarah preparing the packet);
-  estimates are credits-denominated; **no firm delivery commitments**
+  (owner-set, above it → human close with Sarah preparing the packet).
+  estimates are credits-denominated. **No firm delivery commitments**
   — a request for committed milestones/SLAs triggers the
   "costs extra + human approval" path (per-customer service promises
   exist for exactly this, and they are operator-committed, not
@@ -334,19 +334,19 @@ program consults; Sarah's pricing utterances must trace to a rule ref.
 - **Blueprint framing:** each pricing/deal decision is a typed program
   decision — *decision evidence, not write authority*. The write side
   is the checkout receipt and (when needed) the order-form + human
-  countersign. Sarah recommends; money moves only through receipts.
+  countersign. Sarah recommends. Money moves only through receipts.
 
 ## 8. Money authority (money-in only)
 
 Sarah's financial authority is strictly **inbound**: she can present
-payment links and watch them settle; she can never spend, refund, or
+payment links and watch them settle. She can never spend, refund, or
 move money out.
 
 - **New tool: `sales.checkout_link.create`** — agent-callable, creates a
   real checkout for **$N of credits** (arbitrary amount up to the cap,
   closing the pack-only gap), optionally as the setup-fee + credit-grant
   split (the existing kickoff invariant), card or Lightning. Emits a
-  quote receipt at creation; the webhook path (existing) writes the
+  quote receipt at creation. The webhook path (existing) writes the
   idempotent ledger row, provisions workspace + per-customer service
   promise, and streams the confirmation back into the conversation.
   Link TTLs implement tactic expiries honestly (the link actually
@@ -355,7 +355,7 @@ move money out.
   generated from the deal (modules, price, rules applied, the
   no-firm-commitments language, credits terms) → `contract_review`
   component → e-sign handoff → owner countersign where required. Sarah
-  drafts; humans execute. Anything nonstandard escalates.
+  drafts. Humans execute. Anything nonstandard escalates.
 - **Every close is a receipt bundle:** intake spec ref + quote receipt +
   rule refs + checkout receipt + provision receipts. "Closed by Sarah"
   is a dereferenceable claim, which is also the marketing.
@@ -374,16 +374,16 @@ Three layers, CRM as the relationship's source of truth:
    *queries on the fly, not total recall*. Writes go through the CRM
    command pattern with class-based policy: activity/summary appends
    and contact-create-on-capture are policy-auto-approved command
-   classes; contact field edits and anything destructive stay
+   classes. Contact field edits and anything destructive stay
    operator-approved.
 3. **Knowledge:** the offer catalog + deal rules (§7), the promise
    registry (live), public product surfaces, and later the company
    brain's public-safe slices. Grounded lookups, never memorized prices.
 
-Privacy posture: prospect data is confined to the CRM boundary; no
-prospect content in public projections or traces; `consent_gate` leads
+Privacy posture: prospect data is confined to the CRM boundary. No
+prospect content in public projections or traces. `consent_gate` leads
 before anything client-identifying is ingested (shipped component,
-shipped rule); redaction-before-inference applies when a prospect pastes
+shipped rule). Redaction-before-inference applies when a prospect pastes
 sensitive material.
 
 ## 10. Authority, safety, and behavior contracts
@@ -391,20 +391,20 @@ sensitive material.
 **Authority ladder position at launch** (the employee promotion model
 applied to our own employee first):
 
-- `act_within_policy`: on-site conversation replies; typed-component
-  rendering; grounded lookups; CRM summary/activity appends; quote
+- `act_within_policy`: on-site conversation replies. Typed-component
+  rendering. Grounded lookups. CRM summary/activity appends. Quote
   creation and checkout links **within the compiled deal rules and cap**.
 - `act_with_approval`: outbound email (initial posture — drafts to the
-  operator queue, one-tap approve; promotion to policy-bound
+  operator queue, one-tap approve. Promotion to policy-bound
   *continuation* replies is an explicit, receipted promotion once the
-  approval-queue evidence supports it); CRM contact edits; order-form
+  approval-queue evidence supports it). CRM contact edits. Order-form
   issuance.
 - `deny`: improvised discounts (structurally impossible — no rule, no
-  price); spend/refund/payout of any kind; firm delivery commitments;
-  contract execution; regulated-vertical advice (legal/medical/financial
-  specifics → guardrails + handoff); cold outbound of any kind.
+  price). Spend/refund/payout of any kind. Firm delivery commitments.
+  contract execution. Regulated-vertical advice (legal/medical/financial
+  specifics → guardrails + handoff). Cold outbound of any kind.
 - **Input-path ceiling (H5/CB-2.1 law applied):** inbound email is
-  untrusted input — it can never raise Sarah's effective authority;
+  untrusted input — it can never raise Sarah's effective authority.
   injection-bearing email can at most cause a drafted, gated response.
   Prompt-injection cases are first-class fixtures in her Eval Suite.
 
@@ -414,13 +414,13 @@ oracles in the sweep, promise discipline as ever):**
 - `sarah.discloses_ai_identity.v1` — first contact in every channel
   includes plain AI disclosure.
 - `sarah.no_improvised_pricing.v1` — every price/discount utterance
-  traces to a `sarah.deal_rules.v1` rule ref; absent a rule, Sarah
+  traces to a `sarah.deal_rules.v1` rule ref. Absent a rule, Sarah
   escalates instead of quoting.
 - `sarah.claims_bound_to_promise_registry.v1` — capability claims are
-  capped by promise state (green/operator-assisted sellable; roadmap
+  capped by promise state (green/operator-assisted sellable, roadmap
   labeled roadmap) — inheriting the shipped intake honesty contract.
 - `sarah.close_requires_receipt.v1` — no "closed/paid" statement without
-  the settled checkout receipt; pending is presented as pending.
+  the settled checkout receipt. Pending is presented as pending.
 - `sarah.commitments_escalate.v1` — requests for firm milestones/SLAs
   route to the human path and are never verbally committed.
 - `sarah.inbound_only_voice.v1` — Sarah never initiates calls.
@@ -435,34 +435,34 @@ never bypass review, send, file, or touch billing.
 ## 11. Voice tier design (SR-4)
 
 - **v1 — push-to-talk:** mic capture in the web widget → streaming STT →
-  the same session turn route → response streamed as text + TTS audio;
+  the same session turn route → response streamed as text + TTS audio.
   components render as usual (voice narrates, the canvas shows). Reuse:
   the push-to-talk state machine (tested, pure) for widget states
   (`idle · listening · processing · speaking · blocked`), the
   `omni-voice-session-evidence` schema for capture/consent/redaction
   state, and the command-composer state design from the blitz HUD
   catalog. Provider choice for STT/TTS is an implementation decision at
-  lane start (owned-stack bias per standing policy; no per-vendor
+  lane start (owned-stack bias per standing policy, no per-vendor
   dependency in the contract — the route stays transport-agnostic).
 - **v2 — realtime duplex** behind the same route once v1 receipts show
-  demand; latency budget set from v1 measurements (named perf budgets,
+  demand. Latency budget set from v1 measurements (named perf budgets,
   QAM-style).
-- **Authority is transport-invariant:** voice input is just input; every
+- **Authority is transport-invariant:** voice input is just input. Every
   gate in §10 applies identically (the legal-MVP fixtures are the
   regression suite for this exact property).
 
 ## 12. Implementation architecture
 
 - **Sarah = the flagship `ai_employee.v1`** referencing an
-  `agent_definition.v1` (harness: hosted Khala lane; triggers: web
-  session turns + `inbox_match` once email lands; budget: daily credit
-  cap on her own inference; escalation: operator inbox + push).
+  `agent_definition.v1` (harness: hosted Khala lane, triggers: web
+  session turns + `inbox_match` once email lands. Budget: daily credit
+  cap on her own inference. Escalation: operator inbox + push).
 - **Runtime:** a server-side persona program in the Worker modeled on
   `artanis-operator.ts` — persona contract + grounded context blocks
   (deal rules, promise states, CRM summary, intake spec) + bounded tool
   loop through the Khala client — but **public-scoped** with its own
   hard tool allowlist (no operator tools, no admin reads). Sessions are
-  durable rows; the component channel is enabled for Sarah's surface;
+  durable rows. The component channel is enabled for Sarah's surface.
   the spatial-HUD/command-canvas presentation continues to be the web
   target (chat-transcript fallback acceptable for v1 embedding).
 - **Tools (initial):** `intake.spec.append`, `promise_registry.read`,
@@ -482,31 +482,31 @@ never bypass review, send, file, or touch billing.
   quotes an unruled price), contract oracles for §10, and visual
   baselines for her components. The discount-pressure and
   injection cases are the adversarial core: the monkey/explorer tier
-  tries to talk her into a deal that doesn't exist.
+  tries to talk her into a deal that does not exist.
 
 ## 13. Rollout — SR lanes with exit receipts
 
 Dependency spine: SR-1 → SR-2 → SR-3 → (SR-4 ∥ SR-5) → SR-6.
 
-- **SR-1 Sarah v1 (text, on-site).** Durable sessions + prospect refs;
-  persona program; qualification flow on the shipped intake spine;
-  registry-bound honesty; component channel on; `human_handoff`;
-  checkout via existing pack-priced `credit_kickoff`; behavior
-  contracts registered (pending→enforced as oracles land); Eval Suite
+- **SR-1 Sarah v1 (text, on-site).** Durable sessions + prospect refs.
+  persona program. Qualification flow on the shipped intake spine.
+  registry-bound honesty. Component channel on. `human_handoff`.
+  checkout via existing pack-priced `credit_kickoff`. Behavior
+  contracts registered (pending→enforced as oracles land). Eval Suite
   green at the fixture tier. *Exit: a stranger completes qualification
   → quote → settled starter credit purchase entirely with Sarah, and
   the receipt bundle dereferences.*
 - **SR-2 Deal engine + checkout tool.** `sarah.deal_rules.v1` compiled
-  (rate card owner-signed; volume tiers + Bitcoin stack imported;
-  bundle rules; `close_on_call` tactic armed or explicitly parked);
+  (rate card owner-signed, volume tiers + Bitcoin stack imported,
+  bundle rules. `close_on_call` tactic armed or explicitly parked).
   `sales.checkout_link.create` (arbitrary amount ≤ cap, split support,
-  Lightning option, honest TTLs); `quote_card`/`deal_summary`
+  Lightning option, honest TTLs). `quote_card`/`deal_summary`
   components. *Exit: a composed multi-module quote with a bundle rule
-  applied, closed via an agent-created link; property tests prove no
+  applied, closed via an agent-created link. Property tests prove no
   unruled price is reachable.*
-- **SR-3 Email + CRM continuity.** Sarah's mailbox; inbound routing →
-  `event_ledger` email source → `inbox_match`; prospect↔contact
-  binding; continuation replies (approval-gated); cross-channel thread
+- **SR-3 Email + CRM continuity.** Sarah's mailbox. Inbound routing →
+  `event_ledger` email source → `inbox_match`. Prospect↔contact
+  binding. Continuation replies (approval-gated). Cross-channel thread
   continuity. *Exit: a web conversation resumed by prospect email and
   answered by Sarah through the approval queue, one relationship
   thread, receipts end-to-end.*
@@ -519,16 +519,16 @@ Dependency spine: SR-1 → SR-2 → SR-3 → (SR-4 ∥ SR-5) → SR-6.
   as "costs extra." *Exit: one signed standard order form originated by
   Sarah, countersigned by the owner.*
 - **SR-6 Sarah as product.** Promotion evidence reviewed (email
-  continuation to policy-bound where receipts support it); the
+  continuation to policy-bound where receipts support it). The
   "sales employee" **template** extracted into the H4 catalog —
   customers hire their own Sarah, grounded on their brain, with their
-  rate card; her outcome ledger becomes the template's receipted proof.
+  rate card. Her outcome ledger becomes the template's receipted proof.
   *Exit: template listed under the catalog gate (receipted external
   outcome), first outside hire.*
 
 ## 14. Open questions (flagged, owner-gated)
 
-1. **Surname/IP.** Public identity is "Sarah" only; the full homage
+1. **Surname/IP.** Public identity is "Sarah" only. The full homage
    name needs an explicit trademark/IP check before it ever appears on
    a public surface. No dependency either way.
 2. **Investor routing.** "Have you spoken with Sarah?" as the universal
@@ -538,18 +538,18 @@ Dependency spine: SR-1 → SR-2 → SR-3 → (SR-4 ∥ SR-5) → SR-6.
    discusses nothing offering-related. Anything more needs counsel.
 3. **Pricing specifics.** Module catalog contents/prices, tactic
    parameters (incentive %, TTL), and the per-transaction cap are owner
-   sign-offs at SR-2 arming; the $10k figure and module examples above
+   sign-offs at SR-2 arming. The $10k figure and module examples above
    are indicative.
 4. **Tactic vs. no-discounts tension.** The owner said both "no
-   discounts, they're baked in" and "pay-on-call discount, link good
+   discounts, they are baked in" and "pay-on-call discount, link good
    today." Reconciliation adopted here: *structured, pre-approved rules
-   with expiries are pricing structure; anything Sarah composes outside
+   with expiries are pricing structure. Anything Sarah composes outside
    a rule is forbidden.* Confirm at SR-2 sign-off.
 5. **Email autonomy promotion.** How much approval-queue evidence
    (volume, zero-incident window) justifies promoting continuation
    replies to policy-bound — owner decision with receipts at SR-6.
-6. **Voice provider + cost envelope** at SR-4 start; latency budget
+6. **Voice provider + cost envelope** at SR-4 start. Latency budget
    named then.
 7. **Where Sarah's UI lives in the ONE-UI migration** — the command
-   canvas is legacy-web today; the React/TanStack rebuild should treat
+   canvas is legacy-web today. The React/TanStack rebuild should treat
    Sarah's surface as a first-class route, not an afterthought.

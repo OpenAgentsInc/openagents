@@ -11,7 +11,7 @@ not assumption.
 Depends on (both still open as of this writing): #8481 (RevenueCat client,
 HELD pending an owner-created account — see `NEEDS_OWNER.md`) and #8482
 (server IAP rail, merged `b37bfef24f`). Several items below cannot reach
-`done` until #8481 lands a real purchase UI; each such item says so
+`done` until #8481 lands a real purchase UI. Each such item says so
 explicitly rather than being marked complete prematurely.
 
 ## 1. Apple App Review Guideline 3.1.1 — external-payment steering audit
@@ -40,7 +40,7 @@ screen and component.
 - `clients/khala-mobile/src/components/credits-balance-chip.tsx` — display
   only, no purchase affordance.
 - No `Linking.openURL(...)` call anywhere in the app points at a
-  payment/checkout/pricing page (grepped `Linking\.` across the tree; the
+  payment/checkout/pricing page (grepped `Linking\.` across the tree, the
   one call site, `settings-screen.tsx`'s `Linking.openSettings()`, opens
   the OS Settings app for notification permission management —
   unrelated to payments).
@@ -80,7 +80,7 @@ an unfinished/unacknowledged consumable transaction and RevenueCat resends
 (or the SDK re-triggers) the SAME purchase event, our webhook naturally
 either (a) fulfills it for the first time if it was never fulfilled — the
 exact safety-net case restore exists for — or (b) no-ops if already
-fulfilled. **No separate `/restore` endpoint is needed server-side; the
+fulfilled. **No separate `/restore` endpoint is needed server-side. The
 existing idempotent webhook path already covers it.** Verified by the
 replay tests in `iap-credit-pack-payments.test.ts` and
 `iap-webhook-routes.test.ts` (both pass as of commit `b37bfef24f`).
@@ -140,9 +140,9 @@ RevenueCat of a refund or chargeback and RevenueCat's webhook relays it to
 us (`REFUND`/`CANCELLATION` event types), we claw back the exact credited
 amount from your balance via the existing `clawbackInferenceCredits`
 primitive — idempotent (a duplicate refund notification never claws back
-twice) and bounded (if you already spent the credit and your balance can't
+twice) and bounded (if you already spent the credit and your balance cannot
 absorb the full clawback, the ledger's `CHECK (balance_msat >= 0)`
-constraint stops it at zero rather than going negative;
+constraint stops it at zero rather than going negative.
 `ClawbackOutcome.insufficientBalance` surfaces this case for manual
 review — see `inference-abuse-controls.ts`'s `clawbackInferenceCredits`
 doc comment).
@@ -156,7 +156,7 @@ special terms" or custom EULA field, and any web terms page):**
 > refunds ourselves. If Apple/Google approve your refund request, we are
 > notified automatically and remove the matching credit from your
 > balance. If you've already spent that credit, we remove as much as your
-> current balance can cover; we never take you into a negative balance.
+> current balance can cover. We never take you into a negative balance.
 
 **Checklist:**
 - [x] Refund clawback mechanism verified end-to-end with tests (#8482).
@@ -225,7 +225,7 @@ used for compliance/business planning, not an optimistic average.
 | Account deletion policy (written) | ✅ Done — drafted above |
 | Account deletion mechanism (built) | ❌ **Gap — needs a new follow-up issue**, not in scope here |
 | Refund handling (mechanism + copy) | ✅ Done — verified + drafted |
-| Per-pack effective margin | ✅ Done — computed + tested; recommends Small Business Program enrollment |
+| Per-pack effective margin | ✅ Done — computed + tested. Recommends Small Business Program enrollment |
 
 This checklist itself, plus the five items marked ✅, is what #8483 commits
 as "submission-ready payment compliance with the checklist committed" — the

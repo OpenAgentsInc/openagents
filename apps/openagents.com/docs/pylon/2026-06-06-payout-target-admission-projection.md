@@ -16,15 +16,15 @@ settlement authority.
 
 The record captures:
 
-- owner and provider refs;
-- admission state;
-- target kind;
-- target ownership;
-- safe target fingerprint refs;
-- heartbeat refs;
-- registration refs;
-- target verification refs;
-- rejection, revocation, and stale refs;
+- owner and provider refs.
+- admission state.
+- target kind.
+- target ownership.
+- safe target fingerprint refs.
+- heartbeat refs.
+- registration refs.
+- target verification refs.
+- rejection, revocation, and stale refs.
 - caveats, blockers, evidence refs, and source refs.
 
 The record carries only safe refs such as target hashes or registration refs,
@@ -43,12 +43,12 @@ shown as payout-target ready.
 
 `PylonPayoutTargetAdmissionState` is:
 
-- `missing`;
-- `heartbeat_hint_only`;
-- `pending_registration`;
-- `registered`;
-- `rejected`;
-- `stale`;
+- `missing`.
+- `heartbeat_hint_only`.
+- `pending_registration`.
+- `registered`.
+- `rejected`.
+- `stale`.
 - `revoked`.
 
 Registered payout target claims are allowed only when the state is
@@ -62,9 +62,9 @@ Heartbeat-only state does not imply paid-work eligibility.
 
 The supported v0.2 target kinds are:
 
-- `bolt12_offer`;
-- `bolt11_invoice`;
-- `bip353_name`;
+- `bolt12_offer`.
+- `bolt11_invoice`.
+- `bip353_name`.
 - `lnurl_pay`.
 
 `bolt12_offer` is the preferred durable target. `bolt11_invoice` is treated as
@@ -76,11 +76,11 @@ not allow a registered payout target claim.
 `PYLON_PAYOUT_TARGET_ADMISSION_READ_ONLY_AUTHORITY` is the only valid authority
 shape. It explicitly denies:
 
-- live wallet spend;
-- payout dispatch;
-- payout target disclosure;
-- payout target mutation;
-- provider eligibility mutation;
+- live wallet spend.
+- payout dispatch.
+- payout target disclosure.
+- payout target mutation.
+- provider eligibility mutation.
 - settlement mutation.
 
 This contract is admission evidence only. It does not register a target, update
@@ -109,12 +109,12 @@ material or wallet/payment secrets.
 
 `workers/api/src/pylon-payout-target-admission.test.ts` covers:
 
-- fixture decoding;
-- read-only authority;
-- registered wallet-owned target claims;
-- heartbeat-only non-eligibility;
+- fixture decoding.
+- read-only authority.
+- registered wallet-owned target claims.
+- heartbeat-only non-eligibility.
 - public redaction of private owner, provider, registration, and verification
-  refs;
-- state-specific evidence requirements; and
+  refs.
+- state-specific evidence requirements. And
 - rejection of raw payout target, wallet, channel, provider, credential, and
   timestamp material.

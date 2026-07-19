@@ -20,23 +20,23 @@ the verifier expects was only implicit in code.
   — NEW canonical, public-safe SHAPE TEMPLATE for the per-run evidence document
   (two distinct contributors, each with distinct lease / verified-work /
   provider-confirmed settlement refs). Strictly schema-conformant so it passes the
-  closed key allowlist; every ref is a self-evident placeholder
+  closed key allowlist. Every ref is a self-evident placeholder
   (`pylon.example.*`, `lease.example.*`, `receipt.example.*`). It is synthetic and
   asserts no real claim.
 - `apps/openagents.com/workers/api/src/fixtures/qualified-contributor-methodology-evidence.template.README.md`
-  — NEW note documenting that the template is synthetic, why annotation keys can't
+  — NEW note documenting that the template is synthetic, why annotation keys cannot
   live in the JSON (the allowlist would reject them), and exactly what still
   remains to clear the blocker.
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
   — +4 vitest cases in a new "evidence document template" suite that READ the
   template from disk (`readFileSync` + `import.meta.url`) and run the real
-  file→`JSON.parse`→verify path: template parses + conforms (count 2); refs are
-  all synthetic placeholders; a leak-prone extra field on the loaded file fails
-  the boundary; an inflated claimed count parses but does not conform. 35→39
+  file→`JSON.parse`→verify path: template parses + conforms (count 2). Refs are
+  all synthetic placeholders. A leak-prone extra field on the loaded file fails
+  the boundary. An inflated claimed count parses but does not conform. 35→39
   tests, wired into `check:deploy`.
 - Methodology doc updated to dereference the template + on-disk harness (35→39).
 
-No promise state changed; no scale claim asserted; the template is synthetic. Still
+No promise state changed. No scale claim asserted. The template is synthetic. Still
 listed: clearing the blocker still needs dropping the run's REAL per-contributor
 evidence into this proven harness and citing the `ok:true` / `conforms:true`
 verdict, plus owner sign-off. This run closes the "real file path is untested and
@@ -72,10 +72,10 @@ matched the singular "any platform", missing "all/every platforms".
   stays honest (no false positive). 31 pass (was 29) across the two copy-guard
   files.
 
-Validation: pylon `tsc` 0 errors; workers/api `tsc` 0 errors;
+Validation: pylon `tsc` 0 errors. Workers/api `tsc` 0 errors.
 `apps/openagents.com` `check:deploy` passes (see summary).
 
-No promise state changed; no Windows/WSL support claimed; no host probed. Still
+No promise state changed. No Windows/WSL support claimed. No host probed. Still
 listed: clearing the blocker still needs the owner-facing copy-narrowing
 sign-off. This run closes a false-negative so the applied guard actually catches
 the verb-first over-promise phrasings drift most naturally takes.
@@ -100,16 +100,16 @@ evidence") would hit, falsely failing a sound run.
   the three shared-ref checks now operate on each contributor's DISTINCT refs
   (deduped within that contributor via `flattenPerContributorDistinct`) before
   flattening. Genuine cross-contributor reuse is still caught (each sharer
-  contributes one copy of the shared ref → a duplicate across the flattened set);
+  contributes one copy of the shared ref → a duplicate across the flattened set).
   harmless within-contributor repeats collapse. No reason codes, types, or public
   surface changed.
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
   — +2 vitest cases (single contributor repeating its own lease/work/receipt
-  conforms; two contributors that each repeat their own lease AND share it across
+  conforms. Two contributors that each repeat their own lease AND share it across
   each other still fail `SharedLease`). 33→35 tests, wired into `check:deploy`.
 - Methodology doc updated to document the per-contributor dedup (33→35 tests).
 
-No promise state changed; no scale claim asserted. Still listed: clearing it
+No promise state changed. No scale claim asserted. Still listed: clearing it
 needs running the verifier against the live run's REAL evidence file and citing
 the `ok:true` `verdict.conforms === true`, plus owner sign-off. This run closes a
 correctness gap that would have falsely failed a sound real-evidence run.
@@ -133,17 +133,17 @@ enforce. Nothing made the boundary unbypassable for the real-evidence run.
   added `verifyQualifiedContributorMethodologyDocument(candidate: unknown)`: the
   single safe entry that fuses parse → verify. Returns `{ ok:false, errors }`
   with path-qualified parse reasons (verifying nothing) or `{ ok:true, verdict }`
-  with the conformance verdict. Pure; counts nothing beyond the existing rule and
+  with the conformance verdict. Pure. Counts nothing beyond the existing rule and
   asserts no scale claim. Also exported
   `QualifiedContributorMethodologyDocumentResult`.
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
-  — +7 vitest cases (sound/conforming; JSON round-trip; inflated-count parses but
-  fails conformance; malformed fails the boundary with no `verdict`; leak-prone
-  extra field rejected before any verification; non-object rejected). 26→33 tests,
+  — +7 vitest cases (sound/conforming, JSON round-trip, inflated-count parses but
+  fails conformance. Malformed fails the boundary with no `verdict`. Leak-prone
+  extra field rejected before any verification. Non-object rejected). 26→33 tests,
   wired into `check:deploy`.
 - Methodology doc updated to dereference the fused entry (26→33 tests).
 
-No promise state changed; no scale claim asserted. Still listed: clearing it
+No promise state changed. No scale claim asserted. Still listed: clearing it
 needs running this entry against the live run's REAL evidence file and citing the
 `ok:true` `verdict.conforms === true`, plus owner sign-off. This run closes the
 "parse boundary is bypassable / two-step manual glue" gap so the real-evidence
@@ -159,7 +159,7 @@ verifiers — every piece a capture needs — but NO code path actually produced
 gate-valid artifact. The capture runbook's step 4 ("classify the receive
 projection, then build the receipt … and write the JSON artifact") was manual
 prose, so nothing guaranteed the written artifact passes
-`verifySparkHelperAutostartReceipt`; only an auditor running the verifier
+`verifySparkHelperAutostartReceipt`. Only an auditor running the verifier
 afterward would catch a non-conforming or leaky file. That is a real integrity
 gap on the actual capture step.
 
@@ -168,22 +168,22 @@ gap on the actual capture step.
   fail-closed orchestrator that composes classify → build → **self-verify** →
   canonical serialize. It returns `{ captured: true, receipt, verification,
   serialized }` ONLY when the built receipt passes its own single-receipt audit
-  AND survives a JSON round-trip re-audit; otherwise `{ captured: false,
+  AND survives a JSON round-trip re-audit. Otherwise `{ captured: false,
   reasons[], projection }` and emits nothing. So any artifact the self-serve path
   persists is gate-valid by construction. Also added
   `serializeSparkHelperAutostartReceipt` (canonical, fixed-key-order JSON over the
-  closed allowlist, key-insertion-order independent). Writes no file; inert when
+  closed allowlist, key-insertion-order independent). Writes no file. Inert when
   not opted in.
 - `apps/pylon/src/spark-helper-autostart.test.ts` — +6 bun:test cases (inert /
-  helper-not-ready → not captured; ready → self-verified + round-trip-valid
-  artifact; deterministic canonical serialization; non-canonical timestamp
-  fail-closed; two distinct captures differ only by `observedAt` and pass the set
+  helper-not-ready → not captured. Ready → self-verified + round-trip-valid
+  artifact. Deterministic canonical serialization. Non-canonical timestamp
+  fail-closed. Two distinct captures differ only by `observedAt` and pass the set
   verifier as distinct). 32 pass (was 26).
 - `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — capture step 4 now
   dereferences `captureSparkHelperAutostartReceipt` (persist `result.serialized`
-  verbatim only when `captured`); documented both new functions.
+  verbatim only when `captured`). Documented both new functions.
 
-No promise state changed; nothing started, no funds moved, no host probed, no
+No promise state changed. Nothing started, no funds moved, no host probed, no
 file written. Still listed: clearing the blocker needs a REAL captured receipt
 from ≥1 distinct normal contributor that this orchestrator produces with
 `captured:true` and that passes `verifySparkHelperAutostartReceiptSet` with
@@ -204,9 +204,9 @@ bearing — the actual `pylon bootstrap` command gated on
 a supported `linux` install, directly contradicting the documented scope-out.
 
 - `apps/pylon/src/wsl-host-detect.ts` — NEW dependency-free leaf module holding
-  `detectWslHost` + `WSL_ENV_SIGNALS` (pure, public-safe; reads no files, emits no
+  `detectWslHost` + `WSL_ENV_SIGNALS` (pure, public-safe, reads no files, emits no
   env value/path/identifier). Extracted so `bootstrap.ts` can share it without a
-  circular import; `consumer-install-platform-support.ts` re-exports it so its
+  circular import. `consumer-install-platform-support.ts` re-exports it so its
   public surface is unchanged.
 - `apps/pylon/src/bootstrap.ts` — `createBootstrapSummary` now derives
   `platform.wsl` (WSL env signal on a `linux` host) and `platform.inScope`
@@ -215,14 +215,14 @@ a supported `linux` install, directly contradicting the documented scope-out.
   `!platform.inScope` and prints WSL-specific guidance ("use a native macOS or
   Linux host") when `platform.wsl`, instead of silently proceeding.
 - `apps/pylon/tests/bootstrap.test.ts` — +4 cases (WSL linux → `inScope:false`
-  while `supported:true`; native linux/macOS in scope; win32 out of scope).
+  while `supported:true`. Native linux/macOS in scope. Win32 out of scope).
 - `apps/pylon/docs/platform-support.md` — documented the runtime wiring.
 
-Validation: pylon `tsc` 0 errors; `bun test tests/bootstrap.test.ts
+Validation: pylon `tsc` 0 errors. `bun test tests/bootstrap.test.ts
 src/consumer-install-platform-support.test.ts` → 35 pass; workers/api `tsc` 0
-errors; `apps/openagents.com` `check:deploy` passes.
+errors. `apps/openagents.com` `check:deploy` passes.
 
-No promise state changed; no Windows/WSL support claimed; no host probed. Still
+No promise state changed. No Windows/WSL support claimed. No host probed. Still
 listed: clearing the blocker still needs the owner-facing copy-narrowing sign-off.
 This run closes the classifier-vs-runtime gap so the real install path can no
 longer silently admit a WSL host as supported.
@@ -244,7 +244,7 @@ scope-out. The WSL scope-out was prose-only.
 - `apps/pylon/src/consumer-install-platform-support.ts` — added pure, public-safe
   `detectWslHost(env, procVersion?)` (boolean over `WSL_DISTRO_NAME` /
   `WSL_INTEROP` / `WSLENV` presence and optional `/proc/version` `microsoft`/`wsl`
-  text; reads no files, emits no env value/path/identifier) and
+  text. Reads no files, emits no env value/path/identifier) and
   `classifyConsumerInstallHost({ platform, wsl })`, which classifies a WSL host
   (`wsl:true` on linux) `out-of-scope` with `reason.platform.wsl_out_of_scope` and
   the blocker ref. `classifyConsumerInstallPlatform` is now a thin no-WSL wrapper
@@ -255,7 +255,7 @@ scope-out. The WSL scope-out was prose-only.
 - `apps/pylon/docs/platform-support.md` — documented the WSL detector/host
   classifier and that the WSL scope-out is now enforced in code.
 
-No promise state changed; no Windows/WSL support claimed; no host probed; no env
+No promise state changed. No Windows/WSL support claimed. No host probed. No env
 value emitted. Still listed: the runtime install/bootstrap path does not yet WIRE
 `detectWslHost` to refuse/guide a WSL contributor, and clearing the blocker still
 needs the owner-facing copy-narrowing sign-off. This run closes the prose-vs-code
@@ -273,24 +273,24 @@ an untrusted JSON document from a file, and there was NO safe boundary for that:
 a mistyped field (numeric `state`, float count, `contributors` as an object) would
 silently misbehave, and a leak-prone extra field (raw address, balance, internal
 id) could ride along into a published evidence artifact. The Spark side already had
-this pattern (`verifySparkHelperAutostartReceipt` with a closed key allowlist); the
+this pattern (`verifySparkHelperAutostartReceipt` with a closed key allowlist). The
 scale side did not.
 
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
   added `parseQualifiedContributorMethodologyInput(candidate: unknown)`: a pure
   parse/validate gate that enforces a closed key allowlist at every level
   (document, contributor, settlement receipt), checks structure/types
-  (non-negative integer count; string refs; boolean receipt flags), and returns
+  (non-negative integer count, string refs, boolean receipt flags), and returns
   the typed input only when sound, else `{ ok:false, errors }` with
   path-qualified reasons (e.g. `unexpected-key:$.contributors[0].settlementReceipts[0].rawSparkAddress`).
   Also exported `QualifiedContributorMethodologyInput` and threaded it into the
   verifier signature (no behavior change).
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
-  — +10 vitest cases incl. JSON round-trip and leak-prone-field rejection;
+  — +10 vitest cases incl. JSON round-trip and leak-prone-field rejection.
   now 27 tests, wired into `check:deploy`.
 - Methodology doc updated to dereference the parse boundary (17→27 tests).
 
-No promise state changed; no scale claim asserted. Still listed: clearing it
+No promise state changed. No scale claim asserted. Still listed: clearing it
 needs running the verifier against the live run's real evidence file (now safe to
 do via the parser) and citing `conforms:true`, plus owner sign-off.
 
@@ -300,14 +300,14 @@ Blocker advanced this run:
 `blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
 
 Update (d) closed the shared-*settlement-receipt* hole (one real Bitcoin movement
-can't back two counted contributors). But two parallel integrity holes of the
+cannot back two counted contributors). But two parallel integrity holes of the
 EXACT same shape remained open on the other two prongs: two counted contributors
 with distinct `pylonRef`s could still share the SAME admitted window lease
 (prong 1) or the SAME replay-verified exact_trace work challenge (prong 2), each
 inflating the qualified count just as a shared settlement inflates the real-paid
 count. The promise claim rests on "two distinct *independent* contributors" who
 each independently held a lease and did real verified work — so distinct pylonRefs
-alone is necessary but not sufficient; the underlying evidence must be distinct too.
+alone is necessary but not sufficient. The underlying evidence must be distinct too.
 
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
   the per-contributor verdict now surfaces `countedLeaseRefs` and
@@ -318,13 +318,13 @@ alone is necessary but not sufficient; the underlying evidence must be distinct 
   `QualifiedRunReason.SharedVerifiedWork` (`shared-verified-work-across-contributors`),
   mirroring the existing shared-settlement check via one `hasSharedRef` helper.
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
-  — +2 vitest cases (shared lease fails; shared verified work fails), and the
-  conform/verdict tests assert the new fields/reasons; now 17 tests, wired into
+  — +2 vitest cases (shared lease fails, shared verified work fails), and the
+  conform/verdict tests assert the new fields/reasons. Now 17 tests, wired into
   `check:deploy`.
 - Methodology doc updated to document cross-contributor integrity across all
   three prongs (15→17 tests).
 
-No promise state changed; no scale claim asserted. Still listed: clearing it
+No promise state changed. No scale claim asserted. Still listed: clearing it
 needs running the verifier against the live run's real evidence and citing
 `conforms:true`, plus owner sign-off.
 
@@ -351,11 +351,11 @@ the autostart set verifier did not yet enforce it.
   contributor.
 - `apps/pylon/src/spark-helper-autostart.test.ts` — updated the distinct-contributors
   test to use independent (distinct-`observedAt`) receipts, and added 2 cases
-  (replicated artifact under distinct refs fails; differ-only-in-`observedAt` is
+  (replicated artifact under distinct refs fails, differ-only-in-`observedAt` is
   accepted as distinct). 26 pass (was 24).
 - `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — documented the rule.
 
-No promise state changed; nothing started, no funds moved, no host probed. Still
+No promise state changed. Nothing started, no funds moved, no host probed. Still
 listed: clearing it needs REAL captured receipts from ≥1 distinct normal contributor
 that pass `verifySparkHelperAutostartReceiptSet` with `clearsBlocker:true`, plus owner
 sign-off.
@@ -384,7 +384,7 @@ capture one receipt on their own host and present it (or copies) as evidence for
 - `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — documented the
   set-level gate.
 
-No promise state changed; nothing started, no funds moved, no host probed. Still
+No promise state changed. Nothing started, no funds moved, no host probed. Still
 listed: clearing it needs REAL captured receipts from ≥1 distinct normal
 contributor that pass `verifySparkHelperAutostartReceiptSet` with
 `clearsBlocker:true`, plus owner sign-off.
@@ -408,11 +408,11 @@ real integrity gap.
   flattens the counted contributors' `countedSettlementReceiptRefs` and fails
   conformance when any receipt is reused across counted contributors.
 - `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
-  — +2 vitest cases (shared-receipt fails; own-distinct-receipt conforms); now
+  — +2 vitest cases (shared-receipt fails, own-distinct-receipt conforms). Now
   15 tests, wired into `check:deploy`.
 - Methodology doc updated to document the cross-contributor integrity rule.
 
-No promise state changed; no scale claim asserted. Still listed: clearing it
+No promise state changed. No scale claim asserted. Still listed: clearing it
 needs running the verifier against the live run's real evidence and citing
 `conforms:true`, plus owner sign-off.
 
@@ -428,7 +428,7 @@ consumer-facing copy. This run binds the verifier to the real file:
 
 - `apps/pylon/src/consumer-install-platform-support.ts` — added
   `auditReadmePlatformCopy(readmeText)` (pure): derives a claim from the README
-  text (supported set stays `{darwin, linux}`; over-promise phrases flip the
+  text (supported set stays `{darwin, linux}`, over-promise phrases flip the
   matching scope flag), runs the existing verifier, and returns `copyHonest`.
   Plus `README_NARROWED_PLATFORM_SENTENCE` (source-of-truth narrowing sentence)
   and `OVERPROMISE_COPY_PATTERNS` (public-safe any-platform / windows / wsl
@@ -439,7 +439,7 @@ consumer-facing copy. This run binds the verifier to the real file:
   Windows claim, or removed narrowing sentence).
 - `apps/pylon/docs/platform-support.md` — documented the applied guard.
 
-No promise state changed; no Windows/WSL support claimed; no host probed. Still
+No promise state changed. No Windows/WSL support claimed. No host probed. Still
 listed: clearing it needs the owner-facing copy-narrowing sign-off. This run
 makes that decision enforceable against the real shipped file, not optional.
 
@@ -455,18 +455,18 @@ Windows support — it is to keep the public copy narrowed to the proven platfor
 covered". This run made that requirement machine-checkable:
 
 - `apps/pylon/src/consumer-install-platform-support.ts` —
-  `classifyConsumerInstallPlatform` (pure, public-safe per-platform disposition;
+  `classifyConsumerInstallPlatform` (pure, public-safe per-platform disposition,
   `supported` for darwin/linux via the shared `bootstrap.isSupportedPlatform`,
   `out-of-scope` for `win32`/WSL/other with honest guidance + blocker ref) and
   `verifyConsumerInstallPlatformClaim` (audits an untrusted stated claim, flags
-  `overpromises` when the supported set isn't exactly `{darwin, linux}` or names
-  windows/wsl/any-platform; closed key allowlist).
+  `overpromises` when the supported set is not exactly `{darwin, linux}` or names
+  windows/wsl/any-platform. Closed key allowlist).
 - `apps/pylon/src/consumer-install-platform-support.test.ts` — 14 bun:test cases
   (pass).
 - `apps/pylon/docs/platform-support.md` — added a "Copy-Drift Guard" section
   dereferencing the verifier.
 
-No promise state changed; no Windows/WSL support claimed; no host probed. Still
+No promise state changed. No Windows/WSL support claimed. No host probed. Still
 listed: clearing it needs the owner-facing copy-narrowing sign-off (the guard
 now makes that decision enforceable, not optional).
 
@@ -493,7 +493,7 @@ enforceable gate. This run built that gate:
   — 13 vitest cases, wired into `apps/openagents.com` `check:deploy`.
 - Methodology doc updated to dereference the verifier.
 
-No promise state changed; no scale claim asserted. Still listed; the honest
+No promise state changed. No scale claim asserted. Still listed. The honest
 remaining step is running the verifier against the live run's real evidence and
 citing `conforms:true`, plus owner sign-off. The other two blockers below remain.
 
@@ -521,10 +521,10 @@ could ever be cited to clear the blocker.
 
 ## What this deliberately does NOT do
 
-- No promise state changed; green count untouched.
+- No promise state changed. Green count untouched.
 - The autostart capability remains INERT (default off, `PYLON_SPARK_AUTOSTART`).
 - No real receipt captured, no helper started, no funds moved, no wallet touched.
-- No secrets/targets/balances emitted; the verifier itself rejects such fields.
+- No secrets/targets/balances emitted. The verifier itself rejects such fields.
 
 ## What genuinely remains for this promise (still red)
 

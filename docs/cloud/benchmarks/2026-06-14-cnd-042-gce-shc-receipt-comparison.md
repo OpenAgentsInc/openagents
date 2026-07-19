@@ -3,17 +3,17 @@
 Date: 2026-06-14
 Repo: `cloud`
 Tracking: `OpenAgentsInc/cloud#89` (CND-042), epic `OpenAgentsInc/openagents#4996`
-Owner direction recorded: 2026-06-14 (Google GCE is the preferred lane; SHC is a
+Owner direction recorded: 2026-06-14 (Google GCE is the preferred lane, SHC is a
 secondary pilot kept only if it is materially cheaper and proven).
 
 This report satisfies the CND-042 acceptance in `docs/ISSUES.md`:
 
 - it cites setup, execution, artifact, benchmark, and closeout receipts from
-  both the GCE node (`oa-gcp-shc-katy-01`) and the SHC node (`oa-shc-katy-01`);
+  both the GCE node (`oa-gcp-shc-katy-01`) and the SHC node (`oa-shc-katy-01`).
 - it separates measured GCP cost, the real SHC host invoice ($1000/yr capex),
-  the SHC per-session amortization, and the unsettled assumptions behind each;
-- it shows the per-session cost math for each lane;
-- it recommends **HOLD** for the SHC pilot; and
+  the SHC per-session amortization, and the unsettled assumptions behind each.
+- it shows the per-session cost math for each lane.
+- it recommends **HOLD** for the SHC pilot. And
 - it lists follow-up issues for the missing integration surfaces.
 
 No new live GCE run was performed for this report. Every receipt class required
@@ -28,7 +28,7 @@ confirmed zero leftover instances at its own closeout).
 
 All cited digests are reproduced verbatim from the source docs. Note that the
 bootstrap receipt docs use bare 64-hex SHA-256 strings for tarball/task
-checksums; the contract-level receipt ids, run refs, and cleanup digests are
+checksums. The contract-level receipt ids, run refs, and cleanup digests are
 `sha256:` refs that, by the redaction rule, carry **no cost figures and no raw
 GCP identifiers** (CND-054).
 
@@ -36,12 +36,12 @@ GCP identifiers** (CND-054).
 
 | Receipt class | Source | Key facts |
 | --- | --- | --- |
-| Setup | `docs/bootstrap/CND-045-gcp-benchmark-cloud-substrate.md` | GCP benchmark substrate, project `openagents-bench-dev`, region `us-central1`; Artifact Registry `oa-benchmark-runners`, GCS `${PROJECT_ID}-oa-benchmark-{specs,datasets,artifacts,proofs}-${ENV}`, Pub/Sub `benchmark-{task,run}-events-${ENV}`, scoped SAs `bench-controller-${ENV}`, `bench-runner-${ENV}`. |
+| Setup | `docs/bootstrap/CND-045-gcp-benchmark-cloud-substrate.md` | GCP benchmark substrate, project `openagents-bench-dev`, region `us-central1`. Artifact Registry `oa-benchmark-runners`, GCS `${PROJECT_ID}-oa-benchmark-{specs,datasets,artifacts,proofs}-${ENV}`, Pub/Sub `benchmark-{task,run}-events-${ENV}`, scoped SAs `bench-controller-${ENV}`, `bench-runner-${ENV}`. |
 | Setup (live lane) | `docs/bootstrap/CND-054-gce-live-per-session-provisioner-smoke.md` | Live per-session provisioner proof, `cloud#91`. Machine type `e2-small`, zone `us-central1-a`, image `ubuntu-2404-lts-amd64`. VM `oa-codex-sess-0d03539455829690`, firewall `oa-codex-sess-fw-0d03539455829690` (IAP `35.235.240.0/20`, tcp:22). `RUN_ID=run_gce_live_smoke_20260614185249`, passed 2026-06-14. |
 | Execution | `docs/bootstrap/CND-054-gce-live-per-session-provisioner-smoke.md` | `LiveGceProvisioner` drove acquire → ready → in_use → release on a real `e2-small`. Test `gce_lane_provisions_runs_emits_receipt_and_cleans_up`. |
-| Benchmark backend | `docs/bootstrap/CND-046-cloud-batch-benchmark-backend.md` | One normalized benchmark task runs through Cloud Batch on `us-central1`; runner image `py-bench-runner:dev`; emits `result.json`, `events.jsonl`, `metadata.json`, `artifact_manifest.json`, `proof_bundle.json`. |
+| Benchmark backend | `docs/bootstrap/CND-046-cloud-batch-benchmark-backend.md` | One normalized benchmark task runs through Cloud Batch on `us-central1`. Runner image `py-bench-runner:dev`. Emits `result.json`, `events.jsonl`, `metadata.json`, `artifact_manifest.json`, `proof_bundle.json`. |
 | Artifact | `docs/bootstrap/CND-054-gce-live-per-session-provisioner-smoke.md` | `finish_gce_lease` emits an `openagents.resource_usage_receipt.v1` (refs-and-limits only). Receipt id / run ref / cleanup digest are `sha256:` refs with no cost figures and no raw GCP ids. |
-| Closeout | `docs/bootstrap/CND-054-gce-live-per-session-provisioner-smoke.md`; `docs/BENCHMARK_CLOUD.md` | Idempotent lease release verified by label/name-filtered `instances list` → zero session VMs remaining. Closeout authority `cloud_execution_closeout.json`: `walletAuthority=false`, `payoutAuthority=false`, `publicClaimAuthority=false`, `authorityOwner=omega`. |
+| Closeout | `docs/bootstrap/CND-054-gce-live-per-session-provisioner-smoke.md`. `docs/BENCHMARK_CLOUD.md` | Idempotent lease release verified by label/name-filtered `instances list` → zero session VMs remaining. Closeout authority `cloud_execution_closeout.json`: `walletAuthority=false`, `payoutAuthority=false`, `publicClaimAuthority=false`, `authorityOwner=omega`. |
 
 > Material gap on the GCE side: CND-054 deliberately records **no VM-seconds and
 > no cost figure**. The GCE lane therefore has a *measured provisioning lifecycle*
@@ -52,15 +52,15 @@ GCP identifiers** (CND-054).
 
 | Receipt class | Source | Key facts |
 | --- | --- | --- |
-| Setup | `docs/bootstrap/CND-041-shc-katy-01-bootstrap.md` | Host `oa-shc-katy-01` @ `23.182.128.195`; 16 logical CPUs (Intel Xeon Skylake), 62 GiB usable RAM, 247 GiB root disk (~245 GiB free), Ubuntu 24.04.4 LTS, kernel 6.8.0-124, `/dev/kvm` present. Toolchain `rustc 1.96.0`, `codex-cli 0.135.0`, Firecracker/Jailer v1.15.1, guest kernel `vmlinux-6.1.155`. Bootstrap smoke passed 2026-06-01. |
-| Execution (1-task) | `docs/bootstrap/CND-050-shc-codex-terminal-bench-smoke.md` | Shape `16 vCPU, 64 GB RAM, 256 GB NVMe class VPS`. Task `terminal-bench/openssl-selfsigned-cert` (checksum `2b70d5535b5873f644fad37b76dbef86a1e42162e018c7bc06316e5e2521929a`). Total runtime `1m12s`; reward 1.000 (6/6). Reported **model** cost `$0.120667`. |
+| Setup | `docs/bootstrap/CND-041-shc-katy-01-bootstrap.md` | Host `oa-shc-katy-01` @ `23.182.128.195`. 16 Logical CPUs (Intel Xeon Skylake), 62 GiB usable RAM, 247 GiB root disk (~245 GiB free), Ubuntu 24.04.4 LTS, kernel 6.8.0-124, `/dev/kvm` present. Toolchain `rustc 1.96.0`, `codex-cli 0.135.0`, Firecracker/Jailer v1.15.1, guest kernel `vmlinux-6.1.155`. Bootstrap smoke passed 2026-06-01. |
+| Execution (1-task) | `docs/bootstrap/CND-050-shc-codex-terminal-bench-smoke.md` | Shape `16 vCPU, 64 GB RAM, 256 GB NVMe class VPS`. Task `terminal-bench/openssl-selfsigned-cert` (checksum `2b70d5535b5873f644fad37b76dbef86a1e42162e018c7bc06316e5e2521929a`). Total runtime `1m12s`. Reward 1.000 (6/6). Reported **model** cost `$0.120667`. |
 | Benchmark (8-task) | `docs/bootstrap/CND-051-shc-codex-terminal-bench-8task.md` | `terminal-bench@2.0` (89 tasks total), Codex 0.135.0 / `gpt-5.5`, 8 tasks, mean reward 0.75 (6/8). Reported **model** cost `$3.697649`. |
-| Benchmark + Artifact (16-task) | `docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md` | 16 tasks, mean reward 0.6875 (11/16). Total task wall `4172.571406 s`. Reported **model** cost `$13.300340`. Preserved artifacts: 16-task tarball SHA256 `e2ed556c34f1d26640b95ee90cebfb67c3042b3c198dcc676064a6e1b2b76148`; 8-task tarball SHA256 `da824df860e96a11dde875875a66d02d703eb63743c51b5faaf0a6b045cd5771`. |
-| Closeout | `docs/BENCHMARK_CLOUD.md` | Every run carries `openagents.resource_usage_receipt.v1`; subscription-backed Codex records `count_source=unavailable` (`subscription_backed_codex_no_token_counts`), which must not be treated as silently complete. Closeout authority identical to GCE (`authorityOwner=omega`, all wallet/payout/public-claim authority false). |
+| Benchmark + Artifact (16-task) | `docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md` | 16 tasks, mean reward 0.6875 (11/16). Total task wall `4172.571406 s`. Reported **model** cost `$13.300340`. Preserved artifacts: 16-task tarball SHA256 `e2ed556c34f1d26640b95ee90cebfb67c3042b3c198dcc676064a6e1b2b76148`. 8-Task tarball SHA256 `da824df860e96a11dde875875a66d02d703eb63743c51b5faaf0a6b045cd5771`. |
+| Closeout | `docs/BENCHMARK_CLOUD.md` | Every run carries `openagents.resource_usage_receipt.v1`. Subscription-backed Codex records `count_source=unavailable` (`subscription_backed_codex_no_token_counts`), which must not be treated as silently complete. Closeout authority identical to GCE (`authorityOwner=omega`, all wallet/payout/public-claim authority false). |
 
 > Note on the SHC side: the `$` figures above are **Codex model/API** costs, not
 > infra cost. The SHC host infra cost is now a **real invoice** ($1000/year,
-> capex paid upfront — see §2.2); it still does not appear inside any per-session
+> capex paid upfront — see §2.2). It still does not appear inside any per-session
 > `resource_usage_receipt` (those carry refs/limits only, no cost), so §2's
 > per-session SHC cost is an amortization of the real invoice, not a metered
 > per-session receipt.
@@ -135,7 +135,7 @@ coding-session proxy).
 > Note: under the real $1000/yr invoice, the SHC **2-vCPU fair-share**
 > (4.36 micro-USD/VM-sec, 1308 per session) is now **cheaper than GCE**
 > (5.12 / 1535). This only holds if a single SHC host is packed with ~8
-> concurrent 2-vCPU sessions; at single-tenant / low utilization the whole-host
+> concurrent 2-vCPU sessions. At single-tenant / low utilization the whole-host
 > rate (10464 per session) dominates. The pilot has not demonstrated that
 > packing, so the recommendation stays HOLD (see §3).
 
@@ -154,7 +154,7 @@ coding-session proxy).
    per-second GCE only if it is heavily and continuously utilized AND each
    session is given only a small vCPU share. Under the real invoice the 2-vCPU
    fair-share (4.36 micro-USD/VM-sec) is cheaper than GCE, but this requires ~8
-   packed concurrent sessions; at single-tenant / low utilization the whole-host
+   packed concurrent sessions. At single-tenant / low utilization the whole-host
    rate is still ~7× more expensive per session than GCE.
 4. **Model cost is identical across lanes** (same Codex subscription/API), so it
    cancels out of the lane decision and is excluded from `cost_input_microusd`,
@@ -178,7 +178,7 @@ invoice**, capex paid upfront):
   is conditional — it requires a single SHC host packed with ~8 concurrent
   2-vCPU sessions continuously. The pilot has **not** demonstrated that packing,
   so the conditional 2-vCPU win is not yet a basis to promote SHC.
-- GCE is per-second and scales to zero; the SHC host is paid 24×7 regardless of
+- GCE is per-second and scales to zero. The SHC host is paid 24×7 regardless of
   load, so SHC only beats GCE under sustained high concurrency the pilot has not
   shown.
 - This aligns with the recorded owner direction that **Google GCE is the
@@ -186,8 +186,8 @@ invoice**, capex paid upfront):
   Firecracker-ready, already bootstrapped per CND-041) but the data does not yet
   support promoting it to a cost-driven primary.
 - We **HOLD rather than STOP** because: (a) the conditional 2-vCPU win is real
-  but unproven at the required ~8-session concurrency; (b) the GCE cost is still
-  list-price, not a metered receipt; and (c) SHC is the only proven warm
+  but unproven at the required ~8-session concurrency. (B) the GCE cost is still
+  list-price, not a metered receipt. And (c) SHC is the only proven warm
   fallback if GCE capacity is unavailable. Stopping would remove the fallback
   before the concurrency assumption is settled with measured receipts.
 
@@ -208,15 +208,15 @@ comparison (refs filled in at filing time, see issue thread on `cloud#89`):
   Billing-Catalog-derived cost (or `cost_input_basis=unavailable`) so the GCE
   side has a *measured* infra receipt, not a list-price estimate.
 - **cloud: record the real SHC host invoice** — DONE (cloud#93). The real
-  invoice ($1000/yr capex, paid upfront) is now the cost basis;
+  invoice ($1000/yr capex, paid upfront) is now the cost basis.
   `SHC_RAW_PER_VM_SEC_NANOUSD` = `31_710`.
 - **Treasury/openagents.com Worker: consume `cost_input_microusd`** from
-  placement/metering receipts for settlement; placement now surfaces the chosen
+  placement/metering receipts for settlement. Placement now surfaces the chosen
   lane's cost basis but does not settle.
 - **Nexus/Forge/Probe/Psionic/Autopilot/public-Pylon:** no new integration is
   required by this comparison beyond consuming the existing refs-only
-  `placement.bound` event; the cost-driven decision is internal to `cloud`
-  placement. (No new issues filed for these surfaces; the `placement.bound`
+  `placement.bound` event. The cost-driven decision is internal to `cloud`
+  placement. (No new issues filed for these surfaces, the `placement.bound`
   event contract is unchanged in shape, only enriched with a cost basis ref.)
 
 ---

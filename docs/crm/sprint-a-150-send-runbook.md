@@ -57,7 +57,7 @@ CRM_ADMIN_TOKEN=... node apps/openagents.com/scripts/crm-gmail-executor.mjs --se
 ```
 
 `--send` opts out of dry-run. Even then: Gmail only **queues** (your executor +
-Gmail-draft review gate the actual send); Resend sends only when armed. Waves +
+Gmail-draft review gate the actual send). Resend sends only when armed. Waves +
 `--pause-ms` respect daily limits.
 
 ## 7. Verify + capture
@@ -70,6 +70,6 @@ Resend webhook, so re-runs automatically skip them.
 
 - Dry-run by default at **every** layer (batch script, Gmail executor, Resend flag).
 - Suppression/unsubscribe enforced once, for both channels.
-- No copy is changed without the owner; the live blast is owner-driven.
+- No copy is changed without the owner. The live blast is owner-driven.
 - The Resend deliverability green (`native_email_sequences.v1`) still needs the
   owner-gated verified-domain receipt — not claimed here.

@@ -23,10 +23,10 @@ sibling Maud-port audit. This doc is the sequenced build plan.
   `ecommerce-v4`, `marketing-v4`). Family files: `primitives.ts`, `shared.ts`,
   `forms.ts`, `layout.ts`, `navigation.ts`, `data-display.ts`, `feedback.ts`,
   `workroom.ts`, `public.ts`, `page-examples.ts`, `v4.ts`, plus app-specific
-  `tenant-theme.ts`, `credits-panel.ts`; barrel `index.ts`; `coverage.test.ts`.
+  `tenant-theme.ts`, `credits-panel.ts`. Barrel `index.ts`. `coverage.test.ts`.
 - It is imported as a **relative folder** (`import * as Ui from './ui'` etc.),
   not a package, and a **near-identical copy lives in the separate
-  `autopilot-omega` repo** (lineage; out of scope here).
+  `autopilot-omega` repo** (lineage, out of scope here).
 - `packages/autopilot-ui` (`@openagentsinc/autopilot-ui`) is a **separate**
   package of **domain feature views** (node-status, earnings, decisions) + a
   `tokens.ts`. It is *not* the design-system primitives layer.
@@ -54,10 +54,10 @@ sibling Maud-port audit. This doc is the sequenced build plan.
 - **Package relationship:**
   - `@openagentsinc/ui` = design-system primitives + Tailwind-kit families +
     (new) `ai-elements` family. The port boundary.
-  - `@openagentsinc/autopilot-ui` = domain feature views; **make it depend on
+  - `@openagentsinc/autopilot-ui` = domain feature views. **Make it depend on
     `@openagentsinc/ui`** and stop duplicating primitives.
   - **Tokens:** consolidate to one source of truth in `@openagentsinc/ui`
-    (`./tokens`); have `autopilot-ui/tokens` re-export or migrate. Resolve during
+    (`./tokens`). Have `autopilot-ui/tokens` re-export or migrate. Resolve during
     Phase 1.
 - Do **not** revive `autopilot4-deprecated` or build in `autopilot-omega` as part
   of this roadmap. Reference-only.
@@ -83,18 +83,18 @@ sibling Maud-port audit. This doc is the sequenced build plan.
    the moved families with `@openagentsinc/ui`. Simplest safe path: keep
    `apps/openagents.com/apps/web/src/ui/index.ts` as a **thin re-export shim**
    (`export * from '@openagentsinc/ui'` + the two app-local modules) so most call
-   sites are untouched; migrate call sites later if desired.
+   sites are untouched. Migrate call sites later if desired.
 6. Run `bun test` + `tsc --noEmit` for the package and the web app. **No visual
    or behavioral change.**
 
-**DoD:** `@openagentsinc/ui` is importable as a workspace package; web app builds,
-typechecks, and all tests pass; `coverage.test.ts` runs inside the package; no
+**DoD:** `@openagentsinc/ui` is importable as a workspace package. Web app builds,
+typechecks, and all tests pass. `coverage.test.ts` runs inside the package. No
 rendered-output change.
 
 ## Phase 1 — Tokens + trusted-selection scaffolding
 
 1. **Tokens source of truth:** move/define design tokens in
-   `@openagentsinc/ui` (`./tokens`); reconcile with
+   `@openagentsinc/ui` (`./tokens`). Reconcile with
    `@openagentsinc/autopilot-ui/tokens` (re-export or migrate) so there is one
    token contract. Make `autopilot-ui` depend on `@openagentsinc/ui`.
 2. **Base-contract metadata:** add a convention (mirroring
@@ -108,16 +108,16 @@ rendered-output change.
    `autopilot4-deprecated/src/ui_descriptors.rs`). This is the key safety property:
    programs select trusted component type + trusted props, never raw `Html`.
 
-**DoD:** single token source; every exported component carries a base tag or
-documented exception; a `renderDescriptor`-style typed selector exists with a
+**DoD:** single token source. Every exported component carries a base tag or
+documented exception. A `renderDescriptor`-style typed selector exists with a
 fail-closed test.
 
-## Phase 2 — AI Elements family (the gap; Blitz-critical)
+## Phase 2 — AI Elements family (the gap, Blitz-critical)
 
 Add `packages/ui/src/ai-elements/` (and a barrel). Port from the autopilot3 TSX
 **markup/Tailwind**, using the Maud `ai_elements.rs` as the **curation map**
 (module list, coverage counts, base contracts) and `tailwind_contracts.rs` to
-cross-check class strings. Do **not** transliterate Rust; do not vendor TSX.
+cross-check class strings. Do **not** transliterate Rust. Do not vendor TSX.
 
 Priority order (what prefilled workspaces / accepted-outcome demos need first):
 
@@ -136,8 +136,8 @@ classes from named constants (no ad-hoc/model-authored classes), a base-contract
 tag, and a coverage test. Add an `ai-elements` coverage test mirroring the Maud
 catalog counts as the spec.
 
-**DoD:** `ai-elements` family exported from `@openagentsinc/ui`; coverage test
-asserts the catalog; the priority-1..7 components render and are usable in a
+**DoD:** `ai-elements` family exported from `@openagentsinc/ui`. Coverage test
+asserts the catalog. The priority-1..7 components render and are usable in a
 workspace demo.
 
 ## Phase 3 — Components workbench route
@@ -155,7 +155,7 @@ documented per family.
 
 Assemble the accepted-outcome / prefilled-workspace surfaces from
 `@openagentsinc/ui` `ai-elements`: agent card + prompt input + task panel +
-sources + confirmation + receipt summary. (Product work; see the workspace-repo
+sources + confirmation + receipt summary. (Product work, see the workspace-repo
 blitz docs for what each partner's workspace contains.)
 
 ## Conventions & guardrails
@@ -165,21 +165,21 @@ blitz docs for what each partner's workspace contains.)
   `apps/pylon/docs/npm-publishing-runbook.md` (scope `@openagentsinc/`, never
   `@openagents/`).
 - **Trusted UI only:** typed components, classes from constants, no model-authored
-  HTML/`Html`; JS only toggles trusted server-emitted markup. Honor the dark-only
+  HTML/`Html`. JS only toggles trusted server-emitted markup. Honor the dark-only
   / pure-black / compact-mono design contract in the existing `ui/README.md`.
-- **Reference, don't vendor:** `autopilot3` (React source) and
+- **Reference, do not vendor:** `autopilot3` (React source) and
   `autopilot4-deprecated` (Maud port) are separate clones used as
-  source/curation maps; do not copy their code wholesale into this repo.
-- Keep Git operations scoped to this repo; work on `main`; neutral
+  source/curation maps. Do not copy their code wholesale into this repo.
+- Keep Git operations scoped to this repo. Work on `main`. Neutral
   (non-personal) commit metadata per repo policy.
 
 ## Quick task checklist (ordered)
 
 - [ ] P0: scaffold `packages/ui` (package.json, tsconfig) mirroring `autopilot-ui`.
 - [ ] P0: move kit families + `index.ts` + `coverage.test.ts` into `packages/ui`.
-- [ ] P0: add `@openagentsinc/ui` dep to the web app; add re-export shim; migrate imports.
-- [ ] P0: `bun test` + `tsc --noEmit` green; confirm no visual diff.
-- [ ] P1: consolidate tokens; make `autopilot-ui` depend on `@openagentsinc/ui`.
+- [ ] P0: add `@openagentsinc/ui` dep to the web app. Add re-export shim. Migrate imports.
+- [ ] P0: `bun test` + `tsc --noEmit` green. Confirm no visual diff.
+- [ ] P1: consolidate tokens. Make `autopilot-ui` depend on `@openagentsinc/ui`.
 - [ ] P1: add base-contract tags + typed fail-closed descriptor + test.
 - [ ] P2: build `ai-elements` family (priority order) + coverage test.
 - [ ] P3: add `/components` workbench route.

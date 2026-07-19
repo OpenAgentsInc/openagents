@@ -29,16 +29,16 @@ This change adds the fail-closed composition that closes all of those at once:
 
 `buildCs336A4CrawlShardBatchCloseoutReceipt` is the single entry point an
 admission/closeout path should call after a dispatched batch returns. It (1)
-asserts the manifest is non-empty (`empty_manifest`); (2) asserts the provided
+asserts the manifest is non-empty (`empty_manifest`). (2) Asserts the provided
 authentic assignments are EXACTLY the manifest's dispatched set
-(`assignment_set_mismatch`, `duplicate_assignment`); (3) asserts EVERY returned
+(`assignment_set_mismatch`, `duplicate_assignment`). (3) Asserts EVERY returned
 receipt binds to its assignment via the existing
 `assertCs336A4CrawlShardProvenanceBinding` gate — rejecting a receipt for an
 assignment outside the batch (`receipt_for_undispatched_assignment`),
 re-raising a binding rejection's underlying reason (`provenance_binding_failed`
 carrying `bindingReason`), and refusing two receipts for the same assignment
-(`duplicate_receipt`); (4) asserts every dispatched assignment is closed out
-(`unclosed_assignment`); and (5) only then emits a deterministic,
+(`duplicate_receipt`). (4) Asserts every dispatched assignment is closed out
+(`unclosed_assignment`). And (5) only then emits a deterministic,
 content-addressed `Cs336A4CrawlShardBatchCloseoutReceipt` binding the manifest
 to ordered (assignmentRef → provenance receipt) closures. The `closeoutRef` is
 content-addressed via SHA-256 over a canonical body, so the same manifest +
@@ -87,9 +87,9 @@ This change adds the fail-closed composition that closes both at once:
 path should call before paying for a batch. It (1) asserts EVERY assignment is
 the genuine content-addressed unit the plan derives via
 `assertCs336A4CrawlShardAssignmentAuthenticity` — run BEFORE coverage so a
-forged/stale ref cannot slip into a "complete" batch coverage trusts by value;
+forged/stale ref cannot slip into a "complete" batch coverage trusts by value.
 (2) asserts the batch is an exact non-overlapping cover via
-`assertCs336A4CrawlShardDispatchCoverage`; and (3) only then emits a
+`assertCs336A4CrawlShardDispatchCoverage`. And (3) only then emits a
 deterministic, content-addressed `Cs336A4CrawlShardDispatchManifest` (planRef,
 ordered authentic assignment refs sorted by segment range, snapshot provenance)
 — the auditable "this verified batch is ready to dispatch as paid crawl-scale
@@ -98,7 +98,7 @@ canonical body, so the same plan + batch (in any input order) always yields the
 same ref. Failures re-raise the underlying typed errors wrapped as
 `Cs336A4CrawlShardDispatchManifestError` carrying the originating `stage`
 (`authenticity`/`coverage`) and that gate's own `reason`. It acquires nothing,
-fetches nothing, and settles nothing; the public-safety guard fails closed
+fetches nothing, and settles nothing. The public-safety guard fails closed
 before any unsafe material is committed.
 
 ### What genuinely remains (blocker NOT cleared)
@@ -127,17 +127,17 @@ and records an eval-delta bonus now **requires** a clean decontamination receipt
 before it will price anything.
 
 - `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.ts`
-  (gate wired in; `decontaminationReceipt` is now a REQUIRED input)
+  (gate wired in, `decontaminationReceipt` is now a REQUIRED input)
 - `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.test.ts`
-  (updated; now 10 tests, +2 for the new gate)
+  (updated, now 10 tests, +2 for the new gate)
 
 `closeCs336A4EvalDeltaSettlement` now runs four fail-closed gates in order:
 (1) `assertCs336A4EvalDeltaMeasurementBinding` — the delta was measured on the
-shard's admitted source; (2) **new** `assertCs336A4EvalDeltaDecontamination` —
+shard's admitted source. (2) **New** `assertCs336A4EvalDeltaDecontamination` —
 a CLEAN decontamination receipt covers exactly the measurement's source AND
 held-out eval set, asserted BEFORE pricing so a delta inflated by eval leakage
-(memorisation, not data quality) can never be priced or recorded; (3)
-`settleCs336A4EvalDeltaPayment` — price the bonus; (4)
+(memorisation, not data quality) can never be priced or recorded. (3)
+`settleCs336A4EvalDeltaPayment` — price the bonus. (4)
 `buildCs336A4EvalDeltaSettlementReceipt` — bind the decision to provenance. The
 `decontaminationReceipt` parameter is non-optional, so there is no longer a
 settlement path that prices a bonus without decontamination evidence. The
@@ -175,7 +175,7 @@ game an eval delta: leak examples from the held-out eval set into the "filtered"
 corpus and the filtered score rises for free — a positive delta that reflects
 memorisation, not data quality. Every assignment/source/recompute check still
 passes and the gamed bonus is paid. (Decontamination receipts were called out as
-planned in the promise state; this is the first deterministic piece of that.)
+planned in the promise state. This is the first deterministic piece of that.)
 
 This change adds the missing anti-gaming evidence:
 
@@ -249,7 +249,7 @@ the priced settlement cannot out-claim the bound receipt). BEFORE pricing it
 asserts the measurement binds the receipt's source via
 `assertCs336A4EvalDeltaMeasurementBinding`, so a wrong-source delta hard-fails
 with `Cs336A4EvalDeltaMeasurementBindingError` and is never priced or recorded.
-It fabricates no eval score, sets no funding, and emits refs/digests/sats only;
+It fabricates no eval score, sets no funding, and emits refs/digests/sats only.
 the underlying builders' public-safety guards still fire through it.
 
 ### What genuinely remains (blocker NOT cleared)
@@ -385,14 +385,14 @@ shard it pays for. This change adds the missing precondition:
 already-built artifacts (the measurement + the shard's
 `Cs336A4ProvenanceReceipt`). It returns `bound` / not bound and reports the
 `source_ref_mismatch` reason when the measurement's `sourceRef` does not equal
-the receipt's `provenance.sourceRef` (compared after trimming; empty refs on
+the receipt's `provenance.sourceRef` (compared after trimming, empty refs on
 either side fail closed with a validation error rather than comparing equal).
 `assertCs336A4EvalDeltaMeasurementBinding` is the fail-closed wrapper for a
 settlement/closeout path: it throws `Cs336A4EvalDeltaMeasurementBindingError`
 (carrying the reason) on an unbound measurement and returns the provenance
 receipt's content-addressed `receiptRef` on success. The gate deliberately does
 NOT re-price the bonus, does NOT re-validate the transform chain, and does NOT
-settle payment; it answers exactly one question: was this eval delta measured on
+settle payment. It answers exactly one question: was this eval delta measured on
 the source this shard's provenance admits?
 
 ### What genuinely remains (blocker NOT cleared)
@@ -428,8 +428,8 @@ admitting or paying for it. This change adds that gate:
 already-built artifacts that decides `bound` / not bound and reports the first
 mismatch with a typed reason:
 
-- `assignment_ref_mismatch` — the receipt closes out a different assignment;
-- `input_shard_ref_mismatch` — the receipt's input is not the assigned shard;
+- `assignment_ref_mismatch` — the receipt closes out a different assignment.
+- `input_shard_ref_mismatch` — the receipt's input is not the assigned shard.
 - `acquisition_mode_mismatch` / `source_ref_mismatch` / `snapshot_ref_mismatch`
   / `license_ref_mismatch` — the receipt silently re-attributes the corpus to a
   different origin, snapshot, or license than the operator dispatched.
@@ -440,7 +440,7 @@ admission/closeout path: it throws `Cs336A4CrawlShardProvenanceBindingError`
 content-addressed `receiptRef` on success. The gate deliberately does NOT
 re-validate the receipt's internal transform chain (that is
 `buildCs336A4ProvenanceReceipt`'s job) and does NOT settle payment (that is the
-eval-delta settlement receipt's job); it answers exactly one question: does
+eval-delta settlement receipt's job). It answers exactly one question: does
 this receipt close out this assignment?
 
 ### What genuinely remains (blocker NOT cleared)
@@ -476,18 +476,18 @@ content-addressed, public-safe `Cs336A4CrawlShardAssignment`:
 
 - a content-addressed `assignmentRef` (stable per plan + shard index) — the
   identifier an operator dispatches paid work against and that a provenance /
-  settlement receipt binds to;
+  settlement receipt binds to.
 - the `inputShardRef` (the plan shard's `shardRef`) ready to feed the
-  provenance receipt;
+  provenance receipt.
 - a `provenanceSource` lifted verbatim from the plan (`Cs336A4SourceProvenance`),
-  so the receipt's source descriptor cannot drift from the plan it came from;
+  so the receipt's source descriptor cannot drift from the plan it came from.
 - fail-closed integrity checks: rejects non-crawl acquisition modes,
   out-of-range/non-integer indices, plan shards whose declared index or segment
   range is internally inconsistent, and (via the public-safety guard) any
   wallet/payment/URL/raw material.
 
 `deriveCs336A4CrawlShardAssignments` maps the whole plan to an ordered list of
-such assignments; a test asserts they tile the snapshot with no gaps/overlaps
+such assignments. A test asserts they tile the snapshot with no gaps/overlaps
 and feed `buildCs336A4ProvenanceReceipt` without re-typing the source.
 
 ### What genuinely remains (blocker NOT cleared)
@@ -523,16 +523,16 @@ and emits a deterministic, content-addressed, public-safe shard plan:
 
 - the segments are partitioned as evenly as possible (front-loaded remainder),
   so the partition is a pure function of two integers — no ordering ambiguity,
-  no floating point; shard ranges tile the snapshot with no gaps/overlaps and
-  every shard's `segmentCount` sums back to the snapshot `segmentCount`;
+  no floating point. Shard ranges tile the snapshot with no gaps/overlaps and
+  every shard's `segmentCount` sums back to the snapshot `segmentCount`.
 - each shard carries a content-addressed `shardRef` over the snapshot + segment
   range, intended to feed the `public_crawl_snapshot` / `licensed_public_dataset`
-  acquisition modes of `cs336-a4-provenance.ts` as an `inputShardRef`;
+  acquisition modes of `cs336-a4-provenance.ts` as an `inputShardRef`.
 - the `planRef` is content-addressed via SHA-256 over a canonical body, so the
-  same descriptor + target shard count always yield the same plan;
+  same descriptor + target shard count always yield the same plan.
 - it **materializes no payload**: it never fetches WARC records and fails closed
   (`Cs336A4CrawlShardPlanUnsafeMaterialError`) on URLs, WARC/crawl payload,
-  wallet, payment, or private material; the bounded synthetic mixture is
+  wallet, payment, or private material. The bounded synthetic mixture is
   rejected because it has no crawl segments to assign.
 
 ### What genuinely remains (blocker NOT cleared)
@@ -565,13 +565,13 @@ public-safe bonus receipt. It fails closed so a bonus can never be recorded
 against a shard whose provenance does not check out:
 
 - the settlement and the bound provenance receipt must name the **same
-  `assignmentRef`** (a payment must point at the shard it pays for);
+  `assignmentRef`** (a payment must point at the shard it pays for).
 - a `payable` settlement **requires** the bound provenance receipt to be
   `recomputeVerified` (no bonus for a shard whose deterministic recompute did
-  not verify);
+  not verify).
 - the receipt carries the provenance receipt's content-addressed `receiptRef`
-  and `finalOutputDigestRef`, so an auditor can re-derive both halves;
-- caller-derived refs are guarded for wallet/payment/private/raw material; the
+  and `finalOutputDigestRef`, so an auditor can re-derive both halves.
+- caller-derived refs are guarded for wallet/payment/private/raw material. The
   embedded settlement carries only this codebase's trusted constant policy refs.
 
 The `receiptRef` is content-addressed via SHA-256 over a canonical body, so the
@@ -610,13 +610,13 @@ or a `blocked` settlement carrying the documented reason + blocker refs. It
 **fabricates nothing**: it never invents a delta, and the default path (no
 funding parameters) returns `funding_parameters_unset`. Enforced boundaries:
 
-- the producing stage must be `deterministic_recompute` verified;
+- the producing stage must be `deterministic_recompute` verified.
 - `delta > 0` is required (no penalty for neutral filtering, no bonus for
-  regressions);
-- the delta is clamped to `deltaCap` before pricing;
+  regressions).
+- the delta is clamped to `deltaCap` before pricing.
 - funding parameters must be set and positive — unset until funding is approved.
 
-No wallet/invoice/preimage material is accepted or emitted; the function
+No wallet/invoice/preimage material is accepted or emitted. The function
 computes a public-safe sats amount and basis, not a payment instrument.
 
 ## 2026-06-20 update — eval-delta payment gate projection
@@ -641,7 +641,7 @@ receipt, it reports `paymentComputationAvailable=true` but
 `greenGateSatisfied=false`.
 
 `eval_delta_payment_missing` remains blocked. This projection makes the missing
-receipt boundary inspectable; it does not fabricate eval scores, spend, bonus
+receipt boundary inspectable. It does not fabricate eval scores, spend, bonus
 payouts, or a green transition.
 
 ### What genuinely remains (blocker NOT cleared)
@@ -669,11 +669,11 @@ The deterministic refinery core already commits a SHA-256 digest per stage
 output, but a shard that carries only a single `outputDigestRef` cannot prove
 where its corpus came from or that the sequence of transforms applied to it is
 internally consistent. The promise's green criterion requires "every shard
-carrying source-provenance and transform digests"; this module produces exactly
+carrying source-provenance and transform digests". This module produces exactly
 that artifact:
 
 - **Source provenance** — `sourceRef`, `snapshotRef`, `licenseRef`, and an
-  `acquisitionMode` (`bounded_synthetic_corpus` today; `licensed_public_dataset`
+  `acquisitionMode` (`bounded_synthetic_corpus` today, `licensed_public_dataset`
   / `public_crawl_snapshot` reserved for forward-stability).
 - **Chain-linked transform digests** — each stage's `inputDigestRef` must equal
   the prior stage's `outputDigestRef` (the first must equal the declared source
@@ -693,12 +693,12 @@ This is the receipt *format and integrity check*, not the receipts themselves.
 
 - No real refinery shard has been dispatched as paid work and closed out with a
   provenance receipt populated from actual source acquisition + recompute
-  verification; this builder is not yet wired into the A4 closeout/admission path
+  verification. This builder is not yet wired into the A4 closeout/admission path
   (`training-data-refinery.ts`) or the public projection.
 - `crawl_scale_corpus_missing` and `eval_delta_payment_missing` are untouched and
   out of scope for this run.
 
-No promise state was changed; no blocker was dropped from any tracking doc.
+No promise state was changed. No blocker was dropped from any tracking doc.
 
 ## 2026-06-20 live A4 admission/projection wiring
 

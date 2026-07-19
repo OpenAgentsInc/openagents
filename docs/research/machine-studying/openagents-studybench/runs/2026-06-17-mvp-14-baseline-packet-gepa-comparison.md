@@ -1,7 +1,7 @@
 # MVP-14 Baseline, Packet, And GEPA Comparison
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-17
@@ -11,8 +11,8 @@ This run is the first fixed-budget comparison for the OpenAgents StudyBench MVP.
 It compares three candidate arms over the public-retained launch rows plus a
 refs-only private validation slice:
 
-- baseline with no study packet;
-- study packet mounted as repository memory;
+- baseline with no study packet.
+- study packet mounted as repository memory.
 - study packet plus a Psionic/GEPA candidate bundle.
 
 The Probe-facing summary lives at:
@@ -51,10 +51,10 @@ The run covers 45 attempts:
 
 Every attempt has:
 
-- a Probe closeout bundle ref;
-- a `probe.benchmark_closeout.v1` closeout ref;
-- a `probe.studybench_rubric_score.v0` rubric-score ref;
-- a resource-usage ref;
+- a Probe closeout bundle ref.
+- a `probe.benchmark_closeout.v1` closeout ref.
+- a `probe.studybench_rubric_score.v0` rubric-score ref.
+- a resource-usage ref.
 - a candidate-arm ref.
 
 ## Aggregate Result
@@ -85,11 +85,11 @@ worth running. It is not launch copy and not a customer promise.
 
 This comparison does not authorize:
 
-- customer repo ingestion;
-- marketplace publication;
-- public repo-expert copy;
-- runtime promotion;
-- payout eligibility;
+- customer repo ingestion.
+- marketplace publication.
+- public repo-expert copy.
+- runtime promotion.
+- payout eligibility.
 - product-promise green status.
 
 The next step is the product-promise and marketplace gate review. That review

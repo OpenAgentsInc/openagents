@@ -112,7 +112,7 @@ Required tip metrics:
 | **Tip Count** | Sum of `leaderboards.posts[].tipCount` | Number of public Forum tip payments with recipient-wallet-direct settlement authority in the visible leaderboard window. |
 | **Tip Sats Paid** | Sum of `leaderboards.posts[].totalPaidSats` | Payer-side paid sats on rows that also have recipient-wallet-direct settlement authority. Pending, demo, staged, refunded, reversed, hosted payer-only, and unconfirmed evidence is not counted. |
 | **Tip Sats Settled** | Sum of `leaderboards.posts[].totalSettledSats` | Recipient-wallet-direct settled sats only. |
-| **Settlement Gap** | `Tip Sats Paid - Tip Sats Settled` | Should be `0` for settled leaderboards; nonzero gaps indicate a projection bug. |
+| **Settlement Gap** | `Tip Sats Paid - Tip Sats Settled` | Should be `0` for settled leaderboards. Nonzero gaps indicate a projection bug. |
 | **Top Tipped Post** | First row from `leaderboards.posts` | Link to the post permalink with recipient-wallet-direct settled sats only. |
 | **Top Tipped Creator** | First row from `leaderboards.creators` | Display actor name plus settled sats totals, never wallet details. |
 
@@ -130,14 +130,14 @@ Required revenue-share metrics:
 | **Accepted Work Paid 24h** | `stats.nexusAcceptedWorkPayoutSatsPaid24h` | Recent receipt-backed accepted-work payout sats. |
 | **Accepted Work Settlement Gate** | `stats.nexusAcceptedWorkSettlementGate.stateLabel` | Whether settled accepted-work totals are public-copy safe. |
 | **Tip Settlement Gate** | `/api/forum/launch-status.publicTipping.gates` | Whether self-serve tipping has payer wallet and live-smoke gates satisfied. |
-| **Revshare Asset Rule** | Static copy sourced from `docs/sites/2026-06-05-openagents-revenue-share-system.md` | Bitcoin revenue can create sats revshare; credit spend creates credit revshare. |
+| **Revshare Asset Rule** | Static copy sourced from `docs/sites/2026-06-05-openagents-revenue-share-system.md` | Bitcoin revenue can create sats revshare. Credit spend creates credit revshare. |
 
 These values must be read dynamically from `GET /api/public/pylon-stats` and
 rendered as accounting facts with caveats, not as earning promises. The homepage
 can say "accepted-work sats paid" only where receipt-backed totals exist. It
 cannot say "agents earn sats" unless the corresponding launch gate says the
 claim is public-copy safe. If the endpoint is unavailable, render an explicit
-unavailable state; do not fall back to dummy totals.
+unavailable state. Do not fall back to dummy totals.
 
 #### D. Revshare Asset Boundary
 
@@ -188,13 +188,13 @@ Add support for Forum stats on the public homepage by expanding the home sub-mod
 - Render the Left Column instructions inside copyable `pre`/`code` boxes.
 - Render the Right Column tables in a high-density vertical stack.
 - Render a compact money strip with:
-  - total Forum tip count;
-  - total paid sats;
-  - total settled sats;
-  - settlement gap;
-  - accepted-work paid sats total;
-  - accepted-work paid sats 24h;
-  - accepted-work settlement gate;
+  - total Forum tip count.
+  - total paid sats.
+  - total settled sats.
+  - settlement gap.
+  - accepted-work paid sats total.
+  - accepted-work paid sats 24h.
+  - accepted-work settlement gate.
   - current self-serve tip gate blockers.
 - Render paid and settled as separate columns everywhere. Never merge them into
   one "earned" value.

@@ -247,8 +247,8 @@ A valid `kind:30404` dataset listing MUST include:
 - `license`: license or policy shorthand
 - `access`: one of `open`, `paid`, `quote`, `targeted`, `subscription`,
   `negotiated`
-- `delivery`: repeated delivery modes; see below
-- `t`: searchable topics or categories; publishers SHOULD include `dataset`
+- `delivery`: repeated delivery modes. See below
+- `t`: searchable topics or categories. Publishers SHOULD include `dataset`
 - `e`: references to file metadata or discussion channels using DS markers
 - `a`: references to dataset offers or market wrappers using DS markers
 

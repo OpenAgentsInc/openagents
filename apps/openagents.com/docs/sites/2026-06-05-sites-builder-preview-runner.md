@@ -40,7 +40,7 @@ unbounded compute.
   material, checkout material, and secrets
 - customer-visible events expose the tier and a plain-language reason only
 - a preview URL must still be an OpenAgents HTTPS URL
-- `container_metered` does not imply work was executed or billed; it means the
+- `container_metered` does not imply work was executed or billed. It means the
   candidate needs reviewed metered execution before preview
 
 ## Follow-Up Work

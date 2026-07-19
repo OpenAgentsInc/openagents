@@ -2,13 +2,13 @@
 
 Session-end handoff from the Fable coordinator session that landed the Full Auto
 hardening program and began the parity/QA phase. Written at usage-limit cutoff
-~10:20 CDT; two subagent lanes were still running.
+~10:20 CDT. Two subagent lanes were still running.
 
 ## What landed on main today (this session's lanes)
 
 - **Full Auto epic #8873 CLOSED** — all 13 children (#8874–#8886) merged and
-  individually closed. Final state: product spec `specs/desktop/full-auto.product-spec.md`
-  rev 7 (FA-AC-01..28) + regenerated AssuranceSpec; durable exactly-once
+  individually closed. Final state: ProductSpec `specs/desktop/full-auto.product-spec.md`
+  rev 7 (FA-AC-01..28) + regenerated AssuranceSpec. Durable exactly-once
   continuation, workspace fail-closed binding, failure backoff, live in-flight
   UI state, background question auto-resolve, two-process restart smoke
   (`pnpm run smoke:full-auto-restart`), and the loopback OpenAPI control
@@ -22,7 +22,7 @@ hardening program and began the parity/QA phase. Written at usage-limit cutoff
   failed with "That conversation no longer exists."). Commit `3967982eaa`.
 - **/stats live in production** — the Start route now fetches
   `khala-tokens-served` (+history, model-mix, channel-mix), `pylon-stats`, and
-  `forum/launch-status`; deployed to the `openagents-monolith` Cloud Run
+  `forum/launch-status`. Deployed to the `openagents-monolith` Cloud Run
   service. Tip leaderboards honestly render the 410 `money_surface_retired`
   state. Gap filed as #8911: Desktop local turns (incl. Full Auto) never reach
   `token_usage_events` — the counter excludes them until consent-gated
@@ -61,26 +61,26 @@ A real end-to-end programmatic run happened on this Mac:
    Effect skill, delegating claim scans to child agents.
 
 The loop was still cycling at session end (cap 20, backoff, durable across
-restarts). The app + control server were left RUNNING; manage with
+restarts). The app + control server were left RUNNING. Manage with
 `pnpm --dir apps/openagents-desktop run full-auto -- status|disable <threadRef>
 --user-data <userData dir>` (connection info in `<userData>/full-auto/control.json`).
 
 Operational gotcha discovered (cost four relaunch attempts): a running dev
 instance retitles to `OpenAgents Dev` and holds Electron's per-userData
-`SingletonLock`; later launches lose `requestSingleInstanceLock()` and quit(0)
+`SingletonLock`. Later launches lose `requestSingleInstanceLock()` and quit(0)
 silently ~1.6s in, AFTER logging "full-auto-control listening" — so the log
 looks healthy while control.json points at a dead port. Do not kill by title,
 port, process group, `pkill`, or `killall`, and do not remove `Singleton*`
 while an owned process may still live. Follow the exact-PID and private-control
 endpoint procedure in
-[`docs/sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md`](../sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md);
+[`docs/sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md`](../sol/2026-07-16-full-auto-shared-mac-dogfood-runbook.md).
 verify liveness with the CLI, never the log line.
 
 ## Coordination protocol (multi-lane)
 
 Parallel lanes (Codex sessions, Full Auto threads, Fable subagents) coordinate
 via issue comments: post `CLAIM` (actor/session, base commit, worktree/branch,
-scope) before working an issue; `CLAIM-RELEASE: #<n>` on close. This is not
+scope) before working an issue. `CLAIM-RELEASE: #<n>` on close. This is not
 optional: this session a parallel Codex lane landed #8891
 (`packages/agent-client-runtime-bridge`, `31165ee130`) while an unclaimed
 Fable subagent built a complete duplicate that had to be discarded. Check for
@@ -106,7 +106,7 @@ the issue comments before redoing anything.
 ## Open next (priority order)
 
 1. Finish integrating #8908 and #8899 (above).
-2. **#8911** — likely being finished by the Full Auto lane itself; verify via
+2. **#8911** — likely being finished by the Full Auto lane itself. Verify via
    its thread/turns before claiming.
 3. Parity epic **#8898**: L2 #8900 (capability truth), L6 #8901 (Full Auto per
    lane), L7 #8902 (specs cross-lane), L8 #8903 (lane registry/switching) —
@@ -122,7 +122,7 @@ the issue comments before redoing anything.
 
 - Full Auto control surface: `apps/openagents-desktop/src/full-auto-control-*.ts`,
   clients in `apps/openagents-desktop/scripts/full-auto-{cli,mcp,control-client}.ts`
-- Spec: `specs/desktop/full-auto.product-spec.md` (rev 7) + assurance spec
+- Spec: `specs/desktop/full-auto.product-spec.md` (rev 7) + AssuranceSpec
 - QA: `docs/qa/observer/README.md`, `docs/qa/verifier/README.md`
 - ACP: `packages/agent-client-protocol{,-conformance}/`,
   `packages/agent-client-runtime-bridge/`, teardown in `docs/teardowns/`

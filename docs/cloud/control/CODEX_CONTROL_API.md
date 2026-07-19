@@ -182,21 +182,21 @@ $OA_CODEX_CONTROL_STATE_ROOT/jobs/<safe-run-id>/queue.pending
 
 The tick worker (enabled with `OA_CODEX_QUEUE_ENABLED=true`):
 
-- scans `jobs/*/queue.pending` oldest-first each `OA_CODEX_QUEUE_TICK_MS`;
+- scans `jobs/*/queue.pending` oldest-first each `OA_CODEX_QUEUE_TICK_MS`.
 - dispatches up to `OA_CODEX_QUEUE_MAX_CONCURRENCY` jobs at a time (bounded
-  concurrency, tracked by an in-flight counter);
+  concurrency, tracked by an in-flight counter).
 - applies `OA_CODEX_QUEUE_LANE` (default `cloud-gcp`) to a dequeued job that did
-  not pin a `lane`, so the run drives the configured lane unattended;
+  not pin a `lane`, so the run drives the configured lane unattended.
 - claims a job by removing its durable marker **before** spawning the worker, so
-  a daemon restart never double-dispatches it;
+  a daemon restart never double-dispatches it.
 - emits `cloud.run.enqueued` on enqueue and `cloud.run.dequeued` on dispatch.
 
 Because the `queue.pending` markers live on disk under the job registry, a
 restarted daemon re-scans them and resumes draining. A job that was already
 mid-run when the daemon was killed keeps its last durable status (the existing
-no-process-reattach behavior); only jobs still marked pending are re-dispatched.
+no-process-reattach behavior). Only jobs still marked pending are re-dispatched.
 
-`/v1/codex-runs` remains the inline path that spawns a worker immediately;
+`/v1/codex-runs` remains the inline path that spawns a worker immediately.
 `/v1/queue` is the enqueue surface for fully unattended draining.
 
 ## Lane-Agnostic Placement (`/v1/placement`)
@@ -229,13 +229,13 @@ Request body (`openagents.codex_placement_assignment.v1`):
 `auto`. Policy (owner direction 2026-06-14): **Google GCE is primary, SHC is
 secondary/fallback.** `auto` and `cloud-gcp` bind to the GCE ephemeral-per-
 session VM lane (capacity class `gce.ephemeral.standard.v1`, the commercial
-C-5 class) when GCE is selectable; otherwise they fall back to SHC. `cloud-shc`
+C-5 class) when GCE is selectable. Otherwise they fall back to SHC. `cloud-shc`
 pins `oa-shc-katy-01`. `local` is resolved by the caller's own Pylon, not by
 cloud placement, and is rejected here. The GCE lane uses `danger_full_access`
 by default inside the no-wallet VM boundary (CND-041/CND-055, cloud#88).
 
 Until CND-042 receipt comparison lands, placement is **policy-driven (Google
-default), not cost-driven**; the returned binding records `costDriven: false`.
+default), not cost-driven**. The returned binding records `costDriven: false`.
 
 The response carries the runner binding plus the same async run acknowledgement
 that `/v1/codex-runs/start` returns (the placed run executes through the
@@ -262,7 +262,7 @@ existing async Codex run path):
 }
 ```
 
-Full GCE warm-pool optimization is deferred to the density phase; placement
+Full GCE warm-pool optimization is deferred to the density phase. Placement
 just selects GCE by default and keeps cold-start reasonable. The runner binding
 and quota caps are refs-and-limits only and carry no raw owner identity, cost,
 GCP project id, instance name, IP, credentials, or topology.
@@ -292,7 +292,7 @@ $OA_CODEX_CONTROL_STATE_ROOT/jobs/<safe-run-id>/callbacks/<sequence>.sent
 flag, and external runner id. `events.jsonl` stores local normalized events.
 This lets a restarted daemon answer status/event queries from disk even if the
 active process is gone. The current implementation does not resume a killed
-Codex process; a restarted daemon can honestly report the last durable local
+Codex process. A restarted daemon can honestly report the last durable local
 state and future work should add process reattach or explicit stale-run
 recovery.
 
@@ -340,7 +340,7 @@ same `openagents.resource_usage_receipt.v1` digest as
 
 `GET /v1/codex-runs/{runId}` returns the current local status and normalized
 event summary. `GET /events?cursor=N` returns only local events after that
-cursor. `GET /stream?cursor=N` returns a one-shot SSE snapshot plus heartbeat;
+cursor. `GET /stream?cursor=N` returns a one-shot SSE snapshot plus heartbeat.
 it is meant for internal polling/recovery, not public browser exposure.
 
 `POST /v1/codex-runs/{runId}/cancel` and `POST /v1/codex-runs/cancel` mark the
@@ -354,7 +354,7 @@ terminate the active turn immediately.
 continuation request. If the run is not currently inside an active worker, the
 daemon starts another background Codex turn from the stored run envelope with
 the new prompt and optional auth grant. If the worker is already running, the
-daemon records the continuation as `waiting_for_input`; the next supervisor
+daemon records the continuation as `waiting_for_input`. The next supervisor
 pass should attach the turn to a live Codex thread/process rather than starting
 a separate command.
 
@@ -434,7 +434,7 @@ $OA_CODEX_AUTH_JSON_ROOT/<provider-account-ref>/auth.json
 
 The control API selects that file only after approved grant resolution, only
 through `oa-workroomd codex auth materialize`, and only into a session-scoped
-`CODEX_HOME`; `oa-workroomd codex run` then scrubs that session auth directory
+`CODEX_HOME`. `oa-workroomd codex run` then scrubs that session auth directory
 after closeout. Do not print or commit the auth JSON content. The legacy
 `OA_CODEX_AUTH_JSON_FILE` single-account bridge still exists for local
 development and migration, but production runners should prefer
@@ -443,7 +443,7 @@ other.
 
 The control daemon rejects auth cache files that look like OpenAI API-key
 material. `OPENAI_API_KEY`/`CODEX_API_KEY` fallback is not an accepted
-production path for user workrooms; reconnect the user's ChatGPT/Codex account
+production path for user workrooms. Reconnect the user's ChatGPT/Codex account
 through the current OpenAgents account broker instead.
 
 Historically, `oa-shc-katy-01` also ran a Codex App Server broker for the
@@ -475,7 +475,7 @@ CODEX_HOME=/home/ubuntu/.openagents-codex-accounts/provider-account_... \
 
 If `codex exec`, `codex login status`, or the compact endpoint returns
 `401 token_revoked`, treat the provider account as stale and run the current
-OpenAgents ChatGPT/Codex account-link flow again for that account slot; do not
+OpenAgents ChatGPT/Codex account-link flow again for that account slot. Do not
 retry with API keys.
 
 ## Worker / Khala Sync event-ingest callbacks
@@ -489,12 +489,12 @@ $OA_CODEX_EVENT_INGEST_URL/{runId}/events/ingest
 
 The URL may also contain a `{runId}` placeholder for deployments that need an
 exact route template. Callback event sequence numbers are local to the SHC
-daemon; the Worker / Khala Sync ingest path assigns canonical durable
+daemon. The Worker / Khala Sync ingest path assigns canonical durable
 sequences. The daemon writes
 `callbacks/<sequence>.sent` markers after successful posts so normal retry
 loops do not resend already-acknowledged local events. If ingest receives a
 request but the daemon loses the response before writing the marker, duplicate
-delivery is still possible; the ingest contract must deduplicate stable runner
+delivery is still possible. The ingest contract must deduplicate stable runner
 event IDs.
 
 Callback errors are non-fatal to local execution. Operators should recover by

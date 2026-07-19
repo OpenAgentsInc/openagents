@@ -7,7 +7,7 @@ how it bills, and what infrastructure it runs on. It supersedes the
 "hosted Pylon pool" framing used in the #8473 lane and **rejects the exe.dev
 substrate direction** proposed in
 `docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md` (that doc
-stays as a historical evaluation; its recommendation is not adopted).
+stays as a historical evaluation. Its recommendation is not adopted).
 The launch context is the mobile-only MVP pivot
 (`docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md`,
 epic #8467).
@@ -60,7 +60,7 @@ Firecracker path is **mostly built and already ours**.
   `POST /api/khala/cloud/runtime-turn-usage`.
 
 Choosing exe.dev would have meant onboarding a new vendor to *avoid*
-finishing infrastructure we already built. That's backwards.
+finishing infrastructure we already built. That is backwards.
 
 ### 2.2 Isolation is the product requirement, not a nice-to-have
 
@@ -73,8 +73,8 @@ its own microVM by a hardware-virtualization boundary — not a container
 namespace, not a shared persistent VM another user's turn also runs in.
 exe.dev's model (persistent VMs over a *pooled* resource plan, sparse
 public security documentation) put the multi-tenant boundary exactly where
-we can't afford softness. Third-party VM hosts also see the workspace and
-runner environment by construction; on our own GCP project, the trust chain
+we cannot afford softness. Third-party VM hosts also see the workspace and
+runner environment by construction. On our own GCP project, the trust chain
 is Google → us, with no additional party.
 
 ### 2.3 How it physically runs on GCP
@@ -92,7 +92,7 @@ walks through): host instances on N2/N1 (Haswell+, `--enable-nested-virtualizati
   runtime + coding agents + tooling), its own scratch disk, TAP-networked
   egress through the host with a restrictive policy.
 - **Control plane**: `oa-codex-control` (private `cloud/` repo) owns
-  placement, lifecycle (the 8-state workroom model), health, and reclaim;
+  placement, lifecycle (the 8-state workroom model), health, and reclaim.
   the public Worker talks to it through the already-built
   `cloud-coding-session-routes.ts` seam (`OA_CLOUD_CONTROL_URL` + token,
   `gceProvisioningArmed`).
@@ -108,7 +108,7 @@ The evaluation's *authority-model* conclusions were correct and carry over
 verbatim: OpenAgents owns admission, exact accounting, credit charging,
 sync projection, typed refusals, and the invariant that org-cloud execution
 never routes through another user's machine. Its warm-pool insight also
-carries over: **don't boot per message.** Agent computers are provisioned
+carries over: **do not boot per message.** Agent computers are provisioned
 per *work context* and reused across turns within it (§4), with a small
 warm pool to hide boot latency later.
 
@@ -125,7 +125,7 @@ drawn by two meters:
    the same credit balance, from the lifecycle receipts the provisioning
    path already emits (`openagents.resource_usage_receipt.v1` — the shape
    `makeLedgerCloudCodingMeteringHook` in `cloud-coding-session-routes.ts`
-   was built to produce). The debit path is wired, idempotent, and exact-only;
+   was built to produce). The debit path is wired, idempotent, and exact-only.
    arming a nonzero live price remains owner-gated on the rate decision below
    and #8503's real lifecycle receipts.
 
@@ -137,18 +137,18 @@ Rules, non-negotiable:
   in the app, never from third-party host metrics.
 - **Same ledger, same boundary.** Draws hit the existing Pool B msat ledger
   (atomic, idempotent per receipt, `CHECK (balance_msat >= 0)`), respecting
-  the RL-3 asset boundary. One balance; two clearly-labeled receipt kinds.
+  the RL-3 asset boundary. One balance. Two clearly-labeled receipt kinds.
   The mobile balance/history UI (#8480, landed) and the Aiur credits
   console (#8500) itemize both.
 - **Pre-flight + in-flight gating.** Admission (#8474) requires a positive
-  balance before an agent computer is assigned or a turn dispatched;
+  balance before an agent computer is assigned or a turn dispatched.
   MVP mid-run exhaustion lets the already-admitted turn finish, attempts the
   exact post-turn debit, lets the ledger constraint refuse any negative
   balance, emits a private typed `insufficient_credit` thread event, and lets
   the next #8474 admission refuse until the user is funded again.
 - **Pricing is an owner decision.** The rate (e.g. credits per active
-  minute; whether idle-attached time bills at a lower rate or zero) is set
-  by the owner before launch; #8479 records the NEEDS_OWNER item with a
+  minute. Whether idle-attached time bills at a lower rate or zero) is set
+  by the owner before launch. #8479 Records the NEEDS_OWNER item with a
   recommended formula from actual GCE host cost + margin, but does not invent
   the rate in code. The meter must be visible to the user *before* they
   dispatch once the rate is owner-approved.
@@ -158,7 +158,7 @@ Rules, non-negotiable:
 
 Why bill compute separately at all: agent time and model tokens are
 genuinely different costs (a long test suite burns compute with few
-tokens; a chat-heavy turn is the reverse), separately metering them keeps
+tokens. A chat-heavy turn is the reverse), separately metering them keeps
 margins honest per the pricing engine's own cost model, and "your agent
 computer" as a billable object is *legible to users* in a way "org-cloud
 executor overhead amortized into token margin" never will be.
@@ -168,7 +168,7 @@ executor overhead amortized into token margin" never will be.
 - **Unit**: one agent computer per admitted **work context** — MVP: one
   per user per active thread-with-repo-binding (the `repoBinding` contract
   from #8472). Turns within the same thread reuse the same agent computer
-  (warm workspace, incremental work); a different repo/thread gets a
+  (warm workspace, incremental work). A different repo/thread gets a
   different one.
 - **States**: the `cloud/` repo's 8-state workroom lifecycle is the model —
   requested → provisioning → ready → active(turn) → idle → reclaiming →
@@ -181,10 +181,10 @@ executor overhead amortized into token margin" never will be.
   wiped. Nothing persists between provisions except what went back to
   GitHub or into Khala Sync.
 - **Credentials inside the microVM**: short-lived, repo-scoped tokens via
-  the SCM broker seam only (#8475); no raw user OAuth tokens, no org
+  the SCM broker seam only (#8475). No raw user OAuth tokens, no org
   provider master keys, no wallet material on the agent computer, ever.
   The workspace credential scanner runs before closeout/writeback.
-- **Network**: egress-restricted by host policy to what coding work needs;
+- **Network**: egress-restricted by host policy to what coding work needs.
   the agent computer serves no inbound traffic (progress flows out through
   the runtime's authenticated connection to OpenAgents).
 - **Blast radius statement (honest)**: a fully compromised agent computer
@@ -213,13 +213,13 @@ microVM-destroy receipt refs. The committed posture doc is
    Refusals are typed (`insufficient_credit`, `rate_limited`,
    `org_capacity_unavailable`) and rendered honestly in the app.
 3. Admission ensures an agent computer for the thread's work context —
-   reuse if one is ready/idle; otherwise placement via the armed
+   reuse if one is ready/idle. Otherwise placement via the armed
    `cloud-coding-session-routes.ts` → `oa-codex-control` → Firecracker
    microVM on our GCE host (provision receipt → billing meter starts per
    §3).
 4. The runtime inside the agent computer consumes the intent (the #8473
    executor, unchanged), materializes the repo checkout (scoped credential
-   via #8475), runs the turn (Gemini default; per-user model config from
+   via #8475), runs the turn (Gemini default, per-user model config from
    #8484), and streams `runtime_event`/`runtime_turn` entities into the
    thread scope — the mobile app renders them live, push notifies on
    completion (#8485/#8486).
@@ -230,11 +230,11 @@ microVM-destroy receipt refs. The committed posture doc is
    authorization failures to typed public-safe refs. Opened/reused writebacks
    have a `writeback.recorded` Khala `runtime_event` shape carrying branch and
    PR links for the thread scope. The server-side `chat.bindThreadRepo`
-   mutator has landed in `khala-sync-server`; the remaining end-to-end proof
+   mutator has landed in `khala-sync-server`. The remaining end-to-end proof
    is #8503's owner-gated real mobile turn inside Firecracker.
 6. Exact token receipts post to `/api/khala/cloud/runtime-turn-usage`
    (landed) and #8479 charges them against the owner balance. Lifecycle
-   receipts record compute time and feed the same credit-metering rail; live
+   receipts record compute time and feed the same credit-metering rail. Live
    nonzero compute charging waits only on #8503 receipts plus the owner-set
    Agent Computer rate. #8480's UI and Aiur (#8500/#8501) show the itemized
    draw.
@@ -263,7 +263,7 @@ microVM-destroy receipt refs. The committed posture doc is
   Computer capacity before placement. It refuses with typed
   `insufficient_credit`, `rate_limited`, or `org_capacity_unavailable` outcomes
   and rejects caller-supplied Pylon/user-capacity selectors. Capacity now means
-  Agent Computer capacity from the control-plane readiness/ledger path; exe.dev
+  Agent Computer capacity from the control-plane readiness/ledger path. Exe.dev
   pool framing is dropped.
 - **#8475** (repo checkout) — public repo-checkout seam landed in
   `apps/pylon/src/workspace-materializer.ts` and
@@ -276,7 +276,7 @@ microVM-destroy receipt refs. The committed posture doc is
   is the only path. GitHub App installation tokens remain the least-privilege
   follow-up once owner-approved.
 - **#8476** (isolation posture) — rescoped to §4 of this doc: document and
-  enforce the Firecracker per-work-context posture; the exe.dev
+  enforce the Firecracker per-work-context posture. The exe.dev
   persistent-VM trust model is out. Public-repo enforcement has landed:
   placement requests carry the isolation policy, placement responses must echo
   the same work context, cleanup requires scratch-wipe and microVM-destroy
@@ -285,11 +285,11 @@ microVM-destroy receipt refs. The committed posture doc is
   PR publishing, no force-pushes, typed permission failures, branch URL
   closeout refs, and `writeback.recorded` runtime-event metadata. The
   `chat.bindThreadRepo` server mutator has landed after #8472's original
-  closeout; the remaining end-to-end proof is #8503 running a real mobile
+  closeout. The remaining end-to-end proof is #8503 running a real mobile
   turn inside Firecracker.
 - **#8479** (metering) — token debit is wired from exact runtime usage
-  receipts; the Agent Computer compute debit seam is idempotent/exact-only
-  and propagates `insufficient_credit`; the mid-run exhaustion policy is
+  receipts. The Agent Computer compute debit seam is idempotent/exact-only
+  and propagates `insufficient_credit`. The mid-run exhaustion policy is
   documented above. The compute rate itself is NEEDS_OWNER and must be set
   before any nonzero live compute charge is armed.
 - **exe.dev audit doc** — banner added: evaluation retained, recommendation
@@ -298,10 +298,10 @@ microVM-destroy receipt refs. The committed posture doc is
 
 ## 7. Later (explicitly not MVP)
 
-Warm-pool pre-provisioning for instant first turns; per-user persistent
-volumes ("your agent computer remembers your build cache") as a paid tier;
-bare-metal hosts for density; multiple sizes/classes of agent computer at
-different rates; regional placement; the SHC lane as a second placement
-target (the routes already model it); agent computers as a directly
-rentable primitive beyond Khala Code turns. None of this blocks launch;
+Warm-pool pre-provisioning for instant first turns. Per-user persistent
+volumes ("your agent computer remembers your build cache") as a paid tier.
+bare-metal hosts for density. Multiple sizes/classes of agent computer at
+different rates. Regional placement. The SHC lane as a second placement
+target (the routes already model it). Agent computers as a directly
+rentable primitive beyond Khala Code turns. None of this blocks launch.
 all of it extends the same seams.

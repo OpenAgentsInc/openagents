@@ -27,9 +27,9 @@ money and never throws on a reconciliation finding — only on a structurally
 invalid spec (same contract the campaign builder enforces).
 
 Tests (`kernel-optimization-campaign.test.ts`, +4): all-gates-hold ok path with
-the settlement surfaced; a same-target op swap that ONLY the op gate catches
-(totals/per-job/target all pass) proving the composite is non-redundant; a
-double-settled job the per-job gate catches while totals stay blind; and an
+the settlement surfaced. A same-target op swap that ONLY the op gate catches
+(totals/per-job/target all pass) proving the composite is non-redundant. A
+double-settled job the per-job gate catches while totals stay blind. And an
 invalid-spec throw.
 
 ## What remains for this blocker (still red)
@@ -40,7 +40,7 @@ baseline on declared hardware, a `Verified` independent-device output-parity
 verdict, an at-scale across-the-mesh run with these gates run on REAL
 settlements, and dereferenceable accepted-work + settlement receipts plus owner
 sign-off. The March 2026 Psionic/Qwen 3.5 result stays historical-demo evidence
-only (`docs/transcripts/217.md`). No promise state was changed; no blocker was
+only (`docs/transcripts/217.md`). No promise state was changed. No blocker was
 dropped from the registry.
 
 ## Pointers
@@ -80,9 +80,9 @@ are mechanically checkable instead of paper-only:
     yields a payable claim. Correctness/throughput dominate at the money
     boundary, not just at verification.
 - Tests: `packages/tassadar-executor/src/kernel-optimization-dispatch.test.ts`
-  (8 tests: dispatch happy path; baseline target/op mismatch refusals; budget
-  refusal; unsafe-material refusal; born-verified settlement; rejected-verdict
-  refusal; missing-speedup refusal). Exported from the package index.
+  (8 tests: dispatch happy path, baseline target/op mismatch refusals, budget
+  refusal. Unsafe-material refusal. Born-verified settlement. Rejected-verdict
+  refusal. Missing-speedup refusal). Exported from the package index.
 
 Moves no money and creates no serving claim — it produces the public request
 body a dispatcher would post and the settlement claim a verified-work clear
@@ -95,4 +95,4 @@ the live rail), real tok/s records vs named baselines on declared hardware with
 independent-device `Verified` parity and **settled** receipts, the at-scale
 across-the-mesh run (`agentic_kernel_optimization_at_scale_run_missing`), and
 owner sign-off. The March-2026 Psionic/Qwen 3.5 result stays historical-demo
-evidence only. No promise state changed; no blocker dropped from the registry.
+evidence only. No promise state changed. No blocker dropped from the registry.

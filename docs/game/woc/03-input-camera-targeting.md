@@ -1,7 +1,7 @@
 # WoC Input, Camera, Targeting, and Mobile
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -23,7 +23,7 @@ most directly overlaps our **custom keybindings effort (#5943, audit
 - **Registry pattern.** A central `BIND_ACTIONS` array declares each action's `id`,
   `label`, `category`, `kind` (`held` vs `edge`), and up to two default key codes. All ~25
   actions live in one place.
-- **Bidirectional map.** `actionForCode()` and `codesForAction()`; one code per action with
+- **Bidirectional map.** `actionForCode()` and `codesForAction()`. One code per action with
   WoW-style mutual eviction on rebind (`bind()`), an `allowShared` exception for overlapping
   cases (Attack-Move shares the Turn-Left key), and a reserved `Escape`.
 - **Persistence.** Loads from `localStorage` (`woc_keybinds`) with fallback to defaults,
@@ -42,7 +42,7 @@ suppresses game input when a modal or the chat composer is focused: a simple, ef
 **Adopt the `Keybinds` + `BIND_ACTIONS` registry directly into the #5943 lane.** It is
 pure, persisted, remappable, and already has the category/kind taxonomy and the
 held-vs-edge split our keybinding audit calls for. The `canUseGameKeys()` modal/chat gate
-is the cheap version of the "input contexts" that audit wants; adopt it as the baseline and
+is the cheap version of the "input contexts" that audit wants. Adopt it as the baseline and
 layer richer contexts on top. The `tests/keybinds.test.ts` pattern (localStorage stub)
 shows how to test ours.
 
@@ -51,9 +51,9 @@ shows how to test ours.
 State lives on the input layer: `camYaw` (orbit), `camPitch` (clamped ~-0.4..1.35),
 `camDist` (clamped 3..22 yd).
 
-- **Two modes.** Classic (WASD turns the player; left-drag orbits; right-drag mouselooks
+- **Two modes.** Classic (WASD turns the player, left-drag orbits, right-drag mouselooks
   with pointer lock) and a Mouse-Camera mode (WASD is camera-relative, drag orbits, no
-  keyboard turn). Drag activates only after 18 px or 140 ms so a click does not orbit;
+  keyboard turn). Drag activates only after 18 px or 140 ms so a click does not orbit.
   pointer lock is requested lazily to avoid permission-banner spam.
 - **Follow/settle** (`camera_follow.ts`, ~107 lines, pure, tested). When not in mouselook
   and the player is moving, the camera eases back behind the player, capped at
@@ -61,7 +61,7 @@ State lives on the input layer: `camYaw` (orbit), `camPitch` (clamped ~-0.4..1.3
   player control (mouselook), auto-follow is bypassed and the player faces the camera.
 - **Collision** (`src/render/camera_collision.ts`, ~67 lines, pure). Hard limit (raycast
   hit) + soft limit (breathing room) + FOV compensation so the unexpected pull-in does not
-  pop; eases in faster than it eases out (`stepCameraOcclusion`).
+  pop. Eases in faster than it eases out (`stepCameraOcclusion`).
 
 ### Relevance to us
 
@@ -73,7 +73,7 @@ Mouse-Camera mode, but the auto-settle-behind logic and occlusion easing are exa
 
 ## Targeting and pointer picking
 
-- **Tab cycle.** Edge action `target` (Tab) -> `world.tabTarget()`; friendly variants on H
+- **Tab cycle.** Edge action `target` (Tab) -> `world.tabTarget()`. Friendly variants on H
   / J. We already have tab-target.
 - **Pointer pick** (`src/game/pointer_pick.ts`, ~34 lines, pure). `clickPickFromMouseGesture`
   decides whether a mouse-up is a target click vs a camera drag: same button down/up,
@@ -96,9 +96,9 @@ far from that Pylon."
 ## Click-to-move
 
 `src/game/click_move.ts` (~105 lines, pure, tested) plus integration in `main.ts`. Pure
-`clickMoveStep(player, target, stop)` returns `{ facing, forward, arrived }`;
+`clickMoveStep(player, target, stop)` returns `{ facing, forward, arrived }`.
 `clickMoveShouldWalk(facing, bearing)` only walks within a +/-60 deg cone (turn in place
-otherwise, to avoid orbiting at close range); `manualMovementOverrides()` cancels on any
+otherwise, to avoid orbiting at close range). `manualMovementOverrides()` cancels on any
 WASD. The main-loop integration adds A* path following, stuck detection/reroute, and a
 latency-aware stop-distance expansion for online play.
 
@@ -106,7 +106,7 @@ latency-aware stop-distance expansion for online play.
 
 **Low priority / optional.** We are WASD-first and do not need click-to-move for core
 navigation. If we later add accessibility movement or point-and-click traversal of a large
-Verse, the pure module ports cleanly; the turning-cone trick and latency stop-distance are
+Verse, the pure module ports cleanly. The turning-cone trick and latency stop-distance are
 the non-obvious bits to keep.
 
 Before implementation, write the OpenAgents-specific click-to-move issue as a
@@ -134,11 +134,11 @@ note it and move on.
 Future touch issues should be split by surface capability:
 
 - joystick movement: deadzone, clamped origin, vector quantization, camera-stick
-  yaw/pitch rates, settings, and haptics;
+  yaw/pitch rates, settings, and haptics.
 - pinch zoom: zoom delta, camera min/max distance, and conflict handling with
-  wheel/mouselook;
+  wheel/mouselook.
 - tap vs long press: duration threshold, movement tolerance, chat peek,
-  composer focus, and context action priority;
+  composer focus, and context action priority.
 - double-tap recenter: timing window, ignored UI targets, camera settle, and
   regression coverage for keyboard/mouselook.
 

@@ -23,13 +23,13 @@ stable export map that future generators and routes must satisfy:
 
 The seed covers these consumers:
 
-- AI agents;
-- `oa-node`;
-- `oa-workroomd`;
-- Probe;
-- Psionic;
-- Pylon;
-- Nexus;
+- AI agents.
+- `oa-node`.
+- `oa-workroomd`.
+- Probe.
+- Psionic.
+- Pylon.
+- Nexus.
 - Treasury.
 
 The export is intentionally ref-only. It may contain stable IDs, schema refs,

@@ -5,12 +5,12 @@ source tree at an exact, freshly fast-forwarded commit. The audit did not build
 Paseo, launch its daemon or clients, connect an agent provider, pair a remote
 device, enroll a Hub, or inspect any local Paseo state.
 
-## TL;DR
+## TL.DR
 
 Paseo is a self-hosted, multi-provider coding-agent control surface built around
 **one persistent Node daemon and many clients**. Claude Code, Codex, Copilot,
 OpenCode, Pi, OMP, and generic ACP agents run on the user's machine while an
-Expo application supplies mobile, web, and Electron interfaces; a CLI and a
+Expo application supplies mobile, web, and Electron interfaces. A CLI and a
 typed client SDK speak the same WebSocket protocol. Direct connections and an
 optional end-to-end encrypted relay let those clients reconnect without making
 the renderer the execution authority. [source]
@@ -38,18 +38,18 @@ Paseo's best work is in the contracts around that shape:
 
 - live `agent_stream` events provide immediacy while paged authoritative
   history provides correctness, with epochs and sequence cursors preventing a
-  reconnect or projection from silently dropping committed rows;
+  reconnect or projection from silently dropping committed rows.
 - managed Paseo subagents and provider-owned child sessions remain distinct,
   while parentage, detach, archive, tab close, and workspace activity have
-  explicit semantics;
+  explicit semantics.
 - cancellation does not claim success until the provider acknowledges it or a
-  terminal provider event arrives;
+  terminal provider event arrives.
 - protocol schemas, binary terminal frames, app-level liveness, and default RPC
-  timeouts are separate concerns rather than one overloaded connection state;
+  timeouts are separate concerns rather than one overloaded connection state.
 - terminal output uses worker isolation, leading/trailing coalescing,
-  revision-aware replay, and backpressure-gated snapshots;
+  revision-aware replay, and backpressure-gated snapshots.
 - agent tools have a transport-neutral catalog with native injection when a
-  provider supports it and MCP fallback otherwise; and
+  provider supports it and MCP fallback otherwise. And
 - the new Hub relationship grants only `hub.execution.*`, persists an
   execution identifier before acknowledgement, and treats duplicate creates
   as idempotent. [source] [test]
@@ -57,7 +57,7 @@ Paseo's best work is in the contracts around that shape:
 The source is equally candid about its limits:
 
 - a locally reachable daemon is a trusted operator endpoint. With no password,
-  network reachability is authority; with a password, every authenticated
+  network reachability is authority. With a password, every authenticated
   client still receives broad operator power. [source]
 - agents run as the daemon's OS user and file preview can read any regular file
   that user can read. Docker can move the boundary, but every mounted secret
@@ -65,7 +65,7 @@ The source is equally candid about its limits:
 - relay encryption has fresh session keys but no replay protection within a
   live session. [source]
 - persistence is mostly file-backed JSON without a general schema migration
-  framework; some stores still write directly, and interrupted loops are
+  framework. Some stores still write directly, and interrupted loops are
   demoted from `running` to `stopped` rather than recovered from a durable
   lease. [source]
 - Hub stream frames are transient, and restart closes an interrupted active
@@ -76,7 +76,7 @@ The source is equally candid about its limits:
 The central OpenAgents decision is: **adapt Paseo's one-daemon/many-client
 shape, timeline delivery law, explicit subagent semantics, cancellation
 acknowledgement, terminal pipeline, transport-neutral tools, and scoped
-idempotent Hub execution; reject reachability or a shared password as
+idempotent Hub execution. Reject reachability or a shared password as
 authority, host-user execution as containment, transient streams as recovery,
 file JSON as execution truth, unauthenticated public service projection, and
 workflow automation as release proof.**
@@ -96,7 +96,7 @@ Before inspection, the local reference clone was clean, on `main`, and equal to
 | Commit subject    | `fix(app): align thinking section scroll layout with other detail sections (#1884)`               | Latest audited change                     |
 | Product version   | `0.2.0-beta.1`                                                                                    | Root and package release line             |
 | License           | GNU Affero General Public License v3 or later                                                     | Strong source-reuse boundary              |
-| Source scale      | 3,176 tracked files; about 694,729 tracked TypeScript/TSX lines across 2,730 TypeScript/TSX files | Approximate implementation scale          |
+| Source scale      | 3,176 tracked files. About 694,729 tracked TypeScript/TSX lines across 2,730 TypeScript/TSX files | Approximate implementation scale          |
 | Test surface      | 1,014 tracked `test` or `spec` files                                                              | Broad executable evidence surface         |
 | Recent history    | 69 commits since `2026-07-15T00:00:00Z`                                                           | Material activity in the requested window |
 
@@ -109,12 +109,12 @@ relationship, retry, execution, ownership, and WebSocket tests. [history]
 
 ### 1.2 Evidence labels
 
-- **`[source]`** — tracked source, docs, manifests, or workflows at the commit;
+- **`[source]`** — tracked source, docs, manifests, or workflows at the commit.
 - **`[schema]`** — a Zod, TypeScript, ACP, WebSocket, persistence, or client
-  contract;
-- **`[test]`** — a tracked executable test or CI check;
-- **`[history]`** — Git history at or before the audited commit;
-- **`[inferred]`** — reasoned from several observations; and
+  contract.
+- **`[test]`** — a tracked executable test or CI check.
+- **`[history]`** — Git history at or before the audited commit.
+- **`[inferred]`** — reasoned from several observations. And
 - **`[limitation]`** — a source-only audit boundary.
 
 There are intentionally no `[runtime]` observations in this document.
@@ -131,7 +131,7 @@ inspected but not run in the read-only upstream clone. [limitation]
 
 Paseo presents one interface for several coding agents, keeps their processes
 alive when a client closes, and supports concurrent workspaces and split panes.
-Projects are user-added folders; workspaces are durable placements that may use
+Projects are user-added folders. Workspaces are durable placements that may use
 the project checkout or a Git worktree. Clients can reconnect locally or from a
 phone, and the daemon remains the lifecycle and timeline source of truth.
 [source]
@@ -176,7 +176,7 @@ of the adapter rather than being flattened into one fake universal session.
 
 OpenAgents should adapt the kernel/projection split but make every client action
 name an admitted capability, engine generation, workload identity, target, and
-effect. A persistent daemon improves continuity; it does not itself establish
+effect. A persistent daemon improves continuity. It does not itself establish
 which party authorized a mutation. [inferred]
 
 ## 4. Protocol: one connection, distinct concerns
@@ -184,7 +184,7 @@ which party authorized a mutation. [inferred]
 `packages/protocol` is the wire source of truth. Zod schemas describe JSON
 requests, responses, broadcasts, and capability negotiation. A generated
 ahead-of-time validator handles inbound WebSocket traffic on constrained
-clients; Paseo documents a representative 353 KB provider snapshot improving
+clients. Paseo documents a representative 353 KB provider snapshot improving
 from roughly 10.9 ms and 5.9 MB allocated to 2.5 ms and 1.2 MB. Compiler version
 and patches are pinned, and regression tests constrain supported schema forms.
 [source] [test]
@@ -197,17 +197,17 @@ from liveness. New RPCs use dotted names with correlated `.request` and
 
 This separation matters:
 
-- transport alive does not mean a provider operation succeeded;
-- an RPC timeout does not prove the daemon or agent died;
+- transport alive does not mean a provider operation succeeded.
+- an RPC timeout does not prove the daemon or agent died.
 - a mobile focus heartbeat may influence notification routing but cannot gate
-  timeline correctness;
-- a terminal byte stream should not inflate into JSON object graphs; and
+  timeline correctness.
+- a terminal byte stream should not inflate into JSON object graphs. And
 - capability negotiation is safer than guessing from version strings. [source]
 
 Paseo's append-only schema discipline is practical, but OpenAgents should also
 generate closed authority schemas, cryptographically bind negotiated versions,
 and receipt any projection loss. The upstream generated validator intentionally
-passes unknown object keys through; that is forward-compatible parsing, not a
+passes unknown object keys through. That is forward-compatible parsing, not a
 safe authority boundary. [source] [inferred]
 
 ## 5. Timeline delivery is an explicit law
@@ -216,7 +216,7 @@ Paseo states the central invariant directly: if the daemon commits timeline
 rows, a connected client that opens or resumes the agent eventually displays
 every row through the current tail. It implements this with two paths:
 
-1. live `agent_stream` messages optimize immediacy; and
+1. live `agent_stream` messages optimize immediacy. And
 2. authoritative paged fetches establish completeness. [source]
 
 Fetched pages target projected items, not raw storage rows. Responses expose
@@ -227,7 +227,7 @@ continues from `endCursor` until it reaches `hasNewer: false`. [schema]
 
 Every run has a timeline epoch. Delayed live events from an old epoch are
 ignored. Historical actions such as Fork carry the exact epoch and projected
-item `seqEnd`; the daemon validates that the epoch is current and the source
+item `seqEnd`. The daemon validates that the epoch is current and the source
 sequence still exists, then slices before projection so later lifecycle rows do
 not leak into the chosen context. [source] [test]
 
@@ -269,15 +269,15 @@ Paseo separates managed agents from provider-owned child sessions.
 Managed creation explicitly chooses `relationship.kind`:
 
 - `subagent` stamps `paseo.parent-agent-id` and joins the parent's subagent
-  track; or
+  track. Or
 - `detached` may inherit configuration and working directory but remains a
   sibling/root agent without parent lifecycle. [schema]
 
-Detaching removes only the parent label; it does not stop, archive, move, or
+Detaching removes only the parent label. It does not stop, archive, move, or
 restart the child. Archiving is a global soft delete and recursively archives
 managed descendants. Closing a root tab archives globally, while closing a
 subagent tab is client-local. Same-workspace descendants can affect an
-ancestor's activity status; cross-workspace children report in their own
+ancestor's activity status. Cross-workspace children report in their own
 workspace. [source]
 
 Provider-owned children are different. A provider may expose child-session
@@ -304,7 +304,7 @@ parent. [inferred]
 
 Paseo recently made every added folder an independent project. Project identity
 uses the exact lexically normalized selected root rather than `realpath` or Git
-top-level inference. Workspace IDs are opaque durable placement identifiers;
+top-level inference. Workspace IDs are opaque durable placement identifiers.
 `cwd` is the execution directory and `worktreeRoot` describes the checkout that
 backs it. This prevents nested folders or multiple intentional views of a
 repository from being silently merged into one product object. [source]
@@ -342,19 +342,19 @@ font settling, and renderer refits must not resize the shared PTY. [source]
 
 The performance notes also preserve a useful negative result: a single roughly
 250 KB agent-stream payload can delay terminal echo by about 100 ms because
-daemon serialization and browser parsing share hot loops; relay NaCl/base64
+daemon serialization and browser parsing share hot loops. Relay NaCl/base64
 work adds more JavaScript contention. [source]
 
 OpenAgents should adapt these rules as executable performance oracles, then
-separate control, timeline, and bulk-artifact channels; bound every queue;
-measure end-to-end input echo; and receipt any dropped, collapsed, or snapshot
+separate control, timeline, and bulk-artifact channels. Bound every queue.
+measure end-to-end input echo. And receipt any dropped, collapsed, or snapshot
 transition. “WebSocket connected” is not a latency or loss guarantee.
 [inferred]
 
 ## 10. Tools and provider composition
 
 Paseo defines shared tools in a transport-neutral catalog. Providers that can
-accept native tool definitions receive them directly; providers without that
+accept native tool definitions receive them directly. Providers without that
 path can consume the same capabilities through an MCP server. The agent model
 does not need to know whether a tool crossed an in-process adapter or MCP.
 [source]
@@ -381,7 +381,7 @@ carried as HTTP Bearer or WebSocket subprotocol, with health and preflight
 exceptions. Once connected, a client is a trusted operator. Host and CORS checks
 reduce DNS-rebinding and browser-origin risk but are defense in depth. [source]
 
-File preview can read any regular file available to the daemon user; workspace
+File preview can read any regular file available to the daemon user. Workspace
 paths are convenience, not confinement. Agent subprocesses inherit the user's
 authority. A Docker image runs non-root, but mounted workspaces, credentials,
 and state are fully available to agents in the container. [source]
@@ -398,7 +398,7 @@ Hub clients with different powers. [inferred]
 Hub is explicitly separate from the relay. The daemon opens an outbound direct
 WebSocket after `paseo hub connect`. Relationship identity and a private
 credential are persisted before enrollment. Trusted interactive clients may
-hold broad `*` access, but Hub receives only `hub.execution.*`; the same matcher
+hold broad `*` access, but Hub receives only `hub.execution.*`. The same matcher
 handles exact names and trailing namespace wildcards. [source]
 
 Execution creation is keyed by a Hub-supplied execution ID. The daemon stores
@@ -409,31 +409,31 @@ binary terminals, retained events, or general broadcast. [source] [test]
 
 The boundary is incomplete but honest:
 
-- transient stream frames are not durably replayed;
-- a daemon restart closes an interrupted active turn;
-- the original prompt is not persisted and replayed;
-- an offline disconnect request stays in a retrying state; and
+- transient stream frames are not durably replayed.
+- a daemon restart closes an interrupted active turn.
+- the original prompt is not persisted and replayed.
+- an offline disconnect request stays in a retrying state. And
 - an authorization rejection deletes the credential. [source]
 
 OpenAgents should adapt narrow relationship grants, daemon-owned execution
 ownership, idempotent external IDs, and explicit revocation. It should add a
 durable admitted work record before launch, replayable event log, lease and
 fence, signed workload identity, prompt/artifact commitment, cancellation
-receipt, and terminal outcome receipt. Idempotent create prevents duplicates;
+receipt, and terminal outcome receipt. Idempotent create prevents duplicates.
 it does not by itself provide exactly-once effects. [inferred]
 
 ## 13. Persistence, schedules, and loops
 
 Paseo stores daemon state as Zod-validated JSON under its home directory. Most
 stores use temporary-file rename, but some use direct writes. There is no
-general schema-version and migration framework; compatibility relies largely
+general schema-version and migration framework. Compatibility relies largely
 on optional/default fields plus inline normalization, with a targeted workspace
 backfill exception. [source]
 
 Agents, provider handles, projects, workspaces, schedules, loop records,
 notification tokens, daemon keys, and settings each have their own shapes.
 Schedules can target existing or newly created agents with cron or interval
-cadence. Loop records live together in `loops.json`; writes are direct but
+cadence. Loop records live together in `loops.json`. Writes are direct but
 serialized by an in-memory queue. On restart, every `running` loop becomes
 `stopped` with an interruption log. [schema]
 
@@ -464,7 +464,7 @@ preparation/go-ahead split, beta and stable channels, npm publication, Docker
 images, Electron builds, an Android APK, EAS mobile-store delivery, generated
 release notes, updater manifests, and a 36-hour linear desktop rollout. Desktop
 manifests can be adjusted after publication, but there is no pause, recall, or
-downgrade; a bad release requires a superseding hotfix. [source]
+downgrade. A bad release requires a superseding hotfix. [source]
 
 Eleven GitHub workflow files cover CI, app/relay/website deployment, desktop,
 rollout, Docker, Nix, APK, and notes. This is broad operational craft, but it
@@ -484,14 +484,14 @@ protocol, app, providers, Git, worktrees, relay, Hub, terminal, persistence, and
 end-to-end flows. Particularly relevant suites cover:
 
 - Hub relationship retries, remote behavior, ownership, execution sessions,
-  idempotent creation, and scoped message schemas;
+  idempotent creation, and scoped message schemas.
 - selective timeline delivery, viewed-timeline catch-up, gap recovery, stale
-  epoch rejection, and projected sequence cursors;
+  epoch rejection, and projected sequence cursors.
 - independent-folder projects, Git appearance after registration, workspace
-  reconciliation, restart recovery, and worktree behavior;
-- terminal snapshots, revisions, input modes, resize races, and reconnects;
-- provider subagent history, local dismissal, and stale live updates;
-- protocol generation, compatibility, and representative large messages; and
+  reconciliation, restart recovery, and worktree behavior.
+- terminal snapshots, revisions, input modes, resize races, and reconnects.
+- provider subagent history, local dismissal, and stale live updates.
+- protocol generation, compatibility, and representative large messages. And
 - forge resolution across GitHub, GitLab, Gitea, Forgejo, and Codeberg. [test]
 
 The test breadth is a genuine strength. The remaining gap is proof composition:
@@ -572,18 +572,18 @@ receipts, and signed release discipline must remain stricter.
 
 Primary evidence at the audited commit included:
 
-- `README.md`, `SECURITY.md`, `package.json`, and package manifests;
+- `README.md`, `SECURITY.md`, `package.json`, and package manifests.
 - `docs/product.md`, `docs/architecture.md`, `docs/agent-lifecycle.md`,
   `docs/data-model.md`, `docs/timeline-sync.md`, `docs/hub.md`,
   `docs/providers.md`, `docs/protocol-validation.md`,
   `docs/rpc-namespacing.md`, `docs/terminal-performance.md`,
-  `docs/service-proxy.md`, `docs/docker.md`, and `docs/release.md`;
+  `docs/service-proxy.md`, `docs/docker.md`, and `docs/release.md`.
 - `packages/protocol/src/messages.ts`, client capabilities, terminal schemas,
-  and Hub/provider-subagent tests;
+  and Hub/provider-subagent tests.
 - `packages/server/src/server/agent`, `packages/server/src/server/hub`, session,
   WebSocket, timeline, workspace, schedule, loop, terminal, relay, forge, and
-  persistence implementations and tests;
+  persistence implementations and tests.
 - `packages/app/src/runtime`, timeline, agent-stream, subagent, workspace,
-  terminal, and session stores and tests; and
+  terminal, and session stores and tests. And
 - `.github/workflows/*` plus Git history through
   `a1de743ef67dde4fe7c48d045a3714f65dfa5e90`.

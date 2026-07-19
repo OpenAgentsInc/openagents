@@ -16,34 +16,34 @@ The implementation lives in `workers/api/src/coding-autopilot-artifacts.ts`.
 
 The v1 model supports:
 
-- `diff_summary`;
-- `patch_ref`;
-- `test_run`;
-- `build_log_summary`;
-- `preview_url`;
-- `pr_draft`;
-- `pr_url`;
-- `rollback_note`;
-- `screenshot_ref`;
-- `redaction_report`;
-- `fulfillment_receipt`;
+- `diff_summary`.
+- `patch_ref`.
+- `test_run`.
+- `build_log_summary`.
+- `preview_url`.
+- `pr_draft`.
+- `pr_url`.
+- `rollback_note`.
+- `screenshot_ref`.
+- `redaction_report`.
+- `fulfillment_receipt`.
 - `customer_note`.
 
 ## Record Shape
 
 `CodingAutopilotArtifactRecord` stores:
 
-- artifact kind;
-- mission and workroom refs;
-- source refs;
-- evidence refs;
-- visibility;
-- status;
-- public-safe flag;
-- authority receipt refs;
-- summary ref;
-- caveat refs;
-- retention caveat refs;
+- artifact kind.
+- mission and workroom refs.
+- source refs.
+- evidence refs.
+- visibility.
+- status.
+- public-safe flag.
+- authority receipt refs.
+- summary ref.
+- caveat refs.
+- retention caveat refs.
 - created/updated/archive timestamps for backend truth.
 
 Statuses are `draft`, `ready`, `blocked`, `failed`, `superseded`, and
@@ -80,10 +80,10 @@ log material.
 
 `workers/api/src/coding-autopilot-artifacts.test.ts` covers:
 
-- public/customer/team visibility;
-- every required artifact kind;
-- readiness and PR authority receipt guardrails;
-- public-safe visibility guardrails;
-- no raw timestamps in projections;
+- public/customer/team visibility.
+- every required artifact kind.
+- readiness and PR authority receipt guardrails.
+- public-safe visibility guardrails.
+- no raw timestamps in projections.
 - unsafe raw log, raw patch, source archive, provider token, and customer ref
   rejection.

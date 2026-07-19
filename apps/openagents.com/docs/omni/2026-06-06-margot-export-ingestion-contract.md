@@ -10,16 +10,16 @@ proof surfaces without letting the simulator mutate OpenAgents product surface s
 
 The contract is designed for the current flexible-compute economics loop:
 
-- mining floor per MWh;
-- GPU rental floor per MWh;
-- token inference floor per MWh;
-- node/system-power-adjusted AI floor per MWh;
-- OpenAgents accepted-work assumption value per MWh;
-- grid-service and curtailment value assumptions per MWh;
-- power cost per MWh;
-- market and dispatch-policy labels;
+- mining floor per MWh.
+- GPU rental floor per MWh.
+- token inference floor per MWh.
+- node/system-power-adjusted AI floor per MWh.
+- OpenAgents accepted-work assumption value per MWh.
+- grid-service and curtailment value assumptions per MWh.
+- power cost per MWh.
+- market and dispatch-policy labels.
 - provenance, source, caveat, data-rights, scenario, diligence, and settlement
-  refs; and
+  refs. And
 - public, customer, agent, team, operator, and private projections.
 
 The implementation lives in:
@@ -35,12 +35,12 @@ or settlement authority.
 Every packet carries a read-only authority record that must preserve all of
 these false-authority boundaries:
 
-- no accepted-work mutation;
-- no financial advice;
-- no grid participation;
-- no live wallet spend;
-- no market-data mutation;
-- no public claim upgrade; and
+- no accepted-work mutation.
+- no financial advice.
+- no grid participation.
+- no live wallet spend.
+- no market-data mutation.
+- no public claim upgrade. And
 - no settlement mutation.
 
 If any of those boundaries are relaxed in a packet, projection throws
@@ -55,29 +55,29 @@ The first supported electricity-market labels are:
 
 The `unsupported` market label is allowed only when the packet carries an
 explicit unsupported-market caveat ref. This reflects the current Margot
-synthesis: ERCOT and NYISO are usable source lanes today; other markets need
+synthesis: ERCOT and NYISO are usable source lanes today. Other markets need
 operator review before they can be treated as supported simulator inputs.
 
 ## Claim States
 
 The packet preserves three claim states:
 
-- `modeled`: simulator output only, useful as a first comparator;
+- `modeled`: simulator output only, useful as a first comparator.
 - `measured`: supported by measurement/provenance refs and allowed to make an
-  accepted-work lane claim when accepted-work assumptions are present; and
+  accepted-work lane claim when accepted-work assumptions are present. And
 - `settled`: allowed only when public-safe settlement receipt refs are present.
 
 Even when the claim state is `settled`, the packet still has no settlement
-mutation authority. It can preserve receipt refs; it cannot create or update
+mutation authority. It can preserve receipt refs. It cannot create or update
 receipts.
 
 ## Required Refs
 
 A valid packet must include:
 
-- caveat refs;
-- provenance refs;
-- source refs; and
+- caveat refs.
+- provenance refs.
+- source refs. And
 - next-diligence refs.
 
 If `acceptedWorkCentsPerMwh` is greater than zero, the packet must also include
@@ -92,13 +92,13 @@ without visible caveats and follow-up work.
 The projection rejects or redacts material that does not belong in an Omni
 simulator packet:
 
-- private customer or provider material;
-- wallet, invoice, payment, preimage, payout, or MDK secret-shaped refs;
-- trading-account or trading-order refs;
+- private customer or provider material.
+- wallet, invoice, payment, preimage, payout, or MDK secret-shaped refs.
+- trading-account or trading-order refs.
 - raw export, market, power, meter, telemetry, provider, runner, prompt, or
-  webhook material;
-- private repository URLs;
-- access tokens, OAuth material, cookies, or `sk-*` keys; and
+  webhook material.
+- private repository URLs.
+- access tokens, OAuth material, cookies, or `sk-*` keys. And
 - raw ISO timestamps inside refs.
 
 Audience projections redact private assumption, caveat, data-rights,
@@ -128,15 +128,15 @@ implemented the Artanis/Pylon comparative-economics evidence packet in
 next contract after Margot ingestion for collecting all data needed to
 substantiate the outcomes-per-kWh thesis:
 
-- Margot repo commit, export refs, data timestamps, and source caveats;
+- Margot repo commit, export refs, data timestamps, and source caveats.
 - Vast.ai GPU rental sample metadata, TDP/source labels, and derived dollars
-  per MWh;
+  per MWh.
 - OpenRouter price units, ML.Energy benchmark rows, token-throughput
-  calculator refs, and token dollars-per-MWh unit audits;
+  calculator refs, and token dollars-per-MWh unit audits.
 - Pylon node/cohort system power, measured-meter availability, resource mode,
-  runtime/framework, and cost terms;
-- ERCOT/NYISO LMP windows and unsupported-market caveats;
-- mining counterfactuals for the same windows; and
+  runtime/framework, and cost terms.
+- ERCOT/NYISO LMP windows and unsupported-market caveats.
+- mining counterfactuals for the same windows. And
 - accepted-work, payable, and settlement refs when real work runs.
 
 Margot export packets remain modeled comparator inputs by themselves. The #415
@@ -150,10 +150,10 @@ with the corresponding claim states.
 
 Coverage includes:
 
-- valid modeled ERCOT packet projection;
-- measured and settled claim-state separation;
-- unsupported-market caveat enforcement;
-- public redaction of private refs;
-- required caveat/provenance/source/diligence/assumption/settlement refs;
-- false-authority rejection; and
+- valid modeled ERCOT packet projection.
+- measured and settled claim-state separation.
+- unsupported-market caveat enforcement.
+- public redaction of private refs.
+- required caveat/provenance/source/diligence/assumption/settlement refs.
+- false-authority rejection. And
 - unsafe ref and invalid per-MWh value rejection.

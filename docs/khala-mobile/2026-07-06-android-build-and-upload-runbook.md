@@ -7,7 +7,7 @@ Issue: [#8490](https://github.com/OpenAgentsInc/openagents/issues/8490) (MM-I1)
 Mirrors `docs/mobile/2026-06-26-khala-testflight-release-runbook.md` (the iOS
 upload runbook for the native `Khala` app) and this repo's standing mobile
 policy in `CLAUDE.md` ("Builds are local for now" — `expo prebuild` + local
-Xcode/Gradle; `eas build`/`eas submit` stay unused). This is the Android
+Xcode/Gradle. `eas build`/`eas submit` stay unused). This is the Android
 analog for the Expo `clients/khala-mobile` app (`com.openagents.khala.mobile`).
 
 ## What's proven today vs. what's owner-gated
@@ -17,7 +17,7 @@ analog for the Expo `clients/khala-mobile` app (`com.openagents.khala.mobile`).
 | Local Android SDK/emulator bring-up on a fresh machine | **Proven this pass** — see `2026-07-06-android-emulator-launch-smoke-receipt.md` |
 | `expo prebuild --platform android` + `gradlew assembleDebug` | **Proven** — `BUILD SUCCESSFUL`, real APK, real install, real launch |
 | Debug APK boot + interaction smoke | **Proven this pass** (Maestro, see the receipt above) |
-| Release build (signed AAB) | **Runbook below is written and internally consistent; not yet run**, because it needs an upload keystore + a decision on who holds it — see the NEEDS_OWNER entry |
+| Release build (signed AAB) | **Runbook below is written and internally consistent. Not yet run**, because it needs an upload keystore + a decision on who holds it — see the NEEDS_OWNER entry |
 | Play Console app record, signing config, internal-testing track, versionCode discipline in the store | **Owner-gated** — no Play Console account/access exists in this environment |
 
 ## 1. Prerequisites (one-time, per machine)
@@ -76,7 +76,7 @@ end-to-end** in this pass, because it terminates in an owner decision (who
 holds the upload keystore) and an owner Play Console action (uploading it).
 Do not treat "written" as "proven" — see the status table above.
 
-### 3.1 Generate an upload keystore (one-time; the key that signs what you upload to Play)
+### 3.1 Generate an upload keystore (one-time, the key that signs what you upload to Play)
 
 ```sh
 keytool -genkeypair -v \
@@ -122,7 +122,7 @@ bun run prebuild:android
 None of this is agent-runnable without real Play Console access:
 
 1. Create the app record in Play Console (package `com.openagents.khala.mobile`).
-2. Choose **Play App Signing** (Google-managed final signing key; you upload
+2. Choose **Play App Signing** (Google-managed final signing key, you upload
    with your own **upload key** from step 3.1 — this is the modern
    recommended path and avoids the operator ever holding the final
    distribution key).

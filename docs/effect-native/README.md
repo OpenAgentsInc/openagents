@@ -9,7 +9,7 @@ model for describing UI and state) and runs it on native platforms. Effect
 Native takes **[Effect](https://effect.website)** (a model for describing
 *whole programs* — state, effects, concurrency, typed data, services,
 resource lifetimes, and UI) and runs it on native platforms. **The UI is one
-part of an Effect Native app; the rest of the app is Effect.**
+part of an Effect Native app. The rest of the app is Effect.**
 
 So Effect Native is more than a UI toolkit. It is how we build entire
 applications — services, state, logic, data, and interface — as one typed
@@ -39,9 +39,9 @@ part that turns that program's interface into pixels.
 1. **The component set.** A small, fixed catalog of building blocks —
    text, buttons, stacks (layouts), fields, lists, cards — each described
    as *typed data* rather than platform code. A screen is just an
-   arrangement of these building blocks. Because it's typed data, the
+   arrangement of these building blocks. Because it is typed data, the
    computer (and our tests) can check that every screen is valid before it
-   ever runs. Invalid UI simply can't be built.
+   ever runs. Invalid UI simply cannot be built.
 
 2. **The runtime.** A small engine (built on [Effect](https://effect.website),
    the typed foundation the rest of our software already uses) that reads a
@@ -55,18 +55,18 @@ part that turns that program's interface into pixels.
    the *only* platform-specific code. Everything above it is shared.
 
 The important idea: **the component set and its behavior are the stable
-contract; the renderer is a detail you can have several of, and replace one
-at a time.** Today a phone screen might be drawn with React Native; if we
+contract. The renderer is a detail you can have several of, and replace one
+at a time.** Today a phone screen might be drawn with React Native. If we
 later want it drawn with true native code (Swift on iOS, Kotlin/Compose on
 Android) for extra polish or speed, we swap the renderer underneath — the
-components and the app on top don't change at all.
+components and the app on top do not change at all.
 
 ## Why "Native," why "Effect"
 
 - **Effect** — because the whole system is built on typed, composable
   Effect programs. The UI stays inside the same safe, checkable world as
   the rest of our code, instead of being an untyped exception to it.
-- **Native** — because the goal isn't "web pages pretending to be an app."
+- **Native** — because the goal is not "web pages pretending to be an app."
   Each platform renders with its own genuine components, and the design is
   built so that the rendering can go all the way down to true native code
   where it matters.
@@ -80,7 +80,7 @@ components and the app on top don't change at all.
 - **Resilience** — if a framework we depend on changes or falls out of
   favor, we swap a renderer, not the product.
 - **Trustworthy AI-authored UI** — because screens are validated typed
-  data, an AI agent building a screen can't produce something malformed; it
+  data, an AI agent building a screen cannot produce something malformed. It
   can only assemble valid, known components.
 
 ## Status
@@ -119,15 +119,15 @@ than in-place rewrites. The binding app decision is
 - **[Effect Native + React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md)**
   — the current source-grounded answer to whether web React replaces, wraps,
   or renders Effect Native. **Decision: keep Effect Native as the application,
-  View, state, token, and intent contract; make React a first-class internal
-  implementation of the DOM renderer; keep today's imperative DOM-in-React
+  View, state, token, and intent contract. Make React a first-class internal
+  implementation of the DOM renderer. Keep today's imperative DOM-in-React
   wrapper only as migration glue.** Defines the state boundary, SSR/hydration,
   styling, React-library/typed-host, lifecycle, conformance, and convergence
   gaps without reopening closed web product scope.
 
 - **[Foldkit vs Effect Native](./2026-07-08-foldkit-vs-effect-native.md)**
   — Foldkit is our Elm/MVU Effect framework with a *fixed DOM renderer* and
-  a *whole-app* mandate; Effect Native is a *renderer-agnostic component
+  a *whole-app* mandate. Effect Native is a *renderer-agnostic component
   substrate*. Different layers. **Learn from Foldkit:** interactions-as-data
   (not callbacks), impossible-states-unrepresentable via Schema, exhaustive
   match, the Command/Subscription/Mount effect taxonomy, and **Ports** as the
@@ -141,10 +141,10 @@ than in-place rewrites. The binding app decision is
   (Fabric/Yoga/JSI) **and** the *React programming model*. They separate
   cleanly (RN's own out-of-tree seam proves it). **Use** RN as Effect
   Native's mobile *renderer* (adapter #1 — reuse the shipping primitives,
-  Yoga layout, host components); **leave** React as the *portable application
+  Yoga layout, host components). **Leave** React as the *portable application
   authoring and state-authority model* (no JSX in View trees, no callbacks in
   Schema data, no React-owned domain state). React elements and hooks are
-  legitimate inside renderer and host implementations; the shipping RN
+  legitimate inside renderer and host implementations. The shipping RN
   renderer already uses them.
   Native Swift/Compose is a per-component escape, never a from-scratch
   Fabric replacement.
@@ -152,20 +152,20 @@ than in-place rewrites. The binding app decision is
 - **[three-effect vs Effect Native](./2026-07-08-three-effect-vs-effect-native.md)**
   — our Three.js library is really two things: a large standalone-worthy
   *domain library* (Verse world, VFX, HUD, Drei ports) and a small
-  *renderer kernel* (reconciler + frame clock + scope). **Split, don't
-  choose:** keep the domain library standalone; **fold the kernel into the
+  *renderer kernel* (reconciler + frame clock + scope). **Split, do not
+  choose:** keep the domain library standalone. **Fold the kernel into the
   Effect Native canvas renderer** (EN-6), reimplemented on real Effect
-  `Scope`/`Stream`/`Layer`; retire its Foldkit adapter. Realizes the
+  `Scope`/`Stream`/`Layer`. Retire its Foldkit adapter. Realizes the
   "Effect" the name currently only claims, without rewriting the live Verse.
 
 - **[Styling: Tailwind, StyleX & native](./2026-07-08-styling-tailwind-stylex-effect-native.md)**
-  — a Tailwind *class string* is a web-coupled contract; a StyleX-style
+  — a Tailwind *class string* is a web-coupled contract. A StyleX-style
   *typed style object* is a portable value that lowers to CSS on web and RN
   objects on native, with a deterministic no-cascade merge. **Verdict:**
   adopt **StyleX's typed-object model** (the contract, merge, typed
   tokens/themes, typed per-component style contracts) + carry **Tailwind's
   design tokens** (the scale/taste, as typed tokens not classes) + **lower
-  per renderer**. Not class-strings-as-contract; not per-platform native CSS
+  per renderer**. Not class-strings-as-contract. Not per-platform native CSS
   (that forks the source of truth). NativeWind is the proof the lowering
   works and the map of the CSS-runtime seams.
 

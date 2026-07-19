@@ -19,20 +19,20 @@ The implementation lives in
 
 `CodingAutopilotDecisionActionRecord` captures:
 
-- action kind;
-- action status;
-- mission ref;
-- workroom refs;
-- Program Run ref;
-- assignment refs;
-- route refs;
-- account-lease refs;
-- source-authority refs;
-- action-submission refs;
-- prerequisite refs;
-- blocked reason refs;
-- evidence and receipt refs;
-- customer next-action ref;
+- action kind.
+- action status.
+- mission ref.
+- workroom refs.
+- Program Run ref.
+- assignment refs.
+- route refs.
+- account-lease refs.
+- source-authority refs.
+- action-submission refs.
+- prerequisite refs.
+- blocked reason refs.
+- evidence and receipt refs.
+- customer next-action ref.
 - safe summary ref.
 
 Statuses are `draft`, `recommended`, `available`, `blocked`, `completed`, and
@@ -42,7 +42,7 @@ Statuses are `draft`, `recommended`, `available`, `blocked`, `completed`, and
 
 Decision actions are not execution authority. Every projected action carries:
 
-- `directEffectPermitted: false`;
+- `directEffectPermitted: false`.
 - `actionSubmissionRequired: true`.
 
 That means a queue item cannot itself continue a run, deploy a Site, send an
@@ -71,10 +71,10 @@ and raw timestamps.
 
 `workers/api/src/coding-autopilot-decision-actions.test.ts` covers:
 
-- continue and retry-account projections;
-- every planned action kind and status;
-- the direct-effect guard;
-- no raw timestamps in projections;
-- public/customer/team/operator ref redaction;
+- continue and retry-account projections.
+- every planned action kind and status.
+- the direct-effect guard.
+- no raw timestamps in projections.
+- public/customer/team/operator ref redaction.
 - fail-closed rejection for provider, runner, token, private repo, and customer
   material.

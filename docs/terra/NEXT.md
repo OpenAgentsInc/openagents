@@ -7,7 +7,7 @@
 ## Current Terra order — #8574 Desktop parity
 
 This order is consumed from Sol's active
-[`execution-lane contract`](../sol/2026-07-10-terra-execution-lane.md); it is
+[`execution-lane contract`](../sol/2026-07-10-terra-execution-lane.md). It is
 not an independent Terra priority queue.
 
 1. **Complete one real owner Codex reconnect through Settings when available.**
@@ -33,13 +33,13 @@ not an independent Terra priority queue.
 
 Mobile attachment parity remains a valid later leaf, but it is not ahead of
 the assigned desktop order. It needs an explicit user-selection/import design
-and native-runtime compatibility decision; it must never become raw device
+and native-runtime compatibility decision. It must never become raw device
 filesystem browsing.
 
 Build 116 needs an owner device/pixel receipt confirming the native SwiftUI
 glass composer is the only Khala input, accepts text, sends a real turn, and
 the named-persona/demo/catalog surfaces are absent. Then move to Sol’s R1/R2
-identity and Khala Sync continuity contracts; do not replace the removed cache
+identity and Khala Sync continuity contracts. Do not replace the removed cache
 with another client-local authority model.
 
 ## Next: close the shared-native rendering loop
@@ -60,7 +60,7 @@ Per [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md), the active
 program is persona-neutral: typed intent → durable FleetRun → Pylon claim →
 named worker → verification → closeout, with R1 identity and R2 Sync making
 Desktop and mobile truthful cross-device clients. Sarah is removed as a
-front-door surface; desktop polish is valuable only when it helps that daily
+front-door surface. Desktop polish is valuable only when it helps that daily
 product become trustworthy.
 
 The next Terra decision comes from Sol's ready-leaf order and live issue claim,

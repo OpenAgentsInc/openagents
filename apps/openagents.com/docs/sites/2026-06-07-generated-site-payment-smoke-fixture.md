@@ -11,7 +11,7 @@ OpenAgents product surface now has a deterministic generated-Site payment smoke 
 The fixture represents the commerce shape a generated customer Site should
 emit when it contains both:
 
-- one human checkout product;
+- one human checkout product.
 - one agent-paid action protected by an L402-style payment challenge.
 
 It is intentionally record-only. It does not create a live checkout, mint an
@@ -50,9 +50,9 @@ public-safe generated-source shape, not money movement.
 
 The fixture explicitly records:
 
-- no deployment authority;
-- no live checkout creation;
-- no real invoice creation;
+- no deployment authority.
+- no live checkout creation.
+- no real invoice creation.
 - no wallet spend authority.
 
 As of issue #557, the fixture also projects `paymentLaunchGate`. The current
@@ -76,13 +76,13 @@ public-safe evidence publishing.
 
 The fixture and shared redaction regression suite reject:
 
-- MDK access tokens, mnemonics, and webhook secrets;
-- raw invoices or offers;
-- raw payment hashes and preimages;
-- wallet paths and wallet material;
-- provider grants or provider secrets;
-- private customer or operator values;
-- raw payout targets;
+- MDK access tokens, mnemonics, and webhook secrets.
+- raw invoices or offers.
+- raw payment hashes and preimages.
+- wallet paths and wallet material.
+- provider grants or provider secrets.
+- private customer or operator values.
+- raw payout targets.
 - checkout query state.
 
 The fixture is safe to reference from docs, OpenAPI examples, public proof

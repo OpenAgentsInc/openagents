@@ -14,10 +14,10 @@
 1. **Run = dereferenceable verified receipt** — `apps/qa-runner/src/receipt.ts`.
    An **additive, namespaced** `receipt` field on the run `result.json`, written
    by a **post-run helper** (`writeReceiptForRun`) — the runner's control flow is
-   untouched (a peer lane additively adds `verify`; the two merge trivially).
+   untouched (a peer lane additively adds `verify`, the two merge trivially).
    The receipt carries a public-safe `receiptRef`, a sha256 `resultDigest`, the
-   honest `verificationClass` (a failing run is `none`; a passing run with >=1
-   outcome assertion is `exact_trace_replay`; a pass with no assertions is
+   honest `verificationClass` (a failing run is `none`, a passing run with >=1
+   outcome assertion is `exact_trace_replay`. A pass with no assertions is
    `seeded` — no exactness inflation), and `resultPath: "result.json"`. The
    augmented result is re-checked against the public-safety tripwire.
 
@@ -35,8 +35,8 @@
    A thin adapter routes one Khala turn through the existing
    `executeBlueprintChatProgramTurn` and emits an **evidence-only**
    `BlueprintProgramRunRecord`. Selection rides the runtime's typed structured
-   selector (no keyword routing); the record is asserted evidence-only
-   (`directMutationDisabled`, `noDeploy/noEmail/noSpend/noSourceMutation`); any
+   selector (no keyword routing). The record is asserted evidence-only
+   (`directMutationDisabled`, `noDeploy/noEmail/noSpend/noSourceMutation`). Any
    requested direct effect is **denied** (it must be an approval-gated Action
    Submission). No real inference, no writes, no spend — refs/digests only.
 
@@ -44,22 +44,22 @@
    `apps/qa-runner/src/run-settlement.ts`. The typed 8-state
    (`authorized → paid → accepted → pending_payout → dispatched → confirmed →
    reconciled → margin`) run/skill rev-share split machine. It is:
-   - **DEFAULT-OFF:** `armed` is false; there is **no** code path that moves sats,
+   - **DEFAULT-OFF:** `armed` is false. There is **no** code path that moves sats,
      opens a wallet, builds an invoice, or contacts a payout rail.
    - **OWNER-GATED + SPEC-ONLY:** `arm()` requires the owner arming token **and**
-     a payout executor this seam does not provide; it therefore **always errors**.
+     a payout executor this seam does not provide. It therefore **always errors**.
      There is no path that returns an armed, money-moving machine.
-   - **HONEST:** every transition's `movedSats` is hard-wired `false`; the
+   - **HONEST:** every transition's `movedSats` is hard-wired `false`. The
      money-movement states (`dispatched`/`confirmed`) are recorded `intent_only`.
      A fully-advanced 8-state machine has still moved **zero** sats.
 
 ## Invariants carried (not weakened)
 
-Evidence-only Blueprint; Action Submissions are the only (approval-gated) write
-path; no keyword routing (typed selector only); nothing self-promotes (Release
-Gate); no exactness inflation (ladder/verification labeling is law); public-safe
-artifacts only (tripwires re-run); **settlement INERT / OWNER-GATED**; no promise
-widening; one model `openagents/khala`.
+Evidence-only Blueprint. Action Submissions are the only (approval-gated) write
+path. No keyword routing (typed selector only). Nothing self-promotes (Release
+Gate). No exactness inflation (ladder/verification labeling is law). Public-safe
+artifacts only (tripwires re-run). **Settlement INERT / OWNER-GATED**. No promise
+widening. One model `openagents/khala`.
 
 ## To arm settlement later (owner action — NOT done here)
 
@@ -74,4 +74,4 @@ public-safe, and (d) only then may a `dispatched`/`confirmed` transition record
 - qa-runner: `bun test` (incl. `receipt.test.ts`, `skill-candidate.test.ts`,
   `run-settlement.test.ts`, and the updated `distiller.test.ts`).
 - worker: `chat-program-runtime-khala.test.ts` + the full `blueprint/` suite +
-  the `check:deploy` worker subset; `typecheck:api` clean.
+  the `check:deploy` worker subset. `typecheck:api` clean.

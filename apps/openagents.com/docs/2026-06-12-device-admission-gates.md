@@ -40,10 +40,10 @@ change adopts that pattern into the device-capability dataset:
    reasonCode, statedReason, ... }` with `statedReason` REQUIRED on
    both branches. `evaluateDeviceAdmissionGate` composes the stated
    reason from the measured value, the requirement, and the gate
-   rationale; `assertAdmissibleDeviceAdmissionDecision` rejects
+   rationale. `assertAdmissibleDeviceAdmissionDecision` rejects
    reasonless, contradictory, or private-material-bearing records.
 3. **Funnel surfacing** — decision reason codes are funnel-compatible
-   refs (`funnelReasonRefForDeviceAdmissionDecision`); the capacity
+   refs (`funnelReasonRefForDeviceAdmissionDecision`). The capacity
    funnel's privacy scanner exempts the platform-issued
    `device_admission.public.*` taxonomy the same way it exempts
    `dark_capacity.public.*` (the wallet_not_ready lesson of
@@ -70,9 +70,9 @@ them and no funnel row may cite them as a live admission claim:
 
 | Gate | Requirement | Stated rationale |
 | --- | --- | --- |
-| `gate.device_admission.example.bf16_attention_throughput_floor.v1` | `attention_throughput` at_least 2000 megaflops | bf16-class work needs native bf16 throughput; Pluralis excluded T4/V100 because they would emulate BF16 slower than FP32 |
-| `gate.device_admission.example.host_ram_headroom_floor.v1` | `host_ram_headroom_gb` at_least 80 gigabytes | optimizer-offload work keeps Adam moments in host RAM; the Pluralis contributor shape is 24 GB GPU + 80 GB system RAM |
-| `gate.device_admission.example.sustained_throughput_ratio_floor.v1` | `sustained_vs_burst_throughput_ratio` at_least 0.8 | one thermally throttling GPU collapsed a 14-node Pluralis collective; burst benchmarks overstate sustained capability |
+| `gate.device_admission.example.bf16_attention_throughput_floor.v1` | `attention_throughput` at_least 2000 megaflops | bf16-class work needs native bf16 throughput. Pluralis excluded T4/V100 because they would emulate BF16 slower than FP32 |
+| `gate.device_admission.example.host_ram_headroom_floor.v1` | `host_ram_headroom_gb` at_least 80 gigabytes | optimizer-offload work keeps Adam moments in host RAM. The Pluralis contributor shape is 24 GB GPU + 80 GB system RAM |
+| `gate.device_admission.example.sustained_throughput_ratio_floor.v1` | `sustained_vs_burst_throughput_ratio` at_least 0.8 | one thermally throttling GPU collapsed a 14-node Pluralis collective. Burst benchmarks overstate sustained capability |
 
 ## Why host RAM, specifically
 
@@ -113,7 +113,7 @@ does GPU/memory/thermal checks) consumes this exact structure rather
 than duplicating gate thresholds. The schema-version string is the
 compatibility key: psionic mirrors the contract by version, and a gate
 change on the openagents side is a version bump, not a silent drift.
-This document records the seam; the psionic-side consumption is its own
+This document records the seam. The psionic-side consumption is its own
 change in the psionic repo and is **not** claimed here.
 
 ## Verified vs remaining gate
@@ -137,7 +137,7 @@ Remaining hardware-gated acceptance bullets, **not** claimed here:
 
 - a live device measuring `host_ram_headroom_gb` or
   `sustained_vs_burst_throughput_ratio` and submitting receipted
-  evidence (the bounded workload module cannot synthesize either; live
+  evidence (the bounded workload module cannot synthesize either, live
   values wait on real contributor devices),
 - any live admission or exclusion decision against the seeded gates —
   the example set stays definitions-only until receipted device

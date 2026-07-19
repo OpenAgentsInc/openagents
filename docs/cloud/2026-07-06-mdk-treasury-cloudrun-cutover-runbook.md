@@ -10,7 +10,7 @@ not this deployment procedure.
 Historical status: EXECUTION ATTEMPTED 2026-07-06 after owner GO — **flip blocked**:
 the deployed production Worker predates the endpoint seam and no code deploy
 can ship (free-plan 3 MiB cap, error 10027). CF containers left RUNNING (live
-payments intact); the live flip is now COUPLED to the CFG-9 monolith cutover.
+payments intact). The live flip is now COUPLED to the CFG-9 monolith cutover.
 See §8 for the execution-attempt record and §9 for the revised sequencing.
 **Epic:** #8515 (Cloudflare → GCP migration). Cutover issue: CFG-15.
 **Audit context:** `docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md`.
@@ -40,14 +40,14 @@ INSTANCE).fetch(...)` (Durable Object → Cloudflare Container).
 
 | Service | Wallet engine | Durable state location | CF instances |
 |---|---|---|---|
-| `mdk-treasury` | `@moneydevkit/lightning-js` `MdkNode` (mainnet) + `@breeztech/breez-sdk-spark` | MDK: **external VSS**, keyed by mnemonic + MDK access token. Spark: **Spark network**, keyed by mnemonic; local SQLite (`SPARK_TREASURY_STORAGE_DIR/storage.sql`) is a re-syncable cache | max 1 (single writer) |
+| `mdk-treasury` | `@moneydevkit/lightning-js` `MdkNode` (mainnet) + `@breeztech/breez-sdk-spark` | MDK: **external VSS**, keyed by mnemonic + MDK access token. Spark: **Spark network**, keyed by mnemonic. Local SQLite (`SPARK_TREASURY_STORAGE_DIR/storage.sql`) is a re-syncable cache | max 1 (single writer) |
 | `mdk-tips-buffer` | `MdkNode` (own mnemonic) | MDK **external VSS** (same shape as treasury) | max 1 (single writer) |
 | `mdk-sidecar` | `@moneydevkit/core/route` checkout handler | MDK hosted checkout state (external) | max 2 |
 
 State that does NOT survive the move (accepted, by design):
 
 - **In-daemon payment-outcome maps.** Both node daemons hold
-  `paymentOutcomes` / `receivedPayments` in process memory; the code already
+  `paymentOutcomes` / `receivedPayments` in process memory. The code already
   documents that "callers must tolerate a pending answer after a container
   restart", and the Worker reconciles pending treasury transactions through
   the D1 ledger (`reconcilePendingTreasuryTransactions`).
@@ -55,12 +55,12 @@ State that does NOT survive the move (accepted, by design):
   `DurableMdkOutcomeContainer` wrapper journals terminal `/pay` outcomes into
   DO storage and serves them when the container restarts. The HTTP path has no
   DO, so this journal is bypassed. Mitigation: pending statuses resolve via
-  the D1 ledger reconcile; treat any `pending` after cutover as reconcilable,
+  the D1 ledger reconcile. Treat any `pending` after cutover as reconcilable,
   not lost. **We could not inspect the live DO journal contents without
-  touching prod** — assume some historical outcome rows exist only there; the
+  touching prod** — assume some historical outcome rows exist only there. The
   D1 ledger remains the settlement source of truth.
 - **The treasury container-generation key** (`ensureCurrentContainerGeneration`)
-  is a CF-only restart mechanism; irrelevant on Cloud Run.
+  is a CF-only restart mechanism. Irrelevant on Cloud Run.
 
 ### Why Cloud Run and not GCE
 
@@ -71,7 +71,7 @@ State that does NOT survive the move (accepted, by design):
   a fresh Cloud Run revision with an empty `/tmp` storage dir synced, minted
   invoices, and answered balance queries.
 - Cloud Run matches the existing `apps/oa-updates` deploy pattern and the GCP
-  credit posture; GCE would add unattended-VM patching burden for no
+  credit posture. GCE would add unattended-VM patching burden for no
   durability gain.
 - Residual honesty note: MDK's own guidance (see "MDK Agent-Wallet Send
   Readiness" invariant) is that mnemonic-only restore is NOT accepted as
@@ -89,14 +89,14 @@ State that does NOT survive the move (accepted, by design):
   `x-tips-buffer-service-token`.
 - `MDK_SIDECAR_SERVICE_URL` (+ `MDK_SIDECAR_SERVICE_TOKEN`) →
   `fetchMdkSidecarRequest` forwards the whole `/api/mdk` checkout request with
-  `x-mdk-sidecar-service-token`; the daemon enforces that token whenever it is
+  `x-mdk-sidecar-service-token`. The daemon enforces that token whenever it is
   configured.
 
-Unset vars = the existing Durable Object path; nothing changes until the flip.
+Unset vars = the existing Durable Object path. Nothing changes until the flip.
 The CFG-9 Cloud Run monolith consumes the same seam (it has no DO bindings, so
 HTTP mode is its only route) — set the same three vars in its environment.
 
-URLs must be HTTPS (loopback HTTP allowed for local smoke only); malformed or
+URLs must be HTTPS (loopback HTTP allowed for local smoke only). Malformed or
 non-HTTPS values are ignored and the DO path is used. Tests:
 `workers/api/src/mdk-service-endpoints.test.ts`.
 
@@ -104,7 +104,7 @@ non-HTTPS values are ignored and the DO path is used. Tests:
 
 The Google Frontend **reserves `/healthz` on `run.app` domains** and answers
 404 before the container sees the request. All three daemons now serve
-`/health` as an alias; use `/health` for Cloud Run checks. The CF container
+`/health` as an alias. Use `/health` for Cloud Run checks. The CF container
 `pingEndpoint` still uses `/healthz` over localhost (not intercepted).
 
 ---
@@ -138,7 +138,7 @@ Secret Manager names (prefix `staging-` for staging, none for production):
 | `mdk-treasury-mnemonic` | `MDK_TREASURY_MNEMONIC` | treasury |
 | `mdk-treasury-access-token` | `MDK_TREASURY_ACCESS_TOKEN` | treasury |
 | `mdk-treasury-service-token` | `MDK_TREASURY_SERVICE_TOKEN` | treasury |
-| `spark-treasury-api-key` | `SPARK_TREASURY_API_KEY` | treasury (optional; daemon has the owner-authorized default) |
+| `spark-treasury-api-key` | `SPARK_TREASURY_API_KEY` | treasury (optional, daemon has the owner-authorized default) |
 | `mdk-tips-buffer-mnemonic` | `MDK_TIPS_BUFFER_MNEMONIC` | tips-buffer |
 | `mdk-tips-buffer-access-token` | `MDK_TIPS_BUFFER_ACCESS_TOKEN` | tips-buffer |
 | `mdk-tips-buffer-service-token` | `MDK_TIPS_BUFFER_SERVICE_TOKEN` | tips-buffer |
@@ -159,25 +159,25 @@ Grant the Cloud Run runtime SA
 Deployed with a **fresh throwaway mnemonic** (generated with `@scure/bip39`,
 never printed, never the production mnemonic) and fresh random service tokens:
 
-- `oa-mdk-treasury-staging` — daemon boots; `/health` flags honest
+- `oa-mdk-treasury-staging` — daemon boots. `/health` flags honest
   (`mnemonicConfigured: true`, `accessTokenConfigured: false`,
-  `sparkMnemonicConfigured: true`); Spark SDK built against the live Spark
+  `sparkMnemonicConfigured: true`). Spark SDK built against the live Spark
   network on the throwaway wallet:
   - `GET /spark/balance` → `{"balanceSat":0,"maxSendableSat":0,"rail":"spark"}`
   - `POST /spark/funding-invoice {amountSat:1000}` → real bolt11 +
-    `paymentHash` (decoded from the invoice; matches)
+    `paymentHash` (decoded from the invoice, matches)
   - `GET /spark/received/<hash>` → `{"received":false,"settled":false}`
   - `GET /spark/funding-destination` → spark address + registered
     `…@breez.tips` lightning address
   - MDK-node endpoints answer `503 treasury_unconfigured` (no staging MDK
-    access token exists — MDK API keys are owner-issued; this is the honest
+    access token exists — MDK API keys are owner-issued. This is the honest
     staging boundary).
 - `oa-mdk-tips-buffer-staging`, `oa-mdk-sidecar-staging` — image builds and
   daemon boot verified via `/health` (tips-buffer with its own throwaway
-  mnemonic; sidecar with service token only).
+  mnemonic. Sidecar with service token only).
 
 **NOT verified in staging (and why):** an actual receive→settle needs real
-sats on mainnet (throwaway wallet is unfunded; Breez regtest needs a regtest
+sats on mainnet (throwaway wallet is unfunded, Breez regtest needs a regtest
 Spark environment we do not run) and MDK-node send/receive needs an MDK access
 token. Both are re-verified live in step 5 of the cutover.
 
@@ -196,31 +196,31 @@ token. Both are re-verified live in step 5 of the cutover.
 4. Staging stack verified within the last 7 days (redo §3 if stale).
 5. Owner has the local backup env available (`.secrets/openagents-mdk-treasury.env`
    in the workspace root) for the treasury mnemonic + access token + service
-   token; equivalents for tips-buffer and sidecar from the production Worker
+   token. Equivalents for tips-buffer and sidecar from the production Worker
    secret store. Values move via `gcloud secrets versions add --data-file`,
    never through echo, logs, or tracked files.
-6. A low-traffic window is chosen; MPP Lightning purchases and tips will 503
+6. A low-traffic window is chosen. MPP Lightning purchases and tips will 503
    during the gap (crypto/card rails are unaffected).
 
-## 5. Cutover procedure (owner-gated; per service, treasury shown)
+## 5. Cutover procedure (owner-gated, per service, treasury shown)
 
-Do ONE service at a time, treasury LAST (it is the highest-value wallet;
+Do ONE service at a time, treasury LAST (it is the highest-value wallet,
 rehearse the exact sequence on sidecar first, then tips-buffer).
 
 **Phase A — stop the Cloudflare daemon FIRST.**
 
-1. Announce the freeze; disable payout dispatch gates (Tassadar
-   real-settlement gate stays OFF; X-claim dispatcher window closed).
+1. Announce the freeze. Disable payout dispatch gates (Tassadar
+   real-settlement gate stays OFF. X-claim dispatcher window closed).
 2. Snapshot pre-cutover truth via the existing operator status API
    (`/api/operator/treasury/status`: MDK balance, Spark balance, pending
    transactions). Record in the CFG-15 issue (public-safe numbers only).
 3. Deploy a Worker revision that **removes** the treasury entry from
    `containers` + its DO binding/migration in `wrangler.jsonc` and removes the
    `MDK_TREASURY_MNEMONIC` / `MDK_TREASURY_ACCESS_TOKEN` Worker secrets.
-   Removing the container class destroys its instances; treasury routes now
+   Removing the container class destroys its instances. Treasury routes now
    fail closed (503). **Downtime window opens.**
 4. Verify no treasury container instance remains (Cloudflare dash → Workers →
-   Containers; `wrangler containers list` if available). Wait an extra 10
+   Containers. `wrangler containers list` if available). Wait an extra 10
    minutes as a belt-and-suspenders buffer past any in-flight request.
 
 **Phase B — start the Cloud Run daemon on the production mnemonic.**
@@ -234,18 +234,18 @@ rehearse the exact sequence on sidecar first, then tips-buffer).
    SERVICE_NAME=oa-mdk-treasury SECRET_PREFIX= MIN_INSTANCES=1 \
    ./apps/openagents.com/services/mdk-treasury/scripts/deploy-cloudrun.sh
    ```
-7. Verify directly against the service URL: `/health` flags all true;
+7. Verify directly against the service URL: `/health` flags all true.
    `/spark/balance` and `/balance` match the step-2 snapshot (balance parity
-   is REQUIRED before re-pointing the Worker; investigate any delta before
+   is REQUIRED before re-pointing the Worker. Investigate any delta before
    proceeding).
 
 **Phase C — re-point the Worker.**
 
 8. Set the Worker config `MDK_TREASURY_SERVICE_URL=<cloud run url>` (keep
    `MDK_TREASURY_SERVICE_TOKEN` as-is) and deploy. **Downtime window closes.**
-9. Verification: operator treasury status API healthy; mint a small MPP
-   Lightning funding invoice end-to-end; run the pending-transaction
-   reconcile; then (owner) one small real payout to a known destination before
+9. Verification: operator treasury status API healthy. Mint a small MPP
+   Lightning funding invoice end-to-end. Run the pending-transaction
+   reconcile. Then (owner) one small real payout to a known destination before
    re-enabling payout gates.
 
 **Redeploys after cutover:** Cloud Run runs old and new revisions side by side
@@ -258,7 +258,7 @@ the first money-path request, so a not-yet-hit new revision holds no wallet.
 `oa-mdk-tips-buffer`, and the tips instance/binding in `wrangler.jsonc`.
 
 **Sidecar:** same order (`MDK_SIDECAR_SERVICE_URL` + `MDK_SIDECAR_SERVICE_TOKEN`
-on the Worker; sidecar carries `MDK_ACCESS_TOKEN`/`MDK_MNEMONIC`/webhook
+on the Worker. Sidecar carries `MDK_ACCESS_TOKEN`/`MDK_MNEMONIC`/webhook
 secret). Do it FIRST as the rehearsal: it is the checkout path (lowest custody
 risk, hosted MDK state) and proves the whole seam live. Verify with a real
 checkout session before moving on.
@@ -271,10 +271,10 @@ in reverse:
 1. Unset the `MDK_*_SERVICE_URL` var and deploy the Worker (routes fail closed
    503 — do NOT restore the container config yet).
 2. **Stop the Cloud Run daemon completely:** `gcloud run services delete
-   oa-mdk-treasury --region us-central1` (deletion, not scale-to-zero; an
+   oa-mdk-treasury --region us-central1` (deletion, not scale-to-zero, an
    idle instance can linger otherwise). Verify it is gone.
 3. Restore the `containers` + DO entries in `wrangler.jsonc` and the Worker
-   mnemonic/access-token secrets; deploy. The CF container re-materializes on
+   mnemonic/access-token secrets. Deploy. The CF container re-materializes on
    first request against the same external VSS/Spark state.
 4. Re-run the step-2 balance snapshot and parity check before re-enabling
    payout gates.
@@ -316,7 +316,7 @@ RUNNING with the live flip re-sequenced onto the CFG-9 monolith cutover.
    `x-treasury-service-token` DO-path header). Deployed code that never reads
    the flip vars cannot be re-pointed by any config change.
 2. **No code deploy can ship the seam.** The Workers Paid plan on the account
-   is cancelled; deploys fail with API error `10027` ("Worker exceeded the
+   is cancelled. Deploys fail with API error `10027` ("Worker exceeded the
    size limit of 3 MiB") — the bundle is ~3.79 MiB gzipped. Verified on both
    staging and production by the CFG-1 lane (#8516) after the 12:26Z upload.
 
@@ -325,7 +325,7 @@ RUNNING with the live flip re-sequenced onto the CFG-9 monolith cutover.
 - **Secret-only updates work on the free plan with no code upload.**
   `wrangler secret put` succeeded against both `openagents-staging` and
   `openagents-autopilot` (probe secret `CFG15_SECRET_INJECTION_PROBE`, set
-  and then deleted; each appears as a `Source: Secret Change` deployment).
+  and then deleted. Each appears as a `Source: Secret Change` deployment).
   Once a Worker build containing the seam is deployable again, the flip vars
   can be injected as secrets without a code upload.
 - **The CF containers can be stopped WITHOUT a Worker deploy.**
@@ -354,12 +354,12 @@ RUNNING with the live flip re-sequenced onto the CFG-9 monolith cutover.
   `GET /api/operator/treasury/status` — MDK `balanceSat: 8622`,
   `maxSendableSat: 8536`, reward dispatch `enabled: false` (payout gates
   OFF), `pendingPaymentCount: 0`, all configured flags true. The deployed
-  Worker exposes no operator route for the Spark-rail balance number; the
+  Worker exposes no operator route for the Spark-rail balance number. The
   Spark balance is re-snapshotted from the daemon directly during the actual
   flip window.
 - **Considered and rejected:** a small route-scoped proxy Worker (under the
   free cap) intercepting money paths. It could only intercept the public
-  `/api/mdk` checkout route; the treasury and tips-buffer calls are internal
+  `/api/mdk` checkout route. The treasury and tips-buffer calls are internal
   Worker→DO calls that never cross a routable URL, and it would add a new
   custody-adjacent surface without owner review.
 
@@ -370,30 +370,30 @@ vars — no Worker deploy needed. The MDK cutover therefore executes as part of
 the monolith cutover, preserving stop-CF-first:
 
 1. **Prepare (any time before the flip):** monolith staging acceptance green
-   (#8524); staging MDK stack re-verified within 7 days (§3).
-2. **Freeze + snapshot:** payout gates confirmed OFF; snapshot MDK + Spark
+   (#8524). Staging MDK stack re-verified within 7 days (§3).
+2. **Freeze + snapshot:** payout gates confirmed OFF. Snapshot MDK + Spark
    balances and pending transactions via `/api/operator/treasury/status`
    (post public-safe numbers to the CFG-15 issue).
 3. **Stop CF FIRST — via the containers API, not a deploy:**
    `wrangler containers delete` each of the three MDK container application
-   IDs; verify `wrangler containers list` shows them gone (LIVE INSTANCES 0 /
-   absent); wait 10 minutes. The still-deployed old Worker now fails closed
+   IDs. Verify `wrangler containers list` shows them gone (LIVE INSTANCES 0 /
+   absent). Wait 10 minutes. The still-deployed old Worker now fails closed
    (503) on money paths. **This is a point of limited return while the deploy
    freeze holds** (no Worker deploy = no container re-create), so do it only
    when step 1 is green and the owner has acknowledged the flip window.
 4. **Start GCP on production material:** load production mnemonics/tokens
    into Secret Manager (`gcloud secrets versions add --data-file`, from
    `.secrets/openagents-mdk-treasury.env`, `.secrets/openagents-mdk-tips-buffer.env`,
-   and the sidecar backup env); deploy `oa-mdk-sidecar`, `oa-mdk-tips-buffer`,
-   `oa-mdk-treasury` with `ALLOW_PRODUCTION_MONEY_PATH_DEPLOY=yes`;
+   and the sidecar backup env). Deploy `oa-mdk-sidecar`, `oa-mdk-tips-buffer`,
+   `oa-mdk-treasury` with `ALLOW_PRODUCTION_MONEY_PATH_DEPLOY=yes`.
    **balance parity** against the step-2 snapshot before any traffic.
 5. **Flip traffic:** the monolith deploys/starts with
    `MDK_TREASURY_SERVICE_URL` / `MDK_TIPS_BUFFER_SERVICE_URL` /
    `MDK_SIDECAR_SERVICE_URL` (+ `MDK_SIDECAR_SERVICE_TOKEN`,
-   `MDK_TREASURY_SERVICE_TOKEN`, `MDK_TIPS_BUFFER_SERVICE_TOKEN`) set; CFG-10
+   `MDK_TREASURY_SERVICE_TOKEN`, `MDK_TIPS_BUFFER_SERVICE_TOKEN`) set. CFG-10
    DNS moves `openagents.com` to the monolith. Residual DNS-propagation
    traffic hitting the old Worker 503s on money paths only (bounded,
-   accepted); it can never double-drive a wallet because the CF daemons no
+   accepted). It can never double-drive a wallet because the CF daemons no
    longer exist.
 6. **Verify:** §5 Phase C step 9 unchanged (status API healthy, small MPP
    funding invoice end-to-end, pending reconcile, one small real payout
@@ -410,7 +410,7 @@ plan is cancelled): payments are down regardless of what we do, and the
 single-writer constraint is then trivially satisfied on the CF side. Verify
 the container apps are actually gone (`wrangler containers list`), then
 execute steps 4-6 as soon as the monolith can take traffic. Do not start
-production-mnemonic daemons early with no caller; that adds custody exposure
+production-mnemonic daemons early with no caller. That adds custody exposure
 for zero traffic.
 
 **If the owner re-enables Workers Paid instead** (fast unfreeze per #8516):

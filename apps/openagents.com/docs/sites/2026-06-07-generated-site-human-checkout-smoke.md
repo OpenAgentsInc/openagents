@@ -24,31 +24,31 @@ projection without bypassing OpenAgents product surface's route layer.
 
 The smoke proves:
 
-- the generated Site fixture catalog is accepted by the Site commerce API;
-- the generated checkout helper body can create a checkout intent;
-- the checkout intent store receives a checkout intent record;
-- the buyer payment ledger receives an issued checkout challenge;
-- the public checkout response is redacted;
-- the clean status return does not require provider query state;
+- the generated Site fixture catalog is accepted by the Site commerce API.
+- the generated checkout helper body can create a checkout intent.
+- the checkout intent store receives a checkout intent record.
+- the buyer payment ledger receives an issued checkout challenge.
+- the public checkout response is redacted.
+- the clean status return does not require provider query state.
 - the return status remains unpaid until verified reconciliation occurs.
 
 ## What It Does Not Prove
 
 The smoke does not prove:
 
-- a live MDK checkout was created;
-- an invoice was minted;
-- bitcoin moved;
-- a provider webhook was verified;
-- a receipt or entitlement was issued;
+- a live MDK checkout was created.
+- an invoice was minted.
+- bitcoin moved.
+- a provider webhook was verified.
+- a receipt or entitlement was issued.
 - accepted-work payout or settlement authority exists.
 
 Those are covered by generated Site MDK live-smoke issues:
 
 - #456 for the agent-paid L402 action path, now covered as a registered-agent
-  contract smoke;
+  contract smoke.
 - #457 for checkout-return and provider reconciliation evidence, now covered
-  by a deterministic dashboard Standard Webhooks smoke;
+  by a deterministic dashboard Standard Webhooks smoke.
 - #458 for public-safe runbook and evidence publishing.
 
 ## Verification

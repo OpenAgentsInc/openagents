@@ -1,7 +1,7 @@
 # BF-9.4 Operator-Minutes Monthly Series
 
 Date: 2026-07-03
-Status: BF-9.4 instrumentation landed; no promise state flip; no public copy
+Status: BF-9.4 instrumentation landed. No promise state flip. No public copy
 change
 Source issue: OpenAgentsInc/openagents#8118
 Roadmap refs: [`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) BF-9.4 and
@@ -26,13 +26,13 @@ in `business-factory-metrics.sql`.
 
 Each monthly row carries:
 
-- `grain = "window"`;
-- `window_start` and `window_end` as calendar-month bounds;
+- `grain = "window"`.
+- `window_start` and `window_end` as calendar-month bounds.
 - `numerator` as summed ledgered review minutes from
-  `omni_accepted_outcome_economics`;
-- `denominator` as distinct opaque accepted engagement refs;
-- `value` as minutes per accepted engagement;
-- `unit = "minutes"`;
+  `omni_accepted_outcome_economics`.
+- `denominator` as distinct opaque accepted engagement refs.
+- `value` as minutes per accepted engagement.
+- `unit = "minutes"`.
 - `measurement_state = "measured"` only when the denominator is non-zero.
 
 Empty months return `measurement_state = "not_measured"` and

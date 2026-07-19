@@ -13,18 +13,18 @@ into product wins. The implementation lives in
 
 The projection compares before/after snapshots for:
 
-- acceptance rate;
-- human review minutes;
-- turns per accepted outcome;
-- retries per accepted outcome;
-- cost per accepted outcome ref;
-- retry count;
-- route scorecard refs;
-- artifact completeness;
-- proof bundle completeness;
-- public/private proof state;
-- failure family reduction;
-- regression count; and
+- acceptance rate.
+- human review minutes.
+- turns per accepted outcome.
+- retries per accepted outcome.
+- cost per accepted outcome ref.
+- retry count.
+- route scorecard refs.
+- artifact completeness.
+- proof bundle completeness.
+- public/private proof state.
+- failure family reduction.
+- regression count. And
 - closeout quality.
 
 The projection now also carries selected Blueprint signature refs, Probe tool
@@ -36,9 +36,9 @@ Autopilot product evidence.
 
 OpenAgents product surface can display candidate state as:
 
-- `benchmark_only`;
-- `shadow`;
-- `release_candidate`; or
+- `benchmark_only`.
+- `shadow`.
+- `release_candidate`. Or
 - `active`.
 
 `active` requires accepted coding outcome refs plus public and private proof

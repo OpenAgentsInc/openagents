@@ -9,7 +9,7 @@ The shortest accurate read: **Linear is not becoming a git forge like Cursor Ori
 # 1. What Linear Diffs is
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
@@ -29,7 +29,7 @@ That distinction matters. GitHub PRs organize review around repositories and bra
 
 Diffs adds a **Reviews** section in Linear’s sidebar. The docs describe two main tabs: “For me,” which shows PRs you are involved in or responsible for, and “Created,” which shows PRs you authored. Users can group or sort by status, author, or repository, and can include draft/closed PRs or extra fields such as repository, failed checks, and preview links. ([Linear][2])
 
-This turns PR review into a Linear work queue. Linear’s launch framing is that review requests get buried in email and every PR looks equally urgent in a normal queue; inside Linear, each diff inherits product priority because it is attached to the issue and project that produced it. ([Linear][4])
+This turns PR review into a Linear work queue. Linear’s launch framing is that review requests get buried in email and every PR looks equally urgent in a normal queue. Inside Linear, each diff inherits product priority because it is attached to the issue and project that produced it. ([Linear][4])
 
 ## 2.2 GitHub-synced commenting, approval, change requests, and merge
 
@@ -39,7 +39,7 @@ This is important strategically: Linear is not merely embedding a read-only diff
 
 ## 2.3 Unified and split diff views
 
-Linear supports both unified and split diff layouts. Unified shows changes in one column; split shows before/after side-by-side. The docs also mention keyboard toggling and a responsive fallback for smaller screens. ([Linear][2])
+Linear supports both unified and split diff layouts. Unified shows changes in one column. Split shows before/after side-by-side. The docs also mention keyboard toggling and a responsive fallback for smaller screens. ([Linear][2])
 
 ## 2.4 Structural highlighting
 
@@ -69,11 +69,11 @@ This is another sign that Linear wants to be the default daily surface for revie
 
 ## 2.8 Agent iteration from the diff
 
-Linear’s product page says reviewers can make changes from the diff with agents and watch updates appear inline; agents can handle refactors, tests, and follow-up edits without leaving the review surface. ([Linear][3])
+Linear’s product page says reviewers can make changes from the diff with agents and watch updates appear inline. Agents can handle refactors, tests, and follow-up edits without leaving the review surface. ([Linear][3])
 
 The docs for Coding Sessions make this more explicit: when a coding session produces a PR, the workflow continues in the Reviews tab, and users can delegate review actions to Linear Agent to address review comments, rebase open PRs onto master, or fix lint issues. ([Linear][5])
 
-This is the most important feature strategically. Linear Diffs is not just a nicer PR UI; it is the review terminal for agent-written code.
+This is the most important feature strategically. Linear Diffs is not just a nicer PR UI. It is the review terminal for agent-written code.
 
 ---
 
@@ -101,7 +101,7 @@ Linear Diffs
 Linear workspace
 ```
 
-That makes Linear Diffs very different from Cursor Origin. Origin is positioned as git hosting / code storage; Linear Diffs is a review and orchestration layer on top of GitHub.
+That makes Linear Diffs very different from Cursor Origin. Origin is positioned as git hosting / code storage. Linear Diffs is a review and orchestration layer on top of GitHub.
 
 ## 3.2 Permissions and GitHub identity
 
@@ -130,7 +130,7 @@ Reviewer action in Linear
   → Linear state refresh
 ```
 
-The product value is the Linear-side context and interface; GitHub remains the authoritative PR backend.
+The product value is the Linear-side context and interface. GitHub remains the authoritative PR backend.
 
 ## 3.4 AI guide generation
 
@@ -163,8 +163,8 @@ Linear has not published implementation details for prompt design, model choice 
 | Reviews tab / focused queue               |                 Confirmed | “For me” and “Created” tabs are documented. ([Linear][2])                                                              |
 | PR notifications in Linear                |                 Confirmed | Includes comments, reviews, review requests, mentions, and CI failures. ([Linear][2])                                  |
 | Bot-noise filtering                       |                 Confirmed | “By people” modes filter activity GitHub identifies as bot actors. ([Linear][2])                                       |
-| Structural highlighting                   | Confirmed product feature | Linear says it strips formatting-only edits; implementation details are not public. ([Linear][3])                      |
-| Guided Reviews / Guides                   |            Confirmed beta | Available on Business/Enterprise during beta; organizes large PRs into sections with explanations. ([Linear][2])       |
+| Structural highlighting                   | Confirmed product feature | Linear says it strips formatting-only edits. Implementation details are not public. ([Linear][3])                      |
+| Guided Reviews / Guides                   |            Confirmed beta | Available on Business/Enterprise during beta. Organizes large PRs into sections with explanations. ([Linear][2])       |
 | Agent iteration from review               |                 Confirmed | Agents can address review comments, rebase, and fix lint issues from the review flow. ([Linear][5])                    |
 | GitHub as current backend                 |                 Confirmed | Setup depends on GitHub integration and code access. ([Linear][2])                                                     |
 | GitLab Diffs support                      |             Not confirmed | Linear supports GitLab issue/MR workflow automation separately, but Diffs docs are GitHub-centered.                    |
@@ -203,15 +203,15 @@ Linear’s own “Issue tracking is dead” manifesto says the old handoff model
 
 ## 5.1 Linear Agent: the context-native agent
 
-Linear Agent launched in public beta on March 24, 2026. Linear describes it as built directly into Linear and able to understand roadmap, issues, and code; it can synthesize context, make recommendations, and take action. ([Linear][7])
+Linear Agent launched in public beta on March 24, 2026. Linear describes it as built directly into Linear and able to understand roadmap, issues, and code. It can synthesize context, make recommendations, and take action. ([Linear][7])
 
-Agents in Linear behave like “app users”: they can be mentioned, delegated issues through assignment, create and reply to comments, and collaborate on projects and documents. Importantly, Linear says agents are not traditional assignees; assigning an issue to an agent triggers delegation, while the human teammate remains responsible for completion. ([Linear][8])
+Agents in Linear behave like “app users”: they can be mentioned, delegated issues through assignment, create and reply to comments, and collaborate on projects and documents. Importantly, Linear says agents are not traditional assignees. Assigning an issue to an agent triggers delegation, while the human teammate remains responsible for completion. ([Linear][8])
 
 That “human remains responsible” model is central. Linear is trying to add agent execution without dissolving accountability.
 
 ## 5.2 Skills and automations
 
-Linear Agent includes reusable **Skills** and **Automations**. Skills save repeatable workflows; automations can trigger agent workflows when issues enter triage. ([Linear][7])
+Linear Agent includes reusable **Skills** and **Automations**. Skills save repeatable workflows. Automations can trigger agent workflows when issues enter triage. ([Linear][7])
 
 This moves Linear from passive tracker to active workflow engine. Instead of “a human reads a ticket and decides what to do,” Linear wants “an issue enters triage, an agent classifies it, investigates it, drafts work, and escalates when needed.”
 
@@ -310,7 +310,7 @@ That is a sharp product thesis. Cursor, Claude Code, Codex, Windsurf, and Zed al
 
 ## 7.4 Linear’s wedge is “agent accountability”
 
-Linear repeatedly emphasizes that humans remain accountable. Diffs’ launch copy says agents generate large volumes of code but individuals are still accountable for what merges. ([Linear][1]) The agents docs say delegating to an agent does not make the agent the accountable assignee; the human remains responsible. ([Linear][8])
+Linear repeatedly emphasizes that humans remain accountable. Diffs’ launch copy says agents generate large volumes of code but individuals are still accountable for what merges. ([Linear][1]) The agents docs say delegating to an agent does not make the agent the accountable assignee. The human remains responsible. ([Linear][8])
 
 This gives Linear a credible enterprise story: agents can do work, but Linear preserves ownership, review, audit trail, and escalation.
 
@@ -371,7 +371,7 @@ For AI privacy, Linear says it does not use customer data to train its own AI mo
 | Core identity                | PR review and agent iteration inside Linear                       | Git forge / code hosting for agents                           |
 | Source of truth              | GitHub PRs and repositories                                       | Cursor-controlled git hosting, based on announced positioning |
 | Primary surface              | Issue + review + product context                                  | Repo + branch + PR/change management                          |
-| Main user promise            | Review code in context; keep humans accountable                   | Scale git workflows for agent-heavy coding                    |
+| Main user promise            | Review code in context. Keep humans accountable                   | Scale git workflows for agent-heavy coding                    |
 | Agent role                   | Agents write/fix/rebase/address comments through Linear workflows | Agents are first-class contributors to hosted repos           |
 | Strategic wedge              | Own the product-development context layer                         | Own the git/storage/review infrastructure layer               |
 | Near-term replacement target | GitHub PR UI, Jira-like handoffs, fragmented review queues        | GitHub/GitLab repository hosting and review infrastructure    |
@@ -392,7 +392,7 @@ They are adjacent, not identical. A team could theoretically use Linear for plan
 
 Linear Diffs is a major expansion of Linear from product management into engineering execution. It brings GitHub PR review into Linear, adds structured and AI-guided review, ties code changes directly to issues and product context, and lets agents continue iterating from the diff surface. It is available now, with Guided Reviews in beta for Business and Enterprise customers. ([Linear][1])
 
-The bigger story is that Linear is building an agentic product-development loop: capture work, enrich it with context, let agents understand the codebase, let agents write code, review the result in Linear, and merge. Diffs is the review and accountability layer that makes that loop usable by teams rather than just individuals. Linear is not yet replacing GitHub as a forge; it is trying to replace GitHub PR review plus Jira-style handoffs as the place where product intent becomes shipped code.
+The bigger story is that Linear is building an agentic product-development loop: capture work, enrich it with context, let agents understand the codebase, let agents write code, review the result in Linear, and merge. Diffs is the review and accountability layer that makes that loop usable by teams rather than just individuals. Linear is not yet replacing GitHub as a forge. It is trying to replace GitHub PR review plus Jira-style handoffs as the place where product intent becomes shipped code.
 
 [1]: https://linear.app/changelog/2026-05-27-linear-diffs "Linear Diffs – Changelog"
 [2]: https://linear.app/docs/diffs "Reviews – Linear Docs"
@@ -407,6 +407,6 @@ The bigger story is that Linear is building an agentic product-development loop:
 [11]: https://linear.app/now/coding-sessions-for-linear-agent "Now Linear writes the code, too - Linear"
 [12]: https://linear.app/changelog/2026-06-11-coding-sessions "Coding sessions in Linear – Changelog"
 [13]: https://linear.app/now/reviewing-code-in-the-agent-era "Reviewing code in the agent era - Linear"
-[14]: https://arxiv.org/abs/2605.07769 "Coding Agents Don't Know When to Act"
+[14]: https://arxiv.org/abs/2605.07769 "Coding Agents Do not Know When to Act"
 
 

@@ -38,12 +38,12 @@ bun run --cwd apps/openagents.com/workers/api test -- src/coding-capacity-valida
 
 The fixture covers:
 
-- browser account links an agent token to the account;
-- MCP-issued `khala.request` targets a caller-owned Codex Pylon;
-- the Worker creates a `unpaid_smoke` Pylon assignment;
+- browser account links an agent token to the account.
+- MCP-issued `khala.request` targets a caller-owned Codex Pylon.
+- the Worker creates a `unpaid_smoke` Pylon assignment.
 - the MCP result returns `assignmentRef`, `durableRequestId`, and
-  `durableStreamUrl`;
-- `khala.resume` replays the durable suffix without metering;
+  `durableStreamUrl`.
+- `khala.resume` replays the durable suffix without metering.
 - another account receives `durable_request_not_authorized` before any durable
   fetch runs.
 

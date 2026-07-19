@@ -1,7 +1,7 @@
 # Autopilot Desktop — Reality vs. Claim Status Audit
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-13
@@ -14,7 +14,7 @@ despite roadmap claims of web/desktop/mobile parity.
 > merged to `main`:
 > - **Connectivity (R1):** node-home auto-discovery (`.pylon-tailnet`/`.pylon-local`,
 >   walking up from cwd) — CL-45 (#4958). No more false "offline".
-> - **Sidebar shell (R3 structure):** the placeholder render is gone; a real
+> - **Sidebar shell (R3 structure):** the placeholder render is gone. A real
 >   sidebar + pane router ships — CL-44 (#4957). Full parity feature set landed:
 >   Ask/approvals/balance/assignments/cloud + Pause/Resume + session detail
 >   (CL-46..CL-52), and dedicated Sessions/Decisions/Spawn/Settings/SessionDetail
@@ -24,7 +24,7 @@ despite roadmap claims of web/desktop/mobile parity.
 >   `@openagentsinc/autopilot-ui` components (CL-53 #4966), so web + desktop
 >   render from one component library. The desktop webview is **Foldkit-only —
 >   no hand-DOM** going forward (see `apps/autopilot-desktop/AGENTS.md`).
->   (Compiles/bundles + reducer-tested; a local `electrobun dev` GUI smoke is
+>   (Compiles/bundles + reducer-tested, a local `electrobun dev` GUI smoke is
 >   recommended before release.)
 > - **Roadmap claim (R4):** corrected in
 >   `2026-06-13-autopilot-clients-roadmap.md`.
@@ -36,12 +36,12 @@ This audit answers two questions:
 2. **Where is the UI** — why does it look nothing like the web or mobile
    client, and what happened to the promised Foldkit parity?
 
-Both have concrete, verifiable answers below. Neither is a mystery; both are
+Both have concrete, verifiable answers below. Neither is a mystery. Both are
 gaps between what the roadmap *claims* and what the code *does*.
 
 ---
 
-## TL;DR
+## TL.DR
 
 - **The node is fine.** A real Pylon node is running and healthy on
   `127.0.0.1:4716` (`{"ok":true,"schema":"openagents.pylon.control.v0.3"}`),
@@ -63,7 +63,7 @@ gaps between what the roadmap *claims* and what the code *does*.
   Foldkit views the web app actually renders.
 - **The roadmap claim "Desktop already shares the Foldkit components" is false.**
   The shared Foldkit component package (`packages/autopilot-ui`) exists and the
-  **web** companion consumes it; the **desktop** never adopted it. Parity today
+  **web** companion consumes it. The **desktop** never adopted it. Parity today
   lives at the *protocol / view-model / conformance* layer, **not** at the
   rendered-pixels layer.
 
@@ -110,7 +110,7 @@ const pylonHome = Bun.env.PYLON_HOME ?? join(process.cwd(), ".pylon-local")
 
 - `controlBaseUrl` defaults correctly to the running node's address.
 - `pylonHome` defaults to `<cwd>/.pylon-local`. There is **no** `.pylon-local`
-  anywhere; the live token is in `.pylon-tailnet`.
+  anywhere. The live token is in `.pylon-tailnet`.
 
 The poll's fetch wrapper reads the token *first* and throws if it is missing
 (`src/bun/index.ts:55-62`):
@@ -134,7 +134,7 @@ async fetchNodeState() {
 
 …which `nodeStatusLine` renders as `offline · 0 sessions`
 (`src/ui/session-view.ts:76-87`). So the "offline" line is produced **without
-ever contacting the node** — it is purely "couldn't find the token at
+ever contacting the node** — it is purely "could not find the token at
 `.pylon-local/`."
 
 **Fix (operational):** launch the desktop with the env pointed at the real
@@ -150,7 +150,7 @@ or, better, have the desktop default-discover the node home the same way the
 TUI does (see Remediation). The new `~/.zshrc` `autopilot` function should set
 `PYLON_HOME` so it connects out of the box.
 
-### Why there's "no UI"
+### Why there is "no UI"
 
 `src/ui/main.ts:50-63` is the entire above-the-fold render, built by hand:
 
@@ -186,7 +186,7 @@ packages/autopilot-ui/src/  → view.ts, node-status.ts, session-actions.ts,
 ```
 
 `grep foldkit apps/autopilot-desktop/src` → **nothing.** There is no Vite build,
-no `views://` Foldkit bundle; `electrobun.config.ts` just copies a static
+no `views://` Foldkit bundle. `electrobun.config.ts` just copies a static
 `index.html` and bundles `src/ui/main.ts` directly. Contrast the desktop audit's
 own architecture section, which promised "the same stack as
 `apps/openagents.com/apps/web`" built "with Vite + `@foldkit/vite-plugin`."
@@ -195,17 +195,17 @@ own architecture section, which promised "the same stack as
 
 `2026-06-13-autopilot-clients-roadmap.md:84` states:
 
-> "Desktop already shares the Foldkit components; mobile (RN) maps the same
+> "Desktop already shares the Foldkit components. Mobile (RN) maps the same
 > tokens."
 
 First clause is **inaccurate** for the rendered UI. What is actually shared:
 
 | Layer | Shared across clients? | Evidence |
 |---|---|---|
-| Control/bridge **protocol** | ✅ yes | `@openagentsinc/autopilot-control-protocol` imported by pylon, desktop, web; mirrored by mobile |
-| **View-model** helpers / **design tokens** | ✅ yes (tokens) | desktop imports `cssVars`/`darkTokens`; CL-31/CL-42 dark-mode tokens |
+| Control/bridge **protocol** | ✅ yes | `@openagentsinc/autopilot-control-protocol` imported by pylon, desktop, web. Mirrored by mobile |
+| **View-model** helpers / **design tokens** | ✅ yes (tokens) | desktop imports `cssVars`/`darkTokens`. CL-31/CL-42 dark-mode tokens |
 | Cross-client **conformance matrix** | ✅ yes | CL-33 `tests/conformance.test.ts` |
-| **Rendered Foldkit components** | ❌ desktop: **no** | desktop hand-DOMs its own; only **web** imports `autopilot-ui` views (`apps/openagents.com/apps/web/src/page/clientsPreview.ts`) |
+| **Rendered Foldkit components** | ❌ desktop: **no** | desktop hand-DOMs its own. Only **web** imports `autopilot-ui` views (`apps/openagents.com/apps/web/src/page/clientsPreview.ts`) |
 
 So "parity" is real at the *data/contract/token* level and absent at the
 *rendered-UI* level for desktop. The owner's read — "where's the UI, I thought
@@ -237,7 +237,7 @@ From `git log -- apps/autopilot-desktop` the desktop got real, working plumbing:
 This is genuine end-to-end wiring (control client, RPC, polling, notifier,
 deploy, bridge, conformance). **But every one of these renders through the
 hand-DOM shell**, and the connect path defaults to a home (`.pylon-local`) that
-doesn't match the running node's home (`.pylon-tailnet`) — so on this machine,
+does not match the running node's home (`.pylon-tailnet`) — so on this machine,
 launched via the `autopilot` alias, it shows the placeholder + offline.
 
 ---
@@ -247,10 +247,10 @@ launched via the `autopilot` alias, it shows the placeholder + offline.
 1. **Connectivity: home-path default mismatch.** `PYLON_HOME` defaults to
    `<cwd>/.pylon-local`, but the node runs with `.pylon-tailnet`. Result:
    token-not-found → offline fallback. *Operational/config bug, trivially
-   fixable; no node problem.*
+   fixable. No node problem.*
 
 2. **UI: placeholder shell was never replaced with Foldkit.** The render path is
-   hand-DOM with stale scaffold copy; the shared Foldkit component package
+   hand-DOM with stale scaffold copy. The shared Foldkit component package
    (`autopilot-ui`) exists and is consumed by **web only**. Desktop adopted the
    *tokens* but not the *components*, so there is no visual parity, and the
    roadmap's "Desktop already shares the Foldkit components" overstates it.
@@ -270,7 +270,7 @@ launched via the `autopilot` alias, it shows the placeholder + offline.
   fall back to `PYLON_HOME`. This is the single change that turns "offline · 0
   sessions" into the live session list that already exists.
 - **R2 — Delete the placeholder copy.** Remove the "shell is alive / (Foldkit
-  next) / Next (CL-5)" header from `src/ui/main.ts:50-63`. CL-5 shipped; the
+  next) / Next (CL-5)" header from `src/ui/main.ts:50-63`. CL-5 shipped. The
   text is misleading on every launch.
 
 ### Next (the actual parity work — the real gap)
@@ -282,15 +282,15 @@ launched via the `autopilot` alias, it shows the placeholder + offline.
   `steer-controls`, `accounts`, `artifacts`, `verify-status`, `cloud-quota`)
   instead of the hand-DOM in `session-view.ts`/`session-render.ts`. This is the
   work that produces genuine web/desktop pixel parity. (Re-open / scope under
-  CL-2 + CL-31; the package is ready, only the desktop consumer is missing.)
+  CL-2 + CL-31. The package is ready, only the desktop consumer is missing.)
 - **R4 — Correct the roadmap claim.** Change `…-clients-roadmap.md:84` from
   "Desktop already shares the Foldkit components" to the accurate state:
-  desktop shares **protocol + tokens + conformance**; Foldkit **component**
-  adoption is pending (R3). Don't let the doc assert parity the code hasn't
+  desktop shares **protocol + tokens + conformance**. Foldkit **component**
+  adoption is pending (R3). Do not let the doc assert parity the code has not
   shipped.
 - **R5 — Conformance should cover render adoption.** The CL-33 matrix asserts
-  data/contract parity; add a check (or explicit caveat) that the desktop
-  renders via the shared component package, so this divergence can't silently
+  data/contract parity. Add a check (or explicit caveat) that the desktop
+  renders via the shared component package, so this divergence cannot silently
   recur.
 
 ### Verification
@@ -310,7 +310,7 @@ loopback control client, node-state RPC + polling, notifier, deploy, bridge,
 conformance matrix) that today renders through a hand-built DOM shell still
 wearing its first-commit "shell is alive / Foldkit next" placeholder, and — on
 this machine, launched via the `autopilot` alias — fails to connect only because
-its default Pylon home (`.pylon-local`) doesn't match the running node's home
+its default Pylon home (`.pylon-local`) does not match the running node's home
 (`.pylon-tailnet`), so it shows "offline · 0 sessions" without ever reaching the
 healthy node. There is no rendered-UI parity with web/mobile yet: the shared
 Foldkit component package exists and the web client uses it, but the desktop

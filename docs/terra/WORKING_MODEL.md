@@ -15,7 +15,7 @@ More specifically:
   language through Effect Native, rather than becoming a separate web-style
   UI with similar colors.
 - A visible claim must correspond to working behavior. A thread list contains
-  real threads; a chat gives a real answer or an honest error; a FleetRun is
+  real threads. A chat gives a real answer or an honest error. A FleetRun is
   never implied by decorative UI.
 - Minimalism is not removing capability. It is removing everything that does
   not help the person choose, type, read, or act at that moment.
@@ -35,20 +35,20 @@ limitation plainly. “It looks done” is not the bar.
 
 ## Product constraints that remain non-negotiable
 
-- Conversation may interpret; typed services authorize, execute, account, and
+- Conversation may interpret. Typed services authorize, execute, account, and
   prove.
 - A UI cannot invent FleetRun, account, payment, or public-claim state.
 - Desktop, mobile, and web should share Effect Native component semantics and
-  typed intents; host-specific pixels belong in renderer lowerings. SwiftUI
-  owns iOS Liquid Glass; Electron/DOM owns its honest material equivalent.
+  typed intents. Host-specific pixels belong in renderer lowerings. SwiftUI
+  owns iOS Liquid Glass. Electron/DOM owns its honest material equivalent.
 - “Parity” is behavioral, not literal. Desktop can own a selected local
-  workspace through Electron; mobile can own conversations and explicitly
+  workspace through Electron. Mobile can own conversations and explicitly
   selected attachments, but must not quietly expose the phone filesystem.
 - Capability that is useful only to an operator belongs behind an intentional
   diagnostic/cockpit entry point, not in the everyday chat surface.
 - The canonical program priority remains Sol's Sarah-first roadmap. Terra
-  helps land the next real slice; it does not replace that roadmap. Sol owns
-  P0/hot-contract integration and canonical sequencing; Terra does not take
+  helps land the next real slice. It does not replace that roadmap. Sol owns
+  P0/hot-contract integration and canonical sequencing. Terra does not take
   either without an explicit claim handoff.
 
 ## Terra's execution rule

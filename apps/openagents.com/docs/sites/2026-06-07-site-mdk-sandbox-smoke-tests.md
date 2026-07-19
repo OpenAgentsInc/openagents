@@ -57,13 +57,13 @@ The focused suite includes:
 `workers/api/src/site-mdk-smoke.ts` is the reusable test helper and projection
 contract. It models:
 
-- implementation state: `fake_provider`, `sandbox_signet`, or `live_provider`;
+- implementation state: `fake_provider`, `sandbox_signet`, or `live_provider`.
 - required checks: discovery, checkout intent, clean return status, provider
   reconciliation, provider replay, payment proof, L402 challenge, L402
-  redemption, stale rejection, spend-cap rejection, and redaction;
+  redemption, stale rejection, spend-cap rejection, and redaction.
 - record-only authority: no wallet spend, no live mainnet requirement, no
   provider payout, no accepted-work payout, no settlement, and no deployment
-  authority;
+  authority.
 - public-safe refs only, with raw invoice, payment hash, preimage, mnemonic,
   MDK token, webhook secret, wallet material, customer private value, provider
   credential, private source, and raw timestamp rejection.
@@ -119,12 +119,12 @@ issues, docs, commit messages, or customer-visible projections.
 
 For an operator live/sandbox run, expected public output is limited to:
 
-- smoke ref;
-- implementation state;
-- check names and pass/skip/fail status;
-- public-safe checkout intent refs;
-- public-safe challenge or redemption refs;
-- public-safe receipt/proof refs;
+- smoke ref.
+- implementation state.
+- check names and pass/skip/fail status.
+- public-safe checkout intent refs.
+- public-safe challenge or redemption refs.
+- public-safe receipt/proof refs.
 - explicit authority denials.
 
 If the run uses fake-provider or sandbox/signet evidence, the result must say
@@ -135,13 +135,13 @@ it is not production payment or settlement evidence.
 These smokes do not replace the release evidence required for production Site
 commerce. Production claims still need:
 
-- live MDK provider configuration evidence;
-- exact webhook-source verification;
-- replay-safe reconciliation retained in D1;
-- buyer receipt and entitlement projection;
-- clean return status without checkout query strings;
-- no secret-shaped response material;
-- operator-approved bridge from verified buyer payment to any payout intent;
+- live MDK provider configuration evidence.
+- exact webhook-source verification.
+- replay-safe reconciliation retained in D1.
+- buyer receipt and entitlement projection.
+- clean return status without checkout query strings.
+- no secret-shaped response material.
+- operator-approved bridge from verified buyer payment to any payout intent.
 - separate Pylon/Nexus/Treasury release gates before accepted-work payout
   claims.
 

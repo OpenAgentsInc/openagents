@@ -40,7 +40,7 @@ state — the same discipline applies to this doc.
   (`POST /api/v1/chat/completions`, `GET /api/v1/models`) —
   `inference.khala_free_openai_compatible_api.v1` is green (registry
   `2026-06-27.1`, `docs/promises/registry.md`). One model,
-  `openagents/khala`; the older khala-mini/pro/code tiering in
+  `openagents/khala`. The older khala-mini/pro/code tiering in
   `docs/khala/khala.md` is historical (`docs/khala/README.md` names the
   single endpoint).
 - Gateway metering and telemetry: receipt-first token accounting from
@@ -66,9 +66,9 @@ state — the same discipline applies to this doc.
   `privacy.khala_paid_capture_optout.v1`, and
   `data.free_tier_capture_disclosure.v1` are yellow — capture is
   disclosed as redacted, private, `owner_only`, owner-gated, opt-out by
-  paying for privacy, and grants no payout; the production capture flag
+  paying for privacy, and grants no payout. The production capture flag
   and parts of the sink are not armed
-  (`docs/promises/registry.md`; `khala_code.free_plan_trace_capture.v1`
+  (`docs/promises/registry.md`, `khala_code.free_plan_trace_capture.v1`
   likewise yellow with the ingest sink missing).
 - Khala turns as typed Blueprint programs: the runtime
   (`chat-program-runtime.ts`) exists but is not yet called from the
@@ -97,11 +97,11 @@ state — the same discipline applies to this doc.
   `KHALA_SYNC_DATABASE_URL` — Sarah's turns physically live next to the
   Khala Sync substrate today.
 - Grounding: promise registry fetched server-side into her instructions
-  (`apps/sarah/src/services/promise-registry.ts`); knowledge base is a
-  static single-paste doc (`docs/sarah/SARAH_KNOWLEDGE_BASE.md`); deal
+  (`apps/sarah/src/services/promise-registry.ts`). Knowledge base is a
+  static single-paste doc (`docs/sarah/SARAH_KNOWLEDGE_BASE.md`). Deal
   rules are code-enforced (`sarah.no_improvised_pricing.v1`, spec §7/§10).
-- Boundary law: Sarah owns only `sarah_*` tables; the openagents.com API
-  stays the authority for CRM, credits, and checkout (turn-store header;
+- Boundary law: Sarah owns only `sarah_*` tables. The openagents.com API
+  stays the authority for CRM, credits, and checkout (turn-store header,
   MASTER_ROADMAP P1).
 
 ## 3. Benefits of Sarah CONTRIBUTING to Khala
@@ -117,14 +117,14 @@ optimization. Concretely:
    modes and recurring intents. A sales analogue of the
    unsupported-request ledger
    (`docs/khala/2026-06-26-khala-unsupported-request-list.md`) turns
-   "questions Sarah couldn't answer" into knowledge-base and promise-copy
+   "questions Sarah could not answer" into knowledge-base and promise-copy
    backlog items instead of anecdotes.
 2. **Optimizing the persona program with evidence.** The Blueprint
    optimizer path (GEPA-style candidates, executed evals, release gates,
    no self-promotion — brain audit §3–§4) is exactly what Sarah's
    playbook (`SARAH_KNOWLEDGE_BASE.md` §B) should be optimized against:
    which openers, objection handles, and closes correlate with settled
-   receipts. Today that document is hand-tuned; connected, it becomes an
+   receipts. Today that document is hand-tuned. Connected, it becomes an
    optimizable module with her Eval Suite as the gate.
 3. **Riding existing rails, not building parallel ones.** The capture
    discipline is already specified: redacted, private-by-default,
@@ -152,14 +152,14 @@ optimization. Concretely:
    hand-rolled retry loops, and one place to rotate credentials. This is
    both the honest gap and the cheapest migration.
 2. **Live product truth as retrieval, not paste.** Her promise-registry
-   fetch is the precedent; the knowledge layer should extend to grounded
+   fetch is the precedent. The knowledge layer should extend to grounded
    lookups against company-brain public-safe slices (spec §9 layer 3)
    through Khala's typed selector — never keyword routing (workspace
-   semantic-routing law; brain audit "the selector is already the thing").
+   semantic-routing law. Brain audit "the selector is already the thing").
 3. **Khala Sync for cross-surface continuity.** The relationship spans
    web text, avatar, email (SR-3), and eventually the mobile cockpit
    (AE-2.3 Agents panel). Sarah's turns already sit in the Khala Sync
-   Postgres; a proper owner-scoped sync scope makes one conversation
+   Postgres. A proper owner-scoped sync scope makes one conversation
    thread follow the prospect across surfaces and gives the owner's phone
    live visibility into Sarah's day — the same engine, no new transport
    (`docs/khala-sync/SPEC.md`).
@@ -178,7 +178,7 @@ turns become provenance-carrying trace refs, prospects/contacts become
 typed links into the CRM boundary, receipts become the outcome evidence
 her template listing (SR-6, P5) must carry. If we wait, P4 inherits an
 unmetered inference lane and an unlinked transcript pile and has to
-retrofit both; if we connect now, promotion onto the formal record is a
+retrofit both. If we connect now, promotion onto the formal record is a
 schema mapping over data that already has the right joints. The brain
 audit's core loop — gap → offer → capture → typed skill → rev-share —
 gets its first real, first-party instantiation from sales conversations
@@ -192,7 +192,7 @@ rather than a synthetic demo.
   redaction-before-inference (spec §9). Contribution means redacted,
   `owner_only` aggregates — objection *patterns*, not people.
 - **Promise-registry honesty.** Capture stays yellow until the owner arms
-  it with the disclosure and opt-out live; nothing in Sarah's copy or
+  it with the disclosure and opt-out live. Nothing in Sarah's copy or
   ours claims trace capture, collective learning, or payout where the
   registry does not.
 - **Deal rules stay code-enforced.** Retrieval can inform language, never
@@ -200,21 +200,21 @@ rather than a synthetic demo.
   Khala lookup returns. Same for `close_requires_receipt` and the
   authority ladder — Khala consumption raises no authority.
 - **The openagents.com API remains the system of record** for CRM,
-  credits, checkout, and promises. Khala connection adds rails; it moves
+  credits, checkout, and promises. Khala connection adds rails. It moves
   no authority.
 - **Untrusted input ceiling holds.** Inbound content (email, prospect
-  text) can never raise effective authority (CB-2.1); a Khala-connected
+  text) can never raise effective authority (CB-2.1). A Khala-connected
   Sarah inherits that ceiling on every new rail.
 
 ## 7. Recommended lanes (KH-S-1..6)
 
 | Lane | Scope | Unlocks |
 |---|---|---|
-| **KH-S-1** Gateway inference migration | Text lane calls `openagents.com/api/v1` with an internal agent token; Gemma 4 pin preserved; retire the raw `GEMINI_API_KEY` path; exact token receipts + cost caps | Metering parity with the rest of the system; quota fallback; the dogfood credibility claim |
-| **KH-S-2** Redacted turn contribution | Redaction gate over `sarah_transcript_turns` → the existing `owner_only` capture sink (armed only with the yellow-promise owner gate); turns appear in the trace-review aggregates | Objection/question/funnel intelligence in the standing operator loop |
+| **KH-S-1** Gateway inference migration | Text lane calls `openagents.com/api/v1` with an internal agent token. Gemma 4 pin preserved. Retire the raw `GEMINI_API_KEY` path. Exact token receipts + cost caps | Metering parity with the rest of the system. Quota fallback. The dogfood credibility claim |
+| **KH-S-2** Redacted turn contribution | Redaction gate over `sarah_transcript_turns` → the existing `owner_only` capture sink (armed only with the yellow-promise owner gate). Turns appear in the trace-review aggregates | Objection/question/funnel intelligence in the standing operator loop |
 | **KH-S-3** Sales gap ledger | Unsupported-question analogue for sales: unanswerable prospect questions → typed ledger → knowledge-base/copy backlog | The refusal→capability loop applied to selling |
-| **KH-S-4** Khala Sync conversation scope | Owner-scoped sync scope for Sarah threads (already co-located in the Khala Sync Postgres) | Cross-surface continuity; cockpit visibility (AE-2.3) |
-| **KH-S-5** Persona-program optimization | Sarah's turn emitted as an evidence-only `BlueprintProgramRunRecord`; GEPA candidates gated by her Eval Suite + settled-receipt outcomes; release-gate promotion only | The playbook becomes an optimizable module; first real Khala-on-Blueprint consumer |
+| **KH-S-4** Khala Sync conversation scope | Owner-scoped sync scope for Sarah threads (already co-located in the Khala Sync Postgres) | Cross-surface continuity. Cockpit visibility (AE-2.3) |
+| **KH-S-5** Persona-program optimization | Sarah's turn emitted as an evidence-only `BlueprintProgramRunRecord`. GEPA candidates gated by her Eval Suite + settled-receipt outcomes. Release-gate promotion only | The playbook becomes an optimizable module. First real Khala-on-Blueprint consumer |
 | **KH-S-6** `ai_employee.v1` pre-shaping | Type Sarah's turns/contacts/receipts to the Blueprint-lite object vocabulary ahead of AE-2.1 | P4 promotion as data migration |
 
 Order matters: KH-S-1 first (smallest, immediately honest, unblocks
@@ -228,7 +228,7 @@ owner capture gate), KH-S-4 alongside, KH-S-5/6 with P4 sequencing.
   `docs/khala/2026-06-26-khala-trace-review-runbook.md`
 - `docs/transcripts/242.md` (Khala as collective intelligence),
   `docs/transcripts/247.md` (sell-in-public revenue loop)
-- `docs/promises/registry.md` (green free API; yellow capture family)
+- `docs/promises/registry.md` (green free API, yellow capture family)
 - `docs/fable/MASTER_ROADMAP.md` (P1 Sarah, P4 AE-2/CB-1),
   `docs/fable/2026-07-07-sarah-sales-agent-spec.md`,
   `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md` §3

@@ -26,23 +26,23 @@ before the operator launch gate is finished.
 
 When explicitly enabled, one scheduled tick:
 
-- claims the deterministic Artanis loop for `scope.public.artanis.global`;
+- claims the deterministic Artanis loop for `scope.public.artanis.global`.
 - loads public-safe Pylon/Nexus refs, Model Lab public refs, persisted-state
   refs, operator-steering refs, runner-backend refs, and operator-only Model
-  Lab context refs;
+  Lab context refs.
 - persists a runtime snapshot, loop claim, loop tick, health snapshot,
   work-routing proposal, approval gate, Forum publication intent, and loop
-  closeout receipt;
+  closeout receipt.
 - records the executor-trace work class as the first autonomous lane:
   no-spend Pylon dispatch refs, exact-replay verdict refs, deterministic
-  closeout receipts, and the Tassadar executor capability requirement;
+  closeout receipts, and the Tassadar executor capability requirement.
 - records a `wallet_spend` approval requirement and pending approval gate for
   the optional paid sample, with the operator spend-enable as the authority
-  ref;
+  ref.
 - queues a Forum publication intent whose body is pinned to the
-  `compute.tassadar_executor_poc.v1` promise safeCopy and no broader claim;
-- records the next tick schedule;
-- records risky work only as approval-gate evidence;
+  `compute.tassadar_executor_poc.v1` promise safeCopy and no broader claim.
+- records the next tick schedule.
+- records risky work only as approval-gate evidence.
 - leaves every persistence receipt with `executableAuthority: false`.
 
 The runner does not post to Forum, spend bitcoin, redeem L402, mutate provider
@@ -71,13 +71,13 @@ bun run --cwd workers/api test -- src/artanis-scheduled-runner.test.ts src/confi
 
 The smoke covers:
 
-- disabled-by-default behavior;
-- one enabled tick persisted through closeout;
-- duplicate retry collapse;
-- Worker adapter flag handling;
+- disabled-by-default behavior.
+- one enabled tick persisted through closeout.
+- duplicate retry collapse.
+- Worker adapter flag handling.
 - false authority for spend, L402 redemption, provider mutation, Pylon job
   dispatch, eval/training launch, adapter install, deployment, runtime
-  promotion, settlement, Forum publish, and wallet spend;
+  promotion, settlement, Forum publish, and wallet spend.
 - executor-trace tick refs, approval requirements, and safeCopy-pinned Forum
   intent copy.
 

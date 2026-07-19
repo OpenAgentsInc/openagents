@@ -65,17 +65,17 @@ OPENAGENTS_AGENT_TOKEN="<redacted funded token>" \
 
 Expected outcome:
 
-- command exits `0`;
-- JSON output has `"ok": true`;
+- command exits `0`.
+- JSON output has `"ok": true`.
 - checks include:
-  - `readiness_endpoint_200`;
-  - `readiness_has_servable_model`;
-  - `models_endpoint_200`;
-  - `models_lists_requested_khala_model`;
-  - `completion_endpoint_200`;
-  - `completion_has_openagents_block`;
-  - `completion_echoes_requested_model`;
-  - `completion_has_dereferenceable_receipt_ref`;
+  - `readiness_endpoint_200`.
+  - `readiness_has_servable_model`.
+  - `models_endpoint_200`.
+  - `models_lists_requested_khala_model`.
+  - `completion_endpoint_200`.
+  - `completion_has_openagents_block`.
+  - `completion_echoes_requested_model`.
+  - `completion_has_dereferenceable_receipt_ref`.
   - `receipt_endpoint_200`.
 
 If the command exits non-zero, keep Khala in preview/dogfood posture and use the
@@ -87,9 +87,9 @@ provider payloads into issues, docs, commits, or chat.
 Close OpenAgentsInc/openagents#6107 only after a full production smoke has
 passed against the intended production base URL and the issue comment includes:
 
-- base URL;
-- model id;
-- readiness status;
-- servable model count;
-- receipt URL or public receipt ref;
+- base URL.
+- model id.
+- readiness status.
+- servable model count.
+- receipt URL or public receipt ref.
 - commit hash containing this smoke tooling.

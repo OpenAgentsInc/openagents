@@ -13,13 +13,13 @@
 - **`apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts`**
   — a focused regression test that machine-enforces the property the evidence
   pack is named for (*dereferenceability*): every repo-relative `docs/...md`
-  ref the pack and its companion definition cite resolves on disk; every
+  ref the pack and its companion definition cite resolves on disk. Every
   `promise:` evidence ref on the Claim-2 registry record resolves to a real
-  registry promiseId; the cleared definition/evidence-pack blockers stay cleared
-  while `state` stays `red` and the owner-signed-upgrade blocker stays listed;
+  registry promiseId. The cleared definition/evidence-pack blockers stay cleared
+  while `state` stays `red` and the owner-signed-upgrade blocker stays listed.
   and the pack's refuse-list + Percepta credit stay in both the doc and the
   public copy. Wired into the registry record's `evidenceRefs` and
-  `verification`; `product-promises.test.ts` updated to match.
+  `verification`. `product-promises.test.ts` updated to match.
 
 This converts the cleared blocker from "the doc exists" to "the doc exists and
 its load-bearing internal references provably resolve," so the pack cannot
@@ -38,8 +38,8 @@ A focused, dereferenceable evidence pack for the Claim-2 world-first:
   the LLM-computer world-first (the broad `2026-06-18-evidence-pack.md` mixed all
   Episode 238 claims together) and ties the *qualified* claim to the live-run
   receipts **qualifier-by-qualifier**: (1) public/open-contributor paid loop →
-  run summary + two contributor settlement receipts; (2) Percepta paradigm credit
-  → Percepta blog/transformer-vm + prior-art search; (3) executor/exact-trace/
+  run summary + two contributor settlement receipts. (2) Percepta paradigm credit
+  → Percepta blog/transformer-vm + prior-art search. (3) Executor/exact-trace/
   replay-verified → verified+rejected replay pairs and a `Verified` challenge.
   Includes a skeptic-runnable verification recipe and a refuse-list.
 

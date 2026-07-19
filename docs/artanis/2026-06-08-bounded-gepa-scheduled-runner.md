@@ -11,29 +11,29 @@ Probe GEPA/Pylon production-equivalent smoke has passed.
 The retained proof in
 `workers/api/src/artanis-gepa-scheduled-runner-proof.ts` records:
 
-- cadence: `minute_cron_status_projection`;
-- budget mode: `unpaid_smoke_no_spend`;
-- public report and health/staleness refs;
-- idempotency refs for scheduled ticks and Forum intents;
-- no-duplicate assignment and no-duplicate Forum post refs;
-- Pylon selection policy refs for capability-matched unpaid smoke work;
-- Forum cadence refs for status-only updates under operator authority;
-- closeout receipt refs;
-- pause, disable, and rollback refs;
+- cadence: `minute_cron_status_projection`.
+- budget mode: `unpaid_smoke_no_spend`.
+- public report and health/staleness refs.
+- idempotency refs for scheduled ticks and Forum intents.
+- no-duplicate assignment and no-duplicate Forum post refs.
+- Pylon selection policy refs for capability-matched unpaid smoke work.
+- Forum cadence refs for status-only updates under operator authority.
+- closeout receipt refs.
+- pause, disable, and rollback refs.
 - worker version refs for the deployed Worker carrying the gate.
 
 ## Authority Boundary
 
 The runner proof denies:
 
-- assignment dispatch authority;
-- duplicate assignment authority;
-- duplicate Forum post authority;
-- automatic Forum publishing authority;
-- model training authority;
-- provider mutation authority;
-- runtime promotion authority;
-- settlement mutation authority;
+- assignment dispatch authority.
+- duplicate assignment authority.
+- duplicate Forum post authority.
+- automatic Forum publishing authority.
+- model training authority.
+- provider mutation authority.
+- runtime promotion authority.
+- settlement mutation authority.
 - wallet spend authority.
 
 This means the public report can say the scheduled runner is bounded and
@@ -46,12 +46,12 @@ active production runtime.
 
 After this proof is wired:
 
-- `productionLaunchGate.failedOrPendingRequiredCount` is `0`;
-- `productionLaunchGate.canClaimBoundedStatusProjection` is `true`;
-- `productionLaunchGate.canClaimContinuouslyRunning` is `false`;
-- `blocker.public.artanis.launch_gate.scheduled_runner.blocked` is absent;
+- `productionLaunchGate.failedOrPendingRequiredCount` is `0`.
+- `productionLaunchGate.canClaimBoundedStatusProjection` is `true`.
+- `productionLaunchGate.canClaimContinuouslyRunning` is `false`.
+- `blocker.public.artanis.launch_gate.scheduled_runner.blocked` is absent.
 - public launch-gate copy may mention bounded Artanis status projection only
-  when public health is fresh enough for green launch copy; it must not imply
+  when public health is fresh enough for green launch copy. It must not imply
   unbounded production administration.
 
 The GEPA/Pylon smoke gate remains a prerequisite. If the smoke proof regresses,
@@ -62,11 +62,11 @@ the scheduled-runner check must block again.
 Use the existing production launch runbook commands:
 
 - disable scheduled execution with
-  `runbook.public.artanis.production_launch.disable`;
+  `runbook.public.artanis.production_launch.disable`.
 - pause an affected goal with
-  `runbook.public.artanis.production_launch.pause`;
+  `runbook.public.artanis.production_launch.pause`.
 - revoke a mistaken gate with
-  `runbook.public.artanis.production_launch.revoke`;
+  `runbook.public.artanis.production_launch.revoke`.
 - publish only a public-safe correction through the Artanis Forum authority
   path.
 

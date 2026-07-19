@@ -1,6 +1,6 @@
 # Khala Code Explore -> Distill -> Regress
 
-Status: fixture regression distillation remains in `packages/khala-qa-harness`;
+Status: fixture regression distillation remains in `packages/khala-qa-harness`.
 the reviewed observed-discovery lifecycle is implemented in `apps/qa-runner`.
 
 Issue: [#8039](https://github.com/OpenAgentsInc/openagents/issues/8039)
@@ -15,9 +15,9 @@ the exploratory run.
 `distillKhalaCodeQaExploreSessionToRegression` is the promotion boundary:
 
 - a session with at least one replayable non-boot action and at least one oracle
-  expectation emits a `khala_code_qa_distilled_regression.v1` scenario;
+  expectation emits a `khala_code_qa_distilled_regression.v1` scenario.
 - the emitted scenario is deterministic data and replays through the normal
-  `runKhalaCodeQaScenario` gate;
+  `runKhalaCodeQaScenario` gate.
 - a session without replayable actions or without oracle evidence returns
   `INCONCLUSIVE` and does not include a scenario.
 
@@ -36,10 +36,10 @@ digest-substituted work returns `INCONCLUSIVE`.
 
 The projection states are deliberately separate:
 
-- `validated`: the exact candidate passed its rerun; no repository mutation is
-  implied;
+- `validated`: the exact candidate passed its rerun. No repository mutation is
+  implied.
 - `proposed`: explicitly injected SCM authority produced a scoped GitHub issue,
-  commit proposal, and pull-request ref for that same candidate digest;
+  commit proposal, and pull-request ref for that same candidate digest.
 - `landed`: an injected resolver admitted reviewed merge evidence for the exact
   digest and pull request.
 

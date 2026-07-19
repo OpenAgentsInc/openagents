@@ -1,7 +1,7 @@
 # OpenAgents Desktop
 
 Greenfield OpenAgents Desktop application (#8574, epic #8566): **Effect
-Native owns the application, component, state, and typed-intent model;
+Native owns the application, component, state, and typed-intent model.
 Electron is the desktop host.** This is not a rename of
 `clients/khala-code-desktop` — that Electrobun app is frozen legacy
 reference material and nothing here imports it.
@@ -15,7 +15,7 @@ The binding target process/data/authority design is
 It keeps the signed Effect Native renderer tokenless, places OpenAgents
 identity/Khala Sync/Pylon/workspace authority behind one host-owned Runtime
 Gateway, and requires the first real streamed Desktop conversation to continue
-on mobile before broad workbench parity. That target is roadmap intent; only
+on mobile before broad workbench parity. That target is roadmap intent. Only
 `GUARANTEES.md` and its oracles describe behavior enforced today.
 
 This package now includes a neutral desktop chat workspace: a hardened
@@ -53,13 +53,13 @@ desktop host after that server is listening. Renderer requests retain the
 an unpackaged process, so React Fast Refresh works without weakening the
 packaged renderer path. Development uses the isolated `OpenAgents Dev` profile
 and can run alongside an installed OpenAgents application. Stop the command
-with **Control-C**; the runner shuts down both Electron and Vite.
+with **Control-C**. The runner shuts down both Electron and Vite.
 
 What you should see: a neutral chat workspace with a chat rail, an owner
 composer, and **Open Fleet** in the titlebar. A submitted message renders the
 owner turn plus a typed assistant response and clears the composer. **New
 chat** resets the local conversation. **Open Fleet** exposes a local deployment
-brief; **Dispatch to Pylon** sends only the bounded objective through a
+brief. **Dispatch to Pylon** sends only the bounded objective through a
 schema-checked, host-owned loopback control capability. The Pylon control token
 never enters the renderer. An accepted intent is not a FleetRun receipt:
 repository pins, verifier, named account, and authority-backed closeout remain
@@ -71,12 +71,12 @@ exact order around the Recent session list. Project home and Chat are absent.
 ProductSpec and AssuranceSpec remain
 internal tooling rather than visible destinations. Collapse/expand is typed
 shell state whose boolean preference persists in the main-owned versioned
-preferences document; session-search disclosure deliberately starts closed on
+preferences document. Session-search disclosure deliberately starts closed on
 each launch, while the query remains in the existing history authority. A
 restored collapsed launch keeps the composer focused and the expander reachable.
 On an empty new chat, the centered current-working-directory line includes a
 keyboard-accessible **Change** action. It opens the existing native folder
-picker; cancellation preserves the current WorkContext, while selection is
+picker. Cancellation preserves the current WorkContext, while selection is
 admitted through the same authority used by Codex, Files, Terminal, and Git.
 
 ## Verify it
@@ -91,7 +91,7 @@ installed-default React Electron smoke/reload. The smokes use a
 checked-in privacy-safe Codex history fixture and scripted account-connect
 child, never ambient `~/.codex` history or a default provider home. Set
 `OPENAGENTS_DESKTOP_CODEX_SESSIONS` only for a separately identified real-
-history acceptance run; that evidence is not the deterministic CI gate.
+history acceptance run. That evidence is not the deterministic CI gate.
 The React smoke also drops and submits a one-pixel image-only turn, then checks
 the Codex app-server request through a privacy-safe count receipt. The receipt
 never records the temporary path or attachment bytes.
@@ -130,7 +130,7 @@ The second starts app-server from the installed executable with the normal
   `webviewTag: false`, deny-by-default permissions/navigation/window-open,
   restrictive CSP, no updater/publisher/devtools-installer.
 - `src/desktop-host-lifecycle.ts` — the production-used replaceable owner for
-  process, WorkContext/session, and window resources; app teardown drains it
+  process, WorkContext/session, and window resources. App teardown drains it
   once in dependency-safe order.
 - `src/desktop-operation-context.ts` — strict ref-only operation/session/run
   correlation and the bounded host journal used by the built acceptance path.
@@ -141,7 +141,7 @@ The second starts app-server from the installed executable with the normal
   reaches the renderer.
 - `src/provider-runtime-host.ts` — the one main-private, immutable bundled
   Codex authority shared by every Desktop consumer. It resolves only the
-  dependency graph or `app.asar.unpacked`; PATH/NVM/global installs are never
+  dependency graph or `app.asar.unpacked`. PATH/NVM/global installs are never
   fallback authority, and renderer projections are bounded and path-free.
 - `src/fleet-control.ts` — main-process adapter for the existing local Pylon
   `intent.submit` command. It resolves the loopback control token locally and
@@ -157,7 +157,7 @@ The second starts app-server from the installed executable with the normal
   unreviewed receipt material cannot auto-publish through the agent path.
   This remains internal MVP tooling: Desktop exposes no ProductSpec or
   AssuranceSpec navigation item, route, or user-facing screen.
-- `src/renderer/` — the application is Effect Native; React is its DOM target:
+- `src/renderer/` — the application is Effect Native. React is its DOM target:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
   - `sidebar-destinations.ts` — the closed three-control primary projection shared
@@ -165,7 +165,7 @@ The second starts app-server from the installed executable with the normal
   - `theme.ts` — the one Protoss-blue product theme (`khalaTheme`) via
     `@effect-native/tokens`, token-identical to the shared OpenAgents theme
     values. Autopilot's condensed/mono and compatible color ideas fold into
-    those roles; they do not mount a second theme.
+    those roles. They do not mount a second theme.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
     `makeIntentRegistry` + the React-owned Effect Native DOM surface.
   - `react-timeline.tsx` composes the registry-installed shadcn
@@ -177,9 +177,9 @@ The second starts app-server from the installed executable with the normal
   - `react-composer.tsx` uses the admitted shadcn Textarea/Button layer with
     closed-catalog icon actions for Attach, Remove, Commands, Stop, and Send.
     Its bounded preview tray, picker, paste, and drop routes retain typed Effect
-    intents; one textual Steer/Queue toggle shows only the active behavior while a turn is pending.
+    intents. One textual Steer/Queue toggle shows only the active behavior while a turn is pending.
 - `scripts/build.ts` — Vite Plus bundles main (ESM), preload (CJS, sandboxed),
-  and workers; Vite + the React and Tailwind plugins emit the fixed signed
+  and workers. Vite + the React and Tailwind plugins emit the fixed signed
   renderer assets `index.html`, `boot.js`, and `app.css`.
 
 The deliberate omissions from T3's stack are architectural: Desktop does not
@@ -193,7 +193,7 @@ and tokenless Electron boundary remain unchanged.
 
 Target evolution preserves this boundary rather than widening the preload one
 feature at a time. The renderer consumes one closed schema-decoded projection/
-intent/event surface; a host-owned Runtime Gateway composes existing Khala
+intent/event surface. A host-owned Runtime Gateway composes existing Khala
 Sync, Pylon, workspace, and execution services. Lightweight R1/R2/D1 adapters
 may start in main for delivery speed, while filesystem watch, PTY, engine
 supervision, extension, and other heavy services move behind one utility
@@ -205,7 +205,7 @@ High-volume local sources cross that boundary in bounded batches: workspace
 watches ignore dot/generated trees and coalesce exact relative refs for 75 ms,
 while provider text and PTY output publish no more than once per renderer
 cadence (with synchronous semantic-boundary/final flushes). Hidden Files views
-do no tree reload work; open editor tabs still receive exact matching changes.
+do no tree reload work. Open editor tabs still receive exact matching changes.
 
 Runtime Gateway protocol v8 now carries the authoritative conversation path:
 confirmed catalog/thread/current-timeline queries, canonical create/append
@@ -213,34 +213,34 @@ enqueues, exact thread/message/run start or interrupt commands, and typed
 cursor-aware subscribe/resume/unsubscribe over the existing decoded event
 channel. The same confirmed thread snapshot carries matching graph refs and a
 bounded set of canonical live-agent graph post-images. Exact reconnect resumes
-from the durable cursor; a proven gap sends one authoritative-refetch snapshot,
+from the durable cursor. A proven gap sends one authoritative-refetch snapshot,
 while a non-live scope exposes no cached graph authority. Enqueue is
 reported only as `pending_reconcile` or `unknown_pending_reconcile`. The
 Effect Native shell streams bounded canonical text, reasoning, tool/plan,
-usage, interruption, connection, and terminal items from confirmed Sync; raw
+usage, interruption, connection, and terminal items from confirmed Sync. Raw
 provider events and process authority remain host-only. Renderer remount reads
 the same host-owned run, while host restart reconstructs it from the durable
 runtime/agent-run log.
 
-At boot the shell selects confirmed Sync mode only when the catalog is live;
+At boot the shell selects confirmed Sync mode only when the catalog is live.
 otherwise it retains explicit local-only mode for that renderer lifetime. The
 catalogs never merge. The canonical runtime turn is the sole execution
 authority and is transactionally mirrored to `agent_run`/`agent_run_event`
 under the same thread/run refs. Exact semantic retries reconcile without a
-second dispatch; conflicting identity reuse fails closed.
+second dispatch. Conflicting identity reuse fails closed.
 
 Lifecycle convergence is also authority-backed: delayed Sync responses are
-discarded when their subscription generation is superseded; runtime provider
-events must match the durable next sequence and current turn state; and a
+discarded when their subscription generation is superseded. Runtime provider
+events must match the durable next sequence and current turn state. And a
 stale hosted worker is terminalized as interrupted without re-running the
 provider. The real Desktop and Expo SQLite adapters reconstruct the same
 partial timeline and terminal after close/reopen. The built Runtime Gateway v8
-smoke covers correlation and teardown; the physical-mobile network-gap receipt
+smoke covers correlation and teardown. The physical-mobile network-gap receipt
 remains a separate #8689/#8677 close gate.
 
 The live host registry is capped, generation-fenced, and backpressure-
 coalesced. Authenticated Sync replacement/sign-out resets all current
-subscriptions; Runtime Gateway disposal closes the registry. Renderer
+subscriptions. Runtime Gateway disposal closes the registry. Renderer
 conversation polling removal remains the final CUT-10 consumer step.
 
 Protocol v8 also carries a separate owner-local Codex history catalog/page
@@ -248,13 +248,13 @@ capability. Active and archived (including zstd) rollouts are indexed in the
 history worker without an age ceiling. The Effect Native history workspace
 keeps top-level conversations left, a bounded selected-agent timeline center,
 and a semantic agent/item inspector right. Source-order rows are typed,
-credential-redacted, paged, and loss-accounted; raw JSONL, paths, credentials,
+credential-redacted, paged, and loss-accounted. Raw JSONL, paths, credentials,
 and provider authority never cross preload or enter Khala Sync.
 
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
 opening it also creates a separate immutable device-local identity and local-
-authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v8
+authority tables. Desktop remains usable without OpenAuth. Runtime Gateway v8
 projects only `local_only | account_linked | local_unavailable`. Verified
 account linking adds personal Sync, while disconnect/denial retains local rows.
 After
@@ -295,11 +295,11 @@ The user-data path must remain below the OS temporary directory. This mode
 enables Chromium's mock keychain and disables native session custody, so it is
 not authenticated-Sync evidence. Authenticated checks instead launch the
 signed app with its existing normal profile and inspect only public-safe
-session/IPC state and visible UI; they never extract credential material.
+session/IPC state and visible UI. They never extract credential material.
 
 Stored native-session recovery is intentionally dormant during ordinary
 startup. The app starts local-only without asking macOS to unlock `OpenAgents
-Safe Storage`; an explicit account action is the only boundary allowed to
+Safe Storage`. An explicit account action is the only boundary allowed to
 initialize encrypted custody. Verified session readiness remains distinct from
 an authoritative conversation projection.
 
@@ -329,7 +329,7 @@ Protocol boundary. Main—not the renderer—owns executable identity/version
 probing, trusted-profile admission, validated alternate executable persistence,
 advertised authentication, workspace binding, process/session lifecycle,
 cancellation escalation, recovery, receipts, and support export. Cursor login
-and Grok cached-token/API-key choices come only from peer-advertised methods;
+and Grok cached-token/API-key choices come only from peer-advertised methods.
 file or environment presence is never rendered as successful authentication.
 Both admitted peers are registered as main-owned provider lanes over the shared
 dispatcher. Isolated production builds have completed a real Grok Full Auto
@@ -354,7 +354,7 @@ Honest residue, tracked on #8574:
   project a server-authoritative `coding_fleet_start` FleetRun. That bridge,
   live FleetRun projection/controls, and Khala Sync remain (scopes 2, 3, 6, 8).
 - No Forge packaging, fuses verification, signing/notarization, or updates
-  feed (scope 7) — blocked on the owner identity freeze (scope 1); the
+  feed (scope 7) — blocked on the owner identity freeze (scope 1). The
   interim dev identity uses an `OpenAgentsDesktopDev` userData dir and no
   deep-link scheme.
 - The Electron host adapter is app-local boot code until the reusable

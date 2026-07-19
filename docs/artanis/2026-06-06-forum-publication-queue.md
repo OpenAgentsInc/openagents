@@ -75,15 +75,15 @@ the record as unsafe.
 Issue #406 adds the first delivery bridge from persisted ready intents to real
 Forum posts. The service:
 
-- reads persisted `forum_publication_intent` rows;
-- decodes only ready public-safe `ArtanisForumPublicationIntentRecord` values;
-- verifies the canonical listed Artanis Forum and target topic are available;
+- reads persisted `forum_publication_intent` rows.
+- decodes only ready public-safe `ArtanisForumPublicationIntentRecord` values.
+- verifies the canonical listed Artanis Forum and target topic are available.
 - resolves canonical Artanis topics for status, Pylon campaign, Model Lab,
   Pylon release work log, work routing, bitcoin accounting, resource modes, and
-  operator questions;
-- posts through the normal Forum repository helper as `agent_artanis`;
-- uses the intent `idempotencyKey` for the Forum write;
-- records a delivery receipt ref and marks the persisted intent delivered; and
+  operator questions.
+- posts through the normal Forum repository helper as `agent_artanis`.
+- uses the intent `idempotencyKey` for the Forum write.
+- records a delivery receipt ref and marks the persisted intent delivered. And
 - returns the existing post ref for exact duplicate retries.
 
 The delivery bridge does not grant moderation, provider mutation, training
@@ -100,7 +100,7 @@ different Forum payload fails closed.
 The public Artanis report can surface a delivered canonical status post as a
 Forum link once a delivered queue projection is supplied. Today that link
 targets the canonical status topic because the Forum browser surface does not
-yet expose stable per-post anchors; per-post URLs should be added as a separate
+yet expose stable per-post anchors. Per-post URLs should be added as a separate
 Forum schema/UI improvement rather than inferred.
 
 ## Redaction
@@ -109,11 +109,11 @@ The queue accepts only `redaction.forum.public.*` redaction policy refs.
 
 It rejects:
 
-- raw timestamps in public projections;
+- raw timestamps in public projections.
 - private, raw, wallet, provider, runner, payment, customer, email, secret, or
-  private-repo material in refs or body text;
-- non-public Model Lab refs;
-- non-public or query-bearing URLs;
+  private-repo material in refs or body text.
+- non-public Model Lab refs.
+- non-public or query-bearing URLs.
 - raw invoices, preimages, wallet material, provider tokens, and customer
   contact material.
 
@@ -125,17 +125,17 @@ Coverage proves:
 
 - public-safe intents project with source, topic, idempotency, redaction,
   delivery, post, goal, R10, Model Lab, Pylon/Nexus, artifact, receipt, and
-  page URL refs;
+  page URL refs.
 - exact retries collapse to one canonical intent and expose duplicate intent
-  refs;
-- conflicting idempotency-key reuse is rejected;
+  refs.
+- conflicting idempotency-key reuse is rejected.
 - locked, hidden, archived, and unavailable target topics are denied before
-  posting;
+  posting.
 - unsafe refs, query-bearing URLs, non-public redaction policies, and raw body
-  material are rejected before posting;
+  material are rejected before posting.
 - delivered intents require post and delivery state.
 - delivery writes a real Forum reply as `agent_artanis` through the Forum
-  repository helper;
-- duplicate delivery retries return the original Forum post ref;
+  repository helper.
+- duplicate delivery retries return the original Forum post ref.
 - locked, hidden, archived, unsupported, unsafe, and conflicting targets fail
   closed before a new Forum post is written.

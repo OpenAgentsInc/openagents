@@ -6,14 +6,14 @@ This package is the LG-1 analyzer for the Fable sell-side lane. It checks the
 same public surfaces OpenAgents now serves itself: MCP discovery, ARD/AI
 catalog, crawl surfaces, `llms.txt`, structured data, agent-readable rendering,
 and API discoverability. Prospect findings are sales material and must not be
-committed to the repo; only the rubric, tests, and the public-safe
+committed to the repo. Only the rubric, tests, and the public-safe
 `openagents.com` fixture report live here.
 
 The report borrows the useful shape of ora's public agent-readiness framing:
 each domain receives a 0-100 score, A-F grade, and five-layer breakdown
 (`discovery`, `identity`, `access`, `payments`, `experience`). The concrete
 checks and evidence remain OpenAgents-owned. Verified checks count toward the
-score; emerging checks are reported but excluded from the denominator until the
+score. Emerging checks are reported but excluded from the denominator until the
 rubric promotes them. Layers with no applicable checks, such as payments for
 this first LG-1 website analyzer, are marked `not_applicable`.
 
@@ -67,7 +67,7 @@ The renderer returns:
   one allowed bump step.
 
 Every rendered finding requires a one-line commercial context from enrichment.
-HTML output is escaped. Prospect renders are marked `private_runtime_only`;
+HTML output is escaped. Prospect renders are marked `private_runtime_only`.
 only the `openagents.com` own-domain fixture may be rendered through
 `renderAgentReadinessCaseStudyArtifact` into a repo-persisted case-study
 artifact. PDF/attachment export is intentionally deferred.

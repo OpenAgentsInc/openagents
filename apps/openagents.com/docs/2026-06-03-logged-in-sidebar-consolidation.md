@@ -11,19 +11,19 @@ runs backed by SHC dispatch.
 
 OpenAgents product surface now treats the logged-in left rail as one shared workroom sidebar instead
 of separate app navigation and chat/session rails. The production logged-in UI
-is now served from the Foldkit/Vite app in `apps/web`; the Worker owns auth,
+is now served from the Foldkit/Vite app in `apps/web`. The Worker owns auth,
 API routes, and the session bootstrap endpoint.
 
 The implemented direction follows the OpenChamber sidebar structure while
 keeping OpenAgents product surface's existing dark, compact, mono operational design:
 
-- one desktop rail in the 258-280px range;
-- product/account header;
-- muted active navigation rows;
-- section labels;
-- recent/project workroom sections;
-- compact session rows with status and attention metadata;
-- bottom signed-in user/account strip;
+- one desktop rail in the 258-280px range.
+- product/account header.
+- muted active navigation rows.
+- section labels.
+- recent/project workroom sections.
+- compact session rows with status and attention metadata.
+- bottom signed-in user/account strip.
 - one mobile disclosure menu for the same navigation/session model.
 
 The right review/files/context panel remains separate and is still owned by the
@@ -67,7 +67,7 @@ Primary files:
   - Renders Chat, Dashboard, Settings, and NotFound inside the same
     `workroomShell`.
   - Keeps the authenticated default route personal: root/session/login defaults
-    initialize and redirect to `/chat`; team room routes are only entered from
+    initialize and redirect to `/chat`. Team room routes are only entered from
     explicit `/teams/:teamRef/chat` links.
   - Treats `/t/:threadId` as a real sidebar href so mission rows can become
     active instead of incorrectly highlighting `/chat`.
@@ -142,7 +142,7 @@ Primary files:
   - Logs real SHC dispatch start, success, and failure rows with the mission
     UUID, runner ID, backend, repository, dispatch mode, and sanitized control
     URL. The 2026-06-03 timeout incident was the SHC `oa-codex-control` process
-    wedging while still listening on port 8787; the Worker now records an
+    wedging while still listening on port 8787. The Worker now records an
     actionable control-health timeout message instead of the generic Fetch abort
     text.
   - Keeps the Worker focused on auth, APIs, cookie refresh, and stale-cookie

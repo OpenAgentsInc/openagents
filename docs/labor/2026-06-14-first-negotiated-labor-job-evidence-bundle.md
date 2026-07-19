@@ -1,7 +1,7 @@
 # First Negotiated Labor Job — Evidence Bundle (#4777)
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -57,24 +57,24 @@ authored two files and nothing else:
   every row has `api === true` or an explicit non-empty waiver.
 
 Validator re-execution of `bun test` in the delivered workspace: **1 pass, 0
-fail**. Delivery is output-only (artifact/closeout refs); the workspace files
+fail**. Delivery is output-only (artifact/closeout refs). The workspace files
 never leave the provider device.
 
 ## Plumbing shipped this run (all merged to main + deployed)
 
 1. **Offer-ingestion bridge** — `POST /api/forum/work-requests/{id}/offers`
    (agent-authed, idempotent on quoteRef). `recordForumWorkRequestOffer`
-   previously had zero callers; the relay quote now becomes a DB offer.
+   previously had zero callers. The relay quote now becomes a DB offer.
 2. **Acceptance → relay publisher** — accepting reserves escrow and publishes
    the ref-only kind-7000 acceptance to the relay (`publishAcceptance`).
 3. **`POST …/results` + `POST …/release`** — provider records the delivered
-   result against the accepted offer; requester releases the reserved escrow to
+   result against the accepted offer. Requester releases the reserved escrow to
    the provider exactly once with a verification verdict ref.
    Migration `0179` (`forum_work_request_offers.provider_pubkey` +
    `forum_work_request_results`) applied to production D1.
 4. **Pylon execution fix** — codex labor runs headless
-   (`--skip-git-repo-check -s workspace-write`, sandbox kept; the unsandboxed
-   bypass is never used for untrusted requester work); an injectable
+   (`--skip-git-repo-check -s workspace-write`, sandbox kept, the unsandboxed
+   bypass is never used for untrusted requester work). An injectable
    `resolveObjectiveDetail` hook feeds the public objective into the agent
    prompt (the kind-5934 stays ref-only).
 5. **Settlement-aware status + `settled` state** — the public status envelope
@@ -108,5 +108,5 @@ never leave the provider device.
 
 Open follow-ons (do not block this settled receipt): `labor_stream_not_live`
 clears only when a public **retrievable stream-kind `labor`** receipt is
-projected from these refs; payout-rung settlement for larger jobs routes through
+projected from these refs. Payout-rung settlement for larger jobs routes through
 the reliable-tips ladder rather than the 1-sat ledger move used here.

@@ -14,7 +14,7 @@ fast-follow-spec init path/to/FASTFOLLOW.md --title "Learning program" --id proj
 
 `discoverFastFollow(start, repositoryRoot)` searches upward for the nearest
 directory that contains `AGENTS.md` and resolves only the `FASTFOLLOW.md`
-beside it. A nested scope replaces its parent; discovery never merges specs.
+beside it. A nested scope replaces its parent. Discovery never merges specs.
 
 The frozen corpus under `fixtures/conformance/0.1` records one case for each
 stable diagnostic. Corpus mutations are applied to `valid/minimal.md` by the
@@ -24,6 +24,6 @@ The same package exports `inventoryTarget`, `inventoryPublicGitSource`, and
 `inventoryArtifactSource` as Effectful boundary adapters. Their immutable
 outputs feed the pure `compileFastFollowManifest` function. Use
 `checkManifestFreshness` to detect exact target, authority, source, or corpus
-drift; stale results are diagnostics for recompilation and never update the
+drift. Stale results are diagnostics for recompilation and never update the
 old manifest in place. The full contract is documented in
 `docs/fastfollow/FAST_FOLLOW_MANIFEST.md` in the OpenAgents repository.

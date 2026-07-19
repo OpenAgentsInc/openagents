@@ -7,7 +7,7 @@ Status: implemented as the first local contract layer for Probe issue #172.
 Probe now carries a narrowed Effect Schema mirror for the Blueprint contracts it
 needs before OpenAgents product surface exposes live HTTP routes. This is intentionally a consumer
 surface, not a fork of the OpenAgents product surface Blueprint runtime. Probe does not import
-`openagents`; it mirrors only the public/operator-safe fields needed for
+`openagents`. It mirrors only the public/operator-safe fields needed for
 signature lookup, registry projection decoding, backend-independent tool menu
 planning, Program Run evidence flags, release gate references, and contract
 export discovery.

@@ -29,7 +29,7 @@ health-events.jsonl
 `install` sets `service_manager` to `launchd` or `systemd` and records an
 `installed` service status. `start` and `restart` record `running` and project
 node health as `online`. `stop` and `uninstall` project node health as
-`offline`; uninstall returns the manager to `manual`.
+`offline`. Uninstall returns the manager to `manual`.
 
 Every state-changing service action appends a redacted service event and a
 health event. Service names are bounded names, not paths, and names containing

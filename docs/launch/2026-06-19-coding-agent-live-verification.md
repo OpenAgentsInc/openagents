@@ -23,7 +23,7 @@ single, independently re-run proof rather than prose.
 - Repo worktree base commit: `b6e523a77` (clean `origin/main`).
 - Runtime: `bun 1.3.11` on macOS arm64.
 - Run timestamp: 2026-06-19 (UTC timestamps recorded per result below).
-- Verifications were re-run independently for this receipt; the producing
+- Verifications were re-run independently for this receipt. The producing
   agent did not trust a prior claim of passing.
 
 ## 1. Claude Agent bridge — local single-task exec
@@ -47,7 +47,7 @@ single, independently re-run proof rather than prose.
 - Session ref: `session.pylon.control.1cf1bc818f4a3e631ba5b9b6`
 - Result ref: `result.pylon.control_session.2b6af6bb4019fbf8af1775da`
 - Artifact ref: `artifact.pylon.control_session.proof.4a899727f815465697140aa5`
-- Started: `2026-06-19T14:11:12.181Z`; Completed: `2026-06-19T14:11:22.791Z`
+- Started: `2026-06-19T14:11:12.181Z`. Completed: `2026-06-19T14:11:22.791Z`
 - Elapsed: `10650 ms` (`polls: 43`, `timedOut: false`)
 - Process exit code: `0`
 
@@ -74,7 +74,7 @@ single, independently re-run proof rather than prose.
 - Session ref: `session.pylon.control.f74c9c542a066e4f73061147`
 - Result ref: `result.pylon.control_session.d63bdd7d5a9663fbbde0cdc3`
 - Artifact ref: `artifact.pylon.control_session.proof.252ff6e5bfd62284915ea17e`
-- Started: `2026-06-19T14:11:40.891Z`; Completed: `2026-06-19T14:11:53.957Z`
+- Started: `2026-06-19T14:11:40.891Z`. Completed: `2026-06-19T14:11:53.957Z`
 - Elapsed: `13166 ms` (`polls: 53`, `timedOut: false`)
 - Process exit code: `0`
 
@@ -93,7 +93,7 @@ single, independently re-run proof rather than prose.
 - This covers deterministic execution and exact-trace replay of bounded
   compiled-program workloads (the same exact-replay primitive that
   `compute.tassadar_executor_poc.v1` is built on). It is package-level proof of
-  the execute + replay mechanism; it is not a live paid network workload and
+  the execute + replay mechanism. It is not a live paid network workload and
   grants no settlement, scale, or model-training claim.
 
 ## Summary
@@ -106,6 +106,6 @@ single, independently re-run proof rather than prose.
 
 All three lanes executed a real task / replay and passed independently on
 2026-06-19 from clean `origin/main` (`b6e523a77`). This receipt is the
-dereferenceable evidence cited by the coding-agent product-promise records; it
+dereferenceable evidence cited by the coding-agent product-promise records. It
 proves local single-task execution only and does not widen any production-scale,
 at-volume, packaged-stable-binary, or public-settlement claim.

@@ -25,7 +25,7 @@ first thing green requires:
 
 This document supplies that precise definition and fixes the claim boundary so
 no on-camera or copy use of the phrase can drift into the overclaim. It does
-**not** flip the promise (still red); it removes the *definition-missing*
+**not** flip the promise (still red). It removes the *definition-missing*
 blocker and leaves the evidence-pack and owner-signed-upgrade blockers standing.
 
 ## Terms, defined precisely
@@ -45,7 +45,7 @@ are *assembled* to be provably correct, not *fit* to data.
 
 | Sense | What it means | Does the LLM-computer core do this? | Does the live Tassadar run do this? |
 |---|---|---|---|
-| **(A) Gradient-descent training** | Iteratively update weights via backprop on a loss over data; the everyday meaning of "training run." | **No.** The core has no gradient descent. | **No.** No public gradient enters any optimizer (see `training.public_gradient_windows.v1`, planned). |
+| **(A) Gradient-descent training** | Iteratively update weights via backprop on a loss over data. The everyday meaning of "training run." | **No.** The core has no gradient descent. | **No.** No public gradient enters any optimizer (see `training.public_gradient_windows.v1`, planned). |
 | **(B) Executor-construction / exact-trace run** | A coordinated, bounded run that *constructs and exercises* compiled-program executors and **verifies their exact traces** by independent replay, paying contributors for verified work. | **Yes** — this is the paradigm. | **Yes** — this is exactly `compute.tassadar_executor_poc.v1`. |
 
 The Episode 238 claim is true **only in sense (B)**. The word "training" is
@@ -74,10 +74,10 @@ fitting model weights to data.
 > for **replay-verified** executor work."
 
 Load-bearing qualifiers that may **never** be dropped:
-1. **public / open-contributor network** — the firstness lives here; Percepta
+1. **public / open-contributor network** — the firstness lives here. Percepta
    ran a closed research artifact, not a public paid network.
 2. **Percepta credit** — Percepta defined and demonstrated the paradigm
-   (March 2026); we did not invent the LLM-computer.
+   (March 2026). We did not invent the LLM-computer.
 3. **executor / exact-trace / replay-verified** — anchors "training run" in
    sense (B) and ties it to the bounded PoC scope.
 
@@ -87,7 +87,7 @@ Load-bearing qualifiers that may **never** be dropped:
 - ❌ Bare "training run" implying gradient-descent model training — sense (A) is
   not happening here.
 - ❌ "We trained a model" / "we trained an LLM" from this lane —
-  weights are *constructed*, not *fit*; no loss, no backprop, no optimizer.
+  weights are *constructed*, not *fit*. No loss, no backprop, no optimizer.
 - ❌ General "LLM-computer capability," performance parity/superiority vs CPUs,
   or transformers-as-a-served-product — all gated separately and out of scope
   for the bounded PoC.

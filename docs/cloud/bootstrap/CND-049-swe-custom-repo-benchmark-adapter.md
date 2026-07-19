@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -23,7 +23,7 @@ The initial repo adapter accepts:
 - `swt-bench`
 
 The adapter records the dataset slug and version in `result.json` and
-`proof_bundle.json`; Worker/Khala Sync should not need dataset-specific state tables for
+`proof_bundle.json`. Worker/Khala Sync should not need dataset-specific state tables for
 the first tracking path.
 
 ## Fixtures
@@ -78,11 +78,11 @@ python3 -m openagents_bench.run_task \
 
 When dry-run is disabled, the adapter:
 
-1. clones `repo_url`;
-2. checks out `base_commit` if provided;
-3. executes declared verifier shell commands;
-4. captures stdout/stderr;
-5. captures `git diff --binary` as `workspace.diff` and `patch.diff`;
+1. clones `repo_url`.
+2. checks out `base_commit` if provided.
+3. executes declared verifier shell commands.
+4. captures stdout/stderr.
+5. captures `git diff --binary` as `workspace.diff` and `patch.diff`.
 6. writes normalized result and proof-bundle artifacts.
 
 This issue intentionally starts with a narrow adapter. A later implementation

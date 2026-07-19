@@ -1,7 +1,7 @@
 # Machine Studying Figure And Data Capture
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Source: <https://jacobxli.com/blog/2026/machine-studying/>
@@ -37,7 +37,7 @@ floored at zero.
 | 20k tokens | 30% | 0.189 |
 | 100k tokens | 40% | 0.099 |
 
-Reported weighted expertise: about 17.6%. The measured weights sum to 0.80;
+Reported weighted expertise: about 17.6%. The measured weights sum to 0.80.
 the remaining 0.20 is assigned to the below-5k region with score zero.
 
 ## StudyBench task cards

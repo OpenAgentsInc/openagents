@@ -2,7 +2,7 @@
 
 `@openagentsinc/forge-protocol` is the shared contract package for
 historical Forge coordination records. The standalone Forge service is
-deleted; current API authority is the Google Cloud-hosted `openagents.com`
+deleted. Current API authority is the Google Cloud-hosted `openagents.com`
 service.
 
 Phase 0 defines the D1 source-of-truth row shapes for Forge issues, change
@@ -46,5 +46,5 @@ Tenant rows also define optional external-fleet posture refs:
 `confidential_workspace_mode`, `attestation_ref`,
 `encrypted_knowledge_pack_ref`, `refusal_reason`, and
 `retention_policy_ref`. These are safe read-model fields for onboarding and
-policy display only; they do not grant API, Git, promotion, mirror, or artifact
+policy display only. They do not grant API, Git, promotion, mirror, or artifact
 authority.

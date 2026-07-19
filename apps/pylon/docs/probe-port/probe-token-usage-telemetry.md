@@ -30,7 +30,7 @@ Gemini usage metadata is mapped through Probe's existing `ProbeLlmUsage` shape:
 - `thoughtsTokenCount` to `reasoningTokens`.
 - `cachedContentTokenCount` to `cacheReadTokens`.
 - `totalTokenCount` to `totalTokens`.
-- Gemini reported counts are marked `exact`; missing counts are `unknown`.
+- Gemini reported counts are marked `exact`. Missing counts are `unknown`.
 
 Apple FM usage preserves the bridge-reported truth:
 

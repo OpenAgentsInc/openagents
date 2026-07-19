@@ -90,7 +90,7 @@ The submitted structure reduces to this component tree:
 ```
 
 The original has many neutral flex wrappers with attributes such as
-`data-direction="row"` and `data-flex-row="true"`. They are not styling magic;
+`data-direction="row"` and `data-flex-row="true"`. They are not styling magic.
 they map directly to Tailwind `flex`, `flex-row`, `flex-col`, `items-center`,
 `justify-center`, and `flex-wrap` utilities.
 
@@ -163,7 +163,7 @@ All visible controls follow the same compact button shell:
 - height `26px` for plain pills, `28px` for the model group
 - horizontal padding usually `8px`
 - right margin `4px` on most pills
-- no visible padding on the outer button; padding lives in the inner row
+- no visible padding on the outer button. Padding lives in the inner row
 - text appears around 13-14px
 - controls are icon+label rows with `items-center`
 
@@ -369,7 +369,7 @@ Keep the primitive focused on layout. Let page code provide typed controls and
 messages for model selection, auto mode, mode selection, MCP, skills, and
 attachments.
 
-For an exact Factory editor, the hard part is not the flex layout; it is the
+For an exact Factory editor, the hard part is not the flex layout. It is the
 `contenteditable` placeholder and input synchronization. In Foldkit, a textarea
 is simpler and already covered by `forms/textareas`. Use `contenteditable` only
 if OpenAgents product surface needs rich text chips, slash commands, inline mentions, or attachment
@@ -385,19 +385,19 @@ cannot be recovered from the snippet alone.
 
 What is recoverable with high confidence:
 
-- hierarchy and row grouping;
+- hierarchy and row grouping.
 - widths, min heights, margin, padding, gaps, and flex behavior from inline
-  styles;
-- control labels, ARIA labels, titles, and file accept list;
-- button dimensions and group borders where inline styles expose them;
+  styles.
+- control labels, ARIA labels, titles, and file accept list.
+- button dimensions and group borders where inline styles expose them.
 - the intended centered `768px` composer width.
 
 What remains inferred:
 
-- exact font family, font weight, and text color;
-- exact button hover/focus/active states;
-- exact prompt placeholder selector;
-- whether the outer surface has computed border radius or shadow;
+- exact font family, font weight, and text color.
+- exact button hover/focus/active states.
+- exact prompt placeholder selector.
+- whether the outer surface has computed border radius or shadow.
 - the visual form of the styled meter marks and MCP icon.
 
 For production OpenAgents product surface work, those inferred values should be resolved against the

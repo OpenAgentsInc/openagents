@@ -14,7 +14,7 @@ authority or product authority over training success.
 | --- | --- |
 | `training_run_id` | Worker/Khala Sync-owned parent training run id. |
 | `benchmark_run_id` | Worker/Khala Sync-owned benchmark run id. |
-| `task_run_id` | Stable child run id; used as the Cloud Codex run id. |
+| `task_run_id` | Stable child run id. Used as the Cloud Codex run id. |
 | `target_node_id` | First target is `oa-shc-katy-01`. |
 | `dataset` | `dataset_slug`, `dataset_version`, `task_ref`, and optional task checksum. The first runner only accepts `terminal-bench` task refs such as `terminal-bench/db-wal-recovery`. |
 | `variants` | Agent/model variant list. The first Cloud endpoint accepts exactly one variant per request. |
@@ -78,7 +78,7 @@ decide whether to retain or publish evidence.
 | `local_only` | Runner should keep details local to SHC except modeled minimal status/heartbeat events. |
 
 The Worker remains the authority for whether retained artifacts are shown to
-users, used as training data, projected publicly, or kept local; Khala Sync
+users, used as training data, projected publicly, or kept local. Khala Sync
 carries the durable projection.
 
 ## Validation Rules

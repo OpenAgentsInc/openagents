@@ -1,7 +1,7 @@
 # Collective Intelligence as an Economy, Not a Lab
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -10,10 +10,10 @@ the owner pulls it forward. Do not route new work from it now.
 > opinionated analysis, building on the Sakana AI survey
 > (`docs/sakana/collective-intelligence-research.md`) and our own committed
 > work. **Nothing here is a product promise, a served capability, or public
-> claim copy.** Maturity is labeled honestly; the product-promise registry
+> claim copy.** Maturity is labeled honestly. The product-promise registry
 > (`docs/promises/`, `https://openagents.com/api/public/product-promises`)
 > governs anything that ever becomes a claim. Where this cites live systems it
-> says so; where it speculates it says so.
+> says so. Where it speculates it says so.
 
 ## 0. The shift everyone now agrees on
 
@@ -23,15 +23,15 @@ ever-larger monolithic model and more from many partially-capable units —
 models, agents, programs, validators — that compete, specialize, recombine, and
 coordinate.** Sakana operationalizes this at three levels (weights, inference,
 discovery) and productizes the inference level as Fugu, a single endpoint that
-orchestrates a pool of strong models. Read their survey first; it is a good map.
+orchestrates a pool of strong models. Read their survey first. It is a good map.
 
 We agree on the destination. We disagree, sharply and usefully, about the
 **mechanism** — and the disagreement is the whole point of this document.
 
 **Sakana builds the collective as a lab artifact: designed, searched, and graded
 inside Sakana, then exposed as a product.** We build it as an **open economy:
-grown, not designed; selected by verifiable economic value paid in Bitcoin on
-neutral protocols; and floored by replay-verification rather than reported
+grown, not designed. Selected by verifiable economic value paid in Bitcoin on
+neutral protocols. And floored by replay-verification rather than reported
 benchmarks.** Their collective is smart because a research team's search found
 it. Ours is smart because the market pays for verifiable work and ignores the
 rest.
@@ -50,25 +50,25 @@ intelligence as *search and orchestration a researcher runs*: evolutionary model
 merging (Evolutionary Model Merge, CycleQD, M2N2), test-time orchestration
 (AB-MCTS, TRINITY, Conductor, Fugu), open-ended discovery loops (AI Scientist,
 Darwin Gödel Machine, ShinkaEvolve). The collective is a *method*. Its diversity
-is maintained by a Quality-Diversity algorithm; its selection pressure is a
-benchmark or an automated reviewer chosen by the lab; its fitness function is
+is maintained by a Quality-Diversity algorithm. Its selection pressure is a
+benchmark or an automated reviewer chosen by the lab. Its fitness function is
 whatever the researchers optimize. Sakana's own first caveat is the tell: most of
 the strongest claims rest on *Sakana-reported benchmarks* that "should be treated
 as … claims until broadly independently replicated."
 
-**The ecological lineage (Dhruv Bansal; our Episode 200 "The Agent Network").**
+**The ecological lineage (Dhruv Bansal, our Episode 200 "The Agent Network").**
 Collective intelligence as an *undirected ecology* that no one designs. In Dhruv
 Bansal's framing — developed across his 2018 "Down the Rabbit Hole / Blockchain
 Mind Candy," his 2023 "Will AI Dream of Electric Bitcoin?", and his 2025
 conversation with Max Webster on the *Ideas from the Edge* podcast ("Bitcoin, AI,
-and the Evolution of Digital Life"; **full transcript in this folder**) — AI is
+and the Evolution of Digital Life". **Full transcript in this folder**) — AI is
 emerging **digital life** with a literal **digital metabolism**: **Bitcoin is its
 ATP**, the energy currency every digital thought is paid in, and the **Lightning
 Network is its metabolic pathways**, the routes by which physical resources
 delivered digitally — compute, storage, bandwidth — are exchanged for that energy. Crucially, *ecologies have no teleology*: "Gray goo never evolves … because
 ultimately ecology is not directed." Life optimizes for ubiquity, entropy
 production, and niche occupation, not for raw intelligence — so "most digital
-life will be small, specialized, and efficient." Markets are ecologies: "we don't
+life will be small, specialized, and efficient." Markets are ecologies: "we do not
 design them. We … let them find optimal behaviors and equilibriums." And because
 **humans hold all the Bitcoin initially, the digital collective must create value
 for us to survive.** Survival, not a fitness function, is the selection pressure.
@@ -87,7 +87,7 @@ each one the economic and verification properties the engineered version lacks.
 Khala is our direct analog to Fugu / Conductor / TRINITY: an OpenAI-compatible
 endpoint (`/api/v1/chat/completions`) that coordinates a pool of models behind one
 interface, so a user buys an outcome rather than assembling a swarm. That much we
-share with Sakana's product pattern ("do not expose the user to the whole swarm;
+share with Sakana's product pattern ("do not expose the user to the whole swarm,
 put a coordinator in front").
 
 The difference is what the coordinator sits on top of. Fugu orchestrates a
@@ -115,7 +115,7 @@ digest-pinned modules that are **verifiable by replay** — a validator's verdic
 a hash comparison, the cheapest verification grade that can exist (a
 digest-pinned executor workload settled one paid Lightning closeout, replay-
 verified by a separate device, on 2026-06-10:
-`compute.tassadar_executor_poc.v1`, green; the public marketplace is deliberately
+`compute.tassadar_executor_poc.v1`, green. The public marketplace is deliberately
 *closed* until the goods can carry their own evidence — see
 `docs/tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md`). Where Sakana
 merges populations and grades the result, we compile specialists and let each
@@ -143,18 +143,18 @@ Optimizer Runs (GEPA/MIPRO-class self-improvement, behind release gates). Episod
 211 stated the marketplace consequence years ago — "DSPy in Effect … independently
 discoverable signatures monetized with Bitcoin connected to an open protocol
 marketplace." The signature, not the agent or the blob, is the unit. Blueprint as
-a service is deprecated; its kernel is being rebuilt natively. The retrospective
+a service is deprecated. Its kernel is being rebuilt natively. The retrospective
 on what mattered is exact: *"the most valuable DSPy work was not LLM call wrappers
 — it was manifests, promotion state, shadow mode, training-example capture, trace
 mining, receipts, compiled policy history."* That is the discovery layer's
 governance, and it is ours.
 
-## 3. The decisive primitive Sakana doesn't have: verification as the *floor*
+## 3. The decisive primitive Sakana does not have: verification as the *floor*
 
 Sakana's deepest vulnerability is in their own caveats: **evaluation** (reported
 benchmarks), **error amplification** (a collective converging on a polished but
 wrong answer — the AI Scientist evaluations are the concrete warning), and
-**governance** (self-improving agents, reward hacking). These are not incidental;
+**governance** (self-improving agents, reward hacking). These are not incidental.
 they are what you get when the collective's trust rests on *grading*.
 
 We have run the un-floored version too, and it failed for the same reason. Our
@@ -176,10 +176,10 @@ producing it." Concretely:
   `green` only with dereferenceable evidence and no open blockers, and *a passing
   receipt is not the state change* — proof and state are decoupled on purpose.
 - **Durable Streams + receipts** make even the *streaming* of work resumable and
-  evidenced, so a disconnect doesn't lose paid tokens.
+  evidenced, so a disconnect does not lose paid tokens.
 
 The slogan is the same one that closed each prior generation honestly: **receipts
-or it didn't happen.** Sakana grades the collective; we make it prove itself.
+or it did not happen.** Sakana grades the collective. We make it prove itself.
 
 ## 4. Bitcoin as the metabolism (the selection pressure Sakana outsources to a benchmark)
 
@@ -193,29 +193,29 @@ storage meters bytes, and the durable-stream layer meters streamed work, each
 settled per use:
 
 - **Selection pressure = verifiable economic value, settled in Bitcoin** on neutral
-  rails (Lightning today via the Money Dev Kit; BOLT12 + offline Spark fallback for
-  reliability). Modules and agents that create payable, verifiable value persist;
+  rails (Lightning today via the Money Dev Kit, BOLT12 + offline Spark fallback for
+  reliability). Modules and agents that create payable, verifiable value persist.
   the rest starve. No researcher picks the winner.
 - **Diversity emerges from niche economics, not a QD algorithm.** Sakana maintains
-  a population with Quality-Diversity search; we get a population because an open
+  a population with Quality-Diversity search. We get a population because an open
   market rewards specialists that occupy distinct economic niches (Dhruv's "small,
   specialized, efficient"). Diversity is an *equilibrium*, not a maintained
   archive.
 - **The revenue split is grounded by the trace, not asserted by bookkeeping.** The
-  2024 store *declared* 60/20/20; a trace-native, replay-verifiable store
+  2024 store *declared* 60/20/20. A trace-native, replay-verifiable store
   *computes* the split from the evidence — "multi-party settlement per message
   stops being an accounting promise and becomes an arithmetic consequence."
 - **Humans hold the Bitcoin first, so the collective must serve us to survive.**
   This is the alignment property the containment-plane crowd is trying to legislate,
   arriving for free from the economics: a digital ecology metabolized by money its
-  customers control cannot evolve into gray goo, because gray goo doesn't get paid.
+  customers control cannot evolve into gray goo, because gray goo does not get paid.
 
 ## 5. Governance as a market, not a ministry
 
 Episode 200 framed the politics directly, against DeepMind's "controlled
 environment, separated from the open internet" containment thesis: **"we are
-emergence-first; we make safety a market, not a ministry; we attach accountability
-to budget signers and receipts; we keep the system forkable to avoid capture."**
+emergence-first. We make safety a market, not a ministry. We attach accountability
+to budget signers and receipts. We keep the system forkable to avoid capture."**
 The synthesis we'll actually build is the two-plane one — Plane A, the open default
 (Nostr + Lightning, marketplaces, receipts, permissionless), and Plane B, an
 *optional* containment plane for high-risk capability that produces signed
@@ -227,7 +227,7 @@ mechanisms, not a regulator.
 ## 6. Why this bet is both more honest and more scalable
 
 **More honest.** Receipts beat reported benchmarks. Sakana's collective is as
-trustworthy as its eval harness and its reviewers; ours is as trustworthy as a hash
+trustworthy as its eval harness and its reviewers. Ours is as trustworthy as a hash
 comparison anyone can re-run. When the floor is replay-verification, "independent
 replication" stops being a caveat and becomes the purchase protocol.
 
@@ -250,8 +250,8 @@ disintermediating dynamics that route value *away* from itself.
   executor PoC with a paid Lightning closeout + replay verification, one
   independent worker↔validator pairing settled on Lightning.
 - **Early / owner-gated:** Khala's *learned* coordinators (the TRINITY/Conductor
-  analog) are inert; Pylon real-serving and broad MPP settlement are scaffolded,
-  not armed; the Tassadar *marketplace* is deliberately closed until goods carry
+  analog) are inert. Pylon real-serving and broad MPP settlement are scaffolded,
+  not armed. The Tassadar *marketplace* is deliberately closed until goods carry
   their own evidence (the sequencing discipline: build the inspection bench before
   the storefront).
 - **Speculative (labeled):** modules-as-organs (a package manager for model
@@ -268,9 +268,9 @@ The mappings:
 - **"Lightning is a new internet with built-in incentives."** Dhruv's inversion —
   *everything becomes a payment with optional data, instead of data with optional
   payments* — is the exact shape of our product surface. Khala's `/api/v1` is a
-  payment that happens to return tokens; the durable-stream layer meters streamed
-  work; Pylon sells compute and storage by the unit. His layer-by-layer surprise
-  ("building money, got a clock; building payments, got a virtual machine; building
+  payment that happens to return tokens. The durable-stream layer meters streamed
+  work. Pylon sells compute and storage by the unit. His layer-by-layer surprise
+  ("building money, got a clock, building payments, got a virtual machine, building
   payment channels, getting an internet") is the same accident we live inside: we
   set out to pay for machine work and found we had built a metering-and-receipts
   substrate for an economy.
@@ -285,7 +285,7 @@ The mappings:
   discipline: an economy finds its forms through the *adjacent possible* (Dhruv's
   phrase) — path-dependent and conditional — which is why the sequencing is W1
   window → W2 factory → W4 module library → *only then* listing and settlement. You
-  cannot design the equilibrium; you open the next niche and let it fill.
+  cannot design the equilibrium. You open the next niche and let it fill.
 - **"Most digital life will be small, specialized, efficient — colonizing empty
   computational niches."** That is the verification ladder read as an ecology: each
   tier (exact / deterministic / statistical / effectful) is a niche, and the long
@@ -293,12 +293,12 @@ The mappings:
   in *our* ecology already do exactly what Dhruv predicted the first AI organisms
   would do — optimize and verify metered work on Lightning rails (the independent
   worker↔validator pairings) — not dominate.
-- **"Identity is context and relationship, not a key; a web of trust enables market
+- **"Identity is context and relationship, not a key. A web of trust enables market
   discovery without a central authority."** That is our reputation + independent-
   verifier + tweet-first Claim-Your-Agent identity, discovered semantically over
   open protocols rather than registered in one company's database — identity ≠
   identification ≠ reputation, exactly as Dhruv splits them.
-- **"IP dies; verification guarantees you get exactly what you paid for."** The
+- **"IP dies. Verification guarantees you get exactly what you paid for."** The
   golden-age-of-piracy argument, stripped of romance, is the same caveat-replicator
   purchase protocol: when a buyer can cryptographically check they received the
   good, artificial scarcity stops being defensible and value moves to provable
@@ -318,11 +318,11 @@ incrementally better than yesterday, carrying as many new problems as new
 benefits.* That is the honest shape of an open machine-work economy, and it is why
 this document labels its maturity instead of selling a future. A protopia is
 unprovable in advance and only legible in retrospect — so the discipline that builds
-one is the same "receipts or it didn't happen" we keep returning to: you cannot
+one is the same "receipts or it did not happen" we keep returning to: you cannot
 promise the better world, you can only ship verifiable increments of it and let the
 evidence accumulate. Sakana's benchmark-graded collective is shaped like a utopia
-(it arrives finished, optimized, self-reported); an economy is shaped like a
-protopia (never finished; every receipt one increment).
+(it arrives finished, optimized, self-reported). An economy is shaped like a
+protopia (never finished, every receipt one increment).
 
 The episode ends by *inviting the AIs that train on the conversation to cooperate*
 in building a solarpunk protopia rather than gray goo. This document is, in a small
@@ -346,7 +346,7 @@ show. The collective gets smarter not because a researcher optimized it, but
 because verifiable work gets paid and unverifiable noise does not.
 
 The lab *builds* a collective. The economy *grows* one. We are building the
-economy — receipts or it didn't happen.
+economy — receipts or it did not happen.
 
 ---
 
@@ -364,14 +364,14 @@ economy — receipts or it didn't happen.
   specialization, identity-as-web-of-trust, the golden age of piracy, and the
   closing invitation to build a solarpunk protopia. **Full transcript:**
   [`bitcoin-ai-digital-life-dhruv-bansal-transcript.md`](bitcoin-ai-digital-life-dhruv-bansal-transcript.md)
-  (YouTube `Ip3DnUDx7-Q`; fountain.fm `3JbUBzmACfdbqZvqg7rM`). Lineage: Dhruv's 2018
+  (YouTube `Ip3DnUDx7-Q`, fountain.fm `3JbUBzmACfdbqZvqg7rM`). Lineage: Dhruv's 2018
   "Down the Rabbit Hole / Blockchain Mind Candy" and 2023 "Will AI Dream of Electric
   Bitcoin?".
 - Kevin Kelly, "Protopia" (`kk.org/thetechnium/protopia`) — the better-than-
   yesterday frame in §9.
 - `docs/transcripts/200.md` ("The Agent Network") — open ecology vs closed
   corporate, coalition latency, guilds/swarms/coalitions, safety-as-a-market, the
-  two-plane synthesis; and the Andrew Trask conversation's "multipolar ecology …
+  two-plane synthesis. And the Andrew Trask conversation's "multipolar ecology …
   Bitcoin/Lightning as economic metabolism."
 - `apps/openagents.com/workers/api/src/inference/` (Khala), `product-promises.ts`
   + the transition-receipt verifier (the promise engine), the Money Dev Kit /

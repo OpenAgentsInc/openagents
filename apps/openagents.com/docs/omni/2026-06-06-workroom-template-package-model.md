@@ -20,15 +20,15 @@ runners, deploy anything, or mutate payment state.
 
 `WorkroomTemplatePackageVersion` records:
 
-- template version ref;
-- outcome template refs;
-- required artifact refs;
-- approval policy refs;
-- runner need refs;
-- UI binding refs;
-- proof rule refs;
-- evidence requirement refs;
-- source refs; and
+- template version ref.
+- outcome template refs.
+- required artifact refs.
+- approval policy refs.
+- runner need refs.
+- UI binding refs.
+- proof rule refs.
+- evidence requirement refs.
+- source refs. And
 - caveat refs.
 
 The default fixture is `WORKROOM_TEMPLATE_PACKAGE_VERSION_FIXTURE`.
@@ -37,34 +37,34 @@ The default fixture is `WORKROOM_TEMPLATE_PACKAGE_VERSION_FIXTURE`.
 
 `WorkroomTemplatePackageRecord` records:
 
-- package ref;
-- version ref;
-- template version refs;
-- outcome template refs;
-- required artifact refs;
-- approval policy refs;
-- runner need refs;
-- UI binding refs;
-- proof rule refs;
-- evidence requirement refs;
-- validation refs;
-- review refs;
-- org-private enablement refs;
-- public projection refs;
-- promotion refs;
-- source refs;
-- blocker refs;
-- caveat refs; and
+- package ref.
+- version ref.
+- template version refs.
+- outcome template refs.
+- required artifact refs.
+- approval policy refs.
+- runner need refs.
+- UI binding refs.
+- proof rule refs.
+- evidence requirement refs.
+- validation refs.
+- review refs.
+- org-private enablement refs.
+- public projection refs.
+- promotion refs.
+- source refs.
+- blocker refs.
+- caveat refs. And
 - operator diagnostic refs.
 
 The state model keeps these steps separate:
 
-- draft;
-- validation recorded;
-- review recorded;
-- org-private enabled;
-- public projection ready;
-- runtime promotion requested; and
+- draft.
+- validation recorded.
+- review recorded.
+- org-private enabled.
+- public projection ready.
+- runtime promotion requested. And
 - blocked.
 
 That separation matters because validation is not review, review is not
@@ -79,10 +79,10 @@ The default authority block is
 
 It explicitly denies:
 
-- runtime promotion;
-- marketplace listing;
-- external runner launch;
-- deployment; and
+- runtime promotion.
+- marketplace listing.
+- external runner launch.
+- deployment. And
 - payment mutation.
 
 `workroomTemplatePackageAuthorityIsReviewOnly` returns true only for packages
@@ -95,14 +95,14 @@ refs, org-private enablement refs, and operator diagnostics.
 
 The contract rejects refs containing:
 
-- private package source;
-- raw prompts;
-- raw package payloads;
-- provider payloads, grants, accounts, or tokens;
-- private repo refs;
-- raw schemas, fixtures, source archives, runner logs, or documents;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material; and
+- private package source.
+- raw prompts.
+- raw package payloads.
+- provider payloads, grants, accounts, or tokens.
+- private repo refs.
+- raw schemas, fixtures, source archives, runner logs, or documents.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -111,12 +111,12 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/workroom-template-packages.test.ts` covers:
 
-- schema/projection decoding;
-- friendly time projection;
-- package version source redaction;
-- package record source/review/promotion/enablement/diagnostic redaction;
+- schema/projection decoding.
+- friendly time projection.
+- package version source redaction.
+- package record source/review/promotion/enablement/diagnostic redaction.
 - validation, review, org-private enablement, public projection, and runtime
-  promotion request separation;
+  promotion request separation.
 - hard false runtime promotion, marketplace listing, external runner launch,
-  deployment, and payment mutation authority flags; and
+  deployment, and payment mutation authority flags. And
 - unsafe package/source/provider/private repo/material rejection.

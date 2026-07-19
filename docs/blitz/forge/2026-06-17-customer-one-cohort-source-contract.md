@@ -32,7 +32,7 @@ use opaque refs for all sensitive data:
 
 | Field                 | Required                        | Notes                                                              |
 | --------------------- | ------------------------------- | ------------------------------------------------------------------ |
-| `teamCohortRef`       | yes                             | Stable opaque ref such as `cohort.team.alpha.v1`; not a real name. |
+| `teamCohortRef`       | yes                             | Stable opaque ref such as `cohort.team.alpha.v1`. Not a real name. |
 | `state`               | yes                             | One of the D3 states from #5200.                                   |
 | `candidateRef`        | when candidate or later         | Opaque candidate record ref.                                       |
 | `inviteRef`           | when invited or later           | Bounded invite ref and expiry policy ref.                          |
@@ -168,11 +168,11 @@ declared staleness contract.
 Public-safe projection rows must reject:
 
 - real team, company, or person names without explicit public-attribution
-  approval;
+  approval.
 - raw prompts, private repository content, shell logs, stack traces, provider
   payloads, source files, invoices, payment hashes, preimages, wallet material,
   bearer tokens, OAuth material, API keys, local paths, and customer-private
-  data;
+  data.
 - raw invite tokens, raw email addresses, private acceptance notes, and
   commercial details.
 
@@ -184,9 +184,9 @@ and short operator-safe summaries.
 
 This contract does not close #5098 or #5104. Those remain open until:
 
-- at least three projection rows reach `loop_completed`;
-- each counted row has `completionBundleRef` and `privacyReviewRef`;
-- the roadmap names the completed cohort count and any remaining caveats;
+- at least three projection rows reach `loop_completed`.
+- each counted row has `completionBundleRef` and `privacyReviewRef`.
+- the roadmap names the completed cohort count and any remaining caveats.
 - the owner explicitly accepts any deferral if the epic closes before five
   teams.
 

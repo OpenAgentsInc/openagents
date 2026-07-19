@@ -17,13 +17,13 @@ material, source archives, and raw logs are rejected.
 
 `workers/api/src/runner-secret-boundary.ts` models:
 
-- runner grant refs;
-- provider-account grant refs;
-- GitHub write grant refs;
-- callback refs;
-- resolution receipts;
-- scrub receipts;
-- denial reasons;
+- runner grant refs.
+- provider-account grant refs.
+- GitHub write grant refs.
+- callback refs.
+- resolution receipts.
+- scrub receipts.
+- denial reasons.
 - public-safe boundary projections.
 
 The gateway private-material scanner now also rejects common raw API key,
@@ -36,14 +36,14 @@ service boundary can resolve scoped material and scrub it after closeout.
 
 Public/customer projections only expose:
 
-- backend kind;
-- dispatch ref;
-- runner session ref;
-- grant count;
-- whether required grants are present;
-- neutral resolution receipt refs;
-- neutral scrub receipt refs;
-- denial reasons;
+- backend kind.
+- dispatch ref.
+- runner session ref.
+- grant count.
+- whether required grants are present.
+- neutral resolution receipt refs.
+- neutral scrub receipt refs.
+- denial reasons.
 - public summary ref.
 
 They do not expose provider account refs, grant refs, GitHub write refs,
@@ -54,10 +54,10 @@ material, or raw logs.
 
 This issue does not:
 
-- change provider-account resolver route authority;
-- change GitHub write grant resolver route authority;
-- resolve credentials in the Worker dispatch path;
-- add live Container execution;
+- change provider-account resolver route authority.
+- change GitHub write grant resolver route authority.
+- resolve credentials in the Worker dispatch path.
+- add live Container execution.
 - add billing or settlement.
 
 Those remain behind the runner adapter and provider service boundaries.

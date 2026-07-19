@@ -1,6 +1,6 @@
 # OpenAgents Cloud Architecture
 
-Status: **active** (rewritten 2026-07-09 for #8591; managed-sandbox plan added 2026-07-19)
+Status: **active** (rewritten 2026-07-09 for #8591, managed-sandbox plan added 2026-07-19)
 
 OpenAgents Cloud is the managed-node and workroom execution layer for Agent
 Computers, placement, capacity, and redacted receipts. Implementation lives
@@ -61,56 +61,56 @@ Benchmark Cloud
 | Deprecated name | Current authority |
 | --- | --- |
 | Vortex | `openagents.com` Worker + Khala Sync (+ product UX on those surfaces) |
-| Autopilot (as Cloud control authority) | Worker / Khala Code product surfaces; Autopilot product apps are separate |
-| Nexus (as node registry / product state) | Worker / Khala Sync for state; **MDK/Nexus bridge only for active payout** |
-| Treasury (as settlement product) | Private metering/receipts in Cloud; customer credits on Worker; payout on MDK/Nexus bridge |
+| Autopilot (as Cloud control authority) | Worker / Khala Code product surfaces. Autopilot product apps are separate |
+| Nexus (as node registry / product state) | Worker / Khala Sync for state. **MDK/Nexus bridge only for active payout** |
+| Treasury (as settlement product) | Private metering/receipts in Cloud. Customer credits on Worker. Payout on MDK/Nexus bridge |
 | Convex (as product durable store for Cloud events) | Khala Sync / Worker ingest paths |
 
 ## Managed Node Responsibilities
 
 `oa-node` owns:
 
-- node registration and identity binding;
-- capability inventory and backend readiness;
-- lifecycle state, health events, update channel, rollback, and quarantine;
-- typed Forge assignment intake and local acceptance/refusal receipts;
+- node registration and identity binding.
+- capability inventory and backend readiness.
+- lifecycle state, health events, update channel, rollback, and quarantine.
+- typed Forge assignment intake and local acceptance/refusal receipts.
 - Psionic/Probe worker attachment, scoped workspace policy, and receipt
-  projection;
-- heartbeat and receipt submission;
+  projection.
+- heartbeat and receipt submission.
 - internal-accounting or no-wallet settlement **mode labels** (metadata refs only).
 
 `oa-node` does not own:
 
-- contributor wallet UX;
-- public Pylon install/TUI flow;
-- user-facing work acceptance;
-- hot inference/training/sandbox execution internals;
+- contributor wallet UX.
+- public Pylon install/TUI flow.
+- user-facing work acceptance.
+- hot inference/training/sandbox execution internals.
 - customer credit ledgers or public claim promotion (Worker).
 
 ## Workroom Responsibilities
 
 `oa-workroomd` owns:
 
-- workroom-local metadata;
+- workroom-local metadata.
 - link-local gateways for model, artifacts, receipts, memory, email, and
-  settlement **metadata** (never wallet seeds or raw keys);
+  settlement **metadata** (never wallet seeds or raw keys).
 - session-scoped Codex auth materialization from **grant refs**
-  (`openagents.codex_auth_grant.v1`) into a per-workroom `CODEX_HOME`;
+  (`openagents.codex_auth_grant.v1`) into a per-workroom `CODEX_HOME`.
 - Codex VM runner: structured assignment intake, private no-wallet workspace,
-  `codex exec`, normalized events, artifact capture, closeout, and cleanup;
-- managed preview ingress registration;
-- scoped capability attachment;
-- artifact closeout;
+  `codex exec`, normalized events, artifact capture, closeout, and cleanup.
+- managed preview ingress registration.
+- scoped capability attachment.
+- artifact closeout.
 - workroom receipt submission.
 
 `oa-workroomd` does not own:
 
-- public provider persona;
-- contributor wallet authority;
+- public provider persona.
+- contributor wallet authority.
 - product authority over ChatGPT/Codex account connection (Worker / account
-  surfaces issue grants; Cloud consumes refs only);
-- durable storage of raw Codex `auth.json` material;
-- open-ended task planning;
+  surfaces issue grants. Cloud consumes refs only).
+- durable storage of raw Codex `auth.json` material.
+- open-ended task planning.
 - final acceptance authority.
 
 ## Managed Sandbox Boundary
@@ -153,7 +153,7 @@ provider acceptance.
 
 Desktop and Sarah consume the same managed-sandbox broker. Mobile and web
 receive bounded projections only. This boundary does not admit portable host
-movement or cross-machine `FullAutoRun`; both retain their separate product
+movement or cross-machine `FullAutoRun`. Both retain their separate product
 and assurance gates.
 
 ## Codex Auth Boundary
@@ -187,7 +187,7 @@ active.
 
 Cloud owns this VM-side lifecycle and redaction. Product control, review, and
 acceptance stay on Worker / operator surfaces. Probe owns the durable
-coding-agent runtime contract; Cloud keeps event and receipt shape compatible
+coding-agent runtime contract. Cloud keeps event and receipt shape compatible
 with Probe.
 
 Event transport for control-plane runs is the `oa-codex-control` HTTP path with
@@ -209,12 +209,12 @@ runner and artifact model.
 
 Default GCP shape (project ids and tokens from env/flags only):
 
-- Artifact Registry for benchmark runner images;
+- Artifact Registry for benchmark runner images.
 - Cloud Storage for task specs, transcripts, logs, diffs, results, and proof
-  bundles;
-- Pub/Sub for task and run events;
-- Cloud Run Jobs for importer/controller/aggregation jobs;
-- Cloud Batch for isolated task attempts;
+  bundles.
+- Pub/Sub for task and run events.
+- Cloud Run Jobs for importer/controller/aggregation jobs.
+- Cloud Batch for isolated task attempts.
 - Secret Manager for tightly scoped benchmark credentials.
 
 See `docs/cloud/BENCHMARK_CLOUD.md` for the issue map, artifact contract, and

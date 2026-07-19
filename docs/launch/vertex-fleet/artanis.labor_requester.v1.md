@@ -25,10 +25,10 @@ exactly what this blocker names.
   - Terminal states: `skipped_config_disabled`, `refused`,
     `requested_pending_delivery`, `accepted_released`, `rejected_refunded`.
   - Projects only refs already present on the outcomes (work request, nostr event,
-    reserve/release/refund receipt refs, validator reason refs); mints no payment,
+    reserve/release/refund receipt refs, validator reason refs). Mints no payment,
     identity, or settlement authority.
   - Re-uses `assertArtanisLaborPublicSafe` so no private or payment material can
-    appear in a projected receipt; rejects impossible combinations (acceptance
+    appear in a projected receipt. Rejects impossible combinations (acceptance
     without a reserved request) via `ArtanisLaborReceiptError`.
 - `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.ts` (extended)
   - `serializeArtanisLaborUnattendedRequestReceipt(receipt)` emits a canonical,
@@ -41,7 +41,7 @@ exactly what this blocker names.
     (`receipt.artanis_labor.unattended_request.<sha256-16>`) over that canonical
     form, following the existing `debt-receipt-key.ts` digest pattern. The receipt
     projection previously carried no id of its own, so it could neither be
-    persisted alongside the tick ledger nor dereferenced from a route; this gives
+    persisted alongside the tick ledger nor dereferenced from a route. This gives
     it a stable, collision-resistant name without minting any payment, identity,
     or settlement authority.
 - `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.ts` (extended again)
@@ -82,7 +82,7 @@ exactly what this blocker names.
     `makeInMemoryArtanisLaborUnattendedReceiptStore()` — the persistence
     boundary that was still missing. `put` writes a sealed receipt keyed by its
     own content address (idempotent: a re-put of the same lifecycle returns
-    `already_stored`, never overwrites; refuses an internally inconsistent sealed
+    `already_stored`, never overwrites. Refuses an internally inconsistent sealed
     receipt). `get` re-verifies the persisted bytes still address the ref they
     are keyed under (tamper-evident read), and `list` returns rows in
     deterministic insertion order. It mirrors the hygiene debt-receipt store
@@ -92,7 +92,7 @@ exactly what this blocker names.
   - 8 cases: seal consistency + determinism, put/get round-trip, idempotent put
     on the content-addressed ref, distinct lifecycles under distinct refs,
     unknown-ref miss, and the two refusal guards (ref that does not address its
-    bytes; object that disagrees with its bytes).
+    bytes. Object that disagrees with its bytes).
 
 - `apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.ts`
   - `buildArtanisLaborReceiptFeedProjection(input)` is the public **read side**:
@@ -107,7 +107,7 @@ exactly what this blocker names.
     trusts itself.
   - `handlePublicArtanisLaborReceiptsApi(request, { store, nowIso })` is the
     GET-only, no-store handler. With `?receiptRef=` it does a point read
-    (`store.get`) instead of a list scan; an unknown ref returns an empty feed
+    (`store.get`) instead of a list scan. An unknown ref returns an empty feed
     (rows `[]`, all-zero summary) rather than a 404 so a client can poll a ref
     it expects to appear without branching on status codes. `?terminalState=`
     narrows the listed rows. It mints no payment, identity, or settlement
@@ -176,10 +176,10 @@ sealed receipt persisted by content address**, not just a fixture:
     persists it.
 - `apps/openagents.com/workers/api/src/artanis-labor-tick-driver.test.ts`
   - 6 cases: placed tick seals + persists a `requested_pending_delivery` receipt
-    readable by ref; disabled tick still seals a `skipped_config_disabled`
-    receipt without proposing; over-budget tick seals a `refused` receipt with a
-    null work-request id; idempotent re-run by content address; validator-pass
-    delivery seals `accepted_released`; validator-fail delivery seals
+    readable by ref. Disabled tick still seals a `skipped_config_disabled`
+    receipt without proposing. Over-budget tick seals a `refused` receipt with a
+    null work-request id. Idempotent re-run by content address. Validator-pass
+    delivery seals `accepted_released`. Validator-fail delivery seals
     `rejected_refunded`.
 
 ## What this run adds (frozen wire-format regression guard)
@@ -226,7 +226,7 @@ that gap:
     return means every served receipt is self-consistent. This is the entry
     point an external auditor calls against
     `GET /api/public/artanis/labor-receipts`. Mints no payment, identity, or
-    settlement authority; reads only public fields.
+    settlement authority. Reads only public fields.
 - `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts`
   - 8 cases: clean row re-derives its served ref, derived receipt equals the
     sealed source, tampered served ref rejected, internally inconsistent row
@@ -251,13 +251,13 @@ independent verification. This run closes that gap:
     validates the envelope (`schemaVersion`) and every row's field types and the
     terminal-state enum, and returns typed
     `ArtanisLaborReceiptFeedRow`s — or throws `ArtanisLaborReceiptError`. It does
-    only structural validation; it does not re-derive content-addresses.
+    only structural validation. It does not re-derive content-addresses.
   - `parseAndVerifyArtanisLaborReceiptFeed(serialized)` is the one-call third-party
     entry point: parse the raw feed bytes, then re-derive every row's
     content-address and confirm it matches the served ref. A non-throwing return
     means every served receipt is structurally valid AND self-consistent under its
     own content address — all from untrusted bytes, with no `as`-cast and no trust
-    in the server. Mints no payment, identity, or settlement authority; reads only
+    in the server. Mints no payment, identity, or settlement authority. Reads only
     public fields.
 - `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts` (extended)
   - 9 new cases: raw bytes parse+verify end to end, parse-only typed rows, empty
@@ -278,4 +278,4 @@ independent verification. This run closes that gap:
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 
-Both blockers stay listed on the promise; the promise state is left at `yellow`.
+Both blockers stay listed on the promise. The promise state is left at `yellow`.

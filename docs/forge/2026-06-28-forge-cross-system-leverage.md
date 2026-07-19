@@ -1,7 +1,7 @@
 # Forge Cross-System Leverage Synthesis
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
@@ -35,9 +35,9 @@ for the stand-up target the issue describes:
 
 The older Forge docs already define the same shape in product terms: `/forge`
 is an auditable factory dashboard whose production line maps work through
-Signal, Triage, Code Gen, Validate, Release, Document, Monitor, and Deploy;
-Automations create real Autopilot work orders; metrics must be live or tagged
-seeded; vertical workspaces are seeded as draft, public-safe inputs; and
+Signal, Triage, Code Gen, Validate, Release, Document, Monitor, and Deploy.
+Automations create real Autopilot work orders. Metrics must be live or tagged
+seeded. Vertical workspaces are seeded as draft, public-safe inputs. And
 Customer #1/cohort evidence must be refs-only with privacy review before public
 projection (`docs/blitz/forge/2026-06-16-forge-factory-metric-definitions.md`,
 `docs/blitz/forge/2026-06-16-forge-automations-surface.md`,
@@ -58,8 +58,8 @@ real command, scanned for redaction, and closed out with public-safe result and
 settlement fields (`apps/pylon/docs/codex-agent-task-smoke.md`).
 
 Forge integration point: SU-4 routes Code Gen and Validate jobs to Pylon by
-capability and advertised capacity; SU-1 stores the assignment and closeout
-refs; SU-5 records the named verification command and result; SU-7 renders the
+capability and advertised capacity. SU-1 stores the assignment and closeout
+refs. SU-5 records the named verification command and result. SU-7 renders the
 progress/closeout lane in `/forge` and Autopilot workrooms. Pylon's dev doctor
 and context projection also feed Forge's Context lane: repo identity,
 instruction refs, dirty-state counts, adapter readiness, and current-job refs
@@ -70,7 +70,7 @@ The future leverage is to make Pylon the default Forge runner, not just a proof
 runner. The missing pieces are operational rather than conceptual: multi-ref
 assignment runner ergonomics, live progress while Codex is running,
 assignment-to-workspace lookup in closeout, and a first-class Forge
-orchestrator that leases up to advertised capacity. These map to SU-4 and SU-7;
+orchestrator that leases up to advertised capacity. These map to SU-4 and SU-7.
 they should not widen authority. Public command paths still reject danger flags,
 and owner-local Khala/Pylon/Codex delegation remains distinct from third-party
 labor or paid marketplace execution (`AGENTS.md`, `apps/pylon/README.md`).
@@ -90,7 +90,7 @@ verification class for deterministic/kernel work. A Forge work order can carry
 a verification class such as exact replay, store the claimed digest and replay
 window in SU-1/SU-3, and require the independent replay verdict before SU-6
 promotes. This directly addresses the key warning in the stand-up request:
-clean is not correct. Passing tests are one evidence ref; exact replay is a
+clean is not correct. Passing tests are one evidence ref. Exact replay is a
 stronger evidence ref when the workload class supports it.
 
 The future leverage is economic as much as technical. Cheap replay lets Forge
@@ -118,7 +118,7 @@ when the relevant signature gate is terminal. The spec's five signatures map
 directly: fleet liveness gates dispatch health, diagnosis grounding gates
 remediation, issue-close-safe gates issue closure, command-execution-source
 verified gates proposed verifier commands, and merge-deploy-gate gates release
-claims. Those are not generic advice; they are reusable state machines for
+claims. Those are not generic advice. They are reusable state machines for
 Forge's promotion layer.
 
 The future leverage is to make Forge's operator loop impossible to overstate.
@@ -136,13 +136,13 @@ low-liquidity, high-frequency inter-agent transfers in the future
 (`docs/2026-06-09-ark-mdk-agent-payments-audit.md`). The live Khala MPP docs
 show the concrete production pattern: unauthenticated inference requests get a
 402 challenge, payment is verified, the completion is served, and receipts name
-the rail and status; Lightning, USDC, and card rails are handled behind honesty
+the rail and status. Lightning, USDC, and card rails are handled behind honesty
 gates (`docs/mpp/README.md`,
 `apps/openagents.com/docs/launch/2026-06-23-khala-billing-mpp-production-proof.md`).
 
 Forge integration point: SU-1 stores bounty, budget, receipt, and settlement
-refs; SU-4 routes according to own-capacity/no-spend, buyer-debit, or paid
-labor lane; SU-6 refuses merge, payout, or settlement claims without the
+refs. SU-4 routes according to own-capacity/no-spend, buyer-debit, or paid
+labor lane. SU-6 refuses merge, payout, or settlement claims without the
 receipt-backed terminal state. The existing Forge spend-routing doc already
 keeps this distinction: `buyerDebitRequired` is placement metadata, not proof
 that money moved (`docs/blitz/forge/2026-06-16-customer-one-spend-routing.md`).
@@ -150,14 +150,14 @@ that money moved (`docs/blitz/forge/2026-06-16-customer-one-spend-routing.md`).
 The future leverage is a closed loop: bounty -> claimed assignment -> verified
 artifact -> accepted outcome -> settlement. Own-capacity metering and paid
 labor settlement must remain separate. A Forge work order can be no-spend and
-still metered for token velocity; it can be paid and still not payable until
+still metered for token velocity. It can be paid and still not payable until
 verification, acceptance, and payout target checks all pass.
 
 ## Blueprint
 
 Blueprint is Forge's governance and evidence vocabulary. The OpenAgents
 Blueprint boundary defines authority modes of `evidence_only`,
-`approval_gated`, and `export_only`; Program Runs are evidence, not write
+`approval_gated`, and `export_only`. Program Runs are evidence, not write
 authority (`apps/openagents.com/docs/blueprint/2026-06-05-openagents-blueprint-package-boundary.md`).
 The shared `@openagentsinc/blueprint-contracts` package is intentionally narrow
 but security-critical: it centralizes the recursive private-data-safety
@@ -222,7 +222,7 @@ projection exposes exact token usage plus owner-only trace/raw-event refs
 without raw Codex payloads (`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`).
 The promise reconciliation narrows the current claim: explicit typed
 owner-capacity delegation is green only when accepted closeout and exact
-`token_usage_events` rows exist; broad automatic routing, third-party capacity,
+`token_usage_events` rows exist. Broad automatic routing, third-party capacity,
 paid work, payout eligibility, and public raw event visibility remain out of
 scope (`docs/promises/2026-06-27-khala-cli-own-capacity-reconciliation.md`).
 
@@ -247,7 +247,7 @@ startup, and projects connector state as `absent`, `configured`, `negotiated`,
 or `refused` with typed blockers and no raw endpoint/path leakage
 (`apps/pylon/docs/psionic-connector.md`). The connection audit keeps ownership
 split: Psionic owns model serving, training jobs, evals, artifact identity, and
-ML worker receipts; Pylon owns connector state, assignment/presence/wallet
+ML worker receipts. Pylon owns connector state, assignment/presence/wallet
 posture, sandbox policy, and public-safe closeout refs
 (`apps/pylon/docs/2026-06-09-pylon-psionic-ml-connection-audit.md`). The
 coordinator roadmap adds the future learning loop: hidden-state extraction,
@@ -262,7 +262,7 @@ only through candidate/shadow/governance states.
 
 The future leverage is learned routing. Forge will generate enough work-order,
 verification, token, and settlement data to train a coordinator on
-verified-work-per-sat. Psionic should own that training substrate; Forge should
+verified-work-per-sat. Psionic should own that training substrate. Forge should
 own the work graph and terminal reward receipts.
 
 ## Nostr, NIP-90, And World Projection
@@ -270,7 +270,7 @@ own the work graph and terminal reward receipts.
 Nostr is Forge's fallback and external market bus, not its authority layer. The
 OpenAgents relay accepts NIP-90 job requests/results/feedback and NIP-DS
 listing/offer events, plus a write-gated set of general coordination kinds for
-authorized pubkeys; it grants no payment, identity, moderation, assignment,
+authorized pubkeys. It grants no payment, identity, moderation, assignment,
 payout, or settlement authority (`apps/nostr-relay/README.md`). The
 `@openagentsinc/nip90` package keeps protocol helpers Effect Schema-backed and
 public-safe, including labor request/result helpers and a NIP-LBR closeout
@@ -281,8 +281,8 @@ explicitly does not become source of truth for run, proof, settlement, or
 product-promise state (`apps/openagents-world/README.md`).
 
 Forge integration point: SU-4 can publish or consume labor/dataset/job refs
-over NIP-90 when external market discovery is useful; SU-1 should dereference
-those refs into Forge rows only after schema validation; SU-6 must still require
+over NIP-90 when external market discovery is useful. SU-1 should dereference
+those refs into Forge rows only after schema validation. SU-6 must still require
 the platform's receipt-backed acceptance/payment authority before promotion or
 settlement. World projection can visualize Forge activity, but only from
 already public refs.
@@ -316,7 +316,7 @@ promotion gates.
    Psionic for ML jobs and learned coordination, but keep Pylon/Forge from
    claiming model serving or training authority directly.
 7. **Use Nostr/NIP-90 as the external/fallback bus.** It is excellent for
-   discovery, public market events, and outage coordination; it is not a
+   discovery, public market events, and outage coordination. It is not a
    shortcut around Forge's store, verification, or settlement authority.
 
 The common rule across all systems is simple: Forge should accelerate work by

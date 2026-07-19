@@ -1,7 +1,7 @@
 # Khala Mobile OpenAuth PKCE Session Contract
 
 Status: server-side auth and sync credential bridge implemented for #8468 and
-#8469 on 2026-07-05; Expo UI plus Tailnet contract retirement implemented for
+#8469 on 2026-07-05. Expo UI plus Tailnet contract retirement implemented for
 #8470 the same day.
 
 ## Native Client
@@ -66,7 +66,7 @@ existing resolver. A foreign `scope.user.*` remains denied before storage reads.
 
 7. Mobile stores `{ ownerUserId, token: syncToken }` in SecureStore using the
    existing `khala-auth-store.ts` shape. The current #8470 client does not
-   persist the OpenAuth refresh token; the server refresh path from #8468/#8469
+   persist the OpenAuth refresh token. The server refresh path from #8468/#8469
    remains available when refresh persistence is added.
 8. Mobile signs out with:
 

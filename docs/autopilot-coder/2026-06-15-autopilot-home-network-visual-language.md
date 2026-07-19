@@ -1,7 +1,7 @@
 # Autopilot home screen — pylon-network visual language
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-15. Owner: product. Status: spec + iteration guide for the
@@ -16,13 +16,13 @@ and the relevant promise copy in the same change.
 The home view is **one fullscreen three-effect canvas with a stats overlay and
 nothing else** — no sidebar, no static cards, no hardcoded numbers. Every pixel
 is either (a) the live network visualization or (b) a live stat. If a number
-isn't backed by `GET /api/public/pylon-stats`, it does not appear. We never
+is not backed by `GET /api/public/pylon-stats`, it does not appear. We never
 render a fake "online" or a placeholder count (mirrors the worker's no-guess
 rule in `public-pylon-stats.ts`).
 
 Data source: `https://openagents.com/api/public/pylon-stats` →
 `PublicPylonStats` (`apps/openagents.com/workers/api/src/public-pylon-stats.ts`).
-Polled on an interval (default 15s); the whole scene is a pure function of the
+Polled on an interval (default 15s). The whole scene is a pure function of the
 latest snapshot.
 
 ## 2. The center pylon — the network's heartbeat
@@ -60,13 +60,13 @@ from the live snapshot:
 
 `f(x)` is a soft saturating curve (e.g. `1 - 1/(1 + x/k)`) so the glow responds
 immediately to the first unit of work and asymptotes rather than clipping. Start
-weights `w1=w2=w3=1/3`; tune in this doc, not inline. **Blue is reserved for
+weights `w1=w2=w3=1/3`. Tune in this doc, not inline. **Blue is reserved for
 activity** — do not use blue for chrome/idle states.
 
 ## 3. The network graph — online pylons around the center
 
 Around the center we adapt the **bezier graph already in desktop**
-(`@openagentsinc/three-effect` `trainingRunView` / `bezierNodes`; the training
+(`@openagentsinc/three-effect` `trainingRunView` / `bezierNodes`, the training
 scene in `view.ts` uses the same component). Here it visualizes the **overall
 pylon network**:
 
@@ -88,11 +88,11 @@ pylon network**:
 
 ## 4. Palette and what each color means
 
-From `pylonDiamonds.ts` + the overlay. Colors carry meaning; don't repurpose.
+From `pylonDiamonds.ts` + the overlay. Colors carry meaning. Do not repurpose.
 
 | Token | Hex | Meaning |
 | --- | --- | --- |
-| Background | `#0c0f13` | the void; canvas base (`backgroundColor 0x0c0f13`) |
+| Background | `#0c0f13` | the void. Canvas base (`backgroundColor 0x0c0f13`) |
 | Pylon blue-white | `#d6f6ff` / `#d8f4ff` | the network substrate (the diamond/beams) |
 | Activity blue | bright cyan-blue end of the glow ramp | **work happening** (only ever activity) |
 | Idle white | desaturated cool white | online but no work |
@@ -108,8 +108,8 @@ center pylon stays clear:
 - **Primary (top/center):** `pylonsOnlineNow` (the hero number), with
   `pylonSessionsOnlineNow` as the "work in flight" sub-stat.
 - **Earnings:** NIP-90 `satsSettled24h` / `satsSettledTotal` (sum across
-  compute/data/labor); gate on `nexusAcceptedWorkSettlementGate` /
-  `earningLaunchGate` so we only show paid totals when the gate says it's allowed.
+  compute/data/labor). Gate on `nexusAcceptedWorkSettlementGate` /
+  `earningLaunchGate` so we only show paid totals when the gate says it is allowed.
 - **Run:** `trainingAssignedContributors` / `trainingAcceptedContributors` /
   `trainingModelProgressContributors`.
 - **Reach:** `pylonsSeen24h`, `pylonsRegisteredTotal`,
@@ -120,7 +120,7 @@ center pylon stays clear:
 **Every updating number uses the homepage countdown roll** — the slot-text
 digit-roll CSS from `pylonCountdownElement.ts` (scoped `.slot-text` / `.char-slot`
 / `.char-face` with a transform-based roll). When a counter changes between polls
-the digits roll to the new value; this is the shared "numbers updating" language
+the digits roll to the new value. This is the shared "numbers updating" language
 across the homepage and Autopilot. Autopilot Desktop now scopes that structure in
 `apps/autopilot-desktop/src/ui/styles.css` and renders slot characters from
 `apps/autopilot-desktop/src/ui/view.ts`, so the home overlay no longer uses a
@@ -129,7 +129,7 @@ plain tabular-number placeholder.
 ## 6. Empty / unavailable states
 
 - `status: "unavailable"` or `available: false` → show the network as **dormant**
-  (dim center, no nodes) with the `asOfLabel`/error reason; never invent counts.
+  (dim center, no nodes) with the `asOfLabel`/error reason. Never invent counts.
 - Zero online pylons → center dim, graph empty, hero number `0` (rolled). This is
   the honest "be the first pylon" state.
 
@@ -140,7 +140,7 @@ consistent (registry: `/api/public/product-promises`):
 
 - **Pylon online / earning-network counters** (`gate.public.pylon.earning_network_counters.v1`,
   `definition.public.pylon_stats.online_now.v1` et al.) — the hero count + graph
-  nodes are exactly these counters; the glow shows the `assignment_ready` /
+  nodes are exactly these counters. The glow shows the `assignment_ready` /
   earning activity the gate governs.
 - **Accepted-work settlement** (`nexusAcceptedWorkSettlementGate`) — the sats
   totals are shown only when this gate allows public paid totals.
@@ -156,15 +156,15 @@ shows what the gate permits, and update §5 here.
   `activityIntensity` computation + the `pylonDiamonds` `lightPulse` drive
   (`PylonDiamondsHandle.setActivity(intensity)`). Autopilot Desktop composites
   the same homepage renderer through
-  `apps/autopilot-desktop/src/ui/pylon-diamonds-element.ts`; the web renderer's
+  `apps/autopilot-desktop/src/ui/pylon-diamonds-element.ts`. The web renderer's
   transparent-background option exists only so the shader can sit over the
   three-effect network graph without hiding it.
 - **Node tones / edge flow:** §3 → the pylon-network options builder (analogous
   to `trainingRunVisualizationOptionsFromSnapshot`).
 - **Stat selection / layout:** §5 → the overlay component.
-- **Palette:** §4 → shared color tokens; change here first.
+- **Palette:** §4 → shared color tokens. Change here first.
 - **Poll cadence / empty states:** §6 → the bun-side stats fetch + model.
 
 Keep the scene a pure function of the `PublicPylonStats` snapshot so it stays
-testable headlessly (feed synthetic snapshots; assert glow intensity and node
+testable headlessly (feed synthetic snapshots, assert glow intensity and node
 counts) and so it can be exercised **as new pylons join the network**.

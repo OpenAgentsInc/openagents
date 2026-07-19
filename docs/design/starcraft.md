@@ -10,7 +10,7 @@ The StarCraft interface is a **real-time command console**. It is not a neutral 
 
 For another application, the goal should not be to copy Blizzard’s assets, names, icons, sounds, or exact panel art. Build an original interface that follows the same design principles: **dense information, strong spatial anchoring, race/faction-themed chrome, tactical feedback, and immediate command execution**.
 
-The original StarCraft manual describes the main interface as a set of stable regions: main screen, resources, minimap, status display, portrait, command buttons, menu, and hide-terrain control. It defines resources as minerals, Vespene gas, and supply; the portrait as the selected unit close-up; the status display as detailed numeric information; the command buttons as actions such as Build and Attack; and the minimap as a battlefield overview that gains detail as the player explores. ([Scribd][1]) StarCraft II keeps the same core mental model but modernizes the presentation with higher-resolution art, richer glow effects, a cleaner command card, broader hotkey support, and more flexible observer/UI tooling. Blizzard’s own StarCraft II controls guide documents the familiar RTS interaction grammar: left-click selection, drag selection, Shift add/remove, Ctrl or double-click unit-type selection, attack-move, right-click movement, stop, hold position, patrol, command queueing, and control groups. ([Blizzard News][2])
+The original StarCraft manual describes the main interface as a set of stable regions: main screen, resources, minimap, status display, portrait, command buttons, menu, and hide-terrain control. It defines resources as minerals, Vespene gas, and supply. The portrait as the selected unit close-up. The status display as detailed numeric information. The command buttons as actions such as Build and Attack. And the minimap as a battlefield overview that gains detail as the player explores. ([Scribd][1]) StarCraft II keeps the same core mental model but modernizes the presentation with higher-resolution art, richer glow effects, a cleaner command card, broader hotkey support, and more flexible observer/UI tooling. Blizzard’s own StarCraft II controls guide documents the familiar RTS interaction grammar: left-click selection, drag selection, Shift add/remove, Ctrl or double-click unit-type selection, attack-move, right-click movement, stop, hold position, patrol, command queueing, and control groups. ([Blizzard News][2])
 
 ---
 
@@ -46,11 +46,11 @@ The most important visual qualities are:
 | --------------------- | ---------------------------------------------------------------------------------------------------- |
 | Heavy framing         | Panels have thick bevels, hard edges, inset screens, metal housings, screws, vents, hazard-like trim |
 | Low-light contrast    | Black or near-black interior displays surrounded by bright outlines and high-contrast text           |
-| Pixel-era density     | Many small controls occupy a compact space; readability depends on contrast and consistent placement |
+| Pixel-era density     | Many small controls occupy a compact space. Readability depends on contrast and consistent placement |
 | Faction skinning      | Terran, Zerg, and Protoss UI surfaces feel materially different                                      |
 | Diegetic presentation | The UI resembles in-universe equipment, not an abstract overlay                                      |
 
-The manual’s division of the screen into command console regions is central: the player does not hunt through menus to act; they select an entity, read its state, and issue commands through fixed interface zones. ([Scribd][1])
+The manual’s division of the screen into command console regions is central: the player does not hunt through menus to act. They select an entity, read its state, and issue commands through fixed interface zones. ([Scribd][1])
 
 ### 3.2 Terran visual treatment
 
@@ -94,7 +94,7 @@ StarCraft II’s interaction model is keyboard-forward. Blizzard’s controls gu
 | Observer / replay UI | Secondary to player UI                 | More explicit esports/observer support                                    |
 | Custom UI tooling    | Limited compared with SC2              | Editor and patch support for UI elements, observer panels, minimap tuning |
 
-Blizzard’s patch notes for StarCraft II 1.3.0 added observer/replay panels showing player names, race, supply, resource comparisons, army supply, units killed, and APM; they also added simultaneous upper-right resource rows for both players in 1v1 observed games and a hotkey to hide/show the main game UI. ([Blizzard News][4]) Patch 1.5.0 later notes broader UI changes and editor support, including custom high-resolution minimap images, minimap icon scaling/background/color, and trigger dialog item types such as tooltip, unit status, portrait, unit model, offscreen unit, and unit target. ([Blizzard News][5])
+Blizzard’s patch notes for StarCraft II 1.3.0 added observer/replay panels showing player names, race, supply, resource comparisons, army supply, units killed, and APM. They also added simultaneous upper-right resource rows for both players in 1v1 observed games and a hotkey to hide/show the main game UI. ([Blizzard News][4]) Patch 1.5.0 later notes broader UI changes and editor support, including custom high-resolution minimap images, minimap icon scaling/background/color, and trigger dialog item types such as tooltip, unit status, portrait, unit model, offscreen unit, and unit target. ([Blizzard News][5])
 
 For a new application, this means the StarCraft II direction is better when you need a production-ready interface: clearer states, cleaner hierarchy, scalable panels, strong keyboard operation, and customizable overlays.
 
@@ -326,7 +326,7 @@ interface MultiSelectionStatus {
 }
 ```
 
-Visually, show a wireframe, thumbnail, or icon grid on the left and numeric stats on the right. Original StarCraft uses a black status screen with bright outlines and green unit visualization; StarCraft II modernizes this with clearer panel spacing.
+Visually, show a wireframe, thumbnail, or icon grid on the left and numeric stats on the right. Original StarCraft uses a black status screen with bright outlines and green unit visualization. StarCraft II modernizes this with clearer panel spacing.
 
 ### 7.5 Portrait panel
 

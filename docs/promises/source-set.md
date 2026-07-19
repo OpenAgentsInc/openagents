@@ -73,7 +73,7 @@ promise candidates, not proof that a promise is green.
 
 These issues were verified with GitHub issue search against
 `OpenAgentsInc/openagents` on 2026-06-09. They are not the whole product
-history; they are the useful closed set for launch-promise and product-promise
+history. They are the useful closed set for launch-promise and product-promise
 design.
 
 | Issue                                                                                                                                                                                | Closed     | Why it matters                                                                                             |

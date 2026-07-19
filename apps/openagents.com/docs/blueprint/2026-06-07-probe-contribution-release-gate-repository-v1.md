@@ -21,13 +21,13 @@ The implementation lives in:
 
 Each row records:
 
-- contribution kind, status, and review status;
-- candidate and production runtime eligibility booleans;
-- release gate readiness;
-- blocker refs;
-- release gate refs, fixture refs, retained failure refs, and target refs;
-- the normalized signature or developer-package contribution record;
-- a safe projection; and
+- contribution kind, status, and review status.
+- candidate and production runtime eligibility booleans.
+- release gate readiness.
+- blocker refs.
+- release gate refs, fixture refs, retained failure refs, and target refs.
+- the normalized signature or developer-package contribution record.
+- a safe projection. And
 - idempotency, creation, update, and archive metadata.
 
 Target refs include Program Type, Program Signature, Module Version, backend
@@ -44,7 +44,7 @@ Production runtime eligibility is distinct from release-gate entry. A
 contribution can be:
 
 - release-gate ready when it is approved for release-gate review and still has
-  no promotion ref; or
+  no promotion ref. Or
 - production-ready when it is already promoted and still has approved review,
   promotion refs, target refs, release gate refs, fixture refs, retained
   failure refs, no rejection, no runtime authority, and no self-promotion.

@@ -27,19 +27,19 @@ replays the same event to prove duplicate handling.
 
 The smoke proves:
 
-- the generated Site checkout starts in checkout-created, unpaid state;
-- browser return/status reads do not create receipts or entitlements;
+- the generated Site checkout starts in checkout-created, unpaid state.
+- browser return/status reads do not create receipts or entitlements.
 - the exact modeled source is dashboard Standard Webhooks, not daemon invoice
-  HMAC or SDK node-control callbacks;
-- the webhook route verifies the modeled event source before mutating state;
-- a payment-received event updates the checkout intent to `payment_received`;
+  HMAC or SDK node-control callbacks.
+- the webhook route verifies the modeled event source before mutating state.
+- a payment-received event updates the checkout intent to `payment_received`.
 - the buyer payment ledger receives exactly one receipt, one entitlement, and
-  one reconciliation event;
+  one reconciliation event.
 - replaying the same provider event reports `replayed` and does not duplicate
-  durable receipt, entitlement, or reconciliation records;
+  durable receipt, entitlement, or reconciliation records.
 - the clean success return projects an active entitlement after verified
-  reconciliation;
-- the public payment-proof route projects `verified_entitlement`; and
+  reconciliation.
+- the public payment-proof route projects `verified_entitlement`. And
 - public evidence omits raw invoices, payment hashes, preimages, MDK
   credentials, wallet material, customer private values, and webhook secret
   material.
@@ -52,12 +52,12 @@ claim payout settlement unless settlement receipt refs are present.
 
 This is deterministic contract smoke evidence. It does not prove:
 
-- a live MDK checkout was created;
-- a live MDK dashboard callback reached production;
-- a live invoice was minted;
-- bitcoin moved;
-- the agent-paid L402 proof route performed live proof verification;
-- accepted work became payout eligible; or
+- a live MDK checkout was created.
+- a live MDK dashboard callback reached production.
+- a live invoice was minted.
+- bitcoin moved.
+- the agent-paid L402 proof route performed live proof verification.
+- accepted work became payout eligible. Or
 - Pylon/Nexus/Treasury settlement occurred.
 
 Live provider evidence still requires configuring the actual MDK-compatible

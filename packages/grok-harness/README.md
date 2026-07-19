@@ -8,9 +8,9 @@ Protocol transport and session runtime. It admits only the trusted
 advertised authentication, streams `session/update`, settles the prompt stop
 reason once, and uses protocol cancellation before process shutdown.
 Cached-token remains preferred when advertised. Interactive `grok.com` and
-enterprise `oidc` methods require an explicit typed owner continuation; the
+enterprise `oidc` methods require an explicit typed owner continuation. The
 default and cancellation paths stop before `authenticate`.
-An existing local Grok login is sufficient for headless ACP operation; no API
+An existing local Grok login is sufficient for headless ACP operation. No API
 key is required. `xai.api_key` is only an optional, explicitly configured
 alternative.
 An explicit `requestedInteractiveAuthMethod` can select an advertised
@@ -19,7 +19,7 @@ login or cancellation without deleting cached credentials.
 
 Capabilities are false unless supported admission evidence and an installed
 authority broker both authorize them. The raw `acp-client` and in-process mock
-remain fixture-only compatibility seams; caller-provided command arrays are
+remain fixture-only compatibility seams. Caller-provided command arrays are
 refused by the production path. The terminal `worker-executor` remains the
 separate RL/claimed-work contract and is not a generic ACP implementation.
 
@@ -41,7 +41,7 @@ which uses the generated protocol authority and production stdio transport.
 | ------------------- | ------------------------------------------------------------------------- |
 | `mock-acp-server`   | In-process ACP fixture (initialize → authenticate → session/new → prompt) |
 | `grok-peer-runtime` | Trusted admission plus shared transport/session runtime composition       |
-| `acp-client`        | Deprecated raw JSON-RPC fixture client; never the production launch path  |
+| `acp-client`        | Deprecated raw JSON-RPC fixture client. Never the production launch path  |
 | `event-projector`   | Shared canonical bridge output → legacy neutral chat compatibility events |
 | `chat-runtime`      | Axis A: startThread / startTurn / interruptTurn                           |
 | `session-store`     | desktop session ↔ Grok session id mapping                                 |

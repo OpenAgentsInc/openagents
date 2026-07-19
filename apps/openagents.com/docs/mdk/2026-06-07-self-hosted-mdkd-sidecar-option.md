@@ -73,11 +73,11 @@ service, or other Node/native-capable runtime.
 The Worker should call the sidecar through one of these boundaries:
 
 - Cloudflare service binding if the sidecar is another Worker-compatible
-  wrapper;
+  wrapper.
 - Cloudflare VPC Service binding or Tunnel when the sidecar is private
-  infrastructure;
+  infrastructure.
 - a tightly scoped HTTPS route with a route secret when the sidecar must be
-  externally reachable; or
+  externally reachable. Or
 - SHC-local operator routing for development and private smokes.
 
 Cloudflare's current Worker guidance prefers service bindings for
@@ -96,7 +96,7 @@ Worker /api/mdk
 
 This avoids GCP for the checkout sidecar while still respecting the Worker
 compatibility boundary. The Container is allowed to carry the Node/native MDK
-runtime; generated Sites, public browser code, D1 projections, and Forum posts
+runtime. Generated Sites, public browser code, D1 projections, and Forum posts
 are not.
 
 ## mdkd Source Shape
@@ -110,17 +110,17 @@ revision 9ffea5f
 
 Relevant `mdkd` behavior:
 
-- accepts secrets through file descriptors, with environment fallback;
+- accepts secrets through file descriptors, with environment fallback.
 - requires platform access token, wallet recovery material, read-only Basic
-  Auth password, full-control Basic Auth password, and webhook HMAC key;
-- serves `/scalar` OpenAPI docs;
+  Auth password, full-control Basic Auth password, and webhook HMAC key.
+- serves `/scalar` OpenAPI docs.
 - stores local invoice/payment metadata in SQLite under the configured storage
-  directory and network;
-- uses VSS-backed state for wallet/node backup behavior;
-- exposes read-only status and invoice lookup APIs;
-- exposes full-control APIs for invoice creation and payment sends;
-- emits HMAC-signed webhook events for payment received and invoice expiry;
-- can run signet or mainnet; and
+  directory and network.
+- uses VSS-backed state for wallet/node backup behavior.
+- exposes read-only status and invoice lookup APIs.
+- exposes full-control APIs for invoice creation and payment sends.
+- emits HMAC-signed webhook events for payment received and invoice expiry.
+- can run signet or mainnet. And
 - is not a Cloudflare Worker runtime.
 
 ## Required Auth Tiers
@@ -145,18 +145,18 @@ does not claim live readiness.
 Do not commit, print, export into public docs, store in D1 public projection,
 or paste into issue comments:
 
-- MDK platform token;
-- wallet recovery material;
-- read-only Basic Auth password;
-- full-control Basic Auth password;
-- webhook HMAC key;
-- raw wallet home path;
-- SQLite file path;
-- VSS payloads;
-- raw invoices;
-- payment hashes;
-- preimages;
-- payment destination strings; or
+- MDK platform token.
+- wallet recovery material.
+- read-only Basic Auth password.
+- full-control Basic Auth password.
+- webhook HMAC key.
+- raw wallet home path.
+- SQLite file path.
+- VSS payloads.
+- raw invoices.
+- payment hashes.
+- preimages.
+- payment destination strings. Or
 - sidecar route secrets.
 
 `mdkd` prefers file-descriptor secret passing. If OpenAgents product surface uses Cloudflare Worker
@@ -169,54 +169,54 @@ audits that authority boundary.
 
 The sidecar must own:
 
-- network-scoped wallet/node state;
-- local SQLite invoice and outgoing-payment metadata;
-- VSS-backed state, when enabled;
-- backup/restore runbook;
-- log retention and redaction;
-- rotation procedure for sidecar auth tiers; and
+- network-scoped wallet/node state.
+- local SQLite invoice and outgoing-payment metadata.
+- VSS-backed state, when enabled.
+- backup/restore runbook.
+- log retention and redaction.
+- rotation procedure for sidecar auth tiers. And
 - clear operator status for wallet readiness.
 
 OpenAgents product surface stores only redacted refs:
 
-- service ref;
-- route binding ref;
-- version ref;
-- wallet-readiness bucket ref;
-- storage refs;
-- observability refs;
-- health refs;
-- reconciliation lag refs;
-- webhook binding refs; and
+- service ref.
+- route binding ref.
+- version ref.
+- wallet-readiness bucket ref.
+- storage refs.
+- observability refs.
+- health refs.
+- reconciliation lag refs.
+- webhook binding refs. And
 - checkout/provider refs produced by the existing Site commerce ledger.
 
 ## Health And Observability
 
 Sidecar readiness should project:
 
-- health status: `healthy`, `degraded`, `unknown`, or `unreachable`;
-- route configured state;
-- current `mdkd` version ref;
-- wallet readiness bucket;
-- status lookup availability;
-- checkout creation availability;
-- webhook verifier source;
-- reconciliation lag bucket;
-- emergency pause state;
-- storage/VSS backup readiness;
-- failure classes; and
+- health status: `healthy`, `degraded`, `unknown`, or `unreachable`.
+- route configured state.
+- current `mdkd` version ref.
+- wallet readiness bucket.
+- status lookup availability.
+- checkout creation availability.
+- webhook verifier source.
+- reconciliation lag bucket.
+- emergency pause state.
+- storage/VSS backup readiness.
+- failure classes. And
 - operator action refs.
 
 Do not expose:
 
-- exact wallet balance;
-- raw payment route;
-- local file path;
-- provider token;
-- Basic Auth value;
-- raw webhook body;
-- raw invoice;
-- payment hash; or
+- exact wallet balance.
+- raw payment route.
+- local file path.
+- provider token.
+- Basic Auth value.
+- raw webhook body.
+- raw invoice.
+- payment hash. Or
 - preimage.
 
 ## OpenAgents product surface Call Boundary
@@ -242,8 +242,8 @@ sidecar.
 
 Do not use a generic "MDK webhook" model. Pick exactly one configured source:
 
-- `dashboard_standard_webhooks`;
-- `daemon_invoice_hmac`; or
+- `dashboard_standard_webhooks`.
+- `daemon_invoice_hmac`. Or
 - `sdk_node_control`.
 
 OpenAgents product surface already models this through `MDK_CHECKOUT_WEBHOOK_SOURCE` and
@@ -258,10 +258,10 @@ If emergency pause is active, OpenAgents product surface must treat sidecar read
 
 Pause must block:
 
-- checkout creation;
-- checkout confirmation;
-- sidecar payout calls;
-- retry loops; and
+- checkout creation.
+- checkout confirmation.
+- sidecar payout calls.
+- retry loops. And
 - any operator automation that would mutate wallet or payment state.
 
 Read-only status may remain available if the read-only tier is explicitly
@@ -271,35 +271,35 @@ allowed during pause.
 
 Live as of 2026-06-07:
 
-- Cloudflare Worker route `POST /api/mdk`;
-- Cloudflare Durable Object binding `MDK_SIDECAR`;
-- Cloudflare Container class `MdkSidecarContainer`;
-- MDK checkout core signed ping through `https://openagents.com/api/mdk`;
-- production amount checkout creation for `100` bitcoin sats; and
+- Cloudflare Worker route `POST /api/mdk`.
+- Cloudflare Durable Object binding `MDK_SIDECAR`.
+- Cloudflare Container class `MdkSidecarContainer`.
+- MDK checkout core signed ping through `https://openagents.com/api/mdk`.
+- production amount checkout creation for `100` bitcoin sats. And
 - payment of that checkout from a local MDK agent wallet, with provider status
   observed as `PAYMENT_RECEIVED`.
 
 Still not live:
 
-- full `mdkd` daemon deployment;
-- sidecar wallet storage/VSS backup management;
-- sidecar read-only/full-control Basic Auth tiering;
-- daemon invoice HMAC webhook source;
-- product-mode dashboard checkout from a stable MDK product ID;
-- public demo page wired to the live sidecar path; and
+- full `mdkd` daemon deployment.
+- sidecar wallet storage/VSS backup management.
+- sidecar read-only/full-control Basic Auth tiering.
+- daemon invoice HMAC webhook source.
+- product-mode dashboard checkout from a stable MDK product ID.
+- public demo page wired to the live sidecar path. And
 - operator restart/rotation controls for long-lived container instances.
 
 Before claiming production readiness, OpenAgents still needs:
 
-- an operator-owned sidecar lifecycle runbook;
+- an operator-owned sidecar lifecycle runbook.
 - file-descriptor or equivalent secret injection for any future full `mdkd`
-  daemon path;
-- exact webhook-source verification;
+  daemon path.
+- exact webhook-source verification.
 - a Site-commerce route smoke against OpenAgents product surface's hosted MDK client contract, not
-  only a direct `/api/mdk` sidecar smoke;
-- storage/VSS backup proof;
-- emergency pause smoke;
-- redacted observability proof; and
+  only a direct `/api/mdk` sidecar smoke.
+- storage/VSS backup proof.
+- emergency pause smoke.
+- redacted observability proof. And
 - a decision on whether any future daemon route uses private binding/VPC/Tunnel
   or public HTTPS.
 
@@ -314,9 +314,9 @@ bun run --cwd workers/api test -- src/mdk-sidecar-option.test.ts src/config.test
 The tests prove:
 
 - a self-hosted sidecar can be marked ready only with route, health, auth,
-  storage, version, wallet-readiness, and pause refs;
-- hosted platform and fake provider modes are distinct;
-- missing route/auth/storage, pause, and unreachable health block readiness;
-- projections preserve Worker compatibility and keep payout dispatch disabled;
-- raw secret, invoice, wallet path, and payment material are rejected; and
+  storage, version, wallet-readiness, and pause refs.
+- hosted platform and fake provider modes are distinct.
+- missing route/auth/storage, pause, and unreachable health block readiness.
+- projections preserve Worker compatibility and keep payout dispatch disabled.
+- raw secret, invoice, wallet path, and payment material are rejected. And
 - `MDK_CHECKOUT_ROUTE_KIND` decodes through the Worker config boundary.

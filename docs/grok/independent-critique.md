@@ -25,7 +25,7 @@ direction. That triple convergence is rare.
 
 Exact accounting, promise registry, behavior contracts, microVM
 blast-radius sentence, approval-gated send/spend — these are enforceable
-seams, not vibe. "Don't trust us — check the receipt" only works if the
+seams, not vibe. "Do not trust us — check the receipt" only works if the
 nightly swarm and registry refuse green without evidence. The corpus
 designs for that refusal.
 
@@ -59,7 +59,7 @@ consultancy wearing an agent costume.
 MASTER_ROADMAP runs P0→P7 with Sarah, outbound, BYO Codex cutover,
 employees, brain, templates, trust, scale, ONE-UI migration, Effect
 Native conversion, and sales landing — simultaneously in spirit even when
-phases are ordered. The corpus *documents* prioritization; live capacity
+phases are ordered. The corpus *documents* prioritization. Live capacity
 still has to *refuse* work.
 
 **Push:** treat every new epic as guilty until it names what it delays.
@@ -69,8 +69,8 @@ operator attention.
 ### 2.2 Tool excellence still has to carry users to the network
 
 Dixon's formula works only if the single-player tool is good enough
-*before* network value arrives. Mobile straight-line must feel magical;
-desktop fleet must feel safer than raw Codex; credits accounting must
+*before* network value arrives. Mobile straight-line must feel magical.
+desktop fleet must feel safer than raw Codex. Credits accounting must
 never surprise. If any of those fail, "stay for the network" never
 starts.
 
@@ -92,21 +92,21 @@ roadmap doc.
 
 ### 2.4 Sovereignty for SMB is a packaging problem
 
-Enterprise sovereignty is named loudly; SMB packaging is the actual hard
+Enterprise sovereignty is named loudly. SMB packaging is the actual hard
 part. Reactor, private placement, and company-brain export paths must
 become **menu choices with prices and install times**, not only policy
 objects. Otherwise the middle market keeps duct tape.
 
 **Push:** a single "assurance level" table that a non-technical buyer can
 choose in five minutes — hosted / BYO model / private placement /
-Reactor — with what changes and what doesn't.
+Reactor — with what changes and what does not.
 
 ### 2.5 Sales agent + outbound can eat the company
 
 P1 elevates Sarah and outbound ("sales sales sales"). Correct for
-distribution; dangerous for identity if the product freezes at "chat
+distribution. Dangerous for identity if the product freezes at "chat
 coding app with a sales bot." Authority laws (draft-only, approval-gated
-send) are good; volume targets create pressure to relax them.
+send) are good. Volume targets create pressure to relax them.
 
 **Push:** never promote send authority without a receipted owner
 decision and a bounce/complaint kill switch. Keep operator-minutes per
@@ -132,13 +132,13 @@ rewrite — stick to that.
 
 The vector (agent console → pull editor in) is correct. Early revenue
 and adoption will be mobile + services + employees, not desktop IDE
-share. Keep desktop as power tier; don't let VS Code feature gravity
+share. Keep desktop as power tier. Do not let VS Code feature gravity
 rewrite the roadmap.
 
 ### 3.2 Tassadar / verification-by-replay is research depth
 
 Philosophically aligned with receipts. Commercially distant for SMB
-products. Hold as Q&A/research; do not let it steal agent-computer or
+products. Hold as Q&A/research. Do not let it steal agent-computer or
 employee bandwidth.
 
 ### 3.3 Pylon fold-in
@@ -146,7 +146,7 @@ employee bandwidth.
 Proposal to fold Pylon into Khala Code as primary surface reduces
 product sprawl if execution substrate and provider install stay clear.
 Risk: conflating "install a node" with "use the coding app" confuses
-contributors vs customers. Keep the mental model: **customers buy work;
+contributors vs customers. Keep the mental model: **customers buy work.
 providers supply capacity.**
 
 ---

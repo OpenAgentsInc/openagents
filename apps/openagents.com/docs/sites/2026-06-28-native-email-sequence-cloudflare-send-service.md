@@ -8,9 +8,9 @@ This records the issue #6841 implementation boundary for
 - Worker binding: `EMAIL` via Cloudflare Email Sending (`send_email` in
   `workers/api/wrangler.jsonc`).
 - Feature flag: `EMAIL_SEQUENCE_SEND_ENABLED`.
-- Sender address: `EMAIL_SEQUENCE_FROM_EMAIL`; falls back to
+- Sender address: `EMAIL_SEQUENCE_FROM_EMAIL`. Falls back to
   `RESEND_FROM_EMAIL` only when the dedicated sequence sender is unset.
-- Reply-to: `EMAIL_SEQUENCE_REPLY_TO_EMAIL`; falls back to
+- Reply-to: `EMAIL_SEQUENCE_REPLY_TO_EMAIL`. Falls back to
   `RESEND_REPLY_TO_EMAIL`.
 
 When `EMAIL_SEQUENCE_SEND_ENABLED` is not truthy, authored sequence sends keep
@@ -41,5 +41,5 @@ A live proof for a green claim requires a real sequence send whose
 `email_campaign_sends` row reaches `sent`, an `email_messages` row with
 `provider='cloudflare_email'`, and an `email_deliveries` row with
 `status='accepted'` or later provider delivery evidence. Bounce/complaint
-handling remains a separate receipt gate; code-level accepted receipts alone do
+handling remains a separate receipt gate. Code-level accepted receipts alone do
 not flip the promise green.

@@ -2,7 +2,7 @@
 
 **Retired implementation note (2026-07-05, #8384):** the default-off
 `INFERENCE_BATCH_JOBS_ENABLED` route/queue/store/OpenAPI surface described below
-has been removed. Batch inference remains planned roadmap scope; a future
+has been removed. Batch inference remains planned roadmap scope. A future
 implementation must start from a fresh owner-approved, receipt-first design
 instead of reviving this inert surface.
 

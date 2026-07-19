@@ -33,7 +33,7 @@ docs/khala-sync/receipts/2026-07-05-runtime-ai-sdk-shaped-dogfood.simulator.json
 - `gap.khala_sync.runtime.physical_tailnet_owner_run`: physical owner device
   proof over Tailnet is not attached here.
 - `gap.khala_sync.runtime.web_projection_runtime_stream`: web projection parity
-  is still recorded as a gap; no claim is made that web consumes the runtime
+  is still recorded as a gap. No claim is made that web consumes the runtime
   event stream yet.
 
 ## Verification

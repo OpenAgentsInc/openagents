@@ -213,12 +213,12 @@ https://openagents.com/agents/artanis
 ```
 
 Both routes stay public and load outside the authenticated product shell. The
-short `/artanis` route is the livestream/referral-friendly link; the
+short `/artanis` route is the livestream/referral-friendly link. The
 `/agents/artanis` route remains the canonical public-agent shape.
 
 The public page loads two snapshots:
 
-- the sanitized public Artanis durable goal projection for `agent_artanis`;
+- the sanitized public Artanis durable goal projection for `agent_artanis`.
 - the public Pylon stats snapshot from `GET /api/public/pylon-stats`, which
   now projects OpenAgents product surface-owned Pylon API registration and heartbeat state for
   Pylon v0.2.5+ clients.
@@ -229,7 +229,7 @@ Pylon wave, and use the new Bitcoin infrastructure as the work settlement
 layer. The stats panel shows feed state, Pylons online, registered Pylons,
 wallet-ready Pylons, assignment-ready Pylons, 24-hour seen count, minimum
 client version, resource/client-version breakdowns, and compact recent-Pylon
-rows. These online stats are not accepted-work, payout, or settlement evidence;
+rows. These online stats are not accepted-work, payout, or settlement evidence.
 Nexus/Pylon receipt refs remain the separate settlement proof path.
 
 The route is intentionally a public proof surface, not an operator control

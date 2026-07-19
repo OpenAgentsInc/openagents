@@ -10,13 +10,13 @@ do after payment evidence exists.
 
 The policy layer separates:
 
-- one-shot paid actions that can be consumed once;
-- time-window entitlements;
-- quota entitlements;
-- resource-bound entitlements;
-- actor-bound entitlements;
-- route-bound entitlements;
-- Site-bound entitlements; and
+- one-shot paid actions that can be consumed once.
+- time-window entitlements.
+- quota entitlements.
+- resource-bound entitlements.
+- actor-bound entitlements.
+- route-bound entitlements.
+- Site-bound entitlements. And
 - hybrid policies that require multiple matching scopes.
 
 The implementation lives in
@@ -27,21 +27,21 @@ The implementation lives in
 
 The policy consumes existing records from:
 
-- `buyer-payment-ledger`;
-- `paid-endpoint-product-catalog`; and
+- `buyer-payment-ledger`.
+- `paid-endpoint-product-catalog`. And
 - the current payment policy audience/surface model.
 
 It returns a public/customer/agent/operator-safe projection that says whether
 the current request should:
 
-- consume a one-shot entitlement;
-- create a durable entitlement;
-- renew an expired entitlement;
-- decrement quota;
-- allow an existing entitlement;
-- ask for payment;
-- reject a replay;
-- reject exhausted or expired state; or
+- consume a one-shot entitlement.
+- create a durable entitlement.
+- renew an expired entitlement.
+- decrement quota.
+- allow an existing entitlement.
+- ask for payment.
+- reject a replay.
+- reject exhausted or expired state. Or
 - reject mismatched actor, route, resource, Site, or scope.
 
 The contract is deliberately pure. It does not mutate D1, call MDK, call
@@ -61,26 +61,26 @@ external authorities and it has not already been satisfied, the policy returns
 
 This preserves the separation between:
 
-- buyer payment evidence;
-- entitlement state;
-- authorization;
-- moderation;
-- owner grants;
-- Site deploy authority;
-- accepted work;
-- payout intent;
-- payout dispatch; and
+- buyer payment evidence.
+- entitlement state.
+- authorization.
+- moderation.
+- owner grants.
+- Site deploy authority.
+- accepted work.
+- payout intent.
+- payout dispatch. And
 - settled payout claims.
 
 ## Projection Rules
 
 The projection is designed for agents and customers:
 
-- stable refs are retained;
-- raw payment material is rejected;
-- raw timestamps are not required for customer-facing expiry copy;
-- quota state is expressed as remaining units;
-- next action is explicit; and
+- stable refs are retained.
+- raw payment material is rejected.
+- raw timestamps are not required for customer-facing expiry copy.
+- quota state is expressed as remaining units.
+- next action is explicit. And
 - receipt, redemption, and entitlement records are shown through the existing
   safe buyer-payment ledger projection.
 
@@ -92,14 +92,14 @@ and unsafe source material.
 
 Focused tests cover:
 
-- one-shot consumption;
-- duplicate redemption/idempotency replay;
-- quota decrement and exhaustion;
-- time-window expiry and renewal;
-- wrong resource, route, actor, and Site;
-- scoped product entitlement creation;
-- retired product policy rejection;
-- raw payment material rejection; and
+- one-shot consumption.
+- duplicate redemption/idempotency replay.
+- quota decrement and exhaustion.
+- time-window expiry and renewal.
+- wrong resource, route, actor, and Site.
+- scoped product entitlement creation.
+- retired product policy rejection.
+- raw payment material rejection. And
 - payment proof failing to bypass authorization, moderation, owner-write,
   deploy, confidential-data, or payout policy.
 

@@ -19,11 +19,11 @@ credentials, traffic, deployments, or spend.
 
 Google Cloud is the sole production infrastructure authority:
 
-- Cloud Run and GCE own compute;
-- Cloud SQL owns relational state;
-- Cloud Storage owns blobs and retained archives;
-- Secret Manager owns runtime credentials;
-- Cloud Scheduler owns scheduled entrypoints; and
+- Cloud Run and GCE own compute.
+- Cloud SQL owns relational state.
+- Cloud Storage owns blobs and retained archives.
+- Secret Manager owns runtime credentials.
+- Cloud Scheduler owns scheduled entrypoints. And
 - Google Cloud load balancing owns application ingress.
 
 Cloudflare remains the authoritative DNS provider for `openagents.com`.
@@ -45,11 +45,11 @@ pilot records may retain explicit `retired_pilot` provenance.
 ## Consequences
 
 - Supported deploys go through the Cloud Run deployment script.
-- Managed placement admits only `cloud-gcp`; managed execution uses
+- Managed placement admits only `cloud-gcp`. Managed execution uses
   `gcloud_vm`.
 - Live synchronization uses Cloud SQL plus the Cloud Run LiveHub service.
 - Authoritative DNS remains in Cloudflare with DNS-only records targeting
-  Google Cloud; no nameserver migration is planned.
+  Google Cloud. No nameserver migration is planned.
 - Retired-provider exports are private evidence, not warm standby systems.
 - Historical documents remain evidence only when their status is explicit.
 - The Google Cloud authority guard runs before deploy and in repository checks.
@@ -59,10 +59,10 @@ pilot records may retain explicit `retired_pilot` provenance.
 The enforcement model is executable:
 
 - `scripts/google-cloud-authority-guard.mjs` rejects retired packages,
-  configurations, deploy operations, credentials, and service lanes;
+  configurations, deploy operations, credentials, and service lanes.
 - migration `0071_google_cloud_only_admission.sql` constrains production
   admission and preserves terminal pilot provenance without making it
-  dispatchable; and
+  dispatchable. And
 - the corrective after-action audit records the live-account and database
   retirement evidence.
 

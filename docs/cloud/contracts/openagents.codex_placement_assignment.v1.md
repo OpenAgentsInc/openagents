@@ -23,9 +23,9 @@ and with `openagents.gce_capacity_class.v1` for the GCE ephemeral VM lane.
 | `goal` | Bounded instruction for the coding run. |
 | `lane` | `auto` (default), `local`, `cloud-gcp`, or `cloud-shc`. |
 | `repository` | Optional non-secret repo/project context. |
-| `sandbox_mode` | Optional; defaults to `danger_full_access` inside the no-wallet VM boundary. |
+| `sandbox_mode` | Optional. Defaults to `danger_full_access` inside the no-wallet VM boundary. |
 | `wallet_authority` | Must be `false`. |
-| `created_at_ms` | Caller timestamp; must not be from the future. |
+| `created_at_ms` | Caller timestamp. Must not be from the future. |
 
 ## Lane Policy
 
@@ -33,15 +33,15 @@ Owner direction (2026-06-14): the cloud lane priority is **Google GCE first,
 SHC second.**
 
 - `auto` — cost-driven (CND-042). Own-Pylon-first-and-free is resolved upstream
-  by the caller; at the cloud placement endpoint `auto` compares the eligible
+  by the caller. At the cloud placement endpoint `auto` compares the eligible
   cloud lanes on measured cost-plus-10% and binds the cheaper lane, with Google
   GCE winning ties/near-ties and SHC chosen only when materially cheaper AND the
   pilot recommendation is "expand". When GCE is unavailable it falls back to SHC
-  (`oa-shc-katy-01`); when cost-driven placement is disabled it binds the GCE
+  (`oa-shc-katy-01`). When cost-driven placement is disabled it binds the GCE
   ephemeral per-session VM lane (`gce.ephemeral.standard.v1`) by policy default.
-- `cloud-gcp` — pin GCE; falls back to SHC only if GCE is unavailable.
+- `cloud-gcp` — pin GCE. Falls back to SHC only if GCE is unavailable.
 - `cloud-shc` — pin SHC (`oa-shc-katy-01`).
-- `local` — resolved by the caller's own Pylon; rejected by cloud placement.
+- `local` — resolved by the caller's own Pylon. Rejected by cloud placement.
 
 Placement is **cost-driven (CND-042).** See the cost split and lane rates in
 `docs/contracts/openagents.compute_quota_routing.v1.md` ("Cost-Driven
@@ -63,11 +63,11 @@ binding:
 | `lane` | Resolved lane (`cloud-gcp` or `cloud-shc`). |
 | `provider_lane` | `gcp` or `shc`. |
 | `runner_id` | Bound runner id (ephemeral GCE label, or SHC node id). |
-| `capacity_class_id` | `gce.ephemeral.standard.v1` for GCE; null for SHC. |
-| `sandbox_mode` | Sandbox profile; `danger_full_access` default. |
+| `capacity_class_id` | `gce.ephemeral.standard.v1` for GCE. Null for SHC. |
+| `sandbox_mode` | Sandbox profile. `danger_full_access` default. |
 | `reason` | `lane_pinned`, `policy_default_gce`, `gce_unavailable_shc_fallback`, or `cost_driven`. |
-| `cost_driven` | `true` when the lane was chosen by the CND-042 cost comparison; `false` otherwise. |
-| `cost_basis` | Refs-only `PlacementCostBasis` (lane cost-plus-10% estimates + modeled per-session figure) when `cost_driven`; omitted otherwise. Never raw customer cost. |
+| `cost_driven` | `true` when the lane was chosen by the CND-042 cost comparison. `false` otherwise. |
+| `cost_basis` | Refs-only `PlacementCostBasis` (lane cost-plus-10% estimates + modeled per-session figure) when `cost_driven`. Omitted otherwise. Never raw customer cost. |
 | `caps` | Session/idle/lease/pause TTLs and per-owner caps from quota routing. |
 
 ## Quota Caps
@@ -75,10 +75,10 @@ binding:
 Caps default to `openagents.compute_quota_routing.v1`:
 
 - `session_ttl_ms` = 8h, `idle_timeout_ms` = 30m, `lease_ttl_ms` = 12h,
-  `pause_ttl_ms` = 2h;
+  `pause_ttl_ms` = 2h.
 - per-owner active-session cap = 4, per-owner remote-lease cap = 2.
 
-Fleet policy may override these; placement must honor whatever caps it binds
+Fleet policy may override these. Placement must honor whatever caps it binds
 rather than minting unbounded leases.
 
 ## GCE Default Owner-Session Lane (cloud#88)
@@ -90,7 +90,7 @@ lane path is: provision (`openagents.gce_capacity_class.v1`) ->
 inside the no-wallet VM boundary (CND-041/CND-055).
 
 Full warm-pool/density optimization is **deferred to the density phase**. The
-current scaffold selects GCE by default and keeps cold-start reasonable; it does
+current scaffold selects GCE by default and keeps cold-start reasonable. It does
 not yet maintain a pre-warmed pool.
 
 ## Validation Rules

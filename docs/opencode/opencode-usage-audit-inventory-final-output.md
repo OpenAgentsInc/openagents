@@ -89,7 +89,7 @@ Here is the comprehensive inventory plan for `docs/opencode/` — every surface 
 | **Public projection gates** | ~30+ files in `workers/api/src/` | Regex includes `opencode_auth_content` as first-class secret |
 | **Auth materialization** | `scripts/codex-fleet/fetch-codex-auth.mjs` | Reads OpenCode auth.json → translates to codex-native auth.json (0600 perms) |
 | **QA runner redaction** | `apps/qa-runner/src/redaction.ts` | 15-category TraceRedactor with allowlist for `openagents/khala` |
-| **API key bridge** | `apps/qa-runner/src/khala-config.ts` | `OPENAGENTS_API_KEY` → Khala; value never printed, source label only |
+| **API key bridge** | `apps/qa-runner/src/khala-config.ts` | `OPENAGENTS_API_KEY` → Khala. Value never printed, source label only |
 | **OpenCode local auth file** | `~/.local/share/opencode/auth.json` | Documented with `0o600` in multiple audit docs |
 
 ### 9. External Surface References
@@ -133,13 +133,13 @@ Based on the inventory, we would recommend organizing into these sections:
 
 1. **`README.md`** — what OpenCode is in relation to OpenAgents, glossary (`opencode` the product vs `opencode_codex` the runtime string vs `codex` the OpenAI runtime)
 2. **`khala-integration.md`** — distill from the two GTM docs: config recipe, tool-call compatibility, running smoke tests, benchmark GYM shape
-3. **`runtime-opencode-codex.md`** — inventory of every `opencode_codex` literal: where it's defined in schema (sync-schema), where it's the default runtime (omni-runs), migration history (0019 SQL), test fixtures to update if renaming, and the UI copy path
+3. **`runtime-opencode-codex.md`** — inventory of every `opencode_codex` literal: where it is defined in schema (sync-schema), where it is the default runtime (omni-runs), migration history (0019 SQL), test fixtures to update if renaming, and the UI copy path
 4. **`runtime-codex.md`** — inventory of standalone `codex` references: type unions, Pylon adapter/bridge code, Autopilot Desktop UI code, reverse-proxy routes (`chatgpt-codex`, `codex-runs`), infrastructure (`oa-codex-control`), and rename implications
 5. **`reference-repo.md`** — how the external opencode repo at `/Users/christopherdavid/work/projects/repos/opencode` is used (read-only reference, parity targets, `opencode-run.ts` helper), and whether a workspace symlink should exist
-6. **`safety-redaction.md`** — catalog of every redaction/projection gate that catches `opencode_auth_content`, `auth.json`, `OPENCODE_AUTH_CONTENT`; the auth materialization script; the credential chain from `~/.local/share/opencode/auth.json` → `OPENAGENTS_API_KEY` → Khala
+6. **`safety-redaction.md`** — catalog of every redaction/projection gate that catches `opencode_auth_content`, `auth.json`, `OPENCODE_AUTH_CONTENT`. The auth materialization script. The credential chain from `~/.local/share/opencode/auth.json` → `OPENAGENTS_API_KEY` → Khala
 7. **`tui-parity.md`** — distill from the TUI audits: what opencode TUI patterns have been harvested and what remains (command palette, plugin slots, theme tokens, attach mode)
 8. **`probe-parity.md`** — distill from probe parity audits: shell tool, write/edit tool, LLM core, env-var conventions, and the parity gap
-9. **`product-copy-audit.md`** — every user-facing or agent-facing occurrence of `opencode_codex`/`codex`/`OpenCode` in help text, UI labels, error messages, and README; which should be renamed/replaced as Probe replaces codex
+9. **`product-copy-audit.md`** — every user-facing or agent-facing occurrence of `opencode_codex`/`codex`/`OpenCode` in help text, UI labels, error messages, and README. Which should be renamed/replaced as Probe replaces codex
 
 ---
 

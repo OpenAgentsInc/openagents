@@ -38,7 +38,7 @@ Supported v1 behavior:
 * Retry, remove, staged, uploading, ready, and error attachment states.
 * Resize/expanded composer state, status strip, command controls, submit/stop
   affordance, accessibility mirror, autofocus, and focus-after-submit hooks.
-* Native shortcuts preserved: platform copy/paste/select-all stay native;
+* Native shortcuts preserved: platform copy/paste/select-all stay native.
   composer-owned submit/newline/attachment navigation is explicit and bounded.
 * Reduced-motion behavior: CSS transitions are disabled under
   `prefers-reduced-motion`, response cursors are static under reduced motion,
@@ -70,7 +70,7 @@ Attachment state stores metadata and references:
   records must use metadata/digest/redacted summaries.
 * Desktop-local attachment execution may hold `File` objects, object URLs, and
   pasted text in local app memory while hashing/registering the attachment.
-  Those executor refs are never transcript or receipt fields; receipts expose
+  Those executor refs are never transcript or receipt fields. Receipts expose
   only metadata, lifecycle event, upload attempt, digest, dimensions, and
   content-addressed `attachment.desktop-local.sha256.*` /
   `attachment_thumbnail.desktop-local.sha256.*` refs after readiness.
@@ -123,14 +123,14 @@ OPENAGENTS_PRE_PUSH_COMPOSER_VISUAL=1 git push origin main
 ```
 
 That hook path never blocks a push by itself. It is for browser-dependent
-evidence collection; the deploy gate remains `check:deploy`.
+evidence collection. The deploy gate remains `check:deploy`.
 
 ## Issue Evidence
 
 Issue closeouts should link the final commit and include:
 
-* commit hash;
-* the commands above and their pass/fail result;
-* the composer visual smoke artifact directory or blocker;
-* the desktop verifier result;
+* commit hash.
+* the commands above and their pass/fail result.
+* the composer visual smoke artifact directory or blocker.
+* the desktop verifier result.
 * the follow-up issue numbers for deferred work.

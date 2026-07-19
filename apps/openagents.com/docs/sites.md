@@ -25,7 +25,7 @@ The product sits inside OpenAI’s broader June 2026 Codex strategy. OpenAI posi
 
 The initial product framing is **workspace-first**, not consumer website publishing. OpenAI’s Enterprise/Edu release notes describe ChatGPT Sites as a preview for eligible workspaces that lets users create, iterate on, and deploy lightweight full-stack JavaScript/TypeScript web apps with hosted URLs, Sign in with ChatGPT access, and data/file storage. ([OpenAI Help Center][3])
 
-OpenAI’s availability language is slightly staged across official pages. The developer and help docs emphasize eligible **Business and Enterprise** workspaces, with Business enabled by default and Enterprise controlled through admin settings; the Enterprise/Edu release notes also describe availability for eligible **Enterprise and Edu** workspaces. The safest reading is that Sites is rolling out by workspace plan and admin eligibility, not as a universal consumer feature. ([OpenAI Developers][2])
+OpenAI’s availability language is slightly staged across official pages. The developer and help docs emphasize eligible **Business and Enterprise** workspaces, with Business enabled by default and Enterprise controlled through admin settings. The Enterprise/Edu release notes also describe availability for eligible **Enterprise and Edu** workspaces. The safest reading is that Sites is rolling out by workspace plan and admin eligibility, not as a universal consumer feature. ([OpenAI Developers][2])
 
 ---
 
@@ -55,7 +55,7 @@ The basic workflow is:
 
 3. **Codex generates and validates the project.** Codex is expected to validate that the project builds before it is saved or deployed. Users can ask Codex to save a deployable version for review or deploy an already approved saved version. ([OpenAI Developers][2])
 
-4. **Save a version, then deploy.** OpenAI distinguishes between saving a deployable version and deploying it. A saved version is associated with the source Git commit; a deployment publishes a saved version and returns a production URL. OpenAI warns that every deployment URL is production, so teams should save for review before going live. ([OpenAI Developers][2])
+4. **Save a version, then deploy.** OpenAI distinguishes between saving a deployable version and deploying it. A saved version is associated with the source Git commit. A deployment publishes a saved version and returns a production URL. OpenAI warns that every deployment URL is production, so teams should save for review before going live. ([OpenAI Developers][2])
 
 5. **Manage versions, status, and access.** The Sites sidebar lets users return to a project, inspect saved versions, check deployment status, and change access settings. ([OpenAI Developers][2])
 
@@ -115,7 +115,7 @@ The showcase examples confirm the intended pattern. Onboarding Hub uses D1 for c
 
 Sites supports **Sign in with ChatGPT** and workspace-authenticated access. OpenAI’s Enterprise/Edu release notes describe Sites apps as having hosted URLs, Sign in with ChatGPT access, and data/file storage. The help docs say Sites can be used to deploy workspace-internal web apps with Sign in with ChatGPT access and invite users in the same workspace. ([OpenAI Help Center][3])
 
-OpenAI’s developer guide also mentions using workspace-authenticated user identity and, for authentication-enabled Sites projects, public sign-in or an external identity provider. However, the public-facing distribution model appears early and staged; the launch and help documentation primarily emphasize workspace-internal use. ([OpenAI Developers][2])
+OpenAI’s developer guide also mentions using workspace-authenticated user identity and, for authentication-enabled Sites projects, public sign-in or an external identity provider. However, the public-facing distribution model appears early and staged. The launch and help documentation primarily emphasize workspace-internal use. ([OpenAI Developers][2])
 
 ### 4.6 Access modes
 

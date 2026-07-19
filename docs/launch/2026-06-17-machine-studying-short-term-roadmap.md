@@ -343,10 +343,10 @@ Do:
 Exit criterion:
 
 - Study packet improves at least two of:
-  - pass rate on hidden tasks;
-  - tokens or tool calls to passing edit;
-  - wrong-file reads;
-  - invariant/product-claim violations;
+  - pass rate on hidden tasks.
+  - tokens or tool calls to passing edit.
+  - wrong-file reads.
+  - invariant/product-claim violations.
   - test-pass rate without unrelated edits.
 
 ### After measured lift
@@ -389,7 +389,7 @@ Forbidden public phrasing until separate evidence and promise gates exist:
 
 | Artifact | Home | Purpose | Blocks/blocked by |
 | --- | --- | --- | --- |
-| `openagents_repo_corpus_manifest.v0` | `docs/research/machine-studying/` first; later schema/code | Reproducible admitted corpus with exclusions and digests | Blocks study packet; blocked by redaction policy |
+| `openagents_repo_corpus_manifest.v0` | `docs/research/machine-studying/` first. Later schema/code | Reproducible admitted corpus with exclusions and digests | Blocks study packet. Blocked by redaction policy |
 | `openagents_launch_study_packet.v0` | `docs/research/machine-studying/` or Blueprint docs | Launch-specific source map, traps, test catalog, claim boundaries | Blocks exam-assisted runs |
 | `openagents_studybench.v0` | Probe/benchmark docs plus machine-studying docs | StudyBench-compatible rows over the pinned `openagents` repo, with public-retained and private validation/holdout splits | Blocks expertise curve |
 | `machine_studying_openagents_launch_exam.v0` | Probe/benchmark docs | Launch-focused slice of `openagents_studybench.v0` | Blocks expertise curve |

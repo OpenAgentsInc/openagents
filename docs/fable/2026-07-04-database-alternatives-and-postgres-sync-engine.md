@@ -38,11 +38,11 @@ engine landscape plus concrete build guidance. Repo citations are to current
    target.** It is real Postgres with confirmed logical replication
    (`pgoutput` + `wal2json`) — the exact primitive an owned sync engine
    needs. An 8 vCPU / 52 GB regional-HA instance is ~$1,119/mo list, i.e.
-   **~5 years of runway on the $70k credit**; the 4 vCPU tier is ~9.5 years.
+   **~5 years of runway on the $70k credit**. The 4 vCPU tier is ~9.5 years.
    Cloudflare Workers reach it through **Hyperdrive** (edge connection
-   pooling; ~1 RTT per uncached query). AlloyDB is the upgrade path; Spanner
+   pooling. ~1 RTT per uncached query). AlloyDB is the upgrade path. Spanner
    is ruled out (its Postgres interface has **no logical decoding**, which
-   kills the sync engine); self-managed Postgres on GCE saves money we don't
+   kills the sync engine). Self-managed Postgres on GCE saves money we do not
    need to save while the credit pays the bill.
 4. **We should build the sync engine ourselves, and we are not starting from
    zero.** `apps/openagents.com/packages/sync-worker` already implements the
@@ -54,15 +54,15 @@ engine landscape plus concrete build guidance. Repo citations are to current
    WebSocket Durable Object per scope as the sync hub, SQLite client stores —
    and the graduation path to WAL/logical-replication capture on Postgres 17.
    The convergent architecture across Linear, Figma, Replicache/Zero,
-   PowerSync, and LiveStore is well documented; the components are
-   individually specified; a minimal viable tier is weeks-to-months, not
+   PowerSync, and LiveStore is well documented. The components are
+   individually specified. A minimal viable tier is weeks-to-months, not
    years.
 5. **Recommended end state** (§5): Postgres (Cloud SQL HA) as the
-   authoritative relational core reached via Hyperdrive; the owned sync
+   authoritative relational core reached via Hyperdrive. The owned sync
    engine — **Khala Sync** — projecting scoped state to desktop/web/
-   mobile clients through per-scope Durable Objects; high-volume telemetry
+   mobile clients through per-scope Durable Objects. High-volume telemetry
    (raw event chunks, heartbeats, stress burns) **off** the relational
-   database entirely (R2 + Analytics Engine + DO buffers); hot public
+   database entirely (R2 + Analytics Engine + DO buffers). Hot public
    counters served from sync projections instead of live aggregates. D1
    remains only as a bounded edge cache/staging layer, or is retired from
    the hot path altogether.
@@ -76,8 +76,8 @@ engine landscape plus concrete build guidance. Repo citations are to current
 Each D1 database is backed by **one Durable Object** running SQLite **in the
 same thread** — "each individual D1 database is inherently single-threaded,
 and processes queries one at a time" (Cloudflare D1 limits doc). Cloudflare's
-own math: at 1 ms average query time you get ~1,000 queries/sec; at 100 ms,
-10/sec. Excess concurrent queries are queued; when the queue fills or waits
+own math: at 1 ms average query time you get ~1,000 queries/sec. At 100 ms,
+10/sec. Excess concurrent queries are queued. When the queue fills or waits
 too long, D1 returns:
 
 - `D1 DB is overloaded. Too many requests queued.`
@@ -89,14 +89,14 @@ explicit that `.overloaded` errors should not be retried because retrying
 worsens the overload.) The retryable class is different: `Network connection
 lost.`, `storage caused object to be reset`, `D1 DB reset because its code
 was updated.` Since 2025-09 D1 auto-retries **read-only** statements up to 2
-times on those; **writes are never auto-retried**.
+times on those. **Writes are never auto-retried**.
 
 Other structural facts that matter for us:
 
 - **10 GB max database size** on paid plans. Our single DB carries ~330+
   live tables including an append-forever token ledger and raw-event-chunk
-  metadata; we will eventually hit this wall even if overload never bites.
-- **The primary lives in one region**; every write from every Worker isolate
+  metadata. We will eventually hit this wall even if overload never bites.
+- **The primary lives in one region**. Every write from every Worker isolate
   worldwide serializes into it.
 - **Read replication (Sessions API, beta)** offloads reads only, and only
   for queries routed through `withSession()` — our code uses plain
@@ -127,7 +127,7 @@ measured hot paths:
 
 1. **Raw event chunks, per item, unbatched.** The Pylon executor flushes an
    event chunk on **every Codex `item.completed`**
-   (`apps/pylon/src/codex-agent-executor.ts:1134`); the server store does a
+   (`apps/pylon/src/codex-agent-executor.ts:1134`). The server store does a
    dedupe SELECT + R2 put + `INSERT OR IGNORE` per chunk
    (`pylon-codex-turn-ingest-routes.ts:1231-1332`). A turn that runs 30
    commands ⇒ ~60+ D1 statements, × N parallel fleet workers. This is a
@@ -161,7 +161,7 @@ measured hot paths:
    One slow aggregate stalls the whole single-threaded queue — including
    assignment accepts.
 2. History/model-mix/channel-mix raw fallbacks scan the ledger when rollups
-   don't cover the requested window (`token-usage-ledger.ts:1443,1542,2996`).
+   do not cover the requested window (`token-usage-ledger.ts:1443,1542,2996`).
 3. Per-minute monitor aggregates over the same table (serving-rate monitor,
    stall detector).
 4. Dedupe SELECT before nearly every hot write (~2× statement count).
@@ -175,17 +175,17 @@ handler in the repo is for upstream inference providers, not D1. A transient
 blip surfaces instantly as `pylon_api_storage_error` — which is exactly what
 the fleet felt. **No Cache API or KV sits in front of any D1 read.** The
 Queues bindings exist (`RUNNER_EVENTS`, adjutant, inference-batch) but none
-buffer the hot writes; the two active consumers are `max_batch_size: 1`.
+buffer the hot writes. The two active consumers are `max_batch_size: 1`.
 
 ### 1.3 We already lived the failure (June 28–29 after-action)
 
 `docs/afteraction/2026-06-29-codex-fleet-throughput-collapse-after-action.md`
 documents the full cascade with the exact error string: simultaneous
 assignment-accept bursts produced `pylon_api_storage_error` / `D1 DB is
-overloaded. Requests queued for too long.`; 16 parallel Vertex burn loops
+overloaded. Requests queued for too long.`. 16 Parallel Vertex burn loops
 writing per-completion ledger rows **starved the codex dispatch gate's D1
 reads** (503 "could not read linked owner registration", 500s, even 401s on
-presence); staggering accepts by ~2 seconds was the workaround; a
+presence). Staggering accepts by ~2 seconds was the workaround. A
 retry-transient-accepts patch and a 2-second public-stats cache were the
 local fixes. The Cloudflare dashboard spike the owner saw was confirmed to be
 this same database id (`9644ea09-…`). The after-action's own P0 list —
@@ -205,7 +205,7 @@ Ordered by leverage-per-effort. Items 1–3 are each roughly a day.
    SUM.** Maintain a single running-total row (or read the existing daily
    rollups + today's delta), snapshot to KV/Cache with a 2s TTL, and declare
    the staleness honestly in the promise copy (the after-action already
-   started this; owner approved 2s). The `SYNC_ROOM` push path already
+   started this. Owner approved 2s). The `SYNC_ROOM` push path already
    handles live homepage movement — the scalar read does not need to scan
    the ledger.
 2. **Queue + batch the raw-event-chunk writes.** Producer: the ingest route
@@ -220,7 +220,7 @@ Ordered by leverage-per-effort. Items 1–3 are each roughly a day.
    idempotent statements — our writes are idempotency-keyed, so they
    qualify. For `overloaded` specifically: at most 1–2 retries with a long
    jittered delay, plus a metric/alarm, since official guidance is load
-   reduction, not retry. One shared helper in one place; all ~50 `d1Effect`
+   reduction, not retry. One shared helper in one place. All ~50 `d1Effect`
    call sites inherit it.
 4. **Move heartbeat/monitor telemetry off the relational path.** GLM replica
    heartbeats and capacity snapshots are time-series telemetry, not ledger
@@ -233,7 +233,7 @@ Ordered by leverage-per-effort. Items 1–3 are each roughly a day.
    dispatch gate. Cheap insurance, buys time, but it is triage — the 10 GB
    ceiling and single-writer-per-DB physics remain.
 6. **Trim `token_usage_events` indexes.** Audit the 13+ secondary indexes
-   against actual query patterns; every dropped index is a permanent write
+   against actual query patterns. Every dropped index is a permanent write
    discount.
 
 These mitigations are worth doing even on the way out the door: they
@@ -264,7 +264,7 @@ eliminate write amplification and hot-read patterns that would degrade
 ### 3.2 GCP options against the $70k credit
 
 All prices are list, us-central1, verified against official pricing pages
-2026-07-04; re-verify in the GCP calculator before committing. Note credits
+2026-07-04. Re-verify in the GCP calculator before committing. Note credits
 typically carry an expiration (commonly 12–24 months) — **check our credit's
 terms first**, because runway beyond expiry is theoretical, and committed-use
 discounts rarely make sense against expiring credits.
@@ -276,68 +276,68 @@ discounts rarely make sense against expiring credits.
 | **Cloud SQL Postgres (Enterprise, HA)** | 16 vCPU / 104 GB + 250 GB | ~$2,133 | ~33 | ✅ |
 | Cloud SQL 8 vCPU HA + 1 read replica | | ~$1,690 | ~41 | ✅ |
 | **AlloyDB (HA)** | 4 vCPU / 32 GB | ~$915 | ~76 | ✅ now supported (verify slot survival across failover — undocumented) |
-| Spanner (Enterprise, 1 node) | + 250 GB | ~$793 | ~88 | ❌ **no WAL/logical decoding; PG interface is dialect-only** |
+| Spanner (Enterprise, 1 node) | + 250 GB | ~$793 | ~88 | ❌ **no WAL/logical decoding. PG interface is dialect-only** |
 | GCE self-managed (single n2-highmem-8 + PITR) | 8 vCPU / 64 GB + 500 GB | ~$483 | ~145 | ✅ unrestricted, plus any extension |
 | GCE Patroni HA pair + witness | 2× n2-highmem-8 | ~$968 | ~72 | ✅ + etcd/ops burden |
-| Firestore / Bigtable | — | — | — | ❌ not relational; no SQL joins / no general ACID; wrong shape |
+| Firestore / Bigtable | — | — | — | ❌ not relational. No SQL joins / no general ACID. Wrong shape |
 
 Key findings per option:
 
 - **Cloud SQL for PostgreSQL — the recommendation.** Real Postgres. Logical
-  replication is enabled with the flag `cloudsql.logical_decoding=on`;
+  replication is enabled with the flag `cloudsql.logical_decoding=on`.
   officially supported decoders are `pgoutput`, `wal2json` (v1/v2), and
-  `test_decoding`; you create publications/slots with a `REPLICATION IN ROLE
+  `test_decoding`. You create publications/slots with a `REPLICATION IN ROLE
   cloudsqlsuperuser` user — the identical path Datastream and every CDC
   engine uses. HA is synchronous cross-zone with ~60s failover (note: the
-  standby serves **no** reads; read capacity = replicas at full instance
+  standby serves **no** reads. Read capacity = replicas at full instance
   price). `max_connections` defaults scale with RAM (500–800 in our range).
-  Managed connection pooling requires Enterprise Plus (~+30%); on Enterprise
+  Managed connection pooling requires Enterprise Plus (~+30%). On Enterprise
   we lean on Hyperdrive's pooling, which we want anyway. Caveat for later:
-  HA instances can't be logical **subscribers** (irrelevant — we publish).
+  HA instances cannot be logical **subscribers** (irrelevant — we publish).
 - **AlloyDB** — contrary to its historical reputation, now supports logical
-  decoding (`alloydb.logical_decoding` flag; `wal2json`/`pglogical` in the
-  extension list; documented as publisher to external subscribers). Adds a
+  decoding (`alloydb.logical_decoding` flag, `wal2json`/`pglogical` in the
+  extension list. Documented as publisher to external subscribers). Adds a
   columnar engine and up-to-20-node read pools with a 99.99%
   maintenance-inclusive SLA. ~60% pricier per vCPU than Cloud SQL. The right
-  **second** move if in-DB analytics or read scaling bite; the open risk is
+  **second** move if in-DB analytics or read scaling bite. The open risk is
   that replication-slot survival across HA failover is undocumented — test
   before trusting the sync engine to it.
 - **Spanner** — ruled out for this program. The PostgreSQL interface is
   dialect compatibility, not Postgres: no extensions, no replication tools,
   no WAL, no logical decoding (CDC = change streams via
   Dataflow/Datastream), no monotonic sequences, PGAdapter sidecar required.
-  Buy Spanner for multi-region five-nines or >10 TiB OLTP; we have neither
+  Buy Spanner for multi-region five-nines or >10 TiB OLTP. We have neither
   problem, and it breaks the sync engine's capture layer.
 - **Self-managed Postgres on GCE** — full control, any extension, and where
   our unrestricted-superuser instinct points. But while the credit pays the
   bill, self-managing saves nothing and costs real attention (Patroni +
-  etcd + WAL-G + restore drills + upgrades; a credible TCO analysis prices
+  etcd + WAL-G + restore drills + upgrades. A credible TCO analysis prices
   steady-state ops at ~$1k/mo of engineer time — more than the infra delta
   at our size). Reserve it for the case where we need an extension Cloud SQL
-  won't allow. "Fully in our control" is satisfied at the **sync-engine
+  will not allow. "Fully in our control" is satisfied at the **sync-engine
   layer** (all app-visible semantics ours) without owning `initdb`.
-- **Firestore/Bigtable** — wrong shape (document/wide-column; no joins/
-  general relational ACID); noted only for completeness.
+- **Firestore/Bigtable** — wrong shape (document/wide-column, no joins/
+  general relational ACID). Noted only for completeness.
 
 ### 3.3 Latency reality: Workers → GCP Postgres via Hyperdrive
 
 - **Hyperdrive** (free with Workers Paid) keeps warm pooled connections in
   the Cloudflare location nearest the origin DB, eliminating the 5–7
   round-trip TCP+TLS+auth setup per request. Cloudflare's published
-  benchmark: 1,200 ms cold direct → ~500 ms pooled → ~320 ms cached; warm
+  benchmark: 1,200 ms cold direct → ~500 ms pooled → ~320 ms cached. Warm
   uncached queries cost ~1 RTT Worker→DB-region (docs quote 20–30 ms from a
   distant region, 1–3 ms colocated). Realistic brackets for us: **~10–60 ms
   per uncached query for US users → us-central1**, ~100–250 ms EU/APAC
   (inference from published figures, not a single benchmark).
 - **Mitigations:** Smart Placement moves DB-heavy request paths next to the
-  database (multi-query requests collapse to single-digit ms per query);
+  database (multi-query requests collapse to single-digit ms per query).
   Hyperdrive read caching (60s max-age / 15s SWR, cached at every edge
-  location); batch statements per request; and — the deep fix — **the sync
+  location). Batch statements per request. And — the deep fix — **the sync
   engine itself pushes read state to the edge**, so interactive reads never
   cross the ocean at all.
 - **Plumbing constraints to design around:** transaction-mode pooling
   (~100 origin connections per config), no `LISTEN/NOTIFY`, no session
-  `PREPARE`, no advisory locks through Hyperdrive; **no GCP Private Service
+  `PREPARE`, no advisory locks through Hyperdrive. **No GCP Private Service
   Connect support** — connectivity is public IP + TLS or Cloudflare
   Tunnel / Workers VPC (Hyperdrive support added Apr 2026). The no-NOTIFY
   constraint matters for the sync engine: the capture worker that tails the
@@ -350,7 +350,7 @@ Key findings per option:
 **Cloud SQL for PostgreSQL, Enterprise edition, 8 vCPU / 52 GB regional HA,
 us-central1, ~$1,119/mo (~5 years on the credit).** Rationale for sizing up
 from the 4 vCPU floor: the credit makes cost a non-issue inside our decision
-horizon, and headroom is precisely what we lack today; a single beefy HA
+horizon, and headroom is precisely what we lack today. A single beefy HA
 Postgres with 600 pooled connections and real concurrent writers absorbs the
 entire measured workload (which one SQLite thread was carrying!) with an
 order of magnitude to spare. Add a read replica (~+$560/mo) when analytics
@@ -383,12 +383,12 @@ is `Khala Sync` / `khala-sync`, never bare `Khala`.
 already implements, on D1:
 
 - **per-scope monotonic sequences** — `sync_scopes.last_seq` claimed with an
-  atomic `INSERT … ON CONFLICT … RETURNING last_seq` (index.ts:438-456);
+  atomic `INSERT … ON CONFLICT … RETURNING last_seq` (index.ts:438-456).
 - **a mutation outbox** — `sync_outbox` rows keyed by mutation id, with
-  scope/actor/status/result;
-- **cursored snapshots** per scope (`SyncSnapshot { scope, cursor }`);
+  scope/actor/status/result.
+- **cursored snapshots** per scope (`SyncSnapshot { scope, cursor }`).
 - **scope taxonomy** — personal workroom, team, agent-run, thread, public
-  scopes (`sync-notifier.ts:46-57`);
+  scopes (`sync-notifier.ts:46-57`).
 - **DO fan-out** — `notifySyncScopes` wakes `SYNC_ROOM` objects per scope.
 
 This is the same skeleton every serious engine has: a scoped, ordered
@@ -399,22 +399,22 @@ fanout, compaction, and a Postgres-grade backing store. That is the build.
 
 ### 4.2 The landscape, as design reference (what to steal)
 
-Ten systems reviewed against primary sources; full details in the research
+Ten systems reviewed against primary sources. Full details in the research
 appendix refs. The distilled takeaways:
 
-- **ElectricSQL** (Apache-2.0, Elixir; read-path only over Postgres logical
+- **ElectricSQL** (Apache-2.0, Elixir, read-path only over Postgres logical
   replication). Steal: the **HTTP, cache-shaped, offset-resumable log
-  protocol** (shape handle + offset + ETags; long-poll with CDN request
+  protocol** (shape handle + offset + ETags, long-poll with CDN request
   collapsing — maps beautifully onto Cloudflare's cache with a DO as
-  origin); `must-refetch` as a first-class protocol message; **gatekeeper
-  auth** (JWT embedding the exact authorized shape); restricting filter
+  origin). `must-refetch` as a first-class protocol message. **Gatekeeper
+  auth** (JWT embedding the exact authorized shape). Restricting filter
   grammar to index-able predicate classes so change→subscriber matching
   stays O(1). Production proof: Trigger.dev syncs 20k updates/sec to
   browsers this way.
-- **PowerSync** (FSL; service + your-backend-owns-writes). Steal the
+- **PowerSync** (FSL, service + your-backend-owns-writes). Steal the
   **consistency discipline**: checkpoints applied atomically across all
-  buckets; a client with unacknowledged writes does not advance past its own
-  **write checkpoint**; per-bucket checksums to detect divergence; and two
+  buckets. A client with unacknowledged writes does not advance past its own
+  **write checkpoint**. Per-bucket checksums to detect divergence. And two
   hard-won write-path rules — backend write acceptance must be synchronous
   with the DB write, and validation failures must never poison the client's
   FIFO upload queue (ack + signal in-band).
@@ -443,10 +443,10 @@ appendix refs. The distilled takeaways:
   honest cost signal: a founder with a decade of sync experience, still
   reworking it 4+ years in.
 - **Figma**: split the problem — per-document authoritative process
-  (server-ordered per-property LWW, fractional indexing, "we don't need true
+  (server-ordered per-property LWW, fractional indexing, "we do not need true
   CRDTs… our server is the central authority") for high-frequency state, and
   **LiveGraph** (WAL-tailing query-subscription invalidation with live
-  permission checks) for relational metadata. Lesson: don't force one engine
+  permission checks) for relational metadata. Lesson: do not force one engine
   to serve both the canvas-grade firehose and the relational graph.
 - **Automerge/Yjs**: CRDTs are the right tool for collaborative
   text/document *fields* (store Yjs blobs in Postgres columns, sync as
@@ -455,7 +455,7 @@ appendix refs. The distilled takeaways:
   function. Every production system with a server (Figma, Linear, Zero)
   converged on server-ordered mutations.
 - **SpacetimeDB / Convex**: subscription-as-query with server-computed
-  deltas; Convex's coarse **invalidate-and-re-execute on recorded read
+  deltas. Convex's coarse **invalidate-and-re-execute on recorded read
   sets** is far simpler to build than incremental view maintenance — the
   correct v1/v2 split for our query-subscription tier. Convex's "A Map of
   Sync" (nine axes) is the best requirements checklist to run our scopes
@@ -486,8 +486,8 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
    entity_id, op, patch, tombstone, committed_at)`. The per-scope `version`
    is assigned under a row lock on the scope's counter row — ordering is
    correct **by construction**, which sidesteps the notorious outbox
-   sequence-gap trap (`nextval()` doesn't roll back, so sequence order ≠
-   commit order; a `max(seq)` poller permanently skips rows from
+   sequence-gap trap (`nextval()` does not roll back, so sequence order ≠
+   commit order. A `max(seq)` poller permanently skips rows from
    still-committing transactions). This is exactly our existing
    `sync_scopes.last_seq` pattern, kept. Why outbox before WAL: it runs
    identically on D1 today and Postgres tomorrow (the migration can ship
@@ -496,25 +496,25 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
    instead of raw table deltas. **Graduation path:** when outbox write
    amplification measurably hurts, switch capture to logical replication —
    `pgoutput` on Cloud SQL, Postgres 17 **failover slots**
-   (`failover=true`, `sync_replication_slots=on`) so a failover doesn't
+   (`failover=true`, `sync_replication_slots=on`) so a failover does not
    orphan the stream, `max_slot_wal_keep_size` as the disk-fill kill switch,
    `REPLICA IDENTITY` defaults (not FULL), and alerts on slot lag. The app
-   contract doesn't change; only the capture layer does.
+   contract does not change. Only the capture layer does.
 2. **Write path: named server-authoritative mutators with rebase (not
    CRDTs).** Replicache/Zero/Linear model: clients invoke named mutators
    optimistically against the local store, tag them with per-client
-   sequential mutation ids, and push batches; the server executes **its
+   sequential mutation ids, and push batches. The server executes **its
    own** implementation in a transaction (validation, permissions,
    side-effects), records `lastMutationId` per client, appends to the
-   changelog; on each delta the client rewinds to server state, applies the
+   changelog. On each delta the client rewinds to server state, applies the
    patch, replays unconfirmed mutations, reveals atomically. Server outcome
-   wins; mutators must be replay-safe. Two rules imported from PowerSync's
+   wins. Mutators must be replay-safe. Two rules imported from PowerSync's
    scar tissue: acceptance is synchronous with the DB transaction, and
    validation failures ack-and-signal rather than blocking the queue. Our
    Effect Schema culture is a perfect fit — every mutator is a typed,
    versioned contract in a registry, satisfying the semantic-routing and
    behavior-contract invariants by construction. **v1 offline contract:**
-   online-optimistic (Zero's position) — reads work offline, writes reject;
+   online-optimistic (Zero's position) — reads work offline, writes reject.
    full offline queue-and-replay is a later, deliberate upgrade.
 3. **Delivery: one hibernating Durable Object per scope.** The Khala Sync
    Hub DO
@@ -525,28 +525,28 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
    Electric-style. The cursor, not the connection, is the source of truth —
    sockets flap, tabs suspend, and resume is always `(scope, cursor)`.
    Bootstrap = snapshot query + the cursor at which the snapshot was taken,
-   stitched exactly (the classic silent-bug seam; make apply idempotent so
+   stitched exactly (the classic silent-bug seam, make apply idempotent so
    at-least-once is safe). A capture worker (small always-on process with a
    **direct** Postgres connection — not through Hyperdrive, which drops
    LISTEN/NOTIFY) tails the changelog and pushes to the scope DOs. Per-DO
-   throughput (~1k msg/s) caps hot-scope fan-out; shard read-replica DOs
+   throughput (~1k msg/s) caps hot-scope fan-out. Shard read-replica DOs
    behind the primary DO if a scope ever runs that hot.
-4. **Scopes = unit of sync, auth, and fan-out** (Linear's sync groups; our
+4. **Scopes = unit of sync, auth, and fan-out** (Linear's sync groups, our
    existing scope taxonomy). Keep scope predicates to index-able classes.
    Permission changes are a first-class event: revocation must **retract
    already-synced rows** — v1 handles membership/role change by forcing a
-   scope re-bootstrap (Linear's partial bootstrap); v2 graduates to
+   scope re-bootstrap (Linear's partial bootstrap). V2 graduates to
    CVR-style read-set diffing (Replicache row-version strategy), which
    makes hard deletes and permission fanout structural.
 5. **Client stores:** native SQLite on desktop (Khala Code) — schema +
-   materializer layer shared with web; on web, official SQLite-WASM on the
+   materializer layer shared with web. On web, official SQLite-WASM on the
    `opfs-sahpool` VFS (no COOP/COEP headers) with a Notion-style
-   SharedWorker single-writer-tab election; `navigator.storage.persist()`
+   SharedWorker single-writer-tab election. `navigator.storage.persist()`
    on first write. Rich-text fields ride as Yjs blobs in ordinary columns.
-6. **Compaction + escape hatch:** soft deletes with version bumps; the
-   changelog window in each DO is bounded; a client whose cursor predates
+6. **Compaction + escape hatch:** soft deletes with version bumps. The
+   changelog window in each DO is bounded. A client whose cursor predates
    the window gets `must-refetch` → fresh bootstrap, never a guess. Schema
-   version rides every push/pull; stale clients get `VersionNotSupported` →
+   version rides every push/pull. Stale clients get `VersionNotSupported` →
    clear-and-rebootstrap (never in-place client data migration).
 7. **Public counters become sync projections.** `khala-tokens-served` is
    just a public-scope entity whose value the ledger mutator bumps — pushed
@@ -557,21 +557,21 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
 **Failure modes to design for from day one** (each has a documented
 precedent): rebase correctness (never write optimistic results to the
 durable local store — Linear mutates in-memory only, the local DB gets
-server-confirmed deltas); permission-change fanout (above); snapshot/stream
-stitching; replication lag/backpressure (outbox converts this into ordinary
-table-scan backpressure we control); log compaction vs stale cursors;
+server-confirmed deltas). Permission-change fanout (above). Snapshot/stream
+stitching. Replication lag/backpressure (outbox converts this into ordinary
+table-scan backpressure we control). Log compaction vs stale cursors.
 migration coordination.
 
 **Effort calibration, honestly.** The cautionary tier is real: Linear is 4+
-years of continuous investment by sync veterans; Figma's LiveGraph
-re-architecture credited ~12 engineers; Zero took a dedicated expert team ~2
+years of continuous investment by sync veterans. Figma's LiveGraph
+re-architecture credited ~12 engineers. Zero took a dedicated expert team ~2
 years to 1.0. **But we are not signing up for that tier on day one.** The
 minimal-viable tier — outbox + per-scope versions (already built) +
 push/pull mutators with rebase + one DO hub + SQLite clients — is composed
 of individually well-specified components, and the Replicache strategy docs
 plus LiveStore's `sync-cf` source are effectively build specs. For a team
 that ships with our fleet cadence: **the v1 tier is weeks-to-a-couple-months
-of focused lanes; the CVR/partial-sync/permission-fanout tier is where the
+of focused lanes. The CVR/partial-sync/permission-fanout tier is where the
 real months live** — schedule it as its own workstream, not a footnote. The
 strategic payoff justifies it: the sync engine becomes the substrate under
 Khala Code desktop (fleet cockpit state, chat, assignments), the mobile
@@ -591,21 +591,21 @@ burns) on R2 + Analytics Engine + DO buffers, never on the relational core.
 D1 retired from the hot path (kept, if at all, as bounded staging).
 
 - **Phase 0 — stop the bleeding (days).** §2 items 1–4: counter off the
-  full-table SUM; raw-event chunks through a Queue; `d1Effect` retry; GLM
+  full-table SUM. Raw-event chunks through a Queue. `d1Effect` retry. GLM
   heartbeats to Analytics Engine. Success metric: zero `overloaded` denials
   during a 20-worker fleet accept burst without staggering.
 - **Phase 1 — stand up Postgres + Hyperdrive (week).** Provision Cloud SQL
   Enterprise HA 8 vCPU us-central1 with `cloudsql.logical_decoding=on` from
-  day one; Hyperdrive config + Smart Placement on the API Worker;
+  day one. Hyperdrive config + Smart Placement on the API Worker.
   connectivity via public IP + TLS (Hyperdrive has no GCP PSC support) or
   Workers VPC. Port one bounded, high-pain domain first as the pilot — the
   **pylon assignment/dispatch tables** (the June 29 victim), dual-written
   behind a flag, then cut over. This proves latency, pooling, and migration
   tooling on a surface with exact-verification culture already in place.
 - **Phase 2 — Khala Sync v1 (weeks, parallel lanes).** Promote `sync-worker`
-  to the outbox+mutator contract on Postgres; capture worker + per-scope Hub
-  DOs (read LiveStore `sync-cf` first); desktop client store in Khala Code
-  (its fleet cockpit is the ideal first consumer — it currently polls);
+  to the outbox+mutator contract on Postgres. Capture worker + per-scope Hub
+  DOs (read LiveStore `sync-cf` first). Desktop client store in Khala Code
+  (its fleet cockpit is the ideal first consumer — it currently polls).
   public-counter projection replaces the SUM permanently. v1 contract:
   online-optimistic writes, scope re-bootstrap on permission change.
 - **Phase 3 — migrate the core, domain by domain (weeks→months).** Ledger +
@@ -615,13 +615,13 @@ D1 retired from the hot path (kept, if at all, as bounded staging).
   consolidation rides along (25 tasks/min re-homed onto Postgres or the
   scheduler DO).
 - **Phase 4 — graduate (when metrics demand).** CVR read-set diffing for
-  partial sync + permission fanout; WAL/pgoutput capture with PG17 failover
-  slots if outbox amplification hurts; AlloyDB or read replicas if
-  analytics/read load bite; full offline mutation queue if the product
+  partial sync + permission fanout. WAL/pgoutput capture with PG17 failover
+  slots if outbox amplification hurts. AlloyDB or read replicas if
+  analytics/read load bite. Full offline mutation queue if the product
   needs it.
 
 Each phase lands as issues in the standard fleet-delegation pipeline
-(EXECUTION.md); Phase 0 items are singles, Phase 2 decomposes cleanly into
+(EXECUTION.md). Phase 0 items are singles, Phase 2 decomposes cleanly into
 the contracts/capture/hub/client lanes.
 
 ## 6. Owner decision points
@@ -654,27 +654,27 @@ the contracts/capture/hub/client lanes.
   embryo), `docs/afteraction/2026-06-29-codex-fleet-throughput-collapse-after-action.md`
   (the incident).
 - D1: developers.cloudflare.com/d1/platform/limits, /observability/debug-d1,
-  /best-practices/retry-queries, /best-practices/read-replication;
+  /best-practices/retry-queries, /best-practices/read-replication.
   blog.cloudflare.com/sqlite-in-durable-objects,
-  /d1-read-replication-beta; community overload reports (443-row DB,
+  /d1-read-replication-beta. Community overload reports (443-row DB,
   40 MB idle DB, per-minute crons) linked in the research pass.
 - Hyperdrive: developers.cloudflare.com/hyperdrive (how-it-works, limits,
-  query-caching, connect-to-private-database);
+  query-caching, connect-to-private-database).
   blog.cloudflare.com/how-hyperdrive-speeds-up-database-access.
 - GCP: cloud.google.com/sql/pricing, /sql/docs/postgres/replication/
   configure-logical-replication (pgoutput/wal2json), /alloydb/pricing,
   docs.cloud.google.com/alloydb/docs/reference/alloydb-flags,
   /spanner/docs/postgresql-interface (no logical decoding),
-  compute pricing pages; GCP calculator for re-verification.
-- Sync engines: electric.ax (shapes, HTTP API, auth, benchmarks);
-  docs.powersync.com (consistency, protocol, writing-client-changes);
-  zero.rocicorp.dev (connecting-to-postgres, mutators, offline);
-  github.com/livestorejs/livestore (sync-cf provider, event sourcing);
-  doc.replicache.dev (how-it-works, strategies ladder);
+  compute pricing pages. GCP calculator for re-verification.
+- Sync engines: electric.ax (shapes, HTTP API, auth, benchmarks).
+  docs.powersync.com (consistency, protocol, writing-client-changes).
+  zero.rocicorp.dev (connecting-to-postgres, mutators, offline).
+  github.com/livestorejs/livestore (sync-cf provider, event sourcing).
+  doc.replicache.dev (how-it-works, strategies ladder).
   linear.app/now/scaling-the-linear-sync-engine +
-  github.com/wzhudev/reverse-linear-sync-engine;
-  figma.com/blog multiplayer + LiveGraph posts;
-  martin.kleppmann.com CRDT-hard-parts; stack.convex.dev/a-map-of-sync;
-  postgresql.org logical-decoding + PG17 logical-replication-failover;
-  morling.dev replication-slots + outbox; sequinstream.com
-  sequence-commit-order; notion.com WASM-SQLite post.
+  github.com/wzhudev/reverse-linear-sync-engine.
+  figma.com/blog multiplayer + LiveGraph posts.
+  martin.kleppmann.com CRDT-hard-parts. Stack.convex.dev/a-map-of-sync.
+  postgresql.org logical-decoding + PG17 logical-replication-failover.
+  morling.dev replication-slots + outbox. Sequinstream.com
+  sequence-commit-order. Notion.com WASM-SQLite post.

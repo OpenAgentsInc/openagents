@@ -1,14 +1,14 @@
 # RX-11 Reactor Improvement Ladder
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
 
 Date: 2026-07-04
 Issue: [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279)
-Status: design doc plus internal dogfood receipts landed; no customer flywheel
+Status: design doc plus internal dogfood receipts landed. No customer flywheel
 or public capability claim.
 
 RX-11 makes Reactor's improvement ladder explicit:
@@ -31,12 +31,12 @@ then make weights carry the work only when deterministic harness gains flatten.
 
 For customer deployments, every ladder run must record:
 
-- consent receipt ref before interaction data is captured;
-- dataset snapshot ref;
-- training or harness run ref;
-- eval delta ref;
-- boundary ref (`customer_premises` or BF-3.4 regulated-private lane);
-- resulting weights owner ref;
+- consent receipt ref before interaction data is captured.
+- dataset snapshot ref.
+- training or harness run ref.
+- eval delta ref.
+- boundary ref (`customer_premises` or BF-3.4 regulated-private lane).
+- resulting weights owner ref.
 - model-policy ref/version for both source and candidate artifacts.
 
 Receipts, metrics, and opaque refs may leave the boundary. Raw customer
@@ -46,10 +46,10 @@ interaction data, prompts, documents, outputs, and trained weights do not.
 
 Distill-to-fit is not a free model swap. The candidate artifact must pass:
 
-- input-distribution capture receipt;
-- distillation run receipt;
-- eval delta receipt covering quality and cost;
-- `reactor.model_policy.v1` revalidation on the source and distilled artifact;
+- input-distribution capture receipt.
+- distillation run receipt.
+- eval delta receipt covering quality and cost.
+- `reactor.model_policy.v1` revalidation on the source and distilled artifact.
 - RX-3 router gate before any route can move.
 
 The source code receipt intentionally keeps `routeSwapAuthorized: false` for

@@ -2,7 +2,7 @@
 
 > **Current status (2026-07-05, #8387): retired/deferred.** The standalone Khala
 > MPP/x402 chat endpoint and Stripe MPP discovery/config were removed from
-> current main. This plan is preserved as historical strategy context only; any
+> current main. This plan is preserved as historical strategy context only. Any
 > future Machine Payments surface needs fresh owner approval and receipt-first
 > implementation.
 
@@ -18,7 +18,7 @@ Grounded in the live Stripe docs (read via the Stripe MCP) and the survey in
 > issuer — and it **leads** the 402), **USDC/crypto**, and **card/SPT**. The Stripe
 > profile `@openagents` is live (`profile_61Uug9…`), crypto payins enabled, and
 > `/openapi.json` advertises the offers lightning-first. The **owner decision below was
-> made: accept MPP** (USDC/card settle to Stripe balance; Bitcoin/Spark stays the
+> made: accept MPP** (USDC/card settle to Stripe balance, Bitcoin/Spark stays the
 > contributor-payout rail). The only thing still pending is the Stripe Directory **badge**
 > (external async crawl). The plan/decisions below are preserved as the original
 > 2026-06-22 design context. Current status & ops:
@@ -46,7 +46,7 @@ Machine payments let agents pay for individual HTTP requests. The mechanism is a
 3. Server **verifies** the credential and **serves** the response (the completion).
 
 - SDK: **`Mppx.create(...)`** per payment method + **`Mppx.compose(...)`** to accept
-  several at once (TypeScript); `Mpp.create` (Python). Stripe API version
+  several at once (TypeScript). `Mpp.create` (Python). Stripe API version
   `2026-03-04.preview`. Starter: `github.com/stripe-samples/machine-payments`.
 - **Payment rails MPP supports** (this is the crux for us):
   | Network | Protocol | Currency | Settles to |
@@ -55,25 +55,25 @@ Machine payments let agents pay for individual HTTP requests. The mechanism is a
   | Solana | MPP | USDC | Stripe balance → fiat |
   | Tempo | MPP | USDC | Stripe balance → fiat |
   | Stripe card networks | MPP (via Shared Payment Tokens) | cards/Link | Stripe balance → fiat |
-- **Microtransactions** down to **0.01 USDC**; payments land in the **Stripe
-  balance and settle in fiat**; refunds supported. Stablecoin payins need
-  "crypto payins" enabled; card/SPT needs a **US legal entity**.
+- **Microtransactions** down to **0.01 USDC**. Payments land in the **Stripe
+  balance and settle in fiat**. Refunds supported. Stablecoin payins need
+  "crypto payins" enabled. Card/SPT needs a **US legal entity**.
 
-## The rails decision (read this first — it's the real question)
+## The rails decision (read this first — it is the real question)
 
 > **Correction (2026-06-23):** the premise below — that MPP is "NOT
 > Bitcoin/Lightning" and that Lightning is "our native rail, NOT an MPP option" —
 > turned out to be **wrong**. MPP's 402 challenge is rail-agnostic, so we mint a real
 > **BOLT11 Lightning invoice as a 402 challenge** and verify the preimage locally.
 > Lightning is now a first-class MPP rail and in fact **leads** the 402 (Spark PRIMARY
-> issuer via the `MDK_TREASURY` container; MDK fallback). The owner call to accept MPP
-> was made; USDC/card still settle to a Stripe balance, while Lightning is real Bitcoin
+> issuer via the `MDK_TREASURY` container. MDK fallback). The owner call to accept MPP
+> was made. USDC/card still settle to a Stripe balance, while Lightning is real Bitcoin
 > in. The original framing is kept below for design context.
 
 **MPP money is USDC or card → a Stripe balance → fiat. It is NOT Bitcoin/Lightning.**
 That directly meets the workspace's standing **"Bitcoin-only, no Stripe for the
 credits business"** stance. So MPP is **not** a drop-in for our Spark/Lightning rail —
-it's a *different, Stripe-mediated inbound rail*. Two things to separate:
+it is a *different, Stripe-mediated inbound rail*. Two things to separate:
 
 - **Discovery (cheap, low-commitment, do regardless):** being *listed* in the Stripe
   Directory + publishing agent-discovery surfaces (`llms.txt`, `/agents`) costs us
@@ -89,7 +89,7 @@ it's a *different, Stripe-mediated inbound rail*. Two things to separate:
 3. **MPP card via SPT → Stripe balance** — fully Stripe, needs US entity.
 4. *(our native rail, NOT an MPP option:* **Bitcoin/Spark** *)*.
 
-**Recommendation:** ship **discovery now** (Phase 1) unconditionally; for payments,
+**Recommendation:** ship **discovery now** (Phase 1) unconditionally. For payments,
 default to **x402/USDC** (closest to our crypto-native ethos) as the agent-pay rail,
 treat an MPP USDC charge as a **new "credits-in" path** that mints Khala credits and
 then runs the *existing* metering + receipt + **Bitcoin contributor-payout** loop
@@ -109,18 +109,18 @@ metering + receipts + the Bitcoin payout loop. The MPP work wraps that.
   This is *required* to be listed at all (`stripe directory me` currently returns
   "Your account does not have a Stripe profile"). Capture the **`profile_…` network
   profile ID** (needed for SPT). Live account is **OpenAgents, Inc.** (`acct_1Ln7jh…`).
-- If accepting payments: enable **crypto payins** on the account (USDC); for card-SPT,
+- If accepting payments: enable **crypto payins** on the account (USDC). For card-SPT,
   confirm US-entity eligibility.
 
 ### Phase 1 — discovery surfaces (cheap, ship first, no payment commitment)
 Publish on `openagents.com` (the Worker), following the live PostalForm/Zinc pattern:
 - **`/llms.txt`** — plain-language description ("OpenAI-compatible LLM inference API,
-  pay-per-call; models `openagents/khala-*`; verified coding outcomes"), best-fit/
+  pay-per-call. Models `openagents/khala-*`. Verified coding outcomes"), best-fit/
   not-a-fit, key facts, pricing pointer, and links to the agent surfaces below.
 - **`/agents.md`** (or `/agents`) — machine-payment workflows + how to call Khala.
 - **`/ai.md`** + **`/skill.md`** — AI instructions + MCP/skill setup (optional, mirrors
   PostalForm).
-- Ensure **StripeBot can crawl** the site (don't block the crawler) so the directory
+- Ensure **StripeBot can crawl** the site (do not block the crawler) so the directory
   matches us on "inference"/"llm api" searches. Write the profile description in the
   words agents type ("pay-per-call OpenAI-compatible inference"), list all capabilities.
 
@@ -128,14 +128,14 @@ Publish on `openagents.com` (the Worker), following the live PostalForm/Zinc pat
 A **402-gated Khala endpoint** (e.g. `https://openagents.com/mpp/v1/chat/completions`,
 or the existing route behind an MPP flag). Using `Mppx.compose` (or x402 middleware):
 - No credential → **`402`** + `WWW-Authenticate` challenge(s): price per request
-  (map to our per-token pricing; can quote a flat per-call or estimate-then-settle).
+  (map to our per-token pricing, can quote a flat per-call or estimate-then-settle).
 - Valid credential → **verify**, run the Khala completion (the same gateway path),
   **return it** + the `openagents` receipt block.
-- **Runtime note:** the `Mppx`/`Mpp` SDKs are Node; the gateway is **Cloudflare
-  Workers**. Either implement the 402-challenge/verify logic Worker-native (it's a
+- **Runtime note:** the `Mppx`/`Mpp` SDKs are Node. The gateway is **Cloudflare
+  Workers**. Either implement the 402-challenge/verify logic Worker-native (it is a
   small protocol — 402 + `WWW-Authenticate` + credential verify) or run a thin Node
   **MPP sidecar** (Cloud Run / a Pylon) that fronts the Worker. Decide during build.
-- **Pricing:** Khala is paid; per-call price derives from the existing pricing-model
+- **Pricing:** Khala is paid. Per-call price derives from the existing pricing-model
   doc ($0.01/credit basis, per-token). Microtransactions to 0.01 USDC are supported.
 
 ### Phase 3 — unify with the credits + Bitcoin loop
@@ -154,7 +154,7 @@ call" story).
 
 1. **Do we accept Stripe-mediated USDC/card at all?** (vs. Bitcoin-only.) The central
    call — it reintroduces Stripe to the money path. Discovery (Phase 1) does **not**
-   require answering this; the paid endpoint (Phase 2) does.
+   require answering this. The paid endpoint (Phase 2) does.
 2. **Which pay rail** if yes: x402/USDC (recommended, crypto-native), MPP USDC via
    Stripe, and/or card-SPT (US entity).
 3. **Stripe profile** creation + crypto-payins enablement (owner, Dashboard).
@@ -163,15 +163,15 @@ call" story).
 
 ## Next steps (sequenced)
 
-- [ ] **(owner)** Create the OpenAgents public Stripe profile; capture `profile_…`.
+- [ ] **(owner)** Create the OpenAgents public Stripe profile. Capture `profile_…`.
 - [ ] **(us, no decision needed)** Ship Phase-1 discovery surfaces (`/llms.txt`,
       `/agents.md`) on the Worker + confirm StripeBot can crawl → get listed.
 - [ ] **(owner decision)** Approve a pay rail (x402/USDC recommended) and whether to
       accept Stripe-custodied funds.
 - [ ] **(us)** Build the 402-gated Khala endpoint (Worker-native or Node sidecar) +
-      per-call pricing; wire settled payment → Khala credits → existing loop.
+      per-call pricing. Wire settled payment → Khala credits → existing loop.
 - [ ] **(verify)** `stripe directory search "llm inference api" --mpp-supported` shows
-      **Khala** (and we're the first inference result); `mppx fetch <endpoint>` pays +
+      **Khala** (and we're the first inference result). `mppx fetch <endpoint>` pays +
       returns a completion end-to-end.
 
 ## References
@@ -182,4 +182,4 @@ call" story).
 - Stripe Directory — <https://docs.stripe.com/directory.md> · MPP — <https://mpp.dev> · `mppx` — npm `mppx`
 - StripeBot crawler — <https://docs.stripe.com/stripebot-crawler.md>
 - Live example pattern (PostalForm): `/llms.txt`, `/agents.md`, `/mpp.md`, `/skill.md`, `/ai.md`
-- Our pricing basis — `docs/inference/2026-06-19-pricing-model.md`; revenue loop — EPIC #5457
+- Our pricing basis — `docs/inference/2026-06-19-pricing-model.md`. Revenue loop — EPIC #5457

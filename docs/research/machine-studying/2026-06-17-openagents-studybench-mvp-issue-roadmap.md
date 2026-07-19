@@ -1,7 +1,7 @@
 # OpenAgents StudyBench MVP Issue Roadmap
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-17
@@ -281,13 +281,13 @@ Implementation:
   `forbiddenClaimRefs`, `privateMaterialPolicyRefs`, `expectedFiles`, and
   `budgetClass`.
 - Add decoders and validators:
-  - weights sum to 100;
-  - every rubric `span_ids` entry resolves to an evidence span;
-  - every evidence span has path, start line, end line, and excerpt;
+  - weights sum to 100.
+  - every rubric `span_ids` entry resolves to an evidence span.
+  - every evidence span has path, start line, end line, and excerpt.
   - visibility is one of `external_public_calibration`,
     `openagents_public_retained`, `openagents_private_validation`, or
-    `openagents_private_holdout`;
-  - public packages cannot include private validation or holdout rows;
+    `openagents_private_holdout`.
+  - public packages cannot include private validation or holdout rows.
   - public rows pass existing Probe public projection validation.
 - Export the new schemas from `src/index.ts`.
 
@@ -372,7 +372,7 @@ Implementation:
 - Store dataset slug, config, expected split, license refs, source attribution
   refs, and loader instructions.
 - Keep network fetching out of runtime validators. Runtime should validate
-  loaded rows; operator scripts can fetch datasets.
+  loaded rows. Operator scripts can fetch datasets.
 
 Acceptance:
 
@@ -448,7 +448,7 @@ Implementation:
 - Commit only public-safe dataset refs, split refs, checksums, and policy refs.
 - Add or confirm `.gitignore` coverage for any local private row directory.
 - Define leak response: retire leaked rows and mint a new holdout split.
-- Define evaluator access: scorer may see gold/rubric/evidence for grading;
+- Define evaluator access: scorer may see gold/rubric/evidence for grading.
   candidate agents may not see private gold answers or private rubrics.
 
 Acceptance:
@@ -486,7 +486,7 @@ Implementation:
   `finalScoreBps`, `claimScores`, `goldAnswerRef`, `redactionState`, and
   `evidenceUseRefs`.
 - Support two scoring modes:
-  - `manual_or_judge_supplied`: MVP mode; validates an externally supplied
+  - `manual_or_judge_supplied`: MVP mode. Validates an externally supplied
     claim-score vector.
   - `deterministic_check`: optional for tasks with exact tests.
 - Enforce that weights in the score vector match the task rubric.
@@ -801,8 +801,8 @@ Current anchors:
 Implementation:
 
 - Run three fixed-budget conditions:
-  - baseline with no study packet;
-  - study packet mounted;
+  - baseline with no study packet.
+  - study packet mounted.
   - study packet plus GEPA-optimized candidate text bundle.
 - For MVP, use public-retained rows and private validation rows only.
 - Capture pass rate, weighted score, core-gate pass rate, token/tool budget,
@@ -937,5 +937,5 @@ The MVP is complete when:
 - This does not grant settlement or payout authority.
 - This does not make Tassadar responsible for model answer quality.
 - This does not make Psionic optimizer acceptance into runtime promotion.
-- This does not replace Terminal-Bench; it complements Terminal-Bench with
+- This does not replace Terminal-Bench. It complements Terminal-Bench with
   source-grounded claim rubrics.

@@ -50,13 +50,13 @@ The smoke composes existing projections:
 
 The smoke requires:
 
-- an accepted or completed `create_goal` command for `agent_artanis`;
-- an active Artanis loop for the same public goal ref;
-- a completed loop tick for that goal;
-- a safe `status_projection` action result;
-- a delivered Artanis Forum publication intent with a public post ref;
-- `/artanis` included in public report URLs;
-- `/artanis` linking the public Artanis Forum section;
+- an accepted or completed `create_goal` command for `agent_artanis`.
+- an active Artanis loop for the same public goal ref.
+- a completed loop tick for that goal.
+- a safe `status_projection` action result.
+- a delivered Artanis Forum publication intent with a public post ref.
+- `/artanis` included in public report URLs.
+- `/artanis` linking the public Artanis Forum section.
 - public-safe receipt and artifact refs.
 
 ## Public Projection
@@ -70,9 +70,9 @@ The smoke projection includes:
 - `forumIntentRef`
 - `forumPostRef`
 - `forumTopicRef`
-- public summary refs for `/artanis`, the report route, and Forum links;
-- receipt refs;
-- artifact refs;
+- public summary refs for `/artanis`, the report route, and Forum links.
+- receipt refs.
+- artifact refs.
 - stage rows for operator goal, loop claim, safe result, Forum post, and
   public summary.
 
@@ -81,9 +81,9 @@ The smoke projection includes:
 The smoke intentionally records blockers that remain true before production
 launch claims:
 
-- live spend requires an operator-approved spend gate;
-- provider mutation requires separate authority;
-- runtime promotion requires a release gate;
+- live spend requires an operator-approved spend gate.
+- provider mutation requires separate authority.
+- runtime promotion requires a release gate.
 - settlement requires public receipt chains.
 
 Those blockers are part of the smoke output so launch notes cannot accidentally
@@ -94,8 +94,8 @@ settlement authority.
 
 The smoke rejects:
 
-- missing delivered Forum post;
-- public report projections that do not link `/artanis`;
+- missing delivered Forum post.
+- public report projections that do not link `/artanis`.
 - provider, runner, wallet, payment, customer, private repo, secret, raw
   prompt, raw log, raw payload, raw source archive, and raw timestamp material.
 
@@ -109,10 +109,10 @@ Coverage lives in `workers/api/src/artanis-launch-smoke.test.ts`.
 The tests cover:
 
 - the full operator steering -> loop claim -> safe result -> Forum post ->
-  `/artanis` summary chain;
-- public-safe receipt, artifact, Forum, and summary refs;
+  `/artanis` summary chain.
+- public-safe receipt, artifact, Forum, and summary refs.
 - blockers before live spend, provider mutation, runtime promotion, and
-  settlement;
-- missing delivered Forum post rejection;
-- missing `/artanis` summary link rejection;
+  settlement.
+- missing delivered Forum post rejection.
+- missing `/artanis` summary link rejection.
 - unsafe public material rejection.

@@ -9,9 +9,9 @@ This is the *operational* companion to the canonical
 **"Khala -> Pylon -> Codex Coding Delegation Runbook"** in
 [`CLAUDE.md`](../../CLAUDE.md) (the protocol/proof source of truth) and the
 [`2026-06-26` delegation after-action](../afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md).
-Read the CLAUDE.md section for the request/proof contract; read this file for how
+Read the CLAUDE.md section for the request/proof contract. Read this file for how
 to run the engine 24/7, scale it, and debug a stall. The deeper E2E smoke doc is
-`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`; the invariant
+`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`. The invariant
 ledger is `apps/openagents.com/INVARIANTS.md` ("Khala Coding Delegation Through
 Pylons").
 
@@ -48,7 +48,7 @@ A launchd job (`KeepAlive`) that keeps the owner Pylon **online and executing
 leased assignments**. It loops every 60s.
 
 - **launchd label: `com.openagents.pylon.fable`** (verified:
-  `launchctl list | grep openagents` → `com.openagents.pylon.fable`; its plist
+  `launchctl list | grep openagents` → `com.openagents.pylon.fable`. Its plist
   `ProgramArguments` is `/usr/bin/caffeinate -s …/.pylon-fable/bin/standing-pylon.sh`).
   - *Correction to prior notes:* the separate job `com.openagents.pylon-node`
     is **not** the standing pylon — it runs
@@ -105,7 +105,7 @@ Behavior (verified from the scripts):
   `khala request --workflow codex_agent_task …` (which auto-runs the matching
   local `assignment run-no-spend` to closeout), round-robin across ready accounts
   via `--account-ref`, pinned to a rotated public backlog issue + current
-  `origin/main` HEAD. On 409/`target_pylon_unavailable` → `refused` backoff; on
+  `origin/main` HEAD. On 409/`target_pylon_unavailable` → `refused` backoff. On
   429/rate-limit → `rate_limited` backoff. Exponential backoff
   `SUP_BACKOFF_MIN`→`SUP_BACKOFF_MAX` (**15s → 300s**). On a finished session the
   worker immediately fires the next → continuous refill.
@@ -133,7 +133,7 @@ Verified defaults (overridable via env), from `codex-supervisor.sh`:
 
 > **Critical: `SUP_PYLON_REF` defaults to the stale `pylon.33afd48282a649047e3a`
 > — you MUST override it to the current pylon ref.** A previously-used live ref
-> was `pylon.a1469b9cdf6965a57530`, but pylon refs drift; **always fetch the live
+> was `pylon.a1469b9cdf6965a57530`, but pylon refs drift. **Always fetch the live
 > one at launch** with `provider go-online --json` (read `codingCapacity` /
 > `pylonRef`) rather than trusting any hardcoded value.
 
@@ -164,7 +164,7 @@ bash apps/pylon/scripts/codex-supervisor/launch.sh stop      # TERM the supervis
 - State dir: `~/.codex-supervisor/` (pidfile `supervisor.pid`, `paused`,
   `desired-slots`). Log: **`~/.codex-supervisor/supervisor.log`**.
 - `launch.sh` runs the supervisor under `nohup caffeinate -i` and is idempotent
-  (won't start a second one).
+  (will not start a second one).
 
 ### 2c. The Worker dispatch gate (server-side admission)
 
@@ -182,7 +182,7 @@ It admits at most the heartbeat-advertised available Codex slots for the
 
 | HTTP | error / evidence ref | meaning |
 |---|---|---|
-| 403 | `evidence.khala_coding.target_pylon_ref.not_linked` | token doesn't own/link the pylon (the fable-token-firing 403). |
+| 403 | `evidence.khala_coding.target_pylon_ref.not_linked` | token does not own/link the pylon (the fable-token-firing 403). |
 | 409 | `target_pylon_unavailable` / `…target_pylon_ref.unavailable` | "not active, heartbeat-fresh, Codex-capable, and available." |
 | 409 | `…target_pylon_ref.dispatch_gate_blocked` (+ controlled-gate blocker refs) | pylon available but the controlled gate refused the lease. |
 
@@ -196,7 +196,7 @@ The granular admission blocker refs (`registration_not_active`,
 > (`not_active` / `stale_or_missing_heartbeat` / `not_codex_capable` /
 > `no_available_codex_capacity`) are **not** the literal strings in the coding
 > delegation gate. The actual surfaced reason for a refused codex lease is the
-> 409 `target_pylon_unavailable` text above; the granular typed refs are in the
+> 409 `target_pylon_unavailable` text above. The granular typed refs are in the
 > admission module listed above. Use those exact strings when grepping logs.
 
 ---
@@ -213,7 +213,7 @@ The granular admission blocker refs (`registration_not_active`,
   > used for caller-owned Khala coding capacity."
 
   This is the verified 403 `…target_pylon_ref.not_linked` path. So: the standing
-  pylon executes with the fable token; the supervisor fires with the Artanis
+  pylon executes with the fable token. The supervisor fires with the Artanis
   token.
 
 - **Never print agent tokens** into tracked files, commits, issue comments, or
@@ -256,7 +256,7 @@ PYLON_HOME=$HOME/.pylon-fable pylon accounts usage --account codex-N --refresh -
 Two bugs made a genuinely codex-available pylon 409 ("not Codex-capable /
 available"):
 
-1. **Heartbeat didn't refresh capabilities.** The heartbeat schema had no
+1. **Heartbeat did not refresh capabilities.** The heartbeat schema had no
    `capabilityRefs` field, so the server never refreshed registration
    capabilities from the heartbeat — and `provider go-online` is purely local,
    never re-registers. A Codex account **linked after the initial register** was
@@ -280,17 +280,17 @@ sub-condition (see §2c table).
 > the gate-fix lane. The recorded after-action for the adjacent #6358
 > counter-health deploy lists Worker version
 > `95d3fcee-f740-477d-b3c4-368f198e8255`. Treat the exact Worker version as
-> unverified here; confirm via the live deploy log / `deploy:safe` output.
+> unverified here. Confirm via the live deploy log / `deploy:safe` output.
 
 ---
 
 ## 5. Known gaps & gotchas
 
-- **Bare `presence heartbeat` doesn't advertise codex on older code** → use
+- **Bare `presence heartbeat` does not advertise codex on older code** → use
   `provider go-online` (standing pylon) or current-code heartbeat (post-#6354).
 - **`presence heartbeat` can hang (not exit).** A runtime handle can keep the
   process alive after a successful heartbeat. The standing loop uses
-  `go-online`; any heartbeat-based loop must background + `timeout` it. **A
+  `go-online`. Any heartbeat-based loop must background + `timeout` it. **A
   wedged heartbeat process stalls the whole loop** — we found one wedged ~30h.
 - **The dispatch gate is per account when per-account refs are advertised.**
   Current Worker delegation picks an advertised account slot for unpinned
@@ -299,13 +299,13 @@ sub-condition (see §2c table).
   Heartbeats without per-account refs still use the legacy pooled accounting.
 - **Over-spawning requesters thrashes.** Firing more concurrent requesters than
   advertised slots just 409-thrashes. Right-size requesters to advertised
-  concurrency. The supervisor self-throttles via backoff; **manual loops do
-  not** — don't hand-roll a second firing loop against a saturated login.
+  concurrency. The supervisor self-throttles via backoff. **Manual loops do
+  not** — do not hand-roll a second firing loop against a saturated login.
 - **Cloudflare edge blocks default urllib UA.** `Python-urllib/*` (the default
   UA) is hard-blocked at the edge (HTTP 403 / Cloudflare error 1010) for
   `/api/v1/*`. httpx / curl / node / browser are fine. Any urllib-default-UA
   client *looks* like "fleet down" when the fleet is healthy. The full WAF
-  carve-out for `/api/v1/*` is **owner-gated** (needs a Zone·WAF·Edit token);
+  carve-out for `/api/v1/*` is **owner-gated** (needs a Zone·WAF·Edit token).
   script: `~/work/scripts/cloudflare-unblock-api-v1.sh`, steps in
   `~/work/NEEDS_OWNER.md`. **Interim fix:** set any non-urllib User-Agent on the
   client.
@@ -340,7 +340,7 @@ bash apps/pylon/scripts/codex-supervisor/launch.sh stop
 
 Use this when the owner's desktop is CPU-oversubscribed but the Codex profiles
 are already authenticated under `~/.pylon-fable/accounts/codex/<ref>`. The
-offload path **copies serialized isolated Pylon account homes only**; it never
+offload path **copies serialized isolated Pylon account homes only**. It never
 runs `codex login`, never runs `pylon auth codex`, and never touches the default
 `~/.codex`.
 
@@ -420,7 +420,7 @@ curl -fsS https://openagents.com/api/public/khala-tokens-served/model-mix    # b
 
 All operational "today" totals use the America/Chicago calendar day. Do not
 compare the public `/stats` page against ad hoc queries with a different day
-boundary; the page, public history endpoint default, Artanis pace block,
+boundary. The page, public history endpoint default, Artanis pace block,
 operator fleet state, and `khala apm` all share the America/Chicago boundary.
 
 ### Live APM, including active sessions
@@ -450,7 +450,7 @@ APM triage rule:
 
 - `completedTokensPerMinute > 0` means exact closeout rows are landing.
 - `completedTokensPerMinute == 0` with `active.serverAssignmentCount > 0` and
-  increasing `active.inFlightTokens` means the fleet is still working; wait for
+  increasing `active.inFlightTokens` means the fleet is still working. Wait for
   turn closeout before calling the public counter stalled.
 - Under parallel Codex load, compare `active.serverAssignmentCount` to
   `fleet.activeAssignments.length` in the raw snapshot and inspect every
@@ -458,7 +458,7 @@ APM triage rule:
   some assignments may report `assignment_progress.tokensSoFar` while younger
   turns fall back to `pylon_codex_raw_event_chunks.byte_length` until the next
   progress event or final turn closeout. The APM number may be estimated in this
-  state; it is an observability signal, not assignment proof.
+  state. It is an observability signal, not assignment proof.
 - `active.serverAssignmentCount > 0` with `active.inFlightTokens == 0` is an
   observability gap unless the run just started. Enable progress token estimates
   on trusted operators, then re-check whether `active.serverAssignments[].source`
@@ -479,7 +479,7 @@ run instead of waiting for final turn closeout. After the Worker schema acceptin
 `tokenCountKind` is deployed, also set
 `OPENAGENTS_PYLON_CODEX_PROGRESS_TOKEN_KIND=1` on trusted operators to preserve
 whether the progress count is `exact` or `estimated`. If that schema is not yet
-deployed, omit the kind flag; `tokensSoFar` still posts.
+deployed, omit the kind flag. `tokensSoFar` still posts.
 
 ### Supervisor log signals (`~/.codex-supervisor/supervisor.log`)
 ```
@@ -493,9 +493,9 @@ counter tokensServed=… desired_slots=…            # periodic progress line
 ### Decision tree — "burn slowed / stopped"
 
 1. **Is anything *firing* requests?** The standing pylon only *executes* leased
-   assignments; it does **not** create them. You need the supervisor (or some
+   assignments. It does **not** create them. You need the supervisor (or some
    requester) firing `khala request`. No firer ⇒ no new work ⇒ counter flat.
-   → `launch.sh status`; check for `slot=… OK` / `NO-DISPATCH` lines.
+   → `launch.sh status`. Check for `slot=… OK` / `NO-DISPATCH` lines.
 2. **Is the pylon advertising `codex available > 0`?**
    → `PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts provider go-online --json`
    and read `codingCapacity` (expect `capacity.coding.codex.available=N`). If 0,
@@ -507,13 +507,13 @@ counter tokensServed=… desired_slots=…            # periodic progress line
      refused: pylon not active / heartbeat stale / not codex-capable / **no
      advertised capacity** / all slots taken (pylon-level, §5).
    - **429** (`rate_limited`) = account rate limit → add a **distinct** account
-     (§3, §8); same-account won't help.
+     (§3, §8). Same-account won't help.
 4. **Wedged heartbeat process?** A `presence heartbeat` stuck for hours stalls a
-   loop. → `ps aux | grep -i 'presence heartbeat'`; kill the wedged one; the
+   loop. → `ps aux | grep -i 'presence heartbeat'`. Kill the wedged one. The
    standing loop's `go-online` avoids this.
 5. **Right pylon ref?** `SUP_PYLON_REF` defaults to the **stale**
    `pylon.33afd48282a649047e3a`. → confirm you launched with the live ref from
-   step 2; relaunch the supervisor if not.
+   step 2. Relaunch the supervisor if not.
 
 ### Token proof (never trust the counter alone)
 
@@ -528,7 +528,7 @@ CLAUDE.md §6 for the full SQL.
 Assignment-scoped readiness evidence should be checked in this order:
 
 1. `khala apm --json` may show active in-flight estimates while the public
-   counter is flat; treat it as live operations telemetry, not completion proof.
+   counter is flat. Treat it as live operations telemetry, not completion proof.
 2. `GET /api/pylon/codex/trace-status?assignment_ref=<assignmentRef>` should
    show owner-only raw chunk presence during the run and progress toward final
    exact rows without exposing raw prompts, shell output, local paths, or
@@ -569,7 +569,7 @@ The three levers:
   homes (`~/.pylon-fable/accounts/codex/<ref>`) or a throwaway `CODEX_HOME`.
 - **NEVER** print agent tokens or secrets into tracked files, commits, issue
   comments, Forum posts, or normal terminal output. Read them from `.secrets/`.
-- **Deploy only via `deploy:safe`** (see `docs/DEPLOYMENT.md`); publish/deploy
+- **Deploy only via `deploy:safe`** (see `docs/DEPLOYMENT.md`). Publish/deploy
   only from clean `origin/main`.
 - **Own-capacity only:** no paid API, no spend, no payout claim
   (`settlementState: not_applicable`, `payoutClaimAllowed: false`).
@@ -584,7 +584,7 @@ The three levers:
 
 ## 10. "Fleet never silently stalls" watchdog (#6408)
 
-Owner mandate: **nothing may stop the fleet**; if it ever stalls it must
+Owner mandate: **nothing may stop the fleet**. If it ever stalls it must
 auto-detect and auto-recover within minutes. This is built in three Cloudflare-
 native layers (no third-party services).
 
@@ -595,10 +595,10 @@ runs every minute from the existing scheduled handler. Each tick it:
 
 1. measures the live own-capacity burn over a rolling window from
    `token_usage_events` (`demand_kind='own_capacity'`,
-   `demand_source='khala_coding_delegation'`), and reads active coding leases;
+   `demand_source='khala_coding_delegation'`), and reads active coding leases.
 2. classifies: **healthy** (burn ≥ threshold), **idle_no_work** (burn below
    threshold but no active leases — NOT an alarm), or **stalled** (burn below
-   threshold WHILE leases are held — the gate-poison failure mode);
+   threshold WHILE leases are held — the gate-poison failure mode).
 3. on **stalled** only: writes a loud `fleet_alerts` D1 row + a
    `fleet_burn_stall_watchdog` warning log, and (when configured) force-flushes
    abandoned leases for the owner pylon(s) by marking them `cancelled` +
@@ -613,13 +613,13 @@ Config (Worker `vars`, all overridable):
 | `FLEET_WATCHDOG_RECOVERY_ENABLED` | `true` | Allow auto-flush on a stall. |
 | `FLEET_WATCHDOG_WINDOW_MINUTES` | `5` | Rolling burn window. |
 | `FLEET_WATCHDOG_STALL_THRESHOLD_TOKENS` | `1000000` | Min tokens/window = healthy. |
-| `FLEET_WATCHDOG_STALE_LEASE_MIN_AGE_MINUTES` | `10` | Lease must be idle this long before it's flushable. |
-| `FLEET_WATCHDOG_OWNER_PYLON_REFS` | `""` | **Set this** (comma/space list) to enable auto-recovery; empty = alert only. |
+| `FLEET_WATCHDOG_STALE_LEASE_MIN_AGE_MINUTES` | `10` | Lease must be idle this long before it is flushable. |
+| `FLEET_WATCHDOG_OWNER_PYLON_REFS` | `""` | **Set this** (comma/space list) to enable auto-recovery. Empty = alert only. |
 
 > Auto-recovery is intentionally a **no-op until owner pylon refs are
 > configured** — a safety scoping so the watchdog never flushes a pylon it was
 > not told to own. Detection (alerting) works regardless. Coordinates with the
-> lease-TTL sweep (#6410): if that lands, prefer its sweep; this minimal flush
+> lease-TTL sweep (#6410): if that lands, prefer its sweep. This minimal flush
 > clears the same poisoned rows in the meantime.
 
 Audit a stall:
@@ -673,7 +673,7 @@ instead of backing off into silence.
 
 Issue #6433's durable target is: one lightweight GCE VM per distinct Codex
 account, each running a headless Pylon and one Codex supervisor slot under
-systemd. The desktop stops being the durable executor; it is only the place where
+systemd. The desktop stops being the durable executor. It is only the place where
 the isolated account homes are prepared and copied from.
 
 The repo pieces are:
@@ -735,7 +735,7 @@ Expected:
 
 Scale the fleet by repeating the VM shape for roughly seven distinct Codex
 accounts (`oa-codex-codex-1` ... `oa-codex-codex-7`). Distinct underlying
-accounts are the throughput multiplier; aliases or copied sessions for the same
+accounts are the throughput multiplier. Aliases or copied sessions for the same
 account may share one rate budget.
 
 ---
@@ -746,25 +746,25 @@ Verified against the repo / live system on 2026-06-27:
 
 - `~/.pylon-fable/bin/standing-pylon.sh` contents (go-online loop, concurrency=8,
   fable token).
-- launchd label `com.openagents.pylon.fable` runs it; `com.openagents.pylon-node`
+- launchd label `com.openagents.pylon.fable` runs it. `com.openagents.pylon-node`
   is a **separate** discovery-node job (`run-discovery-node.sh`).
 - Supervisor scripts + all §2b defaults (read from
   `apps/pylon/scripts/codex-supervisor/{launch.sh,codex-supervisor.sh}`).
 - Linux/GCE supervisor persistence path:
   `apps/pylon/scripts/install-codex-supervisor-systemd.sh` installs
   `openagents-codex-supervisor.service`.
-- Gate-fix commits `982c33f521` + `1cc0e9ba03` (both #6354); worker
-  `hasAvailableCodexCapacity` (line ~299) + typed refusals; `state.ts`
+- Gate-fix commits `982c33f521` + `1cc0e9ba03` (both #6354). Worker
+  `hasAvailableCodexCapacity` (line ~299) + typed refusals. `state.ts`
   `loadOrCreateRuntimeState` (line ~204).
-- Artanis token file + `oa_agent_yCqh…` prefix; Cloudflare unblock script path.
-- Public endpoints (`/khala-tokens-served`, `/history`, `/model-mix`) live;
+- Artanis token file + `oa_agent_yCqh…` prefix. Cloudflare unblock script path.
+- Public endpoints (`/khala-tokens-served`, `/history`, `/model-mix`) live.
   `pylon_codex` ~61% of the 30-day mix.
 
 Could **not** verify (flagged inline):
 
 - The exact deploy Worker version `68da222b` for the gate fix (the recorded
   #6358 deploy used `95d3fcee-…`).
-- The **live** `SUP_PYLON_REF` (refs drift; fetch via `provider go-online
-  --json` at launch). `pylon.a1469b9cdf6965a57530` was a prior live value; the
+- The **live** `SUP_PYLON_REF` (refs drift, fetch via `provider go-online
+  --json` at launch). `pylon.a1469b9cdf6965a57530` was a prior live value. The
   stale default `pylon.33afd48282a649047e3a` must not be trusted.
 - §8 throughput figures are operator measurements, not re-measured here.

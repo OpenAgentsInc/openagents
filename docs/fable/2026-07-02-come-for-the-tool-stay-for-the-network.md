@@ -2,7 +2,7 @@
 
 Date: 2026-07-02
 Status: strategy analysis/opinion doc in the Fable lane. **Nothing here is
-a product promise, served capability, or public claim copy**; the registry
+a product promise, served capability, or public claim copy**. The registry
 (`docs/promises/`, `2026-07-01.3`) governs claims, and this doc flips no
 state. Companions: the business analysis
 (`2026-07-02-khala-code-business-opportunity-and-openagents-analysis.md`),
@@ -12,7 +12,7 @@ the launch claim audit
 
 Sources: Chris Dixon, "Come for the tool, stay for the network"
 (cdixon.org, 2015-01-31) and "Designing products for single and
-multiplayer modes" (cdixon.org, 2010-06-12); plus a July 2026 public
+multiplayer modes" (cdixon.org, 2010-06-12). Plus a July 2026 public
 analysis of Suno's growth (~$40M → ~$150M revenue in a year) asking
 whether the tool/network theory still holds in the AI age — or whether AI
 creativity apps are better understood as *video games*, where the fun is
@@ -28,11 +28,11 @@ describe without naming it. Dixon's formula: *"The tool helps get to
 initial critical mass. The network creates the long term value for users,
 and defensibility for the company."* Our translation: **come for the
 fleet console, stay for the economy.** Khala Code the tool is a
-single-player fleet cockpit over subscriptions you already pay for; the
+single-player fleet cockpit over subscriptions you already pay for. The
 network is the OpenAgents economy underneath — traces → plugins → routed
 revenue share, forum identity and tipping, labor and training markets,
 Bitcoin settlement. The tool is deliberately commoditized at its core (a
-wrapper over Codex; soon Claude); the network is the only durable asset.
+wrapper over Codex. Soon Claude). The network is the only durable asset.
 This doc maps the strategy precisely, marks where the 2015 analogy breaks
 — in our favor and against us — and converts it into design prescriptions
 and metrics that slot into ROADMAP_AFTER's milestones.
@@ -55,8 +55,8 @@ second. His 2010 essay adds the design frame (borrowed from Zach Klein
 and video games): products have *modes*, users shift between them
 dynamically, and even mature network products should keep their
 single-player mode strong. VCRs time-shifted TV before rental stores
-existed; Flickr stored photos privately before it shared them. The
-caveat he attached: this isn't the only way (Facebook went network-first)
+existed. Flickr stored photos privately before it shared them. The
+caveat he attached: this is not the only way (Facebook went network-first)
 — but "starting a network from scratch is very hard."
 
 The 2026 stress test, via Suno: an AI music app grows to ~$150M revenue
@@ -66,10 +66,10 @@ or whether AI creativity apps are **games**, where value is the act of
 creation itself, the way Legos → Minecraft → Fortnite creative built
 businesses on making rather than consuming. The analysis notes the
 mature-network endgame Instagram reached (~1% of users get ~99% of
-attention; median user consumes) and asks whether Sora/Suno replay that
+attention. Median user consumes) and asks whether Sora/Suno replay that
 — while OpenAI enters the music market to eat Suno's tool. The strategic
 punchline for every AI app: *differentiate the experience, or bootstrap a
-network the mega labs can't eat.*
+network the mega labs cannot eat.*
 
 That punchline is our exact situation, with the war already at maximum
 intensity: coding is the one AI category where the labs' tools are not
@@ -89,10 +89,10 @@ an onboarding sequence. Made explicit:
 
 | Layer | Ours | State (registry) | Dixon analog |
 | --- | --- | --- | --- |
-| **The tool (single-player)** | Khala Code desktop: chat with your own Codex/Claude, unified Inbox, fleet cockpit over your own accounts, exact token accounting, session catalog, free Khala API fallback | Real on `main`; yellow pending release artifact | Instagram filters; Flickr private albums |
+| **The tool (single-player)** | Khala Code desktop: chat with your own Codex/Claude, unified Inbox, fleet cockpit over your own accounts, exact token accounting, session catalog, free Khala API fallback | Real on `main`. Yellow pending release artifact | Instagram filters. Flickr private albums |
 | **Single-player artifacts** | Your sessions, traces, solved problems, repo memory — private by default, owner-only | Real (owner-private observability today) | Photos in your camera roll |
-| **The bridge** | Consented capture + disclosure; wallet appears when money appears; forum identity one click away; earnings surfaces | Planned/yellow (`khala_code.free_plan_trace_capture.v1`, capture spine) | "Share to feed?" |
-| **The network (multiplayer)** | Trace-derived plugins routed by other agents with revenue share; forum + tipping; labor market; training rails; agent-to-agent markets on open protocols; Bitcoin settlement | Rails green (forum/tips/labor/training at small scale); the plugin economy planned | The feed; the graph |
+| **The bridge** | Consented capture + disclosure. Wallet appears when money appears. Forum identity one click away. Earnings surfaces | Planned/yellow (`khala_code.free_plan_trace_capture.v1`, capture spine) | "Share to feed?" |
+| **The network (multiplayer)** | Trace-derived plugins routed by other agents with revenue share. Forum + tipping. Labor market. Training rails. Agent-to-agent markets on open protocols. Bitcoin settlement | Rails green (forum/tips/labor/training at small scale). The plugin economy planned | The feed. The graph |
 | **The moat** | Accumulated solved-problem graph + attribution/settlement history + receipts nobody else keeps | Prospective | "Defensibility for the company" |
 
 Two properties of this mapping are worth stating plainly:
@@ -126,13 +126,13 @@ network's participants are *agents*, and every single human arrives with
 a fleet of them. One user connecting three Codex accounts and a Claude
 lane has already instantiated a small multi-party economy: workers claim
 work units, a supervisor arbitrates, tokens meter, closeouts settle. The
-docs call this out structurally (agents have no Dunbar limit; group-forming
+docs call this out structurally (agents have no Dunbar limit, group-forming
 value scales with subgroups). Practically it means **"multiplayer with
 yourself" is our default state, not a distant phase** — the same
 machinery that later clears work between strangers is exercised from day
 one inside a single household. Instagram could not rehearse its network
-with one user; we do, on every install. The cold-start bar for *the
-network working* is one user; the bar for *the network mattering* is two.
+with one user. We do, on every install. The cold-start bar for *the
+network working* is one user. The bar for *the network mattering* is two.
 
 **(b) The network is sellable before it is social.** Instagram's network
 value needed an audience. Ours needs a counterparty — and the smallest
@@ -152,11 +152,11 @@ error is *verifiably* reusable in a way a song is not.
 
 **(d) The incumbents are structurally barred from following.** A lab
 whose margin is trace redundancy (10,000 customers re-solving the same
-problem) cannot pay users for traces without repricing itself; a closed
+problem) cannot pay users for traces without repricing itself. A closed
 platform cannot let plugin authors earn from routing without
-disintermediating its own take rate; and none of them will ship a
+disintermediating its own take rate. And none of them will ship a
 console that orchestrates their competitors' subscriptions. Dixon's moat
-("defensibility for the company") is usually just switching costs; ours
+("defensibility for the company") is usually just switching costs. Ours
 is a *strategy the competitor cannot copy at any price*, which is rarer
 and better.
 
@@ -165,12 +165,12 @@ and better.
 ## 4. Where it breaks against us
 
 **(a) The tool is doubly commoditized.** Instagram's filters were briefly
-differentiated; our tool wraps a harness the incumbent gives away and
+differentiated. Our tool wraps a harness the incumbent gives away and
 can change or restrict at will. The tool war is not coming — we live
 inside it, as a dependent. This sharpens Dixon's sequencing into a
 deadline: **the network must start accruing before the wrapper position
 erodes** (Codex terms, app-server churn, or a lab shipping "use your own
-seat for background agents"). Tool-only Khala Code has a shelf life;
+seat for background agents"). Tool-only Khala Code has a shelf life.
 tool+network Khala Code does not.
 
 **(b) We already lived the network-first failure.** GPUtopia stood up
@@ -178,10 +178,10 @@ hundreds of supply-side participants with one buyer (ourselves) and died
 of it. The company's own doctrine — demand-first sequencing, "no external
 dollar, no demand claim" — is the scar tissue. Dixon's strategy is the
 formal name for the correction: never again ask users to show up for a
-network that isn't there; give them a tool that needs no one.
+network that is not there. Give them a tool that needs no one.
 
 **(c) The graduation problem is real and measurable.** Instagram's risk
-was users staying in album-mode; ours is users staying in pure-tool mode
+was users staying in album-mode. Ours is users staying in pure-tool mode
 forever — private traces, no consent, no forum identity, no earnings.
 This is made *more* likely by two of our own virtues: the tool is
 genuinely complete solo, and our privacy posture (private-by-default,
@@ -196,7 +196,7 @@ of what happens when graduation copy outruns graduation machinery.
 **(d) The 1%/99% shape arrives here too — priced, not attention-based.**
 Mature Instagram: ~1% create, ~99% consume. Mature plugin economy:
 a small fraction of contributors will supply most routed value and earn
-most fees; the median user's traces will be worth approximately nothing
+most fees. The median user's traces will be worth approximately nothing
 (the trace-triage task in ROADMAP_AFTER exists to measure this before we
 promise otherwise). That is a fine marketplace shape — but it means the
 *median* pays-you experience is cents, and the copy must sell the honest
@@ -205,7 +205,7 @@ earns"), or the network hook curdles into disappointment at scale.
 
 ---
 
-## 5. The Suno question: what if it's a game, not a network?
+## 5. The Suno question: what if it is a game, not a network?
 
 The sharpest 2026 challenge to Dixon's theory is that AI creation apps
 may be *games* — value living in the act of creating, retention living in
@@ -213,7 +213,7 @@ fun, no network phase required or forthcoming. Applied to us, the
 question is not hypothetical: coding agents demonstrably have the
 Lego/Minecraft property. Watching a fleet of workers burn down a backlog
 overnight is *fun*. The product's own vocabulary (Pylon, Khala, Artanis,
-warp-in, the RTS-shaped cockpit) leans into it; the fleet console is the
+warp-in, the RTS-shaped cockpit) leans into it. The fleet console is the
 closest thing this industry has to an actual real-time-strategy game
 whose units do your job.
 
@@ -225,7 +225,7 @@ network needs to form. But we hold a card no pure game holds: **our game
 pays out in real money on neutral rails.** The bridge from game to
 network is the moment a player's artifact earns its first sats — the
 point where Minecraft becomes a marketplace. Suno's open question is
-whether listeners ever matter more than creators; our version has a
+whether listeners ever matter more than creators. Our version has a
 cleaner resolution because our "listeners" are *paying agents routing
 work*, and the routing market (unlike the attention market) transacts in
 the same unit the creators are paid in. If the game thesis wins outright
@@ -248,15 +248,15 @@ in parentheses):
 
 1. **Make the tool best-in-class at the one job no lab will do:**
    multi-account, multi-harness fleet orchestration with exact proof.
-   Every week of tool polish should serve the jobs a lab won't copy
+   Every week of tool polish should serve the jobs a lab will not copy
    (cross-vendor, cross-account, receipts). (AW-1, WS-5/8/9.)
 2. **Ship single-player complete, network-silent.** First-run must not
    ask for forum identity, wallet, or capture consent. The tool earns
-   trust first; the network is discovered, not imposed. (A1.4.)
+   trust first. The network is discovered, not imposed. (A1.4.)
 3. **Instrument the graduation funnel as a first-class metric:** install
    → first delegation → fleet connected → consent given → forum identity
    → first sat earned → first plugin routed. Dixon's strategy is *only
-   testable* as this funnel; publish the aggregate. (A1.5, §7 below.)
+   testable* as this funnel. Publish the aggregate. (A1.5, §7 below.)
 4. **Wallet appears when money appears** (already doctrine): the first
    network surface a user sees should be a credit they can sweep, not a
    form they must fill. Tips-on-day-one via forum is the cheapest first
@@ -267,11 +267,11 @@ in parentheses):
    proof powered by the same exact-accounting spine. (A9.3.)
 6. **Treat consent as the network's front door, price it in honesty.**
    Default-private, opt-in capture, disclosure inline, paid plan as the
-   forever-private tier. Our refusal to force-graduate *is* the brand;
+   forever-private tier. Our refusal to force-graduate *is* the brand.
    the registry discipline makes it legible. (AW-3.)
 7. **Rehearse multiplayer-with-yourself into real multiplayer.** The
    claim registry, work planner, and settlement machinery run identically
-   for one household and for strangers; graduate them by *scope*, not by
+   for one household and for strangers. Graduate them by *scope*, not by
    rewrite: own fleet → design partners' fleets → open market. This is
    the GPUtopia lesson inverted into an onboarding ladder. (A6.3.)
 8. **Let the game be a game.** Invest in cockpit delight (the RTS
@@ -361,7 +361,7 @@ this doc's thesis was waiting on, from the operator himself:
   earning tips, agents posting jobs for each other) is the network phase
   becoming visible inside the tool surface rather than beside it.
 - **The deadline logic (§4) still stands.** Dogfooding sharpens the tool
-  but does not extend the wrapper's shelf life; the episode's urgency
+  but does not extend the wrapper's shelf life. The episode's urgency
   ("close the gap… we can massively parallelize armies of coding agents")
   is consistent with this doc's claim that the network must start accruing
   before the wrapper position erodes.

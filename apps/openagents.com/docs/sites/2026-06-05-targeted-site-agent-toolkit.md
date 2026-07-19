@@ -19,32 +19,32 @@ later UI, API-key, manifest, and billing integration.
 
 `targeted_site_agent_toolkit_grants` records:
 
-- unique `id` and `idempotency_key`;
-- `campaign_id` and canonical campaign `owner_user_id`;
-- public-safe `agent_ref`;
-- `scopes_json`;
-- `dry_run_default`;
-- `spend_cap_cents`;
-- `daily_send_cap`;
-- optional `suppression_policy_ref`;
-- `approval_policy`;
-- `status`;
-- bounded `metadata_json`;
+- unique `id` and `idempotency_key`.
+- `campaign_id` and canonical campaign `owner_user_id`.
+- public-safe `agent_ref`.
+- `scopes_json`.
+- `dry_run_default`.
+- `spend_cap_cents`.
+- `daily_send_cap`.
+- optional `suppression_policy_ref`.
+- `approval_policy`.
+- `status`.
+- bounded `metadata_json`.
 - lifecycle timestamps.
 
 `targeted_site_agent_toolkit_actions` records:
 
-- unique `id` and `idempotency_key`;
-- `grant_id`, `campaign_id`, and public-safe `agent_ref`;
-- `action_kind`;
-- effective `dry_run`;
-- requested cost and send count;
-- `suppression_state`;
-- `approval_state`;
-- `result_state`;
-- `receipt_ref`;
-- public-safe `reason`;
-- bounded `metadata_json`;
+- unique `id` and `idempotency_key`.
+- `grant_id`, `campaign_id`, and public-safe `agent_ref`.
+- `action_kind`.
+- effective `dry_run`.
+- requested cost and send count.
+- `suppression_state`.
+- `approval_state`.
+- `result_state`.
+- `receipt_ref`.
+- public-safe `reason`.
+- bounded `metadata_json`.
 - lifecycle timestamps.
 
 ## Scopes
@@ -73,30 +73,30 @@ Action kinds map one-to-one onto these scopes:
 
 `createTargetedSiteAgentToolkitGrant`:
 
-- requires an active, unarchived campaign;
-- enforces owner authority unless `isAdmin` is explicitly true;
+- requires an active, unarchived campaign.
+- enforces owner authority unless `isAdmin` is explicitly true.
 - records the canonical campaign owner, not the caller-supplied user when an
-  admin creates a grant;
-- requires at least one scope;
-- defaults to `dryRunDefault: true`;
-- defaults approval policy to `auto_dry_run_only`;
-- records spend and daily-send caps;
-- records idempotently by grant `idempotency_key`;
+  admin creates a grant.
+- requires at least one scope.
+- defaults to `dryRunDefault: true`.
+- defaults approval policy to `auto_dry_run_only`.
+- records spend and daily-send caps.
+- records idempotently by grant `idempotency_key`.
 - rejects raw provider, email, private customer, payment, wallet, token,
   invoice, preimage, and secret-like material in refs or metadata.
 
 `recordTargetedSiteAgentToolkitAction`:
 
-- requires an active grant;
-- derives the effective dry-run value from the action input or grant default;
-- rejects missing required scopes;
-- blocks non-dry-run actions for `auto_dry_run_only` grants;
-- blocks requested costs above the grant spend cap;
-- blocks requested sends above the same-day send cap;
-- blocks suppressed or manual-review suppression states;
+- requires an active grant.
+- derives the effective dry-run value from the action input or grant default.
+- rejects missing required scopes.
+- blocks non-dry-run actions for `auto_dry_run_only` grants.
+- blocks requested costs above the grant spend cap.
+- blocks requested sends above the same-day send cap.
+- blocks suppressed or manual-review suppression states.
 - blocks non-dry-run owner/operator approval grants unless the action records
-  `approvalState: approved`;
-- records idempotently by action `idempotency_key`;
+  `approvalState: approved`.
+- records idempotently by action `idempotency_key`.
 - generates a deterministic receipt ref from action kind and idempotency key
   when the caller does not provide one.
 
@@ -104,24 +104,24 @@ Action kinds map one-to-one onto these scopes:
 
 `agentToolkitActionContract` returns the machine-readable grant contract:
 
-- grant id;
-- campaign id;
-- agent ref;
-- scopes;
-- dry-run default;
-- spend cap;
-- daily send cap;
-- approval policy;
+- grant id.
+- campaign id.
+- agent ref.
+- scopes.
+- dry-run default.
+- spend cap.
+- daily send cap.
+- approval policy.
 - status.
 
 `publicTargetedSiteAgentToolkitActionProjection` exposes only:
 
-- campaign id;
-- action kind;
-- dry-run flag;
-- approval state;
-- result state;
-- receipt ref;
+- campaign id.
+- action kind.
+- dry-run flag.
+- approval state.
+- result state.
+- receipt ref.
 - created timestamp.
 
 It does not expose raw metadata, agent private material, internal reasons, or

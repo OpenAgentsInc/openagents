@@ -2,30 +2,30 @@
 
 Date: 2026-07-19
 Status: canonical IDE build sequence
-Baseline: OpenAgents `43b5dbc56e`; Cursor evidence through 3.11.13
+Baseline: OpenAgents `43b5dbc56e`. Cursor evidence through 3.11.13
 
 ## Purpose and authority
 
 This is the single implementation roadmap for the OpenAgents IDE. It replaces
 the overlapping packet sequences in the dated files in this directory. Those
-files remain architecture, package, and reference evidence; they no longer
+files remain architecture, package, and reference evidence. They no longer
 independently define order or completion.
 
 The product contracts remain authoritative for intent:
 
-- `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7;
-- `specs/openagents/cursor-capability-parity.product-spec.md` revision 3;
-- `specs/openagents/portable-coding-sessions.product-spec.md` revision 4;
-- `specs/openagents/managed-agent-sandboxes.product-spec.md` revision 1;
+- `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7.
+- `specs/openagents/cursor-capability-parity.product-spec.md` revision 3.
+- `specs/openagents/portable-coding-sessions.product-spec.md` revision 4.
+- `specs/openagents/managed-agent-sandboxes.product-spec.md` revision 1.
 - `specs/openagents/sarah-owner-orchestrator.product-spec.md` revision 4 as a
-  brokered managed-sandbox consumer, not IDE authority;
+  brokered managed-sandbox consumer, not IDE authority.
 - mobile revision 7 and web revision 7 for supervision and public sharing.
 
 `specs/IDE_ROADMAP_CROSSWALK.md` is the exhaustive traceability index from
 IDE-00..19 to those ProductSpec criteria, the unchanged Full Auto and Fast
 Follow dependencies, and the exact-subject Desktop/Cursor AssuranceSpec
 proposals. The proposals are structurally valid but remain `proposed` with
-every obligation `needs_design`; they are not implementation, proof, release,
+every obligation `needs_design`. They are not implementation, proof, release,
 or parity evidence.
 
 `docs/sol/MASTER_ROADMAP.md`, current code, live work packets, tests, and
@@ -45,16 +45,16 @@ placement, authority, receipt, and data-custody architecture unbundled.
 This roadmap reconciles the following local evidence rather than starting a
 new design:
 
-- the Monaco/Pierre basic IDE plan;
-- the VS Code TypeScript package-reuse analysis;
-- the Zed agent-IDE adaptation analysis;
-- the Zed-quality Effect/Rust architecture decision;
-- the Cursor product and full local-storage teardown;
+- the Monaco/Pierre basic IDE plan.
+- the VS Code TypeScript package-reuse analysis.
+- the Zed agent-IDE adaptation analysis.
+- the Zed-quality Effect/Rust architecture decision.
+- the Cursor product and full local-storage teardown.
 - the Ascii Box/Optibox managed-sandbox teardown and OpenAgents GCP fit
-  analysis;
+  analysis.
 - the owner-accepted managed-sandbox implementation plan and native SBX issue
-  ledger;
-- the Cursor parity and Desktop ProductSpecs;
+  ledger.
+- the Cursor parity and Desktop ProductSpecs.
 - the current Desktop package graph, renderer, workspace services, command
   contracts, guarantees, and recent Editor-first commits.
 
@@ -67,8 +67,8 @@ The sources have different jobs:
 
 | Source     | What OpenAgents takes                                                                                                                                             | What OpenAgents does not take                                                                                     |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Zed        | one coherent project/document/language/Git/terminal/agent graph; agent context and code evidence as native IDE concepts                                           | GPUI, a Rust application core, or Zed's editor implementation                                                     |
-| VS Code    | Monaco; focused URI, language, LSP, terminal, debug, and behavior-test lessons                                                                                    | a Code-OSS fork, Explorer/workbench internals, or trusted extension host                                          |
+| Zed        | one coherent project/document/language/Git/terminal/agent graph. Agent context and code evidence as native IDE concepts                                           | GPUI, a Rust application core, or Zed's editor implementation                                                     |
+| VS Code    | Monaco. Focused URI, language, LSP, terminal, debug, and behavior-test lessons                                                                                    | a Code-OSS fork, Explorer/workbench internals, or trusted extension host                                          |
 | Pierre     | focused React tree and diff kernels, theming seams, virtualized review UX                                                                                         | filesystem, Git, document, mutation, session, or policy authority                                                 |
 | Cursor     | the complete capability breadth users now expect and the concrete local-data failure modes to avoid                                                               | closed custody, cloud-only inference, plaintext auth in a general state DB, hidden uploads, or fragmented erasure |
 | OpenAgents | Effect-owned authority, existing workspace/document/Git/agent services, portable sessions, exact model identity, approvals, receipts, and public-safe projections | duplicated state graphs or UI claims unsupported by current evidence                                              |
@@ -80,20 +80,20 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 ### Implemented substrate to preserve
 
-- explicit workspace grants and root-private filesystem authority;
-- root-relative path references in the renderer;
-- lazy paged browsing with ignore, secret, binary, and symlink policy;
-- cancellable bounded path and content search;
-- recursive watcher invalidation and overflow handling;
+- explicit workspace grants and root-private filesystem authority.
+- root-relative path references in the renderer.
+- lazy paged browsing with ignore, secret, binary, and symlink policy.
+- cancellable bounded path and content search.
+- recursive watcher invalidation and overflow handling.
 - typed create, rename, non-recursive delete, reveal, open, save, save-as,
-  external-change conflict, and grant-revocation flows;
+  external-change conflict, and grant-revocation flows.
 - dirty tabs, close confirmation, revision-aware recovery drafts, selection,
-  basic find, and undo/redo scaffolding;
-- typed Git status and bounded, stale-checked, secret-aware diffs;
-- typed terminal sessions with bounded/redacted output and process cleanup;
-- one Desktop command registry and durable keybinding store;
+  basic find, and undo/redo scaffolding.
+- typed Git status and bounded, stale-checked, secret-aware diffs.
+- typed terminal sessions with bounded/redacted output and process cleanup.
+- one Desktop command registry and durable keybinding store.
 - the existing agent-first workbench, sessions, providers, harnesses, Full Auto,
-  approvals, MCP/skills/plugins substrate, and typed evidence systems;
+  approvals, MCP/skills/plugins substrate, and typed evidence systems.
 - Command-E/Control-E Files mode, primary-rail composition, Finder document
   registration, editor-first cold-open ordering, and the shipped
   `@pierre/trees@1.0.0-beta.5` adapter.
@@ -102,17 +102,17 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 | Surface                     | Current truth                                                                                                                 | First packet that closes the core gap      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service; IDE-06 adds exact-generation local language intelligence; IDE-07 accepts the integrated packaged daily journey; IDE-08 adds the exact agent proposal/apply graph | IDE-09+ adds inline AI/run/SCM/platform breadth |
-| Effect Native editor seam   | production uses the app-local React Monaco host; `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
+| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service. IDE-06 adds exact-generation local language intelligence. IDE-07 accepts the integrated packaged daily journey. IDE-08 adds the exact agent proposal/apply graph | IDE-09+ adds inline AI/run/SCM/platform breadth |
+| Effect Native editor seam   | production uses the app-local React Monaco host. `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
 | repository tree             | IDE-02/04 ship the complete Effect-owned, generation-fenced Pierre projection plus mouse/keyboard navigation, reveal, and durable workbench integration | IDE-02 and IDE-04 delivered                |
-| review                      | IDE-05 ships one eight-variant versioned review source; IDE-08 routes real single/aggregate agent proposals through the same projection-only `@pierre/diffs@1.2.12` adapter | IDE-12 adds safe SCM mutation |
-| themes                      | The owner-selected Khala editor projection now mounts from native window/first paint through chrome, Pierre, Monaco, and terminal; Tokyo Night remains the built-in fallback | IDE-18 adds broader user-selectable modes  |
+| review                      | IDE-05 ships one eight-variant versioned review source. IDE-08 routes real single/aggregate agent proposals through the same projection-only `@pierre/diffs@1.2.12` adapter | IDE-12 adds safe SCM mutation |
+| themes                      | The owner-selected Khala editor projection now mounts from native window/first paint through chrome, Pierre, Monaco, and terminal. Tokyo Night remains the built-in fallback | IDE-18 adds broader user-selectable modes  |
 | Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
-| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal; IDE-07 accepts the integrated path | later languages remain explicit gaps       |
-| terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
-| tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
+| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal. IDE-07 accepts the integrated path | later languages remain explicit gaps       |
+| terminal screen             | typed child-process terminal exists. No admitted xterm/PTY projection                                                         | IDE-10                                     |
+| tasks/tests/debug           | useful substrate is fragmented. No one project evidence graph                                                                 | IDE-10/11                                  |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
-| agent-to-code loop          | IDE-08 ships exact attachment, eleven-source disclosure, proposal/Pierre review, canonical apply/rebase/undo, backlinks, and host-only post-image evidence; broader delivery remains explicit | IDE-08 delivered locally; IDE-12 adds delivery |
+| agent-to-code loop          | IDE-08 ships exact attachment, eleven-source disclosure, proposal/Pierre review, canonical apply/rebase/undo, backlinks, and host-only post-image evidence. Broader delivery remains explicit | IDE-08 delivered locally. IDE-12 adds delivery |
 | inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
 | managed agent sandbox       | GCP, Agent Computer, Firecracker, workroom, and placement seams exist, but no one durable SandboxResource, admitted Box-compatible facade, or IDE/Sarah create-to-cleanup journey is proven | SBX-00..09, then IDE-13/17                 |
 | full Cursor parity          | the ProductSpec ledger is a target, not a release fact                                                                        | IDE-19                                     |
@@ -139,32 +139,32 @@ Every packet follows these laws.
    containment mechanics, optional local inference, or a benchmark-admitted
    native kernel. It never owns a project, document, session, credential,
    policy, database, approval, or receipt.
-5. **Agents propose; the project service applies.** A harness never mutates
+5. **Agents propose. The project service applies.** A harness never mutates
    Monaco or guesses current line numbers. Proposals bind exact base versions,
    review in the shared diff plane, and apply through current authority.
 6. **Local and remote are placements, not separate products.** The same typed
    capability contract exposes effective placement, version, freshness,
    latency, custody, and availability. No silent upload or managed fallback.
 7. **Mobile and web project evidence, not a full editor.** Desktop owns the
-   complete editor; mobile supervises and reviews; web renders authenticated
+   complete editor. Mobile supervises and reviews. Web renders authenticated
    supervision and bounded, revocable `CodeShareBundle` projections.
 8. **Parity is an acceptance result, not a package list.** Monaco plus Pierre
    is not Zed quality, and Zed quality alone is not Cursor feature parity.
 9. **Effect Schema is the contract authority.** Every persisted, IPC, wire,
    helper, mobile/web, public-share, or otherwise boundary-crossing value is
    defined once with `Schema.Struct`, `Schema.TaggedStruct`, or
-   `Schema.TaggedUnion`; TypeScript types are derived from the schema. Scalar
+   `Schema.TaggedUnion`. TypeScript types are derived from the schema. Scalar
    refs are constrained branded schemas, and codegen-facing schemas carry
    stable identifiers. Raw interfaces/unions never become a parallel contract.
    Internal-only state machines may use `Data.TaggedEnum`.
 10. **Effect services own lifecycle explicitly.** Application capabilities use
-    `Context.Service`; real implementations use `Layer.effect`; public and
-    non-trivial methods use named `Effect.fn`; errors use
-    `Schema.TaggedErrorClass`; untrusted inputs use Schema decoders; and
+    `Context.Service`. Real implementations use `Layer.effect`. Public and
+    non-trivial methods use named `Effect.fn`. Errors use
+    `Schema.TaggedErrorClass`. Untrusted inputs use Schema decoders. And
     watchers, streams, and children are scoped and interrupted with their
     owning project layer.
 11. **Compatibility adapters do not own the IDE.** The admitted Box v1 facade
-    projects the canonical `SandboxResource`; its pinned SDK may prove wire
+    projects the canonical `SandboxResource`. Its pinned SDK may prove wire
     compatibility but cannot own project identity, lifecycle, events,
     authority, placement, artifacts, or completion truth.
 
@@ -198,7 +198,7 @@ The initial opinionated defaults are:
   persists and applies to every Editor-mode Monaco view.
 - Explorer on the left, source primary in the center, bottom panel collapsed,
   and the existing agent rail available without creating a second session.
-- minimap and word wrap off initially but user-toggleable; line numbers,
+- minimap and word wrap off initially but user-toggleable. Line numbers,
   bracket matching, indentation guides, multi-cursor, find/replace, and
   accessibility support on.
 - no remote semantic indexing, telemetry expansion, computer use, autosave,
@@ -220,22 +220,22 @@ Desktop command/document graph.
 
 ### Required first release behavior
 
-- persistent `editor.vim.enabled` boolean, default `false`;
-- toggle commands in Settings, command palette, and status bar;
+- persistent `editor.vim.enabled` boolean, default `false`.
+- toggle commands in Settings, command palette, and status bar.
 - visible `NORMAL`, `INSERT`, `VISUAL`, `VISUAL LINE`, `VISUAL BLOCK`,
-  `REPLACE`, and operator-pending state where the selected engine supports it;
+  `REPLACE`, and operator-pending state where the selected engine supports it.
 - core motions, counts, operators, text objects, marks, registers, repeat,
-  search, character find, join, indent, case, paste, and undo/redo;
-- system clipboard integration under explicit platform behavior;
+  search, character find, join, indent, case, paste, and undo/redo.
+- system clipboard integration under explicit platform behavior.
 - `/` search and supported `:` commands projected into Monaco or Desktop
-  commands; `:write`, `:quit`, and variants use typed save/close guards rather
-  than bypassing revision checks or dirty confirmation;
+  commands. `:write`, `:quit`, and variants use typed save/close guards rather
+  than bypassing revision checks or dirty confirmation.
 - `Escape` behavior that does not trap focus, break dialogs, or steal global
-  approval/cancel commands;
+  approval/cancel commands.
 - deterministic precedence between Vim mappings, Monaco commands, application
-  keybindings, menu accelerators, input methods, and accessibility shortcuts;
+  keybindings, menu accelerators, input methods, and accessibility shortcuts.
 - one mode/status projection shared across split views without leaking Vim
-  state between unrelated documents, projects, or worktrees;
+  state between unrelated documents, projects, or worktrees.
 - packaged offline operation, restart persistence, and explicit teardown.
 
 IDE-01 selects and pins the engine only after its license, maintenance,
@@ -250,8 +250,8 @@ public commands—not a dependency on VS Code's extension host.
 2. Use Normal/Insert/Visual operations, counts, search, repeat, registers, and
    undo/redo without diverging from canonical dirty/document state.
 3. Run `:write` during an external-change conflict and receive the same typed
-   conflict flow as Command-S; no overwrite occurs.
-4. Use Vim in two splits and two equal relative paths in separate worktrees;
+   conflict flow as Command-S. No overwrite occurs.
+4. Use Vim in two splits and two equal relative paths in separate worktrees.
    mode/view state and document authority remain correctly scoped.
 5. Toggle Vim off without remounting the document, losing selection/draft, or
    leaving key handlers attached.
@@ -262,15 +262,15 @@ public commands—not a dependency on VS Code's extension host.
 
 Khala editor and Tokyo Night are owned `DesktopThemeProjection` values in one
 typed registry, not lookalike themes chosen independently by each library.
-Khala editor is the fixed mounted default; Tokyo Night is the built-in
+Khala editor is the fixed mounted default. Tokyo Night is the built-in
 fallback. The projections map their reviewed semantic palettes into:
 
-- Effect Native/app-chrome semantic tokens;
-- Monaco base colors and syntax token rules;
-- Pierre tree variables and Git/diagnostic/conflict decorations;
-- Pierre/Shiki diff colors;
-- xterm ANSI colors and cursor/selection state;
-- Problems, Output, debug, review, agent proposal, browser, and status UI;
+- Effect Native/app-chrome semantic tokens.
+- Monaco base colors and syntax token rules.
+- Pierre tree variables and Git/diagnostic/conflict decorations.
+- Pierre/Shiki diff colors.
+- xterm ANSI colors and cursor/selection state.
+- Problems, Output, debug, review, agent proposal, browser, and status UI.
 - focus, disabled, error, warning, success, selection, link, and non-color
   state cues.
 
@@ -314,12 +314,12 @@ flowchart TB
 
 Package choices are intentionally narrow:
 
-- `monaco-editor` for editing and its initial JSON/CSS/HTML/TypeScript workers;
-- the already shipped `@pierre/trees` for Explorer;
-- `@pierre/diffs` after its package/packaging gate for all review classes;
-- xterm packages only when the terminal packet owns lifecycle and packaging;
+- `monaco-editor` for editing and its initial JSON/CSS/HTML/TypeScript workers.
+- the already shipped `@pierre/trees` for Explorer.
+- `@pierre/diffs` after its package/packaging gate for all review classes.
+- xterm packages only when the terminal packet owns lifecycle and packaging.
 - focused public VS Code packages only where their dependency graph remains
-  bounded and their types are hidden behind Effect-owned contracts;
+  bounded and their types are hidden behind Effect-owned contracts.
 - LSP, tsserver, DAP, Git, search, and harness executables supervised as
   project capabilities, regardless of their implementation language.
 
@@ -374,7 +374,7 @@ The post-basic-IDE implementation program is epic
 | [SBX-04 #9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | implemented structural Codex/Claude turns, ordered runtime events, terminal receipts, and exact interrupt. IDE consumption waits for SBX-06 and the live SBX-09 gate |
 | [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | next supplies bounded files, commands, artifacts, quota, and guest safeguards |
 | [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | after IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040, supplies the managed target consumed by IDE-13 #9041 and IDE-17 #9045 |
-| [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority; they do not create client-local runtime models |
+| [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority, they do not create client-local runtime models |
 | [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |
 | [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | defers checkpoint/fork/private desktop until Phase 1 is accepted and their distinct semantics pass |
 
@@ -400,41 +400,41 @@ for internal reducer decisions, and `Schema.TaggedErrorClass` for expected
 service failures. Define application services with `Context.Service`, acquire
 them through explicit `Layer.effect` graphs, name operations with `Effect.fn`,
 and scope background work to the project layer. Generate helper fixtures/types
-from the Schema source; never mirror the contract by hand in Rust.
+from the Schema source. Never mirror the contract by hand in Rust.
 
 Add behavior contracts for Editor entry/exit, editor-first Finder open, one
 document through every navigation origin, tree selection, edit/save/conflict,
 dirty restart, worktree isolation, grant revocation, and late-result fencing.
 The existing Files journey remains a required regression fixture.
 
-Exit: contracts and invariants are accepted; a schema/type drift check rejects
-raw or hand-mirrored boundary contracts; no widget is an authority; current
+Exit: contracts and invariants are accepted. A schema/type drift check rejects
+raw or hand-mirrored boundary contracts. No widget is an authority. Current
 gaps have explicit ledger rows and baseline measurements.
 
 #### IDE-00 implementation receipt
 
 Issue [#9015](https://github.com/OpenAgentsInc/openagents/issues/9015) is the
-exact delivery receipt for this packet; its closing comment records the landed
+exact delivery receipt for this packet. Its closing comment records the landed
 `main` SHA and final command results. The implementation evidence is:
 
 - `apps/openagents-desktop/src/ide/project-contract.ts`: the identified,
   schema-first project graph, branded refs/generations, tagged lifecycle and
-  navigation variants, excerpts, proposals, and boundary decoders;
+  navigation variants, excerpts, proposals, and boundary decoders.
 - `apps/openagents-desktop/src/ide/project-service.ts`: the scoped
   `Context.Service` / `Layer.effect` implementation with named operations,
   decoded inputs, typed expected failures, atomic generation changes,
-  capability stop semantics, and late-result fencing;
+  capability stop semantics, and late-result fencing.
 - `apps/openagents-desktop/src/workspace-contract.ts` and the editor recovery
   schema: the shipped Files boundary types now derive from their schemas
-  instead of mirroring them by hand;
+  instead of mirroring them by hand.
 - `apps/openagents-desktop/scripts/check-ide-boundaries.ts`: the mechanical
   guard against raw parallel contracts, unchecked IDE authority casts,
   widget/native authority, Rust schema mirrors, or removal of required Effect
-  lifecycle primitives;
+  lifecycle primitives.
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-00-baseline.json`
   and its raw/startup companions: public-safe p50/p95/p99 observations plus
   explicit gaps for Finder, input-to-paint, real PTY, worker cancellation, and
-  split Electron resource telemetry;
+  split Electron resource telemetry.
 - behavior contract
   `openagents_desktop.ide_project_generation_fencing.v1` and the project,
   shell, workspace-editor, Files, search, Git, terminal, recovery, and launch
@@ -453,7 +453,7 @@ same build. Evaluate the narrow Vim engines against the built-in Vim contract.
 Create the Tokyo Night token/provenance file and render chrome, Monaco, Pierre
 tree/diff, and terminal fixtures from one projection.
 
-Run the focused VS Code package candidate matrix; admit only packages whose
+Run the focused VS Code package candidate matrix. Admit only packages whose
 transitive/runtime footprint and public API fit the adapter boundary. Measure
 the TypeScript search/index/watch path before proposing any Rust replacement.
 
@@ -470,17 +470,17 @@ The admitted result is intentionally narrow:
 
 - exact `monaco-editor@0.55.1` and `@pierre/diffs@1.2.12` pins with immutable
   upstream/registry identity, licenses, transitive costs, compatibility,
-  disposal, rollback, and explicit no-authority audits;
+  disposal, rollback, and explicit no-authority audits.
 - real development and ASAR Electron probes for editor/JSON/CSS/HTML/TypeScript
   and Pierre workers, restrictive CSP/offline loading, three create/dispose
   cycles, injected worker failure, zero tracked leaks, both diff modes,
-  controlled selection/annotation, and a 200-file virtualized review;
+  controlled selection/annotation, and a 200-file virtualized review.
 - an opt-in attribution fixture excluded from ordinary builds, with normal
-  boot, lazy closure, worker, source-map, startup, and renderer-memory receipts;
+  boot, lazy closure, worker, source-map, startup, and renderer-memory receipts.
 - rejection of both evaluated Vim packages and selection of the 32-capability
-  app-owned public-Monaco `VimModeController` contract, still unimplemented;
+  app-owned public-Monaco `VimModeController` contract, still unimplemented.
 - one provenance-pinned, contrast-adjusted Tokyo Night projection plus a real
-  Electron visual fixture, still not mounted in the production workbench;
+  Electron visual fixture, still not mounted in the production workbench.
 - a 10,000-file TypeScript index/watch benchmark that meets every written p95
   gate and rejects speculative Rust placement.
 
@@ -500,7 +500,7 @@ ancestors, Git/diagnostic/conflict badges, reveal, and scale budgets.
 
 All create/rename/move/copy/delete/reveal/terminal/compare actions dispatch
 typed commands. Optimistic rename and drag/drop wait for expected-version move
-contracts; Pierre receives no root, grant, bridge, or mutation authority.
+contracts. Pierre receives no root, grant, bridge, or mutation authority.
 
 Exit: a large real repository can be navigated entirely by mouse or keyboard,
 and every incomplete state is visible rather than looking like an empty tree.
@@ -513,7 +513,7 @@ generation badges, typed expected-version operations, accessibility journeys,
 scope teardown, a 10,000-file percentile/resource receipt, and a packaged
 large-repository pointer/keyboard journey are recorded in
 `docs/ide/2026-07-19-ide-02-complete-pierre-explorer.md`. This delivery closes
-the Explorer packet only; IDE-03 subsequently closed the editor-runtime
+the Explorer packet only. IDE-03 subsequently closed the editor-runtime
 dependency, IDE-04 closed the daily workbench, IDE-05 closed the versioned
 review plane, and IDE-06 is now the next release-rung blocker.
 
@@ -521,18 +521,18 @@ review plane, and IDE-06 is now the next release-rung blocker.
 
 Create one app-local Monaco runtime/controller used by the primary React view
 and the Effect Native host-driver seam. Map stable opaque document refs to
-models; keep paths mutable and root-private; translate incremental edits with
-version/gap/resync semantics; preserve canonical dirty/recovery state outside
-Monaco; and dispose models/workers/listeners exactly once.
+models. Keep paths mutable and root-private. Translate incremental edits with
+version/gap/resync semantics. Preserve canonical dirty/recovery state outside
+Monaco. And dispose models/workers/listeners exactly once.
 
 This packet also makes Tokyo Night the fixed initial workbench/editor theme and
 ships the built-in Vim toggle. It replaces app-owned find with Monaco
-find/replace while preserving typed command entry; adds go-to-line, core
+find/replace while preserving typed command entry. Adds go-to-line, core
 editing, multi-cursor, folding, bracket/indent behavior, selection history,
 save/save-all, conflict, close, and restart paths.
 
 Exit: Finder and every current Files route open an input-ready Tokyo Night
-Monaco document first; Vim can be toggled and survives restart; textarea/stub
+Monaco document first. Vim can be toggled and survives restart. Textarea/stub
 paths remain only named compatibility/test fallbacks.
 
 Delivered 2026-07-19 in `#9018`. The production React document route now uses
@@ -546,7 +546,7 @@ authority, suspends during composition, and finalizes its handlers. Full
 architecture, percentile/resource measurements, packaged LaunchServices
 journey, and scope limits are recorded in
 `docs/ide/2026-07-19-ide-03-monaco-vim-tokyo-night.md`. This closes IDE-03
-only; IDE-04 through IDE-07 subsequently closed and accepted the narrow basic-
+only. IDE-04 through IDE-07 subsequently closed and accepted the narrow basic-
 IDE rung while leaving every later capability gap visible.
 
 ### IDE-04 — Make the workbench navigable and configurable
@@ -571,7 +571,7 @@ reversible.
 Delivered on 2026-07-19 in [the IDE-05 implementation and verification
 receipt](2026-07-19-ide-05-versioned-pierre-review.md). The shipped source
 schema, production adapters, selected disclosure, staleness law, benchmark,
-and packaged eight-source corpus satisfy this packet; IDE-08 and IDE-12 retain
+and packaged eight-source corpus satisfy this packet. IDE-08 and IDE-12 retain
 proposal workflow and SCM mutation authority.
 
 Replace the hand-rendered Git hunk view with Pierre Diffs through an app-owned
@@ -581,14 +581,14 @@ diff sources. Support file/aggregate review, annotations, selection, context,
 compare, accept/reject where authority exists, and independent undo.
 
 Exit: review never confuses Git state, unsaved document state, agent proposal,
-or applied result; stale bases refuse rather than patching by position.
+or applied result. Stale bases refuse rather than patching by position.
 
 ### IDE-06 — Add honest language intelligence
 
 Delivered on 2026-07-19 in [the IDE-06 implementation and verification
 receipt](2026-07-19-ide-06-generation-safe-language.md). Desktop now keeps
 document-local Monaco workers distinct from the persistent Effect-supervised
-project TypeScript service; all seventeen initial capabilities, shared
+project TypeScript service. All seventeen initial capabilities, shared
 Problems/Outline/breadcrumb/location/editor projections, exact generation
 fences, cancellation, crash recovery, measurements, and zero-resource stop are
 implemented. IDE-07 subsequently accepted the integrated packaged rung, while
@@ -617,7 +617,7 @@ Candidate `48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec` is accepted for the exact
 macOS arm64 app-tree digest recorded there. All 15 matrix rows, 27 checked
 metrics, the complete Desktop corpus, Effect boundary oracle, seven chat-only
 launches, integrated packaged editor journey, rollback, target, and
-no-overclaim gates pass. The admitted language is only “OpenAgents basic IDE”;
+no-overclaim gates pass. The admitted language is only “OpenAgents basic IDE”.
 the epic's separate owner acceptance and every IDE-08..19 gap remain open.
 
 Run packaged journeys for Finder cold open, large/multi-root Explorer, rapid
@@ -638,7 +638,7 @@ Cursor parity. Every later gap remains visible.
 
 Delivered by #9036. The implementation and exact evidence contract are in
 `docs/ide/2026-07-19-ide-08-agent-native-code-graph.md`. Closing the packet
-does not create the “integrated OpenAgents agent IDE” rung; IDE-09 through
+does not create the “integrated OpenAgents agent IDE” rung. IDE-09 through
 IDE-12 remain required for that group claim, and the ProductSpec AssuranceSpec
 bindings remain proposed/unreviewed.
 
@@ -666,7 +666,7 @@ and optional semantic retrieval.
 
 Expose selected/effective model, provider, account, harness, placement,
 retention, cost/usage, latency, and fallback. Accept/reject/partial-accept/undo
-are canonical commands; quality and latency corpora are checked in.
+are canonical commands. Quality and latency corpora are checked in.
 
 Exit: the full AI-editing acceptance corpus passes without a hidden model,
 silent upload, or direct Monaco mutation.
@@ -691,7 +691,7 @@ process facts, authority, and evidence.
 Add an Effect-owned DAP client and debug graph for configurations,
 launch/attach disclosure, breakpoints, stack, scopes, variables, watch,
 console, stepping, restart, termination, and late-event fencing. Adapter
-processes are supervised capabilities; they do not own workspace policy or
+processes are supervised capabilities. They do not own workspace policy or
 persist credentials.
 
 Exit: a checked-in language/debug corpus proves edit-build-break-inspect-fix
@@ -704,7 +704,7 @@ staging, discard, commit, branch, merge/rebase/conflict, fetch/pull/push, PR,
 blame/history, and worktree create/archive/cleanup flows. Keep mutation,
 delivery, verification, and owner acceptance distinct.
 
-Parallel agents receive collision-safe claims and isolated worktrees; best-of-N
+Parallel agents receive collision-safe claims and isolated worktrees. Best-of-N
 candidates remain separate until an explicit comparison and acceptance step.
 
 Exit: a proposal can become a reviewed commit/push/PR with exact receipts, and
@@ -720,7 +720,7 @@ freshness, custody, attachment generation, and compatibility.
 For `OpenAgents-managed`, consume the generation-fenced `SandboxResource`
 admitted by SBX-00..09. Create, inspect, stop, resume, interrupt, and delete go
 through the same main-owned project capability service used by the agent and
-evidence graphs. Show the effective GCE VM or Firecracker microVM honestly;
+evidence graphs. Show the effective GCE VM or Firecracker microVM honestly.
 do not relabel it an OCI container, install the Box SDK in production code, or
 treat an SDK state label as readiness or cleanup proof.
 
@@ -767,7 +767,7 @@ Integrate partitioned preview/browser sessions, explicit dev-server lifecycle,
 DOM and screenshot context, responsive inspection, visual editing/design-to-
 code, image workflows, and browser automation. Computer use stays
 deny/ask-by-default with explicit OS/network authority, secret redaction, and
-per-action receipts; it is never enabled merely by an automation trigger.
+per-action receipts. It is never enabled merely by an automation trigger.
 
 Exit: agent and human can inspect and test a change in the same project graph
 without browser state becoming hidden workspace or credential authority.
@@ -781,14 +781,14 @@ comparison, cloud/background continuation, schedules, repository/issue/PR/
 webhook/manual triggers, budgets, pause/cancel/rerun, notifications, and
 morning-review outcomes.
 
-Startup restores the user's chosen surface; the flagship agent window never
+Startup restores the user's chosen surface. The flagship agent window never
 force-opens. Every mode compiles to visible model, tools, permissions,
 placement, memory, and instructions.
 
 Managed long-running work uses the same sandbox, project, work-unit, turn,
 agent, and receipt refs exposed by IDE-13. Sarah-started work remains visibly
 attributed to `principal.sarah` while sharing that graph. This packet does not
-silently bind a managed sandbox to `FullAutoRun`; cross-machine Full Auto
+silently bind a managed sandbox to `FullAutoRun`. Cross-machine Full Auto
 admission remains excluded until its own ProductSpec and AssuranceSpec are
 revised and rebound.
 
@@ -800,17 +800,17 @@ proposals, terminals, checkpoints, evidence, and effective identities.
 Build one typed data inventory and erasure coordinator covering every durable
 local and remote representation:
 
-- canonical chats, event/content objects, headers, summaries, and attachments;
-- conversation FTS/read models and reconciliation state;
-- document recovery, checkpoints, preimages, diffs, history, and attribution;
+- canonical chats, event/content objects, headers, summaries, and attachments.
+- conversation FTS/read models and reconciliation state.
+- document recovery, checkpoints, preimages, diffs, history, and attribution.
 - path manifests, Merkle state, lexical/symbol indexes, chunk metadata,
-  embeddings, remote handles, caches, and snapshots;
-- terminal/task/test/debug/output history;
-- browser cookies/storage/cache and screenshots;
+  embeddings, remote handles, caches, and snapshots.
+- terminal/task/test/debug/output history.
+- browser cookies/storage/cache and screenshots.
 - settings, keybindings, Vim state, rules, skills, MCP, hooks, plugins,
-  extensions, and downloaded runtimes;
+  extensions, and downloaded runtimes.
 - credentials through an OS-backed vault reference, never plaintext in a
-  general UI/chat database;
+  general UI/chat database.
 - logs, diagnostics, telemetry consent/state, crash reports, updater caches,
   backups, replicas, tombstones, and retention clocks.
 
@@ -823,8 +823,8 @@ negative test.
 
 Also add allowlisted Cursor migration for settings, keybindings, rules, skills,
 and MCP configuration without credentials, telemetry IDs, proprietary bytes,
-or opaque cloud state; organization policy/audit/SSO controls; signed update
-and rollback; macOS/Windows/Linux x64/arm64 coverage; localization; and the
+or opaque cloud state. Organization policy/audit/SSO controls. Signed update
+and rollback. MacOS/Windows/Linux x64/arm64 coverage. Localization. And the
 deferred light/high-contrast/system-following themes.
 
 Exit: data, migration, enterprise, distribution, platform, accessibility, and
@@ -855,27 +855,27 @@ It maps every required Cursor family to its main closure packets.
 | Cursor capability family    | Current OpenAgents footing                                                                       | Closure packets           |
 | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
 | product shells              | agent-first Desktop plus Monaco, complete navigation/configuration, versioned Pierre review, and the IDE-07 packaged basic-IDE gate exist | IDE-17                    |
-| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Khala editor default with Tokyo Night fallback, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist; later run/SCM/theme breadth remains | IDE-10–12/18              |
-| AI editing                  | IDE-08 provides the exact proposal/review/apply substrate; completion, next edit, inline transforms, and quality/latency evidence are still absent | IDE-09                    |
-| repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
-| conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
-| agent modes                 | agent runtime/mode substrate exists; integrated policy/result UX incomplete                      | IDE-08/17                 |
-| agent tools                 | broad typed tool substrate; IDE/browser/computer integration incomplete                          | IDE-08/10/12/16           |
-| parallel agency             | Full Auto/subagent/worktree foundations exist; IDE comparison/fan-in incomplete                  | IDE-12/17                 |
-| recovery and memory         | IDE-08 recovers pending/reviewed/partial/applied/undoable proposal state and expires private preimages; full inventory/export/deletion convergence remains absent | IDE-18                    |
-| background and cloud agents | portable/fleet foundations exist; project-capability symmetry is incomplete                      | IDE-13/17                 |
-| automations                 | Full Auto foundation exists; full trigger/review IDE integration is incomplete                   | IDE-17                    |
-| remote control              | cross-surface contracts exist; complete project review/continuation is incomplete                | IDE-13/14/17              |
-| CLI and protocols           | strong typed runtime/CLI substrate; one IDE command graph and project evidence remain            | IDE-08/10/13/17           |
-| extensibility               | skills/MCP/plugins substrate exists; isolated editor ABI and marketplace lifecycle remain        | IDE-15/18                 |
-| browser and design          | preview/browser substrate exists; integrated design/computer-use contract remains                | IDE-16                    |
-| sharing and review links    | trust/share substrate exists; code-evidence bundle and review journeys remain                    | IDE-14                    |
-| models and accounts         | multi-harness/provider/account system is a strength; editor intelligence disclosure remains      | IDE-09/17                 |
-| teams and enterprise        | policy/receipt foundations exist; editor bundles/admin/platform proof remain                     | IDE-15/18                 |
-| security and privacy        | explicit authority/sandbox/receipt laws are stronger; IDE-wide data-flow proof remains           | every packet, IDE-18 gate |
-| distribution                | exact macOS arm64 basic-IDE package is accepted; complete platform/editor/update matrix remains  | IDE-18                    |
+| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Khala editor default with Tokyo Night fallback, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist. Later run/SCM/theme breadth remains | IDE-10–12/18              |
+| AI editing                  | IDE-08 provides the exact proposal/review/apply substrate. Completion, next edit, inline transforms, and quality/latency evidence are still absent | IDE-09                    |
+| repository intelligence     | bounded path/content search. No complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
+| conversations               | durable multi-provider/session substrate. Parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
+| agent modes                 | agent runtime/mode substrate exists. Integrated policy/result UX incomplete                      | IDE-08/17                 |
+| agent tools                 | broad typed tool substrate. IDE/browser/computer integration incomplete                          | IDE-08/10/12/16           |
+| parallel agency             | Full Auto/subagent/worktree foundations exist. IDE comparison/fan-in incomplete                  | IDE-12/17                 |
+| recovery and memory         | IDE-08 recovers pending/reviewed/partial/applied/undoable proposal state and expires private preimages. Full inventory/export/deletion convergence remains absent | IDE-18                    |
+| background and cloud agents | portable/fleet foundations exist. Project-capability symmetry is incomplete                      | IDE-13/17                 |
+| automations                 | Full Auto foundation exists. Full trigger/review IDE integration is incomplete                   | IDE-17                    |
+| remote control              | cross-surface contracts exist. Complete project review/continuation is incomplete                | IDE-13/14/17              |
+| CLI and protocols           | strong typed runtime/CLI substrate. One IDE command graph and project evidence remain            | IDE-08/10/13/17           |
+| extensibility               | skills/MCP/plugins substrate exists. Isolated editor ABI and marketplace lifecycle remain        | IDE-15/18                 |
+| browser and design          | preview/browser substrate exists. Integrated design/computer-use contract remains                | IDE-16                    |
+| sharing and review links    | trust/share substrate exists. Code-evidence bundle and review journeys remain                    | IDE-14                    |
+| models and accounts         | multi-harness/provider/account system is a strength. Editor intelligence disclosure remains      | IDE-09/17                 |
+| teams and enterprise        | policy/receipt foundations exist. Editor bundles/admin/platform proof remain                     | IDE-15/18                 |
+| security and privacy        | explicit authority/sandbox/receipt laws are stronger. IDE-wide data-flow proof remains           | every packet, IDE-18 gate |
+| distribution                | exact macOS arm64 basic-IDE package is accepted. Complete platform/editor/update matrix remains  | IDE-18                    |
 | data lifecycle              | typed stores exist but not one complete inspect/export/delete product                            | IDE-18                    |
-| quality and accessibility   | IDE-07 integrated macOS arm64 gates pass; full platform/accessibility matrix and broader themes remain | IDE-18                |
+| quality and accessibility   | IDE-07 integrated macOS arm64 gates pass. Full platform/accessibility matrix and broader themes remain | IDE-18                |
 
 ## Release rungs and names
 
@@ -893,19 +893,19 @@ No rung is allowed to hide the next rung's gaps.
 
 Every implementation packet supplies, in proportion to its boundary:
 
-- pure state-transition and schema tests;
+- pure state-transition and schema tests.
 - main-process integration tests for grants, revisions, processes, storage,
-  cancellation, restart, and revocation;
+  cancellation, restart, and revocation.
 - renderer integration tests for command, focus, selection, model, tree, diff,
-  terminal, agent, and stale-event behavior;
-- packaged Electron proofs for worker/assets/CSP/offline/signing paths;
+  terminal, agent, and stale-event behavior.
+- packaged Electron proofs for worker/assets/CSP/offline/signing paths.
 - fault tests for crash, update, network partition, provider failure, corrupt
-  index/store, missing binary, late output, quota, and deletion convergence;
+  index/store, missing binary, late output, quota, and deletion convergence.
 - accessibility, keyboard, Vim-on/Vim-off, reduced-motion, zoom, contrast, and
-  screen-reader journeys;
+  screen-reader journeys.
 - performance and leak budgets with exact p50/p95/p99, heap, handle, worker,
-  and disposal evidence;
-- six-target fixtures where the capability is platform-sensitive;
+  and disposal evidence.
+- six-target fixtures where the capability is platform-sensitive.
 - rollback and substitution tests for every external library or native helper.
 
 The release-blocking integrated corpus must eventually cover:
@@ -932,18 +932,18 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Explicit non-goals and rejected shortcuts
 
-- no Code-OSS/Cursor fork;
-- no Zed/GPUI port;
-- no VS Code workbench, Explorer, internal `vs/*`, or trusted extension host;
-- no second Rust application core or database;
-- no renderer filesystem, Git, terminal, credential, or raw-root authority;
-- no direct harness mutation of Monaco;
-- no embeddings requirement for useful repository intelligence;
-- no undeclared persistence, upload, telemetry, or remote index;
-- no computer use enabled by default for unattended work;
-- no theme marketplace required before Tokyo Night ships;
-- no dependency on an extension to obtain the built-in Vim experience;
-- no full editor on mobile or public web;
+- no Code-OSS/Cursor fork.
+- no Zed/GPUI port.
+- no VS Code workbench, Explorer, internal `vs/*`, or trusted extension host.
+- no second Rust application core or database.
+- no renderer filesystem, Git, terminal, credential, or raw-root authority.
+- no direct harness mutation of Monaco.
+- no embeddings requirement for useful repository intelligence.
+- no undeclared persistence, upload, telemetry, or remote index.
+- no computer use enabled by default for unattended work.
+- no theme marketplace required before Tokyo Night ships.
+- no dependency on an extension to obtain the built-in Vim experience.
+- no full editor on mobile or public web.
 - no parity claim from dependency presence, screenshots, or agent self-report.
 - no Box SDK or compatibility response as project, runtime, authority,
   completion, cleanup, or public-parity truth.
@@ -952,7 +952,7 @@ The release-blocking integrated corpus must eventually cover:
 
 IDE-00 through IDE-07 are implemented and closed with exact issue receipts.
 IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
-candidate; it preserved the TypeScript-only project-language limit, every
+candidate. It preserved the TypeScript-only project-language limit, every
 IDE-09..19 gap, and the epic's separate owner-acceptance boundary.
 
 IDE-08 is implemented and closed with its exact evidence record. The next
@@ -960,7 +960,7 @@ packet is IDE-09: add Cursor-class completion, next-edit prediction, inline
 ask/edit/generate, selection transforms, and fast multi-file editing on the
 existing exact proposal graph, with selected/effective runtime, latency,
 cost/usage, fallback, custody, and quality disclosure. IDE-10 may proceed only
-at its documented dependency boundary; neither packet may smuggle project or
+at its documented dependency boundary. Neither packet may smuggle project or
 mutation authority into Monaco, xterm, a harness, or a native helper.
 
 In parallel at P1, managed-sandbox epic

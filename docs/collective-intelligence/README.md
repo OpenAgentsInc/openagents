@@ -1,7 +1,7 @@
 # Collective Intelligence
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -12,7 +12,7 @@ implementation differs.
 ## Our analysis
 
 - [`2026-06-24-collective-intelligence-as-an-economy.md`](2026-06-24-collective-intelligence-as-an-economy.md)
-  — **our opinionated analysis.** The future is collective; we build it as an
+  — **our opinionated analysis.** The future is collective. We build it as an
   open, Bitcoin-metabolized *economy* (selected by verifiable value, floored by
   replay-verification, coordinated by Khala on neutral protocols), not as a
   designed-and-benchmark-graded lab artifact. Builds on Blueprint/DSPy, the
@@ -33,8 +33,8 @@ implementation differs.
   distilled e2e test) — plus the economy-not-a-lab thesis, the **mesh-of-
   specialists** external validation (Ryan Walker/Tembo + our "put it behind an
   OpenAI-compatible API and pay Bitcoin revshare" reply), and **whiteboard build
-  guidance** for the recording (collective-intelligence basics; the
-  API + Blueprint/DSPy architecture; where the money flows). Single model id
+  guidance** for the recording (collective-intelligence basics, the
+  API + Blueprint/DSPy architecture. Where the money flows). Single model id
   `openagents/khala`. Honesty rule baked in: show only what's live, label
   direction as direction.
 
@@ -42,7 +42,7 @@ implementation differs.
 
 - [`bitcoin-ai-digital-life-dhruv-bansal-transcript.md`](bitcoin-ai-digital-life-dhruv-bansal-transcript.md)
   — **full transcript** of Dhruv Bansal × Max Webster, "Bitcoin, AI, and the
-  Evolution of Digital Life" (*Ideas from the Edge*, 2025; YouTube `Ip3DnUDx7-Q`).
+  Evolution of Digital Life" (*Ideas from the Edge*, 2025, YouTube `Ip3DnUDx7-Q`).
   The ecology / digital-metabolism source our analysis draws on.
 
 ## Reference material
@@ -53,6 +53,6 @@ implementation differs.
 - [`../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md`](../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md)
   — three generations of our marketplace and the verification ladder.
 
-> Internal research/opinion material. Not product claim copy; the product-promise
+> Internal research/opinion material. Not product claim copy. The product-promise
 > registry governs claims.
 </content>

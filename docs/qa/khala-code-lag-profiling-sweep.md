@@ -33,7 +33,7 @@ record:
 
 Supported modes are `mode_p_preview_bridge`, `mode_d_built_webview`,
 `packaged_electrobun`, and `fixture`. The fixture mode is for deterministic
-unit tests and local smoke checks only; optimization child issues should be
+unit tests and local smoke checks only. Optimization child issues should be
 filed from real Mode P, Mode D, or packaged snapshots.
 
 ## Running

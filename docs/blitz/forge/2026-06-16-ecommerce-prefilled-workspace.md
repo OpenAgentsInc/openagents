@@ -82,8 +82,8 @@ The implementation is covered by
 `apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts`.
 The tests verify that the template:
 
-- produces a valid draft `CreatePrefilledWorkspaceInput`;
-- preserves the canonical Forge stage keys;
+- produces a valid draft `CreatePrefilledWorkspaceInput`.
+- preserves the canonical Forge stage keys.
 - carries the requested stock, imagery, spend-cap, stats, approval, and receipt
-  gates; and
+  gates. And
 - backs every seeded-memory fact with a public source reference.

@@ -16,8 +16,8 @@ zero, estimate, or manually-entered value.
 Metric rows may contain only:
 
 - opaque refs such as `business_engagement.*`, `contract.*`, `workroom.*`, or
-  public receipt refs;
-- coarse work kind, source kind, stage, and time-window labels;
+  public receipt refs.
+- coarse work kind, source kind, stage, and time-window labels.
 - aggregate counts, minutes, basis points, and rates.
 
 Metric rows must not contain names, emails, phone numbers, raw client prompts,
@@ -33,8 +33,8 @@ Every query row uses the same shape:
 | --- | --- |
 | `metric_ref` | Stable metric id, e.g. `business_factory.throughput.accepted_outcomes.v1`. |
 | `grain` | `window`, `work_kind`, or `engagement`. |
-| `work_kind` | Work class when grouped; otherwise `NULL`. |
-| `engagement_ref` | Opaque engagement ref when grouped; otherwise `NULL`. |
+| `work_kind` | Work class when grouped. Otherwise `NULL`. |
+| `engagement_ref` | Opaque engagement ref when grouped. Otherwise `NULL`. |
 | `window_start`, `window_end` | Inclusive lower bound and exclusive upper bound used by the query. |
 | `numerator`, `denominator`, `value` | Raw count/minute/rate components. Rates are basis points unless the unit says otherwise. |
 | `unit` | `outcomes`, `minutes`, `basis_points`, or `usd_cents`. |
@@ -79,7 +79,7 @@ where acceptance_state = 'accepted'
 ```
 
 Unit: `minutes`. If there are no accepted outcomes in the window, the row is
-`not_measured`; it is not zero minutes.
+`not_measured`. It is not zero minutes.
 
 ### Pass Rate
 
@@ -96,7 +96,7 @@ where terminal states are accepted, rejected, revision_requested, unavailable
 ```
 
 Unit: `basis_points`. If there are no terminal outcomes in the window, the row
-is `not_measured`; it is not a 0% or 100% pass rate.
+is `not_measured`. It is not a 0% or 100% pass rate.
 
 ### Review Minutes
 
@@ -113,7 +113,7 @@ where archived_at is null
   and updated_at in [window_start, window_end)
 ```
 
-Unit: `minutes`. The economics row is the audit receipt; no review-minute
+Unit: `minutes`. The economics row is the audit receipt. No review-minute
 dashboard may use issue comments, free-form notes, or estimates.
 
 ### Operator Minutes Per Engagement
@@ -161,7 +161,7 @@ grouped by demand_provenance
 ```
 
 Units: `outcomes` for event counts and `usd_cents` for USD-cent sums. The USD
-metric sums only `amount_cents`; sats-only rows are not converted and must carry
+metric sums only `amount_cents`. Sats-only rows are not converted and must carry
 `caveat.business_metrics.sat_revenue_excluded_from_usd_cent_metric`.
 
 ### Monthly Operator Minutes Ratio

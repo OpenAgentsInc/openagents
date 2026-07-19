@@ -58,7 +58,7 @@ Rename action. The rename dialog focuses and selects the current title, trims
 and rejects empty input, saves through the schema-decoded Electron host and
 private atomic thread store, and updates the sidebar and active conversation
 header only after persistence succeeds. Cancel, Escape, validation failure, or
-host failure leaves the previous title unchanged; provider-owned history stays
+host failure leaves the previous title unchanged. Provider-owned history stays
 read-only.
 
 Contract: `openagents_desktop.chat.local_title_rename.v1`.
@@ -69,7 +69,7 @@ The signed renderer reaches host runtime state through one versioned,
 schema-decoded query/command/event seam.
 
 - Bootstrap reports the gateway lifecycle and only truthful capability state.
-- Unsupported conversation commands return `unavailable`, never completed;
+- Unsupported conversation commands return `unavailable`, never completed.
   runtime enqueues return only `unknown_pending_reconcile` until confirmed,
   and argument-free native-session commands return bounded phase outcomes.
 - Lifecycle events have a monotonic sequence and an owned disposer. Live
@@ -84,7 +84,7 @@ Protocol v8 carries bounded OpenAgents entry/exit, canonical confirmed-
 conversation operations, exact-ref runtime start/interrupt, durable command
 outcomes, confirmed bounded agent-timeline and live-agent-graph snapshots, and
 typed cursor-aware conversation subscribe/resume/unsubscribe. Provider
-execution stays behind the host; only canonical projected facts reach the
+execution stays behind the host. Only canonical projected facts reach the
 renderer.
 
 Contract:
@@ -97,13 +97,13 @@ owner-private directory under Desktop `userData`.
 
 - One installation identity is generated once and reused after restart.
 - The shared store schema and semantics remain the only cache/offline-queue
-  implementation; Desktop does not create a parallel Sync database.
+  implementation. Desktop does not create a parallel Sync database.
 - Sparse advancing event batches are refused before cursor advance and replay
-  from the durable cursor; MustRefetch atomically replaces the exact scope.
+  from the durable cursor. MustRefetch atomically replaces the exact scope.
 - Supported unversioned stores migrate in place. A newer store version refuses
   before additive migration with typed update-or-reset recovery guidance.
 - A server-verified native session starts the shared HTTP/WebSocket engine on
-  the server-derived owner's personal scope; rotation is re-read host-side.
+  the server-derived owner's personal scope. Rotation is re-read host-side.
 - The Sync session closes before the store on quit.
 - The renderer receives only bounded readiness—never the database path/handle,
   installation refs, rows, pending mutations, or credentials.
@@ -132,7 +132,7 @@ over the canonical `chat_thread` / `chat_message` entities and
   adapters without duplicate objects.
 - Delayed bootstrap/log responses are fenced by the scope generation that
   requested them. Proven unlink/revocation burns the queue and retracts hosted
-  personal/thread projections in both native stores; a late transport response
+  personal/thread projections in both native stores. A late transport response
   cannot repopulate or acknowledge that revoked generation.
 
 This is the durable owner-message floor. It does not claim renderer wiring,
@@ -166,7 +166,7 @@ Protocol v8 carries schema-bounded `conversation.catalog`,
   raw events, provider authority, and generic IPC do not cross preload.
 
 The renderer selects this authority once at boot when the confirmed catalog is
-live; otherwise it retains explicit local-only mode. It does not mix catalogs.
+live. Otherwise it retains explicit local-only mode. It does not mix catalogs.
 The built-live and physical-mobile receipt remains separate acceptance.
 
 Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
@@ -184,7 +184,7 @@ personal Sync is live.
 - The server-projected `agent_run.routeId` is the only thread/route attachment
   fact. The renderer cannot derive a route from a run ID.
 - Non-live, not-found, and read-failure outcomes are typed and body-free.
-- Bounded runtime/backend/WorkContext classification may cross; owner,
+- Bounded runtime/backend/WorkContext classification may cross. Owner,
   objective, repository contents, provider source, raw payload, external
   callbacks, credentials, store/session/transport, and process authority may
   not.
@@ -194,7 +194,7 @@ Runtime events are admitted only at the turn's exact durable next sequence and
 valid lifecycle state. After interruption/close/terminal settlement, stale
 provider output cannot enter the projection. If a hosted worker dies after its
 durable start claim, the server projects one interrupted terminal without
-replaying inference; Desktop and mobile reconstruct the same partial history
+replaying inference. Desktop and mobile reconstruct the same partial history
 plus terminal after store restart.
 Live-account/physical-device proof remains the final #8676 gate.
 
@@ -206,7 +206,7 @@ Protocol v8 adds `graphRefs` and validated `openagents.live_agent_graph.v1`
 post-images to the existing thread subscription snapshot.
 
 - Graphs come only from the authenticated canonical thread scope and only
-  while that scope is live; cached rows cannot claim current authority.
+  while that scope is live. Cached rows cannot claim current authority.
 - Exact reconnect resumes at the durable cursor. A proven cursor gap returns
   one newest authoritative-refetch snapshot rather than replaying provider
   history or opening another stream.
@@ -226,7 +226,7 @@ Contract:
 Desktop creates an immutable device-local identity before OpenAuth. Local
 authority uses separate SQLite tables, `LocalRevision`, and a device-local
 scope that hosted Sync rejects. Runtime Gateway v8 exposes only the tier, never
-the identity/owner ref. A server-verified account link adds personal Sync;
+the identity/owner ref. A server-verified account link adds personal Sync.
 disconnect, denial, failed link, and restart preserve the local identity and
 local rows. The workbench, history, local Pylon, and local conversation path do
 not require an OpenAgents account.
@@ -241,7 +241,7 @@ renderer adapter whenever confirmed conversation Sync is live at boot.
   chat plus runtime mutations, and wait for exact refs and terminal state.
 - Confirmed text, reasoning, connection, tool/plan, usage, interruption, and
   terminal items stream into the active transcript during the turn.
-- A confirmation timeout renders an honest pending-reconciliation error; it is
+- A confirmation timeout renders an honest pending-reconciliation error. It is
   never converted to completion.
 - Authority mode is selected once per renderer lifetime. Signed-out/not-live
   startup stays in the explicit local-only host and never merges its catalog
@@ -263,12 +263,12 @@ Electron `safeStorage` beneath the private Desktop `userData` root.
 - Access, refresh, and server-derived owner fields exist only inside the
   encrypted payload.
 - The enclosing directory/file are owner-private and replacement is atomic.
-- Custody is unavailable when OS encryption is unavailable; Linux
+- Custody is unavailable when OS encryption is unavailable. Linux
   `basic_text` is explicitly refused.
 - Malformed, undecryptable, incomplete, and retired-epoch records purge
   fail-closed.
 - Runtime Gateway receives only signed-out, credential-present-unverified, or
-  unavailable capability copy; preload and renderer receive no credential.
+  unavailable capability copy. Preload and renderer receive no credential.
 - Ordinary launch uses an in-memory Chromium partition and neither resolves
   Electron `safeStorage` nor reads/decrypts this record. Only an explicit
   account command may initialize OS credential custody.
@@ -283,7 +283,7 @@ Contract: `openagents_desktop.session.os_encrypted_custody.v1`.
 Ordinary startup does not recover or validate an encrypted native credential.
 Desktop starts local-only so opening the app cannot trigger an OS Keychain
 unlock prompt. Native-session custody and verification remain available only
-behind a deliberate account command; owner and token values never enter
+behind a deliberate account command. Owner and token values never enter
 Runtime Gateway, preload, or renderer.
 
 Contract:
@@ -303,7 +303,7 @@ Electron main owns the complete Desktop-native OpenAuth host flow.
 - Code exchange is followed by server-owner verification and immediate
   rotation persistence before encrypted custody becomes verified.
 - Sign-out clears locally only after the server proves access and refresh
-  revocation; failure retains custody.
+  revocation. Failure retains custody.
 - Runtime Gateway session commands have no arguments and return only bounded
   completed/cancelled/unavailable phase.
 
@@ -323,7 +323,7 @@ appropriate visible action.
   honest progress copy.
 - Both controls dispatch typed Effect Native intents to argument-free Runtime
   Gateway commands.
-- Runtime responses are schema-decoded to bounded phase only; no browser URL,
+- Runtime responses are schema-decoded to bounded phase only. No browser URL,
   callback, owner, credential, or storage data reaches renderer state.
 - Session-ready copy does not claim live network Sync.
 
@@ -333,18 +333,18 @@ Contract: `openagents_desktop.session.effect_native_controls.v1`.
 
 Desktop indexes active and archived Codex rollouts without an age ceiling.
 
-- The left sidebar remains a top-level conversation list; every child and
+- The left sidebar remains a top-level conversation list. Every child and
   grandchild stays attached in the semantic agent tree.
 - Selecting an agent loads a source-order page of typed messages, reasoning
   summaries, plans, collaboration, tools, approvals, usage, lifecycle, errors,
   context and explicit gaps. The visible timeline is a product projection:
   standalone usage/session/context/lifecycle/developer rows are suppressed and
-  matching tool calls/results are composed into one tool row; blank/trivial
+  matching tool calls/results are composed into one tool row. Blank/trivial
   messages and unpersisted-reasoning placeholders are omitted. The raw bounded
-  page and accounting still retain every record; unknown/corrupt records are
+  page and accounting still retain every record. Unknown/corrupt records are
   never silently dropped.
 - The resizable inspector exposes agent topology or structured selected-item
-  fields; pages are bounded to 500 and large lists use Effect Native windowing.
+  fields. Pages are bounded to 500 and large lists use Effect Native windowing.
 - Credential-shaped fields are visibly redacted and encrypted/raw reasoning is
   not projected. Completeness remains a tested host/data invariant and Electron
   acceptance check instead of permanent conversation chrome.
@@ -362,18 +362,18 @@ The normal Desktop verification sweep opens the built Electron app against a
 checked-in, privacy-safe Codex catalog and exercises the recorded-demo path.
 The deterministic gate never reads ambient `~/.codex` history. A separately
 identified real-history acceptance may opt in with
-`OPENAGENTS_DESKTOP_CODEX_SESSIONS`; that evidence is not the CI baseline.
+`OPENAGENTS_DESKTOP_CODEX_SESSIONS`. That evidence is not the CI baseline.
 
 - Top-level rows are named, newest-first, and contain no child sessions.
 - A nested trace exposes its bounded agent topology, keyboard bindings,
-  composed tool row, and structured inspector; acceptance verifies the
+  composed tool row, and structured inspector. Acceptance verifies the
   completeness equation directly from the typed page response.
-- Explicit conversation selection expands every branch; subsequent agent,
+- Explicit conversation selection expands every branch. Subsequent agent,
   item, paging, and inspector actions preserve the ref-only restoration record.
 - A real renderer reload restores the selected trace/item and expanded set,
   including a selected child whose canonical root remains in the visible
-  catalog window; missing, orphaned, cyclic, and off-window refs fail closed.
-- Smoke output contains only aggregate counts and readiness timings; it never
+  catalog window. Missing, orphaned, cyclic, and off-window refs fail closed.
+- Smoke output contains only aggregate counts and readiness timings. It never
   prints titles, transcript text, paths, raw records, credentials, or refs.
 
 Contract:
@@ -390,12 +390,12 @@ The history worker reuses its immutable metadata graph for catalog and page
 queries and projects only the requested bounded page while computing the full
 loss equation with a lightweight pass. On the owner-local 131-agent,
 29,262-item trace this reduced cold selected-page projection from about
-1,406 ms to 182 ms; the built-Electron warm journey measured 96–97 ms.
+1,406 ms to 182 ms. The built-Electron warm journey measured 96–97 ms.
 
 Variable-height trace rows are not forced through fixed-height virtualization.
 Each page is capped at 50 rows, timeline labels are compact 360-character
 previews, and the inspector retains the complete bounded item. The shared DOM
-SplitPane lowering establishes a real flex viewport for every pane; the
+SplitPane lowering establishes a real flex viewport for every pane. The
 Electron gate requires the center timeline to have at least a 100px client
 viewport, overflow content, and a successful `scrollTop` change. On the
 owner-local 131-agent trace the measured viewport is 546px over 3,061px of
@@ -403,7 +403,7 @@ content, and committed selected-page readiness is 89–91ms.
 
 The sidebar initially constructs and exposes only the 40 newest top-level
 conversations. A final in-list `Load 40 more` action is the only way to reveal
-each older batch; restarting resets the disclosure window and does not restore
+each older batch. Restarting resets the disclosure window and does not restore
 an ancient selection outside it. On the owner catalog (1,231 roots), the exact
 state-to-view benchmark improved from 127.358ms median / 136.622ms p95 to
 4.975ms median / 10.766ms p95—a 25.6× median reduction.
@@ -412,12 +412,12 @@ Keyboard conversation traversal uses `Command+ArrowUp/ArrowDown` on macOS and
 `Control+ArrowUp/ArrowDown` elsewhere. It dispatches the same typed selection
 intent as a row press, loads the target page, and reveals the next 40-row batch
 when traversal crosses the current disclosure boundary. `Command+1…9` (or
-`Control+1…9`) jumps directly to one of the first nine conversations; while the
+`Control+1…9`) jumps directly to one of the first nine conversations. While the
 modifier is held, those rows replace timestamps with their numeric hints.
 Editable controls keep their native keys. The built-Electron journey proves
 numeric jump, one down/up round trip, and a 45-key held traversal. Held repeats
 update typed pending selection immediately, preserve the NavRail scroll offset,
-and debounce page projection to the final target after 110ms; stale responses
+and debounce page projection to the final target after 110ms. Stale responses
 cannot commit and the selected row is centered inside the viewport.
 
 Pressing or releasing the platform modifier by itself may update sidebar hints,
@@ -442,7 +442,7 @@ controlled selection, typed message/reasoning/tool/error variants, generated
 catalog icons, compact detail/status metadata, and typed selection. The
 right pane uses tree-mode `NavRail` for agent depth, expansion, roving keyboard
 bindings, and trailing lifecycle state. Lifecycle is rendered as a generated,
-color-coded catalog icon rather than a repeated status word; the full state
+color-coded catalog icon rather than a repeated status word. The full state
 remains in each row's accessibility label. Selected-item fields use the typed
 `Table` contract. Neither pane owns app-local list-row primitives.
 
@@ -457,13 +457,13 @@ launch cards. Missing child history remains explicit in the source item.
 
 Codex's structured AGENTS instruction injection is classified as `metadata`,
 not as a user chat turn. It renders as one faint `Agent metadata · Click to
-expand` disclosure; the bounded content appears only while selected, a second
+expand` disclosure. The bounded content appears only while selected, a second
 press collapses it, and the right-hand agent tree remains in place throughout.
 Ordinary user messages never enter this presentation path.
 
 Inter-agent communication is projected from the typed `agent_message`, not the
 adjacent trigger marker. The raw `inter_agent_communication_metadata` record is
-retained in the page ledger but hidden from chat; the following message becomes
+retained in the page ledger but hidden from chat. The following message becomes
 one agent card with a humanized action/task, sender-to-recipient route, bounded
 payload, and parsed inspector fields. The structured recommended-plugins
 injection is likewise retained as hidden system metadata and never presented as
@@ -474,7 +474,7 @@ a user turn.
 After a thread is selected, the local bounded first-content projection must
 finish in **less than 50 milliseconds**, regardless of total rollout size.
 
-- Large rollouts are read from a bounded tail window; the selection path must
+- Large rollouts are read from a bounded tail window. The selection path must
   not parse the complete rollout.
 - Filesystem and parsing work stays off Electron's main process.
 - The enforced oracle creates a sparse **256 MiB** rollout and fails at 50 ms.
@@ -489,23 +489,23 @@ Contract:
 ### Startup: window first, branded boot frame, no blank screen
 
 The application never shows a blank (or off-palette) frame at startup
-(2026-07-13 incident; owner statement recorded verbatim in
+(2026-07-13 incident, owner statement recorded verbatim in
 `src/contracts/ux-contracts.ts`).
 
 - Electron main uses a non-persistent in-memory Chromium partition and ordinary
   launch performs no OS-keychain custody or session network verification at
   all. Local database work remains after window creation.
 - The renderer paints a static branded boot frame (khala background, psi-bar
-  shimmer; every color an exact `@effect-native/tokens` khalaTheme value)
+  shimmer. Every color an exact `@effect-native/tokens` khalaTheme value)
   with the first HTML parse, before the bundle even evaluates.
 - The shell mounts interactable — composer focusable, sidebar present —
   BEFORE the local coding-history scan. Hydration streams in afterwards
-  behind an explicit `Scanning coding history…` row; the
+  behind an explicit `Scanning coding history…` row. The
   `No local Codex history found.` claim renders only after the scan settles.
 - Fixture-mode bench budgets (medians): `windowReadyToShow` < 1500 ms and
   `shellMounted` < 2500 ms, enforced by `scripts/startup-bench.ts` receipts.
   Real-wiring numbers come from `OPENAGENTS_DESKTOP_STARTUP_TRACE`
-  (measured on a real profile: shell mount went from 5.4–7.0 s to ~0.7 s;
+  (measured on a real profile: shell mount went from 5.4–7.0 s to ~0.7 s,
   see `docs/fable/2026-07-13-desktop-startup-incident.md`).
 
 This governs boot ordering and honest loading presentation. It does not
@@ -571,7 +571,7 @@ turn completion, on both local lanes) as hidden Git refs under
   Deleting a thread's checkpoints removes every hidden ref under that thread's
   namespace and only that thread's.
 - This substrate authorizes no visible renderer affordance under the MVP
-  surface allowlist; it is host-side capability behind the owner-local
+  surface allowlist. It is host-side capability behind the owner-local
   executor invariant.
 
 Contract:
@@ -585,11 +585,11 @@ drive the shared `@openagentsinc/pylon-core` maintenance engine. Desktop Codex
 instead reports the same immutable package-owned authority used by turns and
 never discovers or updates a PATH/NVM/npm/Homebrew Codex. Its recovery action
 directs an OpenAgents update/reinstall because swapping a nested binary would
-invalidate the signed app; the ordinary `~/.codex` sign-in remains untouched.
+invalidate the signed app. The ordinary `~/.codex` sign-in remains untouched.
 
 - Detection classifies the installed binary's channel (npm/bun/pnpm global,
   Homebrew, or the harness's native installer) and updates only through that
-  channel's own path; an unclassifiable install refuses one-click updates
+  channel's own path. An unclassifiable install refuses one-click updates
   instead of guessing.
 - Before an update runs, a pin records the expected version, binary sha256,
   and channel. An explicit different channel is refused as a channel jump —
@@ -600,7 +600,7 @@ invalidate the signed app; the ordinary `~/.codex` sign-in remains untouched.
   with the previous state recorded intact.
 - Every run persists an append-only provenance receipt (source, command,
   bounded output excerpt, before/after states, re-probe result) under the
-  shared Pylon home; the renderer projection carries versions, channel, and
+  shared Pylon home. The renderer projection carries versions, channel, and
   advisory only — never paths, tokens, or raw command output.
 - Maintenance updates binaries, never auth state: probe and update spawns
   scrub `CODEX_HOME`/`CLAUDE_CONFIG_DIR`/`GROK_HOME`, login/auth-flow
@@ -622,7 +622,7 @@ keyboard focus lands in the message composer at shell-interactable, so the
 first keystroke types into it with zero clicks.
 
 - Background history hydration never steals open-time focus.
-- Automatic settle passes claim only unowned focus (body/root); focus the
+- Automatic settle passes claim only unowned focus (body/root). Focus the
   user placed elsewhere is never moved.
 
 Contract:
@@ -638,18 +638,18 @@ reference and the existing Khala theme.
   editing state, selection, history, and contenteditable behavior.
 - External prompt hydration updates the editor only when plain text actually
   differs. A differing value preserves the live range by bounded plain-text
-  offsets and merges into the current Lexical history checkpoint; ordinary
+  offsets and merges into the current Lexical history checkpoint. Ordinary
   shell rerenders therefore neither move the caret nor reset undo history.
 - Enter submits, Shift+Enter inserts a newline, and an IME composition never
   submits. While a turn is pending, one textual mode toggle shows only the
-  active Steer or Queue behavior; toggling changes presentation state without
+  active Steer or Queue behavior. Toggling changes presentation state without
   changing the existing exact Steer, Queue, and idle Send intents or the
   duplicate-commit guard.
 - The editor is an accessible multiline textbox, remains focused across an
   explicit new-session transition, grows within a bounded scroll region, and
   keeps attachment/status changes out of the reading surface's layout.
 - The registered-node seam is explicit for future file, skill, and terminal
-  context chips; unsupported capabilities are not rendered as inert controls.
+  context chips. Unsupported capabilities are not rendered as inert controls.
 
 Contract: `openagents_desktop.chat.lexical_composer.v1`.
 
@@ -667,7 +667,7 @@ Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
 ### Codex streams cannot cross chat ownership
 
 - Every local Codex stream is admitted against an immutable desktop thread and
-  provider turn identity; the selected chat is never routing authority.
+  provider turn identity. The selected chat is never routing authority.
 - Notifications that arrive while a reused app-server connection is still
   binding the new provider thread/turn are held in a fixed-size quarantine.
 - Quarantined content is replayed only after identity binding. A stale
@@ -683,7 +683,7 @@ Contract: `openagents_desktop.chat.composer_thread_ownership.v1`.
   observed additive `itemsBackwardsCursor` and `turnsBackwardsCursor` fields
   are projected away before validation because Desktop does not consume them.
   Every remaining response field and any other unknown drift still fails
-  closed; the two compatibility cursors never become downstream authority.
+  closed. The two compatibility cursors never become downstream authority.
 
 Contracts: `openagents_desktop.chat.codex_first_class_local_lane.v1`,
 `openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1`.
@@ -694,10 +694,10 @@ Typing in the sidebar session search filters over the FULL loss-accounted
 catalog store — every root, including beyond the current sidebar page — with
 case-insensitive substring matching on titles and workspace labels.
 
-- Instant title matches come from the hydrated catalog; the byte-bounded host
+- Instant title matches come from the hydrated catalog. The byte-bounded host
   content index merges in when it settles.
-- While the host index is in flight the empty state says "Searching…";
-  "No sessions match." renders only once settled; clearing restores the list.
+- While the host index is in flight the empty state says "Searching…".
+  "No sessions match." renders only once settled. Clearing restores the list.
 - The index remains a rebuildable cache, never catalog/page authority.
 
 Contract:
@@ -741,31 +741,31 @@ Contract: `openagents_desktop.chat.empty_state_centers_current_directory.v1`.
   paste remains native, unsupported or oversized files receive an accessible
   rejection notice, and pending Steer/Queue submissions stay text-only.
 - The renderer previews only the bytes the user handed it. Native picker paths
-  remain in the main process; the renderer receives a bounded typed result.
+  remain in the main process. The renderer receives a bounded typed result.
 - An idle image-only turn is valid. Failed sends restore the exact attachment
-  state for retry; successful sends clear it.
+  state for retry. Successful sends clear it.
 - Codex app-server turns lower images to `localImage` inputs. The retained exec
   fallback still proves `-i <path>` lowering in its isolated runtime tests.
   Built React smoke evidence records counts only and never paths or bytes.
 
 Contract: `openagents_desktop.chat.composer_image_input.v1`.
 
-### Full Auto has a durable run core; the composer toggle is a migration bridge
+### Full Auto has a durable run core. The composer toggle is a migration bridge
 
 - Electron main owns a versioned `FullAutoRun` in
   `src/full-auto-run-registry.ts`: stable `runRef`, bound thread, title,
   objective, done condition, exact workspace, provider profile, cap, counts,
   lifecycle revision, transition history, and timestamps survive restart.
-  One Desktop profile admits at most one active run; a second start is a typed
+  One Desktop profile admits at most one active run. A second start is a typed
   conflict naming the existing `runRef`. Draft, Running, Pausing, Paused,
-  Retrying, Stalled, Completed, Failed, Stopped, and Cap reached are distinct;
+  Retrying, Stalled, Completed, Failed, Stopped, and Cap reached are distinct.
   Stop is terminal, Resume is valid only from Paused, and an illegal
-  transition is a typed refusal, never silent coercion (#8969; oracles:
+  transition is a typed refusal, never silent coercion (#8969, oracles:
   `tests/full-auto-run-registry.test.ts`,
   `src/full-auto-run-control-server.test.ts`).
 - The old per-thread `enabled` registry and the visible composer toggle remain
   only as an additive migration/entry bridge. Enabled legacy rows migrate
-  idempotently with an explicit `legacy_migration` objective; they do not
+  idempotently with an explicit `legacy_migration` objective. They do not
   invent a user-authored mission or bypass the one-active-run rule (the
   “Legacy registry migration (FA-AC-41)” suite in
   `tests/full-auto-run-registry.test.ts`). FA-UX-01 #8974 must replace this
@@ -778,21 +778,21 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
   - The composer toggle hydrates from the durable registry at mount and on
     every thread switch, a control-API enable survives later window
     attachment read-only, a racing local toggle beats an in-flight hydration
-    fetch, and a single click durably stops (#8874 FA-H1 and #8928; oracles:
+    fetch, and a single click durably stops (#8874 FA-H1 and #8928, oracles:
     the `FA-H1 (#8874)` and `#8928` tests in `src/renderer/shell.test.ts`
     plus `src/full-auto-hydration.integration.test.ts`).
   - Continuation dispatch is exactly-once: a serial task queue serializes
     overlapping reconciliation passes and a durable per-thread lease admits
     one dispatch per continuation — the adversarial double-reconcile probe
     proves exactly one dispatch and a +1 continuation count, and only the
-    startup pass clears a stale crashed-mid-dispatch lease (#8876 FA-H3;
+    startup pass clears a stale crashed-mid-dispatch lease (#8876 FA-H3,
     oracles: the “Full Auto exactly-once dispatch (FA-H3 #8876)” suite in
     `tests/full-auto-restart.e2e.test.ts` and the `claimPending`
     exactly-once lease test in `tests/full-auto-registry.test.ts`).
   - A main-owned background turn is projected as per-thread in-flight state,
     Stop routes to the thread-scoped main interrupt channel while it runs,
     and a manual send during the turn is fenced into the durable queue —
-    never a silent second concurrent turn (#8877 FA-H4; oracles: the
+    never a silent second concurrent turn (#8877 FA-H4, oracles: the
     `FA-H4 (#8877)` tests in `src/renderer/shell.test.ts` and the enforced
     `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`
     oracles in `src/full-auto-followup.test.ts`,
@@ -805,24 +805,24 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
     are foundations, not AFK-product acceptance.
 - Run-level liveness is distinct from a healthy long provider turn. Main
   persists progress, retry deadline, typed stall classification, recovery
-  transitions, and deduplicated attention signals (#8971; oracle:
+  transitions, and deduplicated attention signals (#8971, oracle:
   `tests/full-auto-liveness.test.ts`, including the end-to-end case that maps
   the exact overnight incident failure string to an actionable stall). The
   overnight five-thread eviction itself is fixed and replayed: the mutable
   thread cache evicts by last access and an active Full Auto thread is not
-  disposable cache state (commit `8cb900bbf9`, #8970 FA-RUN-02; oracles:
+  disposable cache state (commit `8cb900bbf9`, #8970 FA-RUN-02, oracles:
   `src/thread-store.test.ts` and the “Full Auto composed multi-chat
   thread-store pressure (FA-RUN-02 #8970)” suite in
   `tests/full-auto-restart.e2e.test.ts`).
 - Resuming a stalled Full Auto conversation from Codex history adopts the
   canonical thread identity, restores its controls, and keeps follow-ups
-  queue-only (commits `d3ad8424da`, `2ae33f3e09`; enforced contract
+  queue-only (commits `d3ad8424da`, `2ae33f3e09`, enforced contract
   `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`,
   described above). Control-API enables/disables append distinctly-attributed
-  notes so a stop is traceable to its actor (commit `83c136dead`, #8928;
+  notes so a stop is traceable to its actor (commit `83c136dead`, #8928,
   oracle: `src/full-auto-control-server.test.ts`).
 - Every terminal run can produce the bounded owner-private
-  `FullAutoRunReport` plus a separately redacted public-safe receipt (#8972;
+  `FullAutoRunReport` plus a separately redacted public-safe receipt (#8972,
   oracle: `src/full-auto-run-report.test.ts`, including the adversarial case
   proving objective, done condition, workspace paths, reasons, titles,
   account/session refs, and assistant text never enter the receipt). Raw
@@ -832,28 +832,28 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
 - Manual same-thread provider handoff uses the main-owned objective-priority
   envelope and a visible from/to/actor/reason/truncation receipt, rechecking
   target admission and preserving provider-private state as explicitly
-  non-transferable (#8975; oracle: `src/full-auto-provider-handoff.test.ts`).
+  non-transferable (#8975, oracle: `src/full-auto-provider-handoff.test.ts`).
   This does not authorize loop-decided provider, model, or account rotation.
 - The loop is generalized over the provider SPI: per-lane Full Auto policies
   keep prompt framing and background-question behavior fail-closed for
-  unknown lanes (#8901; oracle: `src/full-auto-lane.test.ts`), and every
+  unknown lanes (#8901, oracle: `src/full-auto-lane.test.ts`), and every
   dispatched lane receives the same bounded main-owned ProductSpec/
   AssuranceSpec obligation projection with fail-closed evidence revalidation
-  (#8902; oracle: `src/spec-lane-workflow.test.ts`). An identical before/after
-  revalidation snapshot remains private instead of becoming a transcript row;
+  (#8902, oracle: `src/spec-lane-workflow.test.ts`). An identical before/after
+  revalidation snapshot remains private instead of becoming a transcript row.
   a genuinely changed bounded receipt remains an informational system record,
   never a provider/turn error merely because its diagnostics mention errors
-  (owner review 2026-07-17; renderer projection oracles in
+  (owner review 2026-07-17, renderer projection oracles in
   `src/renderer/tool-cards.test.ts` and `src/renderer/react-timeline.test.tsx`).
 - Desktop publishes only the bounded live Full Auto projection consumed by
-  mobile (#8981; oracle: `tests/full-auto-run-projection-publisher.test.ts`);
+  mobile (#8981, oracle: `tests/full-auto-run-projection-publisher.test.ts`).
   mobile first-screen rendering is not remote run-control authority. The
-  offline/private analyzer and comparison pipeline are landed (#8973; oracle:
+  offline/private analyzer and comparison pipeline are landed (#8973, oracle:
   `src/full-auto-run-analyzer.test.ts`).
 - Still-open honest limits: the dedicated launcher and read-only run view
   (#8974), the six-test owner-visible dogfood batch (#8976), the Full Auto
   AssuranceSpec (still `lifecycle_state: proposed` in
-  `specs/desktop/full-auto.assurance-spec.md`; #8978), and release admission
+  `specs/desktop/full-auto.assurance-spec.md`. #8978), And release admission
   with packaged restart observation and the public promise gate (#8979). The
   newest Desktop release tag (`openagents-desktop-v0.1.0-rc.17`) contains the
   hardened composer-bridge loop and the stall/resume fixes but not the
@@ -865,7 +865,7 @@ Contract: `openagents_desktop.chat.composer_image_input.v1`.
   `danger-full-access` where that is the selected runtime posture.
 
 The composer bridge has no standalone contract entry in
-`src/contracts/ux-contracts.ts`; its enforcement is the enforced
+`src/contracts/ux-contracts.ts`. Its enforcement is the enforced
 `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1`
 contract plus the named Full Auto suites above, all in the normal test sweep.
 Pending dedicated-mode contracts (all `pending` in
@@ -880,7 +880,7 @@ Owner statement (rc.10 review, 2026-07-14, verbatim): "This menu, when I click
 the settings button, looks horrible. This folder thing looks horrible. I
 thought we made a pass removing all screens that are not specifically called
 for in the MVP. You need to clean all this up and make a pass to remove
-everything from the sidebar and all UI that's not specifically called for in
+everything from the sidebar and all UI that is not specifically called for in
 our MVP spec."
 
 - The sidebar renders EXACTLY the cited controls: New session above Recent
@@ -919,7 +919,7 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
 - Electron renderer sandboxing is enabled with context isolation on, Node
   integration off, webviews off, and web security on.
 - Effect Native remains the only application/component/state/intent grammar.
-  React 19, Vite, Tailwind, and any later Base UI adapters are renderer implementation details;
+  React 19, Vite, Tailwind, and any later Base UI adapters are renderer implementation details.
   portable shell/projection modules cannot import them or carry JSX,
   `ReactNode`, callbacks, or Tailwind class strings. Zustand, TanStack Router,
   Effect Atom React, and a second schema/theme/icon authority remain absent.
@@ -954,7 +954,7 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
 - The production main process uses one replaceable lifecycle owner for runtime,
   WorkContext, authenticated Sync, account-connect, history, and per-window
   gateway subscriptions. Replacement closes the previous narrower slot before
-  publishing the next; app shutdown closes windows/gateway before dependencies
+  publishing the next. App shutdown closes windows/gateway before dependencies
   and is idempotent. Account children/timers, history workers, gateway
   listeners, and an in-flight native sign-in have terminal teardown paths.
 - Runtime operations may carry only bounded `operationRef`, Desktop lifecycle
@@ -1070,20 +1070,20 @@ When the Developer ID identity or notary credentials are absent, the make
 and preflight lanes REFUSE — a build without a signing ceremony can no
 longer silently produce a release-shaped artifact. The only escape valve is
 explicit (`OA_ALLOW_UNSIGNED_DEV=1` for make, `--allow-unsigned-dev` for
-preflight) and renames the output `-UNSIGNED-DEV`; release preflight and
+preflight) and renames the output `-UNSIGNED-DEV`. Release preflight and
 `publish-release.ts` refuse that marker unconditionally, so a dev artifact
 can never be mistaken for — or published as — a release.
 
 Every oracle is a pure interpreter over recorded command output, so the full
 set (including the refusal paths) is unit-tested against fixtures WITHOUT
-owner signing credentials; owner-key ceremonies stay owner-gated. Oracles:
+owner signing credentials. Owner-key ceremonies stay owner-gated. Oracles:
 [`tests/macos-gatekeeper.test.ts`](./tests/macos-gatekeeper.test.ts).
 
 ### Applying an update is not success — the first demonstrated launch is
 
 After an update applies, the machine holds in `awaiting_launch_receipt` with
 the previous release still staged. The freshly launched build writes a typed
-first-launch receipt (`openagents.desktop.launch_receipt.v1`); only a
+first-launch receipt (`openagents.desktop.launch_receipt.v1`). Only a
 schema-valid receipt for EXACTLY the applied version confirms the update. No
 receipt within the bounded window (10 minutes) → automatic rollback to the
 retained previous version with a typed diagnostic
@@ -1106,7 +1106,7 @@ receipt, and signing policy to one version, channel, source revision, release
 notes set, and pinned Ed25519 signature.
 
 - Unknown, missing, duplicate, reordered, or impossible target/format entries
-  fail closed. Stable refuses prereleases; RC refuses stable versions.
+  fail closed. Stable refuses prereleases. RC refuses stable versions.
 - The finalizer accepts the existing private-key custody value only after the
   complete artifact byte map independently matches every signed digest and
   length. Partial sets, unledgered bytes, and non-monotonic candidates cannot
@@ -1117,7 +1117,7 @@ notes set, and pinned Ed25519 signature.
   have no substitution authority.
 - The v1 single-artifact manifest is not converted to v2. It remains readable
   only as the explicit `v1-darwin-arm64` compatibility variant through
-  2026-10-14T23:59:59Z; all other targets and all new publication are v2-only.
+  2026-10-14T23:59:59Z. All other targets and all new publication are v2-only.
 
 Contract: [`src/release-set-contract.ts`](./src/release-set-contract.ts).
 Canonical, completeness, mutation, byte-convergence, monotonicity, selection,
@@ -1140,7 +1140,7 @@ provider gateway before writing the exact-version receipt. On macOS, a
 detached system-shell watchdog survives failure of the replacement app to
 launch and restores only the verified retained slot at the deadline. Durable
 `applying`, receipt-wait, rollback, and rollback-failure states reconcile on
-the next main-process start; renderer IPC exposes only bounded phase/version/
+the next main-process start. Renderer IPC exposes only bounded phase/version/
 reason data and has no subscription to leak.
 
 Contracts: `src/update-staging-host.ts`, `src/update-platform-applier.ts`,
@@ -1157,16 +1157,16 @@ This implemented contract does not itself admit any cross-platform target as
 supported. The native install/update/interruption/rollback receipts required
 by the normative ProductSpec remain the support authority.
 
-### Update feed discovery is typed and fail-closed; staging override is explicit (#8993)
+### Update feed discovery is typed and fail-closed. Staging override is explicit (#8993)
 
 The update host's feed base URL and pinned key come only from the typed
 resolver in `src/update-feed-config.ts`. With no environment overrides the
 resolution is byte-identical to the historical hardcoded behavior: the
 production `https://updates.openagents.com` origin with the committed
 production Ed25519 pin. For staging-channel proof, an explicitly launched
-build may set `OPENAGENTS_DESKTOP_UPDATE_FEED_BASE_URL` (https only; plain
-http only toward loopback; no credentials/query/fragment) and optionally
-`OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN` (PUBLIC pin JSON; refused
+build may set `OPENAGENTS_DESKTOP_UPDATE_FEED_BASE_URL` (https only, plain
+http only toward loopback. No credentials/query/fragment) and optionally
+`OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN` (PUBLIC pin JSON, refused
 without the base override, refused against the production feed host, refused
 for the reserved production kid, and refused when it carries any extra field
 such as a pasted private `d`). A rejected configuration DISABLES update
@@ -1175,7 +1175,7 @@ application and no silent fallback.
 
 The full staging cycle is proven end to end against a live local instance of
 the oa-updates ReleaseSet v2 feed (real admission, CAS promotion, and HTTP
-routing; throwaway test keys only): discover → pinned-verify → target-select
+routing. Throwaway test keys only): discover → pinned-verify → target-select
 → digest-gated stage → apply → first-launch receipt confirmation →
 retained-slot rollback → feed pointer rollback, plus the refusals — a
 production-pinned client rejects the staging feed (`kid_not_pinned`) and no
@@ -1198,7 +1198,7 @@ exactly one selected OpenAgents worktree beside the stable `OpenAgents Dev`
 application. The preview uses a dynamic loopback-only Vite port, a distinct
 application/single-instance identity, and an OS-temporary `userData` profile
 with isolated-app proof enabled. Shutdown reaps the preview process tree and
-removes only that launcher-owned temporary profile; it never reads or mutates
+removes only that launcher-owned temporary profile. It never reads or mutates
 the stable Dev profile.
 
 CSS and React component modules remain the only automatic HMR/Fast Refresh
@@ -1217,7 +1217,7 @@ restarting the app. A foreign same-named process still fails closed, and a
 verified launcher-owned process whose renderer port is dead is stopped before
 the launch worktree can be synchronized. The narrow exception is an Electron
 process group whose Chromium child proves an OS-temporary
-`openagents-desktop-smoke-*` or `openagents-desktop-preview.*` profile; those
+`openagents-desktop-smoke-*` or `openagents-desktop-preview.*` profile. Those
 typed isolated verification apps may coexist because they do not own the
 stable profile or launch worktree.
 

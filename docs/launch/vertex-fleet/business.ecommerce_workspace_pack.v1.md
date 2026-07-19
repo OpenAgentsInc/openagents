@@ -39,7 +39,7 @@ independently re-verify, in the same module:
 - `serializeEcommerceCampaignDeliveryReceiptDocument(...)` — deterministic JSON
   body (stable bytes a consumer can hash/cache).
 - `decodeEcommerceCampaignDeliveryReceiptDocument(...)` — decode + **validate**
-  the wire shape (uses `json-boundary`'s `parseJsonWithSchema`; no raw
+  the wire shape (uses `json-boundary`'s `parseJsonWithSchema`, no raw
   `JSON.parse`, so the zero-debt architecture check stays clean). Rejects
   malformed JSON and wrong `docVersion`.
 - `verifyDereferencedEcommerceCampaignReceipt(body)` — the single entrypoint a
@@ -63,7 +63,7 @@ real receipt instance to dereference yet, and no receipt-first claim upgrade
 per `proof.claim_upgrade_receipts.v1`. The blocker stays listed.
 
 `blocker.product_promises.ecommerce_pack_self_serve_missing` — untouched
-(out of scope for this run; the pack remains operator-assisted).
+(out of scope for this run, the pack remains operator-assisted).
 
 ## What remains for green
 
@@ -72,7 +72,7 @@ per `proof.claim_upgrade_receipts.v1`. The blocker stays listed.
    returning `[]`.
 2. Persist/serve that receipt instance at the dereferenceable public route. The
    wire format + decode/verify contract now exist
-   (`verifyDereferencedEcommerceCampaignReceipt`); what remains is a real route
+   (`verifyDereferencedEcommerceCampaignReceipt`). What remains is a real route
    handler that stores and serves a real instance, plus wiring into a
    receipt-first claim upgrade per `proof.claim_upgrade_receipts.v1`.
 3. Deliver a self-serve vertical pack to clear the self-serve blocker.

@@ -9,22 +9,22 @@
   (claim-by-claim launch-gate audit).
 
 This is the "evidence pack built into all this" the video promises. The
-standard the video sets is explicit: *"we're not going to be making any big
-claims that aren't sourced by evidence."* So for each on-camera claim this doc
+standard the video sets is explicit: *"we are not going to be making any big
+claims that are not sourced by evidence."* So for each on-camera claim this doc
 records:
 
-1. the exact claim wording (from the transcript);
-2. the public, dereferenceable URL/ref that proves it; and
+1. the exact claim wording (from the transcript).
+2. the public, dereferenceable URL/ref that proves it. And
 3. the honest status — **settled-live**, **mechanism-proven**, or **gated**.
 
 A skeptic — human or agent — can verify every claim below by dereferencing the
-listed refs. Every public endpoint here was curl-checked on 2026-06-18; route
+listed refs. Every public endpoint here was curl-checked on 2026-06-18. Route
 normalization notes are recorded in §9 rather than papered over.
 
 > Honest-scope note: this document is public-safe. It contains no secrets, no
 > wallet seeds, no payment hashes, no raw Lightning/Bitcoin addresses, and no
 > private data. It links only to public projections and content-addressed refs.
-> Tip/receive destinations may be public; private payment material never is.
+> Tip/receive destinations may be public. Private payment material never is.
 
 > Status legend:
 > - **settled-live** — true today on the live system, with current public
@@ -48,7 +48,7 @@ normalization notes are recorded in §9 rather than papered over.
 | Public run page | `https://openagents.com/tassadar` and `https://openagents.com/training/runs/run.tassadar.executor.20260615` | resolves (HTTP 200) |
 | Agent front door | `https://openagents.com/AGENTS.md` | resolves (HTTP 200) |
 | Install + test guide | `https://openagents.com/INSTALL.md` | resolves (HTTP 200) |
-| Product-promise registry | `https://openagents.com/api/public/product-promises` | source registry target `2026-06-19.1`; public endpoint resolves (HTTP 200) |
+| Product-promise registry | `https://openagents.com/api/public/product-promises` | source registry target `2026-06-19.1`. Public endpoint resolves (HTTP 200) |
 | Product-promise page | `https://openagents.com/docs/product-promises` | resolves (HTTP 200) |
 
 The run summary is the spine of the pack: it is a single live projection
@@ -63,7 +63,7 @@ it.
 
 ## 1. "The Tassadar run is live"
 
-> **Claim (238.md):** "The Tassadar run is live. … We've begun this run. … it's
+> **Claim (238.md):** "The Tassadar run is live. … We've begun this run. … it is
 > paying people for contributing compute."
 
 **Proof:**
@@ -78,7 +78,7 @@ it.
 verified-trace corpus of 6 replay-verified traces. Honest scope: this is a
 bounded **executor-trace** run growing a verified-trace corpus
 (`objective: "Grow the Tassadar verified-trace corpus via paid executor-trace
-work, verified by exact replay."`), not network-scale paid training. "It's
+work, verified by exact replay."`), not network-scale paid training. "It is
 paying people" is true for **two** distinct independent contributors so far (see
 §2), not at scale. The run summary itself carries live blockers
 (`blocker.training.monday_launch_self_serve_stranger_payout_pending`,
@@ -90,8 +90,8 @@ network-scale earning.
 
 ## 2. "Real Bitcoin settlements" — real vs simulation, honestly distinguished
 
-> **Claim (238.md):** "it's paying people for contributing compute" /
-> "both worker and verifier are going to get paid. Right now, it's five Bitcoin
+> **Claim (238.md):** "it is paying people for contributing compute" /
+> "both worker and verifier are going to get paid. Right now, it is five Bitcoin
 > sats each."
 
 **Proof — the reconciled real total:**
@@ -137,9 +137,9 @@ dereferenceable as both an API JSON and a human receipt page:
     `verificationBasis: hygiene_merged_reviewed`, tied to merged
     `pr.public.github.openagentsinc_openagents.5358` with reviewer acceptance
     `review.public.debt_receipt.5358.accepted`. The receipt ref is itself the
-    SHA-256 idempotency key (`sha256_c81865…`); re-submitting the same key is
+    SHA-256 idempotency key (`sha256_c81865…`). Re-submitting the same key is
     idempotent and a duplicate replay is rejected. (This is a separate
-    pay-for-merged-reviewed-work lane, not part of the Tassadar run total; it is
+    pay-for-merged-reviewed-work lane, not part of the Tassadar run total. It is
     additional evidence that real-Bitcoin settlement receipts are produced and
     are dereferenceable.)
 
@@ -147,9 +147,9 @@ dereferenceable as both an API JSON and a human receipt page:
 moved to independent contributors, and every claim is content-addressed in a
 dereferenceable receipt. The honesty caveats that must travel with this claim:
 (a) the 5-sat simulation row must never be counted as paid — the projection
-already excludes it (`1,005`, not `1,010`); (b) the 1,000-sat row is an
+already excludes it (`1,005`, not `1,010`). (B) the 1,000-sat row is an
 owner-armed canary, and the 5-sat self-serve row was **operator-retro-settled**
-(auto-stream skipped at verdict; payout-target bug, since fixed) — so neither is
+(auto-stream skipped at verdict, payout-target bug, since fixed) — so neither is
 yet a fully-autonomous self-serve payout (see §4). Backing promise:
 `training.decentralized_training_launch.v1` (**green, bounded**).
 
@@ -178,10 +178,10 @@ defensible **only with their full qualifiers**.
 
 **Do NOT say (these are not defensible and a critic will cite a counterexample):**
 - "first **decentralized** training run" — token-paid decentralized training
-  (Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche) predates us; our
+  (Bittensor/Templar, Gensyn, Prime Intellect, Nous/Psyche) predates us. Our
   discriminator is **Bitcoin**, not decentralization.
 - "first to pay **Bitcoin for AI**" — Spirit of Satoshi paid sats (for data) and
-  LightPhon uses sats (buying inference); too broad.
+  LightPhon uses sats (buying inference). Too broad.
 - "first **LLM-computer**" / "we **invented** the LLM-computer" — **Percepta**
   did (Mar 2026, `https://www.percepta.ai/blog/constructing-llm-computer`,
   `https://github.com/Percepta-Core/transformer-vm`). Our firstness is the
@@ -196,7 +196,7 @@ an owner-signed receipt-first upgrade:
 - `claims.world_first_public_llm_computer_training_run.v1` — **red**
 Use the full qualified wording only. Credit Percepta. Accuracy boundary: the
 live run is **exact-trace executor PoC** work with **"no gradient descent"** (the
-transcript's own words); "training run" is defensible in the executor-
+transcript's own words). "Training run" is defensible in the executor-
 construction sense, not as gradient-descent model training — do not conflate.
 
 ---
@@ -255,7 +255,7 @@ coverage, and Spark-helper auto-start/readiness evidence. Backing promises:
 
 ## 5. Install — "download Pylon"
 
-> **Claim (238.md):** "they're going to download Pylon, our software that
+> **Claim (238.md):** "they are going to download Pylon, our software that
 > actually runs this." Front door: openagents.com/agents.md.
 
 **Proof:**
@@ -281,7 +281,7 @@ promises: `agents.one_instruction_sheet.v1` (green),
 
 ## 6. Honest promise states (the "no overclaim" north star)
 
-> **Claim (238.md):** "We're not going to be making any big claims that aren't
+> **Claim (238.md):** "We are not going to be making any big claims that are not
 > sourced by evidence."
 
 **Proof:** `https://openagents.com/api/public/product-promises`, source registry
@@ -291,7 +291,7 @@ target version `2026-06-19.1`. The relevant records and their honest states:
 |---|---|---|
 | `promises.registry.v1` | green | the evidence-first registry itself is live |
 | `training.decentralized_training_launch.v1` | green (bounded) | run live, 1,005 real sats to 2 contributors |
-| `compute.tassadar_executor_poc.v1` | green | exact-trace executor PoC backed; no general capability claim |
+| `compute.tassadar_executor_poc.v1` | green | exact-trace executor PoC backed. No general capability claim |
 | `agents.one_instruction_sheet.v1` | green | AGENTS.md front door |
 | `pylon.install_without_wallet_knowledge.v1` | green | install path |
 | `proof.claim_upgrade_receipts.v1` | yellow | receipt-first upgrade discipline |
@@ -300,7 +300,7 @@ target version `2026-06-19.1`. The relevant records and their honest states:
 | `pylon.v03_release_candidate.v1` | yellow | RC channel |
 | `claims.world_first_ai_training_paid_bitcoin.v1` | **red (gated)** | world-first #1 — qualified wording only |
 | `claims.world_first_public_llm_computer_training_run.v1` | **red (gated)** | world-first #2 — qualified wording only |
-| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red (gated)** | default npm and one auto-stream visibility capture exist; broad "anybody plugs in → auto-paid" still gated by scale, Windows/WSL, and Spark-helper auto-start/readiness evidence |
+| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red (gated)** | default npm and one auto-stream visibility capture exist. Broad "anybody plugs in → auto-paid" still gated by scale, Windows/WSL, and Spark-helper auto-start/readiness evidence |
 | `marketplace.agentic_npm_module_registry.v1` | **planned** | the agentic-npm / module marketplace |
 
 **Status: settled-live (honest).** The registry openly carries the two
@@ -323,12 +323,12 @@ This is the evidence-first promise honored: the strong claims are explicitly
 - Percepta credit (paradigm originator):
   `https://www.percepta.ai/blog/constructing-llm-computer` (resolves) and
   `https://github.com/Percepta-Core/transformer-vm` (resolves). The transcript
-  explicitly credits Percepta; we did **not** invent the LLM-computer.
+  explicitly credits Percepta. We did **not** invent the LLM-computer.
 - OpenAgents provenance review:
   `docs/launch/2026-06-18-world-firsts-verification.md`.
 
 **Status: gated (concept / roadmap).** The LLM-computer *paradigm* is real and
-Percepta-credited; the *live PoC* is exact-trace executor work
+Percepta-credited. The *live PoC* is exact-trace executor work
 (`compute.tassadar_executor_poc.v1`, green) and must not be presented as general
 LLM-computer capability, model-capability parity, or transformers-as-a-served-
 product. "Learning by construction" and "the flywheel" are **strategy /
@@ -393,7 +393,7 @@ npx @openagentsinc/pylon   # latest = stable 1.0.0
 - **Simulation rows remain excluded from real Bitcoin totals.** The reconciled
   per-run real truth is `1,005` sats (settlement feed +
   `summary.settlement`). The settlement feed returns the historical 5-sat
-  simulation row with `realBitcoinMoved:false`; the run summary and receipt-
+  simulation row with `realBitcoinMoved:false`. The run summary and receipt-
   backed public aggregate code count only settled real-Bitcoin receipts for
   real movement totals.
 
@@ -404,9 +404,9 @@ npx @openagentsinc/pylon   # latest = stable 1.0.0
 **Yes, for the honest-scoped video.** Every on-camera claim maps to a
 dereferenceable public ref, with status marked:
 
-- **settled-live:** run is live (§1); real Bitcoin settled to two independent
-  contributors with per-receipt evidence and real-vs-sim distinguished (§2);
-  install works via stable `npx @openagentsinc/pylon` v1.0 (§5); the registry
+- **settled-live:** run is live (§1). Real Bitcoin settled to two independent
+  contributors with per-receipt evidence and real-vs-sim distinguished (§2).
+  install works via stable `npx @openagentsinc/pylon` v1.0 (§5). The registry
   honestly carries the strong claims as RED/PLANNED (§6).
 - **visibility-captured / still gated for broad copy:** the money loop ran
   end-to-end with distinct worker/validator identities, real rejections, a real
@@ -415,7 +415,7 @@ dereferenceable public ref, with status marked:
   red until scale, Windows/WSL, and Spark-helper auto-start/readiness evidence
   exists.
 - **gated:** the two world-firsts (defensible only with full qualifiers,
-  Percepta credited, held RED) (§3); LLM-computer general capability,
+  Percepta credited, held RED) (§3). LLM-computer general capability,
   learning-by-construction, and the flywheel (concept/roadmap) (§7).
 
 The pack does **not** back: "anybody plugs in today on any platform and is

@@ -1,6 +1,6 @@
 # Terra session log — 2026-07-10
 
-- Status: factual working log; not a product-claim or authority record
+- Status: factual working log. Not a product-claim or authority record
 - Scope: `apps/openagents-desktop`, `apps/openagents-mobile`, and the shared
   Effect Native DOM/RN renderers where a native-equivalent lowering was needed
 - Governance update: Sol's rev-22 roadmap makes Terra an explicit parallel
@@ -16,7 +16,7 @@ was direct and useful:
 1. A scripted reply is not a chat product.
 2. A fake, hard-coded recent-chat list is not a sidebar.
 3. Electron/debug/authority labels are implementation residue, not product UI.
-4. “Looks like SwiftUI” cannot mean a few dark CSS effects; the shared Effect
+4. “Looks like SwiftUI” cannot mean a few dark CSS effects. The shared Effect
    Native rendering contract needs a material/backdrop lowering analogous to
    the mobile SwiftUI Liquid Glass fallback.
 5. The result must be minimal: chat history, conversation, and composer are
@@ -29,19 +29,19 @@ was direct and useful:
 | `39b0e01928` | First Desktop fleet/chat surface. |
 | `4b8bfe4e2f` | Bounded local-Pylon Fleet brief dispatch. |
 | `47b62e4359` | First visual polish pass. |
-| `6c48774608` | Neutral chat workspace rail; removed visible Sarah branding. |
+| `6c48774608` | Neutral chat workspace rail. Removed visible Sarah branding. |
 | `a4d6348a08` | Host-owned chat completion bridge and persisted five-thread history. |
 | `9df69b7391` | Removed the rectangular composer focus ring. |
 | `398911ad3c` | Composer re-focuses after New chat and completed sends. |
-| `8ed6d166fd` | Effect Native DOM adopts the shared OpenAI Apps SDK icon catalog; sidebar uses typed icons and left-aligned rows. |
-| `acdb90f378` | Desktop authors a typed `BackgroundGradient` behind typed glass surfaces; the shared DOM renderer lowers the mobile-material analogue. |
+| `8ed6d166fd` | Effect Native DOM adopts the shared OpenAI Apps SDK icon catalog. Sidebar uses typed icons and left-aligned rows. |
+| `acdb90f378` | Desktop authors a typed `BackgroundGradient` behind typed glass surfaces. The shared DOM renderer lowers the mobile-material analogue. |
 | `d13bdd4ab0` | Removed rendered host/proof/workspace/Fleet controls, authority copy, Pylon status, and the composer Proof action. |
 | `d1abe0e81e` | Added real desktop Project Home and bounded local-folder listing/read preview through fixed IPC. |
 | `226aad0e72` | Sharpened the desktop material geometry after visual review. |
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
-| `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
-| `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls; prepared native build 115. |
-| `09c9016b48` + `e8bf6b8603` | Removed mobile named-persona/session/demo/local-catalog code; made the SwiftUI Liquid Glass composer the sole Khala input; build 116 was archived/exported and accepted by App Store Connect pending build-record ingestion. |
+| `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route. TestFlight build 114 is `VALID`. |
+| `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls. Prepared native build 115. |
+| `09c9016b48` + `e8bf6b8603` | Removed mobile named-persona/session/demo/local-catalog code. Made the SwiftUI Liquid Glass composer the sole Khala input. Build 116 was archived/exported and accepted by App Store Connect pending build-record ingestion. |
 | `19ebe9741f` | Uses the exact checked-in OpenAgents mobile app PNG for the Electron window and macOS Dock, with a build-time byte-parity test. |
 
 ## What now works
@@ -89,7 +89,7 @@ For the mobile recent-thread delivery (`7d77150514`):
 
 The first visible chat output was locally scripted. It made the UI appear to
 work while answering unrelated prompts with the same text. The right repair
-was not better canned copy; it was moving completion and persistence to the
+was not better canned copy. It was moving completion and persistence to the
 host boundary and surfacing unavailable configuration honestly.
 
 ### Product chrome must answer a user question
@@ -97,7 +97,7 @@ host boundary and surfacing unavailable configuration honestly.
 `electron/darwin`, proof counters, local-workspace status, Pylon dispatch,
 and authority boilerplate describe implementation mechanics. They may be
 valuable in a diagnostic surface, but they pollute a default conversation
-surface. The default should be quiet; diagnostics should be explicit and
+surface. The default should be quiet. Diagnostics should be explicit and
 separate.
 
 ### “Shared UI” must mean a shared semantic lowering
@@ -116,7 +116,7 @@ still visibly wrong.
 
 ## Remaining limitations
 
-- Electron cannot literally run SwiftUI's iOS `.glassEffect`; the desktop uses
+- Electron cannot literally run SwiftUI's iOS `.glassEffect`. The desktop uses
   the shared Effect Native material contract with the DOM's honest equivalent.
 - The Fleet capability remains in internal code and host IPC, but the owner
   explicitly removed it from the default UI. It needs a separate, deliberate
@@ -153,7 +153,7 @@ SwiftUI.
 `ee78dc1a2e` restores the native module, its SwiftUI `GlassComposer`,
 `GlassIconButton`, and `GlassPill` controls, and the app dependency that causes
 the module to be embedded during iOS prebuild. The typed state and intent model
-remains shared; the owner-visible iOS lowering is deliberately native SwiftUI.
+remains shared. The owner-visible iOS lowering is deliberately native SwiftUI.
 Because an OTA cannot add a native module missing from an already-installed
 binary, this correction requires build 115 rather than a build-114 OTA.
 
@@ -162,7 +162,7 @@ binary, this correction requires build 115 rather than a build-114 OTA.
 The owner directed a cleanup after seeing two inputs on Khala: the floating
 SwiftUI composer and an Effect Native composer inside the transcript. The
 second composer is removed. The remaining native composer now owns the real
-Khala text field, draft change, and submit events; it feeds the same typed
+Khala text field, draft change, and submit events. It feeds the same typed
 Khala intent boundary as the renderer rather than serving as a decorative tap
 target.
 
@@ -178,11 +178,11 @@ Khala Sync authority are built.
 - Desktop scope was claimed and progress-reported against OpenAgents issue
   #8574. Mobile scope was claimed and released against #8597.
 - Each implementation commit was rebased onto the moving `main` tip before
-  push when necessary; no force-push or overwrite of concurrent work was used.
+  push when necessary. No force-push or overwrite of concurrent work was used.
 - All claims in this log distinguish local persistence from Sync authority,
   and user-visible success from an unverified production model/fleet outcome.
 - The current Desktop Settings slice is a bounded readiness/device-auth start
-  path. Its smoke reaches awaiting-browser state only; a real owner Codex
+  path. Its smoke reaches awaiting-browser state only. A real owner Codex
   reconnect remains an owner proof gate and must not be marked completed here.
 
 ## Claude recovery — Sarah retirement deployment
@@ -198,13 +198,13 @@ The genuine unfinished residue was operational: production still served the
 old Sarah revision even though current `main` carried the explicit tombstone.
 From clean `dcef148b08`, I deployed staging first and then production:
 
-- staging: `openagents-monolith-staging-00058-6b8`, `/sarah` → HTTP 404;
+- staging: `openagents-monolith-staging-00058-6b8`, `/sarah` → HTTP 404.
 - production: `openagents-monolith-00079-jsw`, `/sarah` → HTTP 404 with
-  `{\"error\":\"not_found\",\"path\":\"/sarah\"}`;
-- production `/internal/healthz` → `{\"ok\":true,\"service\":\"openagents-monolith\"}`;
-- a real headless-Chromium capture of the deployed production 404 was made;
+  `{\"error\":\"not_found\",\"path\":\"/sarah\"}`.
+- production `/internal/healthz` → `{\"ok\":true,\"service\":\"openagents-monolith\"}`.
+- a real headless-Chromium capture of the deployed production 404 was made.
 - `sarah-avatar-gpu-1` was already `TERMINATED`, so no additional GPU stop was
   needed.
 
-The closeout is posted on #8610. This removes a real stale deployment; it does
+The closeout is posted on #8610. This removes a real stale deployment. It does
 not alter the retained neutral `/api/sarah/fleet-runs` compatibility authority.

@@ -12,10 +12,10 @@ Default posture: skeptical — assume we over-claimed somewhere and go find it.
 
 | # | Claim checked | Verdict |
 | - | ------------- | ------- |
-| 1 | Green count is exactly 20; no promise dishonestly flipped/advanced | HONEST |
+| 1 | Green count is exactly 20. No promise dishonestly flipped/advanced | HONEST |
 | 2 | New scaffolds are truly inert (no money/settlement without flag + owner arm) | HONEST |
 | 3 | "Green-ready" claims are honestly green-ready, real gates intact | HONEST |
-| 4 | No over-claim in safeCopy/unsafeCopy on touched records | HONEST (one internal-contradiction wart fixed; see Fixes) |
+| 4 | No over-claim in safeCopy/unsafeCopy on touched records | HONEST (one internal-contradiction wart fixed, see Fixes) |
 | 5 | Cited receipts/docs dereference | HONEST (one cross-dir lookup confusion, no real dangling ref) |
 
 Net: the assault was honest. One cheap honest fix made (an internal
@@ -23,7 +23,7 @@ numeric contradiction inside the green training record). A small set of
 **under-stating** stale refs in red sibling records is FLAGGED (not fixed) for
 owner review — they are conservative, not over-claims.
 
-## Claim 1 — Green count exactly 20; green set unchanged by the assault
+## Claim 1 — Green count exactly 20. Green set unchanged by the assault
 
 - `PublicProductPromisesVersion = '2026-06-19.9'` (product-promises.ts:7),
   matching the green-count test note and the brief.
@@ -50,7 +50,7 @@ charge / settle / decrement credits / pay out / leak without BOTH (a) a feature
 flag on AND (b) an explicit owner-arm of a live adapter/hook/store?
 
 Shared mechanism: flag parsers default OFF on unset (`config.ts:406-432`
-`optionalBooleanFlag`; per-scaffold parsers return `false` on `undefined`,
+`optionalBooleanFlag`. Per-scaffold parsers return `false` on `undefined`,
 enabling only on `1/true/yes/on`). Production `wrangler.jsonc` (`vars`) sets
 NONE of the scaffold flags -> all OFF on prod. Staging arms only three
 (`CLOUD_FINE_TUNING_ENABLED`, `CLOUD_SANDBOX_COMPUTE_ENABLED`,
@@ -63,28 +63,28 @@ stores make them exercisable-but-inert.
    (`metered:false`, no ledger). `index.ts` wires only `{authenticate,
    enabled}` — `makeLedgerFineTuningMeteringHook` is never instantiated in
    production. Arming the flag ALONE does not charge. Inert.
-2. **Cloud sandbox** (`cloud/sandbox-compute-service-routes.ts`): same pattern;
-   stub adapter + stub metering hook; live hook never wired; TTL abuse ceiling
+2. **Cloud sandbox** (`cloud/sandbox-compute-service-routes.ts`): same pattern.
+   stub adapter + stub metering hook. Live hook never wired. TTL abuse ceiling
    pre-dispatch. Inert.
 3. **Cloud coding-sessions** (`cloud/cloud-coding-session-routes.ts`): 404 when
-   off; stub adapter/hook; live hook never wired; placement policy refuses
-   inadmissible repo-trust lanes BEFORE dispatch; stub leases no VM. Not even
+   off. Stub adapter/hook. Live hook never wired. Placement policy refuses
+   inadmissible repo-trust lanes BEFORE dispatch. Stub leases no VM. Not even
    armed on staging. Inert.
 4. **Marketplace monetize-accrual bridge / cross-category referral ledger**
    (`marketplace-monetize-any-layer-accrual.ts`,
    `referral-cross-category-accrual.ts`): flag-gated AND has NO production
    caller (unreachable from any route). Even if reached + armed, writes an
-   eligibility row only; payout stays on the separate
+   eligibility row only. Payout stays on the separate
    `TREASURY_DISPATCH_ENABLED=false` owner-armed dispatch rail. Inert.
-5. **composed-run** (`autopilot-composed-run*.ts`): GET-only projection; store
+5. **composed-run** (`autopilot-composed-run*.ts`): GET-only projection. Store
    never passed from `index.ts`, so listing is always empty / `inert:true` /
    `promiseState:'planned'` even if armed. Moves no money. Inert.
 6. **spark-helper-autostart** (`apps/pylon/src/spark-helper-autostart.ts`): pure
-   classifier, default off, no production caller; explicitly starts no helper,
-   spawns no process, moves no funds; receipt redacted by construction. Inert.
+   classifier, default off, no production caller. Explicitly starts no helper,
+   spawns no process, moves no funds. Receipt redacted by construction. Inert.
 7. **demand-provenance split** (`accepted-outcomes-per-kwh.ts`): read-only
-   metric; the seed datapoint is hardcoded `internal`,
-   `externalDemandClaimAllowed=false`; copy gate forbids external-market
+   metric. The seed datapoint is hardcoded `internal`,
+   `externalDemandClaimAllowed=false`. Copy gate forbids external-market
    framing. Moves no money. Inert.
 
 No bypass path found. Tests assert BOTH inert-when-off (404) and no-op defaults
@@ -105,8 +105,8 @@ exact. Remaining gates are real missing capabilities, NOT lowered bars.
   in the web app, not the API. Remaining gate (deploy + owner-signed
   receipt-first upgrade) is real.
 - **autopilot.mission_briefing.v1** (yellow): risk + receipts rollups exist in
-  `autopilot-mission-briefing.ts`; route `GET /api/autopilot/work/{ref}/briefing`
-  registered + in OpenAPI + capability manifest; `autopilot-work-routes.test.ts`
+  `autopilot-mission-briefing.ts`. Route `GET /api/autopilot/work/{ref}/briefing`
+  registered + in OpenAPI + capability manifest. `autopilot-work-routes.test.ts`
   has exactly 37 test cases incl. rollup-shape + no-secret-leak assertions.
   Remaining gate ("at least one live mission citing this briefing JSON") is real.
 - **autopilot_sites.native_email_sequences.v1** (yellow):
@@ -114,7 +114,7 @@ exact. Remaining gates are real missing capabilities, NOT lowered bars.
   confirmed: NO send vendor wired (no resend/sendgrid/postmark/etc.) and the
   capture route is NOT mounted in `index.ts`. Remaining gates (send service,
   deliverability, mount route, self-serve authoring) genuinely missing.
-- **training.public_distributed_training_run.v1** (RED): all 8 file refs exist;
+- **training.public_distributed_training_run.v1** (RED): all 8 file refs exist.
   scale-methodology doc states a >=50-contributor threshold "(stated, not yet
   met)". The record is scrupulous that 5 canary-scale settlements satisfy
   "multi-contributor settlement exists" but NOT network scale. Bar not lowered —
@@ -141,7 +141,7 @@ Verdict: HONEST.
 ## Claim 5 — Cited receipts/docs dereference
 
 - The destale doc `docs/promises/2026-06-19-training-live-run-evidence-destale.md`
-  EXISTS (an initial lookup in `docs/launch/` was the wrong directory; the
+  EXISTS (an initial lookup in `docs/launch/` was the wrong directory, the
   registry cites `docs/promises/...` and it dereferences). Content is
   internally consistent with the 5-contributor / 1,020-sat claim and the
   three new receipt ids.
@@ -150,7 +150,7 @@ Verdict: HONEST.
   June 18/19 roadmaps. They are described as LIVE production receipts served via
   `GET /api/public/nexus-pylon/receipts/<id>` and the per-run settlements feed.
   Their live dereference is a production-data claim that was intentionally NOT
-  hit from this offline verification run; the on-disk evidence is internally
+  hit from this offline verification run. The on-disk evidence is internally
   consistent and the verification block gives runnable dereference commands.
 - All file-path evidence across the four green-ready promises and the green
   training record dereferences on disk (the `2026-06-19` training methodology
@@ -168,8 +168,8 @@ Verdict: HONEST (no real dangling file refs).
    and does NOT broaden any claim — 1,020 was already the record's stated total
    from the merged destale.
 
-`check:deploy` GREEN after the fix (typecheck pass; web 203/203; api targeted
-17/17; product-promises green-count test 3/3 with `toBe(20)`).
+`check:deploy` GREEN after the fix (typecheck pass, web 203/203, api targeted
+17/17. Product-promises green-count test 3/3 with `toBe(20)`).
 
 ## Flagged for owner review (NOT fixed — conservative/under-stating, not over-claims)
 
@@ -180,14 +180,14 @@ run as "two distinct independent contributors / 1,005 sats" in their current
 (non-dated-note) copy:
 
 - `claims.world_first_ai_training_paid_bitcoin.v1` — safeCopy "two independent
-  contributors" (line ~604); unsafeCopy "two bounded canary-scale settlements
+  contributors" (line ~604). UnsafeCopy "two bounded canary-scale settlements
   (1,005 sats real total)" (line ~606).
 - `pylon.consumer_compute_earns_bitcoin_self_serve.v1` — safeCopy "two distinct
-  independent contributors ... (1,005 sats real total)" (line ~664); unsafeCopy
-  "two counted run settlements" (line ~666); authorityBoundary "two counted
+  independent contributors ... (1,005 sats real total)" (line ~664). UnsafeCopy
+  "two counted run settlements" (line ~666). AuthorityBoundary "two counted
   bounded settlements" (line ~696).
 - `pylon.largest_decentralized_training_claim.v1` — verification "the live run
-  has two counted contributors" (line ~591); and registry note `2026-06-19.8`
+  has two counted contributors" (line ~591). And registry note `2026-06-19.8`
   (line ~3323) "two counted contributors".
 
 These are RED records using the count in conservative "do not extrapolate"
@@ -208,5 +208,5 @@ correctly retain 1,005 as point-in-time history and should NOT be changed.
   `promiseId`.
 - Inert-scaffold and green-ready evidence audits run as parallel read-only
   sub-investigations.
-- No production endpoints were called; no secrets printed; neutral commit
-  metadata; never GitHub Actions.
+- No production endpoints were called. No secrets printed. Neutral commit
+  metadata. Never GitHub Actions.

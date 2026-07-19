@@ -14,13 +14,13 @@ Pluralis splits incentives into **presence points** (earned during Sync
 Phase 1 — being present, synced, and probed) and **compute points**
 (earned during Phase 2 — contributing samples that count toward
 `target_batch_size`). We adopt that shape with the critical difference
-made explicit: Pluralis points are unverified leaderboard decoration;
+made explicit: Pluralis points are unverified leaderboard decoration.
 our presence receipts settle MONEY. Anything that settles money rides a
 verification class, so the presence tier carries three hard properties
 that decoration never needed:
 
 1. **Bounded.** Presence pay is a capped availability floor. Per the
-   buildout plan §3.5, floors are not for getting rich per hour; they
+   buildout plan §3.5, floors are not for getting rich per hour. They
    keep a fleet alive, enrolled, and warm between higher-margin
    assignments, and generate the continuous receipt stream that makes
    the fleet underwritable.
@@ -68,7 +68,7 @@ the payment authority (`receiptKind: 'settlement_recorded'`,
      refusal: unverified work has no tier in a network that pays sats.
 3. **`aggregatePresenceAccruals`** — the per-identity aggregator. Input
    entries carry `{ identityRef, deviceRef, accrualDayUtc, amountSats,
-   probeEvidenceRefs }`; output groups by (identity, UTC day),
+   probeEvidenceRefs }`. Output groups by (identity, UTC day),
    aggregates device refs and probe-evidence refs under the identity,
    applies the cap to the identity sum, and:
    - truncates accrual beyond the cap with a typed
@@ -81,7 +81,7 @@ the payment authority (`receiptKind: 'settlement_recorded'`,
      accrue,
    - enforces bounded batches (≤ 500 entries per call, ≤ 32 evidence
      refs per entry) and the standard private-material ref scan
-     (wallet/payment/secret/raw-timestamp substrings; the
+     (wallet/payment/secret/raw-timestamp substrings, the
      platform-issued `receipt_tier.public.*` taxonomy is stripped
      before the scan, per the wallet_not_ready lesson of 2026-06-11).
 4. **`exportPresenceComputeReceiptTierContract`** — the versioned,
@@ -122,12 +122,12 @@ not touched.
 Landed and test-covered (`src/training-presence-compute-receipts.test.ts`,
 14 tests):
 
-- tier classification: shadow/warmup work → presence tier; merged
-  verified closeout from an active device → compute tier; probes →
-  presence tier; non-active unmerged closeouts → presence tier;
+- tier classification: shadow/warmup work → presence tier. Merged
+  verified closeout from an active device → compute tier. Probes →
+  presence tier. Non-active unmerged closeouts → presence tier.
   unverified compute claims refused typed,
 - cap enforcement: accrual beyond the cap truncates to the cap with a
-  typed truncation event; at-or-under-cap accrual is untouched,
+  typed truncation event. At-or-under-cap accrual is untouched,
 - per-identity aggregation: two devices under one identity produce one
   capped accrual whose cap applies to the sum (Sybil pricing),
 - probe-evidence requirement: presence accrual without probe evidence
@@ -142,8 +142,8 @@ Hardware/settlement-gated remainder, **not** claimed here:
   state_synced → warmup → active) — requires live contributor hardware
   and live settlement through the payment authority,
 - wiring the tier contract into live payment dispatch and the funnel's
-  public projections (the contract export is the seam; consumption is
+  public projections (the contract export is the seam, consumption is
   its own change),
 - the #4681 liveness/qualification probe actually paying presence-tier
-  on a live device (the instrument exists; the paid loop is
+  on a live device (the instrument exists, the paid loop is
   settlement-gated).

@@ -12,13 +12,13 @@ scorecards without changing production behavior.
 
 The v1 model records:
 
-- optimizer kind;
-- run status;
-- retained failure refs;
-- evidence refs;
-- scorecard refs;
-- candidate module refs;
-- candidate review state;
+- optimizer kind.
+- run status.
+- retained failure refs.
+- evidence refs.
+- scorecard refs.
+- candidate module refs.
+- candidate review state.
 - release gate refs.
 
 ## No Self-Promotion

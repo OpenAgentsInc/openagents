@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -33,14 +33,14 @@ Relevant source refs:
 
 Imported concepts:
 
-- Artanis identity as public training-program overseer;
-- private workroom first, public projection second;
-- instruction source/version refs;
-- active objective and pylon launch lane;
-- Pylon capability labels for trainer, support, evaluator, and integrity work;
+- Artanis identity as public training-program overseer.
+- private workroom first, public projection second.
+- instruction source/version refs.
+- active objective and pylon launch lane.
+- Pylon capability labels for trainer, support, evaluator, and integrity work.
 - Program policy ids for context selection, work selection, capability
-  matching, dispatch risk, promotion readiness, and next action;
-- health gates, dispatch blockers, recovery commands, and launch checks;
+  matching, dispatch risk, promotion readiness, and next action.
+- health gates, dispatch blockers, recovery commands, and launch checks.
 - retained benchmark, rollback, and receipt requirements before any public
   promotion claim.
 
@@ -60,11 +60,11 @@ POST /v1/artanis/bootstrap/start
 
 The endpoint:
 
-1. validates the Artanis bootstrap assignment;
-2. translates it into a normal async Codex run;
+1. validates the Artanis bootstrap assignment.
+2. translates it into a normal async Codex run.
 3. queues the run on SHC with `danger_full_access` only inside the external
-   no-wallet VM/workroom boundary;
-4. persists `artanis-bootstrap-assignment.json` next to the job state;
+   no-wallet VM/workroom boundary.
+4. persists `artanis-bootstrap-assignment.json` next to the job state.
 5. emits initial public-safe Cloud events:
    - `artanis.bootstrap.validated`
    - `artanis.capability_context.loaded`

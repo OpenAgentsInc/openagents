@@ -1,7 +1,7 @@
 # OpenAI Codex tool-layer study for Khala built-in tools
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Issue: [#6964](https://github.com/OpenAgentsInc/openagents/issues/6964)
@@ -12,7 +12,7 @@ Source studied: `openai/codex` public `main` branch at commit
 Purpose: extract concrete tool-layer patterns from OpenAI Codex's Rust coding
 agent that should inform OpenAgents' own built-in tool definitions for Khala
 desktop and the Khala CLI when no external coding agent is installed. This is
-research only; it does not implement OpenAgents tools.
+research only. It does not implement OpenAgents tools.
 
 ## Executive takeaways
 
@@ -26,25 +26,25 @@ The most harvestable patterns are:
 
 - model-visible tools are represented as `ToolSpec` variants that can become
   OpenAI Responses API functions, namespaces, hosted tools, deferred tools, or
-  custom freeform tools;
+  custom freeform tools.
 - concrete schemas are plain JSON Schema values built in handler-specific spec
   files, while shared conversion helpers live in the extracted
-  `codex-rs/tools` crate;
+  `codex-rs/tools` crate.
 - the active tool catalog is feature-, model-, and environment-sensitive, so
   Codex can expose `exec_command` plus `write_stdin`, legacy `shell_command`,
   `apply_patch`, MCP resource tools, collaboration tools, dynamic tools,
-  hosted web search, and image generation only when they make sense;
+  hosted web search, and image generation only when they make sense.
 - every local tool implements a `CoreToolRuntime` handler and dispatches
   through `ToolRegistry`, which applies pre-tool hooks, optional input rewrite,
   telemetry, result logging, post-tool hooks, lifecycle events, and typed
-  model-visible errors;
+  model-visible errors.
 - shell and patch execution share a sandbox/approval framework that separates
   request parsing from policy decisions, cached approvals, runtime sandbox
   selection, managed network enforcement, and platform-specific sandbox
-  wrappers;
+  wrappers.
 - `apply_patch` is a custom freeform grammar tool, not a JSON function, and its
   handler verifies patch syntax before applying or delegating to the filesystem
-  runtime;
+  runtime.
 - command output is streamed as protocol events and also returned as bounded
   model-visible output, with hard byte/event caps to avoid poisoning the agent
   loop.
@@ -60,13 +60,13 @@ The active catalog is assembled in
 [`codex-rs/core/src/tools/spec_plan.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/core/src/tools/spec_plan.rs).
 `add_tool_sources(...)` layers tools from several sources:
 
-- shell tools;
-- MCP resource tools;
-- core utilities;
-- collaboration and multi-agent tools;
-- MCP runtime tools;
-- extension tools;
-- dynamic tools;
+- shell tools.
+- MCP resource tools.
+- core utilities.
+- collaboration and multi-agent tools.
+- MCP runtime tools.
+- extension tools.
+- dynamic tools.
 - hosted model tools such as web search or image generation.
 
 The core shell branch is feature-sensitive. `add_shell_tools(...)` exposes
@@ -77,15 +77,15 @@ shell tools are not exposed.
 
 The core utility branch adds:
 
-- `update_plan` through `PlanHandler`;
-- `wait_for_environment` when deferred execution is enabled;
-- `request_user_input` when the experimental user-input feature is enabled;
-- `request_permissions` when an environment exists and the feature is enabled;
+- `update_plan` through `PlanHandler`.
+- `wait_for_environment` when deferred execution is enabled.
+- `request_user_input` when the experimental user-input feature is enabled.
+- `request_permissions` when an environment exists and the feature is enabled.
 - `new_context_window` and `get_context_remaining` when token-budget tooling is
-  enabled;
-- `current_time` and optional `sleep`;
-- plugin discovery / install request helpers;
-- `apply_patch` when the model metadata says an apply-patch tool is supported;
+  enabled.
+- `current_time` and optional `sleep`.
+- plugin discovery / install request helpers.
+- `apply_patch` when the model metadata says an apply-patch tool is supported.
 - `view_image` whenever an environment exists.
 
 MCP resource helpers are separate built-ins:
@@ -104,11 +104,11 @@ The shared host-side tool model lives in
 [`codex-rs/tools/src/tool_spec.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/tools/src/tool_spec.rs).
 `ToolSpec` serializes to Responses API-compatible tool JSON and supports:
 
-- `Function(ResponsesApiTool)`;
-- `Namespace(ResponsesApiNamespace)`;
-- `ToolSearch`;
-- hosted `image_generation`;
-- hosted `web_search`;
+- `Function(ResponsesApiTool)`.
+- `Namespace(ResponsesApiNamespace)`.
+- `ToolSearch`.
+- hosted `image_generation`.
+- hosted `web_search`.
 - custom freeform tools.
 
 The common function shape in
@@ -184,25 +184,25 @@ Runtime dispatch centers on
 Each local tool implements `CoreToolRuntime`, which extends the shared
 `ToolExecutor<ToolInvocation>` contract with Codex-specific behavior:
 
-- payload kind matching for function, tool-search, or custom payloads;
-- optional cancellation behavior;
-- telemetry tags;
-- optional pre-tool hook payload;
-- optional post-tool hook payload;
-- optional hook-input rewriting;
+- payload kind matching for function, tool-search, or custom payloads.
+- optional cancellation behavior.
+- telemetry tags.
+- optional pre-tool hook payload.
+- optional post-tool hook payload.
+- optional hook-input rewriting.
 - optional streamed argument diff consumption.
 
 `ToolRegistry::dispatch_any_with_terminal_outcome(...)` is the choke point. It:
 
-1. increments active-turn tool-call accounting;
-2. looks up the handler by `ToolName`;
-3. rejects missing or incompatible tools with model-visible errors;
-4. emits tool-start lifecycle notifications;
-5. runs `PreToolUse` hooks and applies approved input rewrites;
-6. executes the handler under telemetry logging;
-7. emits read metrics and post-tool hook payloads;
-8. optionally replaces model-visible output with post-hook feedback;
-9. records the dispatch trace;
+1. increments active-turn tool-call accounting.
+2. looks up the handler by `ToolName`.
+3. rejects missing or incompatible tools with model-visible errors.
+4. emits tool-start lifecycle notifications.
+5. runs `PreToolUse` hooks and applies approved input rewrites.
+6. executes the handler under telemetry logging.
+7. emits read metrics and post-tool hook payloads.
+8. optionally replaces model-visible output with post-hook feedback.
+9. records the dispatch trace.
 10. returns a `ResponseInputItem` through the tool's `ToolOutput`.
 
 That flow is exactly the kind of central executor Khala needs. Tool handlers
@@ -214,7 +214,7 @@ supervised dispatcher.
 
 Codex has two shell surfaces:
 
-- legacy `shell_command`, a JSON function taking a shell script string;
+- legacy `shell_command`, a JSON function taking a shell script string.
 - unified `exec_command` plus `write_stdin`, which supports PTY sessions,
   polling, live output, and interactive stdin.
 
@@ -229,13 +229,13 @@ Actual process execution is in
 [`codex-rs/core/src/exec.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/core/src/exec.rs).
 Important details:
 
-- default shell command timeout is 10 seconds;
-- retained shell output is capped through `DEFAULT_OUTPUT_BYTES_CAP`;
-- live `ExecCommandOutputDelta` events are capped at 10,000 per exec call;
+- default shell command timeout is 10 seconds.
+- retained shell output is capped through `DEFAULT_OUTPUT_BYTES_CAP`.
+- live `ExecCommandOutputDelta` events are capped at 10,000 per exec call.
 - stdout/stderr drain after timeout is bounded to avoid hanging on inherited
-  file descriptors;
+  file descriptors.
 - `ExecParams` carries command argv, cwd, environment, network proxy, sandbox
-  permissions, Windows sandbox settings, justification, and optional argv0;
+  permissions, Windows sandbox settings, justification, and optional argv0.
 - `process_exec_tool_call(...)` turns params into an `ExecRequest`, then routes
   through the sandboxing module for a single execution path.
 
@@ -251,7 +251,7 @@ The core policy path is in
 [`codex-rs/core/src/apply_patch.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/core/src/apply_patch.rs).
 `apply_patch(...)` calls `assess_patch_safety(...)`, then returns either:
 
-- an immediate model-visible output/error; or
+- an immediate model-visible output/error. Or
 - `DelegateToRuntime(ApplyPatchRuntimeInvocation)` with the verified action,
   auto-approval flag, and exec approval requirement.
 
@@ -279,9 +279,9 @@ The sandbox policy model is in
 [`codex-rs/protocol/src/permissions.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/protocol/src/permissions.rs).
 The key primitives are:
 
-- `NetworkSandboxPolicy`: restricted or enabled;
-- `FileSystemSandboxKind`: restricted, unrestricted, or external sandbox;
-- `FileSystemAccessMode`: read, write, or deny;
+- `NetworkSandboxPolicy`: restricted or enabled.
+- `FileSystemSandboxKind`: restricted, unrestricted, or external sandbox.
+- `FileSystemAccessMode`: read, write, or deny.
 - filesystem entries for absolute paths, special paths, globs, project roots,
   tmp dirs, and protected metadata names such as `.git`, `.agents`, and
   `.codex`.
@@ -311,10 +311,10 @@ network proxy when sandboxed execution enforces it.
 
 Khala should adopt this as an Effect service graph:
 
-- permissions are data;
-- approval keys are typed and cacheable;
-- a tool declares its approval and sandbox requirements;
-- a runner materializes one or more sandbox attempts;
+- permissions are data.
+- approval keys are typed and cacheable.
+- a tool declares its approval and sandbox requirements.
+- a runner materializes one or more sandbox attempts.
 - public/request wire formats never get to smuggle in "danger" authority.
 
 ## Result formatting, truncation, and streaming
@@ -322,11 +322,11 @@ Khala should adopt this as an Effect service graph:
 Codex separates several result channels:
 
 - model history is `ResponseItem` / `ResponseInputItem` in
-  `codex-rs/protocol/src/models.rs`;
+  `codex-rs/protocol/src/models.rs`.
 - user/session events are `EventMsg` variants in
-  [`codex-rs/protocol/src/protocol.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/protocol/src/protocol.rs);
+  [`codex-rs/protocol/src/protocol.rs`](https://github.com/openai/codex/blob/ccdfb4f342a2e659be7ab878309cc5d81683d737/codex-rs/protocol/src/protocol.rs).
 - tool outputs implement `ToolOutput` and can produce response items,
-  code-mode results, log previews, and success flags;
+  code-mode results, log previews, and success flags.
 - telemetry and rollout traces record previews and structured lifecycle data.
 
 For command output, `exec.rs` streams stdout/stderr chunks as
@@ -343,10 +343,10 @@ reduced protocol history as JSONL-style artifacts for replay and debugging.
 Khala should preserve the result lanes from day one:
 
 - live UI events for terminal chunks, diff chunks, approval prompts, and tool
-  lifecycle;
-- concise model-visible tool output;
-- structured UI/audit metadata;
-- bounded local artifacts for large logs;
+  lifecycle.
+- concise model-visible tool output.
+- structured UI/audit metadata.
+- bounded local artifacts for large logs.
 - exact failure variants instead of string-only errors.
 
 ## Architecture notable points for OpenAgents

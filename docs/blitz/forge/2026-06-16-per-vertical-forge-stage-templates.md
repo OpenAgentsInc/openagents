@@ -121,7 +121,7 @@ Metric mapping:
 - Throughput: reviewer-accepted packets, summaries, or forms per period.
 - Cycle time: matter signal to secure delivery or reviewer handoff.
 - Pass rate: Legal Review Gate passed / total drafted candidates.
-- Token efficiency: accepted packets per token/credit spend; never substitute
+- Token efficiency: accepted packets per token/credit spend. Never substitute
   token efficiency for legal correctness.
 - MTTR: time from flagged defect, missing citation, bad redaction, or reviewer
   rejection to corrected packet.

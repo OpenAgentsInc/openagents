@@ -9,7 +9,7 @@ Use this when writing Effect tests, tests involving time, retry, schedules, conc
 - Use test layers and `ConfigProvider` rather than global mutation.
 - Use `TestClock.setTime` / `TestClock.adjust` for sleeps, schedules, retries, leases, and timeouts.
 - Fork sleeping effects before advancing `TestClock`.
-- Avoid arbitrary `Effect.sleep(...)` in tests; it usually makes tests slow and flaky.
+- Avoid arbitrary `Effect.sleep(...)` in tests. It usually makes tests slow and flaky.
 - Assert typed failures, rollback, interruption, finalization, retry bounds, idempotency, concurrency laws, and malformed persistence where relevant.
 
 ```ts

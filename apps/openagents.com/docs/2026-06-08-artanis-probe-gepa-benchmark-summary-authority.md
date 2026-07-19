@@ -29,13 +29,13 @@ candidate, paid-work, payout, or settlement claims.
 
 Every Artanis Probe GEPA benchmark summary must include:
 
-- source evidence refs;
-- operator authority refs;
-- projection authority refs;
-- public report refs;
-- target Forum topic ref;
-- claim boundary line;
-- idempotency key;
+- source evidence refs.
+- operator authority refs.
+- projection authority refs.
+- public report refs.
+- target Forum topic ref.
+- claim boundary line.
+- idempotency key.
 - all no-overclaim flags.
 
 Missing operator authority or projection authority rejects the summary.

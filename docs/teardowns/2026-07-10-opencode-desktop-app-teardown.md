@@ -17,10 +17,10 @@ Every claim is tagged:
 
 No source was modified in the reference repository. The analysis did not run
 the application or inspect user data, credentials, or local OpenCode state.
-Source proves intended implementation at this commit; it does not prove that
+Source proves intended implementation at this commit. It does not prove that
 every path is enabled in every released binary or deployment channel.
 
-## TL;DR
+## TL.DR
 
 OpenCode Desktop is now a **stock Electron 42.3.3** application with a local,
 bundled SolidJS workbench and an embedded OpenCode server running in an
@@ -59,7 +59,7 @@ code-signing entitlements, and local credentials that necessarily enter the
 renderer so it can call the loopback API.
 
 OpenCode most strongly validates OpenAgents Desktop D1–D4. It also changes the
-cross-teardown conclusion: **Electron is only the host; the durable product
+cross-teardown conclusion: **Electron is only the host. The durable product
 architecture is a local-first, typed server protocol shared by every client.**
 
 ## 1. Identification and source scope
@@ -81,7 +81,7 @@ architecture is a local-first, typed server protocol shared by every client.**
 The pinned snapshot is ahead of the source version used by the earlier Sol
 parity audit. In particular, the current desktop package is Electron, not the
 older Tauri host. Any OpenCode architectural claim should therefore include a
-commit or release version; the project is changing quickly.
+commit or release version. The project is changing quickly.
 
 ## 2. Repository anatomy: one product, several reusable contracts
 
@@ -117,15 +117,15 @@ behavior, but it demonstrates how expensive an unfrozen protocol becomes.
 
 The Electron main process owns lifecycle and native integration [source]:
 
-- single-instance locking and `opencode:` deep links;
+- single-instance locking and `opencode:` deep links.
 - window restoration, geometry, focus, titlebar, zoom, theme background, and
-  multi-window identity;
-- desktop menus and command forwarding;
-- system certificate and proxy-environment adoption;
-- local-server and WSL sidecar lifecycle;
+  multi-window identity.
+- desktop menus and command forwarding.
+- system certificate and proxy-environment adoption.
+- local-server and WSL sidecar lifecycle.
 - native pickers, notifications, clipboard image reads, external links/apps,
-  storage, logs, crash reporting, and update installation;
-- renderer failure/unresponsive recovery; and
+  storage, logs, crash reporting, and update installation.
+- renderer failure/unresponsive recovery. And
 - clean shutdown/relaunch of sidecars before process exit.
 
 It does **not** implement conversation state, provider calls, agent tools,
@@ -163,25 +163,25 @@ desktop privileges.
 
 ## 4. Preload and IPC: desktop capabilities are explicit, but validation is uneven
 
-The preload exposes one `window.api` object with `contextBridge`; the renderer
+The preload exposes one `window.api` object with `contextBridge`. The renderer
 never receives raw `ipcRenderer` [source]. Its surface includes:
 
-- initialization and sidecar shutdown;
-- updater state/check/install;
-- WSL discovery, installation, server start, and terminal launch;
-- default-server selection;
-- onboarding and display settings;
-- namespaced persistent storage;
-- directory/file/save dialogs;
-- token-bound reads of explicitly picked attachment files;
-- external link/path opening and app resolution;
-- clipboard images and notifications;
-- window identity/focus/show/relaunch/zoom/titlebar;
+- initialization and sidecar shutdown.
+- updater state/check/install.
+- WSL discovery, installation, server start, and terminal launch.
+- default-server selection.
+- onboarding and display settings.
+- namespaced persistent storage.
+- directory/file/save dialogs.
+- token-bound reads of explicitly picked attachment files.
+- external link/path opening and app resolution.
+- clipboard images and notifications.
+- window identity/focus/show/relaunch/zoom/titlebar.
 - native-menu commands, deep links, log export, and fatal-error reporting.
 
 The picked-file implementation is a good capability pattern: selection returns
-a temporary token plus metadata; reads require the same renderer identity,
-token, and exact authorized path; a byte budget is enforced; and the renderer
+a temporary token plus metadata. Reads require the same renderer identity,
+token, and exact authorized path. A byte budget is enforced. And the renderer
 releases the grant after constructing browser `File` objects [source/test].
 
 The IPC layer is not uniformly schema-decoded. Many handlers rely on TypeScript
@@ -234,7 +234,7 @@ The current `/api/*` protocol is declared with Effect HTTP API and Effect
 Schema. It covers health, location, agents, sessions, messages, models,
 providers, integrations, credentials, permissions, questions, filesystem,
 commands, skills, references, events, and PTYs. Generated Promise and Effect
-clients live in `packages/client`; the shipped app currently consumes the
+clients live in `packages/client`. The shipped app currently consumes the
 generated v2 JavaScript SDK [source].
 
 ### SSE lifecycle
@@ -244,16 +244,16 @@ response body so events cannot fall into a subscribe/start race. It emits an
 initial `server.connected`, ten-second `server.heartbeat` records, scoped
 domain events, and a terminal `server.instance.disposed`. The shared app [source]:
 
-- maintains one server-scoped stream;
-- aborts and reconnects after failures;
-- detects stale visible streams via heartbeat age;
-- restarts after browser back/forward-cache restoration;
-- yields periodically so a flood does not monopolize the UI thread;
-- coalesces adjacent LSP and message-part updates; and
+- maintains one server-scoped stream.
+- aborts and reconnects after failures.
+- detects stale visible streams via heartbeat age.
+- restarts after browser back/forward-cache restoration.
+- yields periodically so a flood does not monopolize the UI thread.
+- coalesces adjacent LSP and message-part updates. And
 - batches delivery into Solid stores.
 
 This is the operational detail behind “streaming UI.” A protocol definition
-alone is insufficient; recovery, ordering, backpressure, and disposal are part
+alone is insufficient. Recovery, ordering, backpressure, and disposal are part
 of the product contract.
 
 ### PTY security and continuity
@@ -285,9 +285,9 @@ file-, model-, layout-, notification-, prompt-, and tabs-scoped providers.
 
 Server identity is first-class. Connection types include [source]:
 
-- built-in sidecar;
-- WSL sidecar;
-- regular HTTP server; and
+- built-in sidecar.
+- WSL sidecar.
+- regular HTTP server. And
 - SSH-backed HTTP proxy.
 
 Projects, recent projects, last active project, tabs, permissions, terminals,
@@ -299,23 +299,23 @@ when the client can connect to several runtimes.
 
 The product surface includes [source]:
 
-- project/workspace sidebar and directory picker;
-- persistent, draggable session/draft/terminal tabs and closed-tab history;
-- streamed conversation timeline with virtualized rendering;
+- project/workspace sidebar and directory picker.
+- persistent, draggable session/draft/terminal tabs and closed-tab history.
+- streamed conversation timeline with virtualized rendering.
 - prompt history, files, image attachments, context items, slash commands,
-  models, agents, variants, and usage/context breakdown;
+  models, agents, variants, and usage/context breakdown.
 - permission, question, follow-up, todo, revert, retry, fork, archive, compact,
-  interrupt, and share flows;
-- lazy file tree, search, file tabs, selected-line context, and cache eviction;
-- Git/snapshot review with split/unified diffs and line comments;
-- integrated Ghostty terminal with replay and restoration;
+  interrupt, and share flows.
+- lazy file tree, search, file tabs, selected-line context, and cache eviction.
+- Git/snapshot review with split/unified diffs and line comments.
+- integrated Ghostty terminal with replay and restoration.
 - provider/model management, custom providers, MCP selection, server settings,
-  keybindings, themes, and release notes; and
+  keybindings, themes, and release notes. And
 - native menus, deep links, notifications, multi-window restore, WSL, and
   automatic updates.
 
 It is a coding workbench organized around sessions, not a code editor with a
-chat panel bolted on. Conversation remains the central timeline; files, review,
+chat panel bolted on. Conversation remains the central timeline. Files, review,
 and terminal are contextual side surfaces.
 
 ## 8. Command system: one catalog across palette, keys, slash, and menus
@@ -325,15 +325,15 @@ title, description, category, keybinding, optional slash alias, visibility,
 availability predicate, and selection handler [source]. Registrations are
 scoped and deduplicated by key. The catalog drives:
 
-- keyboard dispatch;
-- command palette;
-- slash suggestions;
-- settings/keybinding presentation;
-- native Electron menu forwarding; and
+- keyboard dispatch.
+- command palette.
+- slash suggestions.
+- settings/keybinding presentation.
+- native Electron menu forwarding. And
 - contextual session/file/terminal commands.
 
 This validates the Sol requirement that material UI actions need stable command
-IDs. OpenCode's command definitions remain renderer callbacks, however; they do
+IDs. OpenCode's command definitions remain renderer callbacks, however. They do
 not yet constitute an end-to-end authority contract with typed input/output,
 policy metadata, idempotency, and durable outcomes. OpenAgents should use the
 same ergonomic catalog while extending the command identity through Effect
@@ -344,11 +344,11 @@ Native, Pylon, Blueprint, Khala Sync, and receipts.
 The server is actively moving onto Effect 4 services [source]. Its package
 contract requires:
 
-- `Effect.gen` composition and named `Effect.fn` traces;
-- shared memoized runtimes rather than ad hoc service construction;
-- `InstanceState` backed by a scoped cache for per-directory/project state;
-- finalizers/acquire-release for subprocesses and subscriptions;
-- scoped fibers for background consumers; and
+- `Effect.gen` composition and named `Effect.fn` traces.
+- shared memoized runtimes rather than ad hoc service construction.
+- `InstanceState` backed by a scoped cache for per-directory/project state.
+- finalizers/acquire-release for subprocesses and subscriptions.
+- scoped fibers for background consumers. And
 - Effect platform services for files, child processes, HTTP, path, config,
   clocks, and callbacks.
 
@@ -375,7 +375,7 @@ The embedded runtime is provider-agnostic. Its manifest includes Anthropic,
 OpenAI, Google/Vertex, Bedrock, Azure, Cerebras, Cohere, Groq, Mistral,
 Perplexity, Together, xAI, OpenRouter, GitHub Copilot, GitLab, Poe, Cloudflare,
 DigitalOcean, Snowflake, and compatible-provider paths [source]. Providers and
-models are resolved in the server; the renderer sees catalogs and connection
+models are resolved in the server. The renderer sees catalogs and connection
 flows rather than provider SDKs.
 
 Built-in agents include build, plan, general-purpose subagent, exploration,
@@ -393,7 +393,7 @@ identities and truncates oversized output into referenced files.
 
 MCP supports stdio, Streamable HTTP, legacy SSE, OAuth, roots, resources, tool
 changes, browser-open events, timeouts, and scoped process cleanup [source].
-Skills are discovered from local configuration and remote indexes; versioned
+Skills are discovered from local configuration and remote indexes. Versioned
 remote skill updates download into staging, require `SKILL.md`, atomically
 promote, and roll back on failure.
 
@@ -414,7 +414,7 @@ accounting and LRU eviction. Selected lines can become prompt context or review
 comments without leaking a general filesystem handle into the UI.
 
 Git runs behind an Effect service with bounded commands and output limits.
-Project identity is derived from VCS state; status, refs, branches, merge bases,
+Project identity is derived from VCS state. Status, refs, branches, merge bases,
 show, diff, and snapshots feed review surfaces. Worktrees receive generated
 names and `opencode/<name>` branches, live under an application-owned data
 root, can run project start commands, and have typed failure modes [source].
@@ -427,19 +427,19 @@ the renderer Node access merely because the product resembles an IDE.
 
 ### Strong choices
 
-- sandboxed renderer, context isolation, Node integration off [source];
-- local packaged renderer origin with host/path checks [source];
+- sandboxed renderer, context isolation, Node integration off [source].
+- local packaged renderer origin with host/path checks [source].
 - deny-by-default Electron permissions except two explicit capabilities
-  [source];
+  [source].
 - random per-launch server password, loopback binding, and origin-limited CORS
-  [source];
-- no password in command-line arguments; main-to-sidecar message handoff and
-  environment setup happen inside the process tree [source];
-- generated SDK sends Basic auth; health checks authenticate [source];
-- one-time, scope-bound, origin-checked PTY tickets [source];
-- tokenized attachment reads tied to sender and byte budget [source/test];
+  [source].
+- no password in command-line arguments. Main-to-sidecar message handoff and
+  environment setup happen inside the process tree [source].
+- generated SDK sends Basic auth. Health checks authenticate [source].
+- one-time, scope-bound, origin-checked PTY tickets [source].
+- tokenized attachment reads tied to sender and byte budget [source/test].
 - subprocess, socket, stream, and instance cleanup through owned finalizers
-  [source]; and
+  [source]. And
 - signed/notarized macOS packaging and Windows signature verification in CI
   [source/test].
 
@@ -467,7 +467,7 @@ the renderer Node access merely because the product resembles an IDE.
 - The window session injects permissive `Access-Control-Allow-*` headers. The
   server still enforces auth/CORS, but this widens renderer network mechanics
   and deserves a documented threat model [source].
-- A configured remote HTTP server can be plain `http://`; transport security
+- A configured remote HTTP server can be plain `http://`. Transport security
   and trust are left to connection configuration [source].
 - Permission “always” and auto-accept are powerful persisted affordances. The
   code scopes and deduplicates them, but UX clarity remains part of safety
@@ -482,14 +482,14 @@ sandboxed agent workload.
 ## 13. Packaging, updates, and release engineering
 
 electron-vite builds main, preload, and renderer bundles. The desktop prebuild
-also compiles the OpenCode server for Node and copies required WASM assets;
+also compiles the OpenCode server for Node and copies required WASM assets.
 electron-builder then packages output and native modules [source].
 
 The release matrix builds six OS/architecture targets [source/test]:
 
 - macOS x64 and arm64 with imported code-signing certificates, hardened
-  runtime, notarization, DMG, ZIP, and `.app.tar.gz` artifacts;
-- Windows x64 and arm64 with Azure Trusted Signing verification and NSIS; and
+  runtime, notarization, DMG, ZIP, and `.app.tar.gz` artifacts.
+- Windows x64 and arm64 with Azure Trusted Signing verification and NSIS. And
 - Linux x64 and arm64 with AppImage, DEB, and RPM.
 
 Dev, beta, and production use distinct app IDs, names, icons, and release
@@ -512,14 +512,14 @@ independent moving inputs.
 
 The repository has a large verification surface [test]:
 
-- 12 desktop package tests;
+- 12 desktop package tests.
 - 165 shared-app unit tests plus browser, Playwright, stability, and benchmark
-  suites;
-- 245 runtime tests;
-- 141 core tests;
-- protocol/schema/client contract and import-boundary tests;
+  suites.
+- 245 runtime tests.
+- 141 core tests.
+- protocol/schema/client contract and import-boundary tests.
 - generated API exercise modes for coverage, authentication, and Effect
-  behavior; and
+  behavior. And
 - release CI that builds every desktop platform/architecture and verifies
   Windows signatures.
 
@@ -538,10 +538,10 @@ scroll, tab-switch, and memory-retention oracles.
 
 OpenCode's load-bearing desktop stack is MIT-licensed source [source]:
 
-- Electron host, preload, renderer adapter, updater, and packaging;
-- shared Solid application and UI packages;
+- Electron host, preload, renderer adapter, updater, and packaging.
+- shared Solid application and UI packages.
 - server, protocol, schemas, generated clients, persistence, agents, tools,
-  MCP, skills, plugins, Git, PTY, and worktree services; and
+  MCP, skills, plugins, Git, PTY, and worktree services. And
 - tests, benchmarks, migrations, and release workflows.
 
 External dependencies and services remain outside that license boundary:
@@ -617,7 +617,7 @@ sidebar, terminal library, or provider list. It establishes a clean product
 sentence:
 
 > A desktop coding agent is a local/remote runtime protocol with a durable
-> workbench client; Electron supplies native hosting, not application authority.
+> workbench client. Electron supplies native hosting, not application authority.
 
 ChatGPT shows the ceiling of a deeply integrated proprietary host. Claude shows
 the value of stock Electron plus explicit engine and VM planes. OpenCode shows

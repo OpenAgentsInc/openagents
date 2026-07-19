@@ -1,7 +1,7 @@
 # AgentCL Paper Summary
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## Core Claim
@@ -21,7 +21,7 @@ The paper proposes two fixes:
 ## Problem Setting
 
 The agent sees a sequence of tasks and maintains persistent memory across that
-sequence. Before each task, it can retrieve from memory; after each task, it can
+sequence. Before each task, it can retrieve from memory. After each task, it can
 write the interaction, summary, skill, or other derived experience into memory.
 
 The benchmark assumes sparse online feedback: memory is synthesized by the

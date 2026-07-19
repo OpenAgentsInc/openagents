@@ -1,7 +1,7 @@
 # Cloud repo open-source consolidation plan
 
 Date: 2026-07-08
-Status: implementation landed; Phase 6 control-plane cutover executed 2026-07-09 (see receipts/)
+Status: implementation landed. Phase 6 control-plane cutover executed 2026-07-09 (see receipts/)
 Tracking: #8591
 Source commit: f87a60c3a7600ae377ec392052f8d85dcc9af421
 Scope: move the non-deprecated OpenAgents Cloud infra that still lives in the
@@ -251,7 +251,7 @@ turn in an isolated workroom with redacted receipts and full cleanup.
 2. Rewrite node docs so current authority is OpenAgents/Khala surfaces, not
    deprecated Nexus/Vortex/Treasury.
 3. Keep public Pylon boundaries intact: contributor wallet UX and local Pylon
-   operations stay in `apps/pylon`; managed node internals stay in Cloud crates.
+   operations stay in `apps/pylon`. Managed node internals stay in Cloud crates.
 4. Move Dockerfiles and public env templates.
 5. Add deploy scripts that read secrets only from runtime env or Secret Manager.
 
@@ -285,7 +285,7 @@ will require invariant updates when code lands:
   with explicit Agent Computer, workroom, capability, receipt, quota, and
   no-secret projection boundaries.
 - `apps/openagents.com/INVARIANTS.md`: keep the Worker as admission, billing,
-  projection, and public product authority; the Cloud daemons execute and emit
+  projection, and public product authority. The Cloud daemons execute and emit
   receipts but do not own user credit, public claims, or wallet/payout
   authority.
 - New `crates/*/INVARIANTS.md` or `docs/cloud/INVARIANTS.md`: preserve the
@@ -337,25 +337,25 @@ the plan's assumptions and resolved its first open question:
   capacity leases, managed-node lifecycle) with no UI surface, so they stay
   Rust crates and are **not** conversion targets. TypeScript callers use the
   Effect Schema mirrors in `packages/cloud-contract` and the documented HTTP
-  contracts; they never link the crates. Worker admission/billing/projection
+  contracts. They never link the crates. Worker admission/billing/projection
   authority and Pylon contributor/local runtime stay on Bun/Effect.
 - **Cargo-workspace rule amended.** The repo-level "do not reintroduce the
   old Cargo workspace" rule in `AGENTS.md` predated this migration and
-  contradicted it; it is now amended to carve out the Cloud crates only
-  (Tauri stays banned; no new non-Cloud Rust surfaces without owner
+  contradicted it. It is now amended to carve out the Cloud crates only
+  (Tauri stays banned, no new non-Cloud Rust surfaces without owner
   direction).
 - **Layout question resolved:** `crates/*`, as the plan preferred.
   `oa-cloud-run-bridge` migrated as historical (`HISTORICAL.md`), outside new
   production paths.
 - **Residual seams closed in review:** `apps/pylon/src/cloud-control-client.ts`
   header repointed from private-repo paths to `crates/oa-codex-control` and
-  `docs/cloud/*`; `scripts/qa-async-gce-trigger.ts` now imports its placement
+  `docs/cloud/*`. `scripts/qa-async-gce-trigger.ts` now imports its placement
   contract version from `packages/cloud-contract` instead of re-declaring it.
 - **Still open after this review:** Phase 6 production cutover (staging
-  `OA_CLOUD_CONTROL_URL` + the #8503 DoD run, owner-gated); wider dedup of
+  `OA_CLOUD_CONTROL_URL` + the #8503 DoD run, owner-gated). Wider dedup of
   manually declared contract constants in Worker/Pylon onto the mirror
   package (e.g. `CLOUD_PLACEMENT_CONTRACT_VERSION` in the Pylon client, which
-  needs a package-dependency edge rather than a root-script relative import);
+  needs a package-dependency edge rather than a root-script relative import).
   and a named fake control-plane loopback smoke script (the fake lifecycle is
   currently proven by the crate test suites rather than one runnable smoke
   entry point).
@@ -365,11 +365,11 @@ the plan's assumptions and resolved its first open question:
 The migration is complete when:
 
 - no production build, deploy, smoke, or runbook requires checking out
-  `OpenAgentsInc/cloud`;
+  `OpenAgentsInc/cloud`.
 - Agent Computer, Cloud-VM, GCE capacity, node, workroom, capability, and
-  receipt code build from `openagents`;
-- all moved docs and fixtures are public-safe;
-- `cloud/` is archived or read-only historical source;
+  receipt code build from `openagents`.
+- all moved docs and fixtures are public-safe.
+- `cloud/` is archived or read-only historical source.
 - the first production Khala Code Agent Computer turn runs from the public
   monorepo-built control plane and records lifecycle, compute, token, writeback,
   and cleanup receipts without leaking private material.

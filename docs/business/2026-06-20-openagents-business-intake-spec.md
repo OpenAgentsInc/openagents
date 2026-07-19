@@ -17,7 +17,7 @@ in three passes:
    open question.
 2. **Run the Interview.** Ask the human the questions in the Interview section,
    one area at a time, in a natural conversation. Use the branching guidance to
-   skip questions that don't apply. Your goal is to land on **one fast quick win
+   skip questions that do not apply. Your goal is to land on **one fast quick win
    plus a picture of the ongoing relationship** — not a giant project.
 3. **Fill the Output Spec Template** at the bottom with what you learned and hand
    the finished markdown back to OpenAgents (paste it into the OpenAgents Business
@@ -43,7 +43,7 @@ verifiable evidence rather than a vague promise. The model is simple:
 - **Scope payment up front**, including Bitcoin where the backing rails are
   proven for the specific work, and only as work is accepted.
 
-You don't have to commit to the whole journey up front. The point of this intake
+You do not have to commit to the whole journey up front. The point of this intake
 is to pick the first small win and to know where the relationship can go.
 
 ---
@@ -66,7 +66,7 @@ green/yellow pieces that still need a human/operator path or carry a caveat, and
 - **Availability:** *Operator-assisted* — coding-runtime work (Pylon/Probe) and
   the Forge work-order loop are shipped, but packaging this as a priced
   intake → delivery → accepted-outcome → receipt business product is still
-  operator-assisted; a desktop GUI to watch/steer sessions remains yellow.
+  operator-assisted. A desktop GUI to watch/steer sessions remains yellow.
 - **Typical quick win:** "Fix this failing test suite," "refactor this messy
   module," or "add this one feature with passing tests" — delivered with a diff
   and verification evidence.
@@ -77,7 +77,7 @@ green/yellow pieces that still need a human/operator path or carry a caveat, and
   (e.g., Gemini and Fireworks-hosted open models like DeepSeek), with a free
   taste to start and credit-funded metered usage after that. The
   OpenAI-compatible base URL is `https://openagents.com/api/v1` (`/api` is the
-  canonical base for every OpenAgents API route, #6148; the legacy
+  canonical base for every OpenAgents API route, #6148. The legacy
   `https://openagents.com/v1` base still resolves as a non-breaking alias).
 - **Availability:** *Operator-assisted* — a bounded free inference taste and
   verified provider connections are available, but the full paid
@@ -110,7 +110,7 @@ green/yellow pieces that still need a human/operator path or carry a caveat, and
   keeps a human-review gate before anything publishes or spends.
 - **Availability:** *Operator-assisted* — the Forge automations surface,
   prefilled vertical workspaces, and the work-order control plane are shipped as
-  operator tools; the fully self-serve "all-in-one business system" framing is
+  operator tools. The fully self-serve "all-in-one business system" framing is
   *Roadmap*. Today this is delivered as a guided, operator-assisted workspace,
   not a one-click product.
 - **Typical quick win:** One prefilled workspace seeded for your vertical with a
@@ -167,7 +167,7 @@ green/yellow pieces that still need a human/operator path or carry a caveat, and
 ## Interview (the heart — run this with the human)
 
 Ask one area at a time. Summarize back what you heard before moving on. Skip
-questions that obviously don't apply.
+questions that obviously do not apply.
 
 ### A. Business & goals
 
@@ -176,7 +176,7 @@ questions that obviously don't apply.
 3. What's the single most important outcome you'd want from working with
    OpenAgents in the next month?
 
-*Branch:* if they can't name an outcome, ask "What took too much of your or your
+*Branch:* if they cannot name an outcome, ask "What took too much of your or your
 team's time last week?" and use that.
 
 ### B. The painful, repetitive work to offload
@@ -184,7 +184,7 @@ team's time last week?" and use that.
 4. What work is repetitive, manual, or annoying enough that you'd happily hand it
    to an agent? (e.g., code fixes, content, customer intake, campaign building,
    data cleanup, support replies)
-5. Is there a one-off task right now that's blocking you — something a great
+5. Is there a one-off task right now that is blocking you — something a great
    contractor could knock out this week?
 
 *Branch:* a **one-off blocker** → steer toward a quick win in Coding (1),
@@ -246,7 +246,7 @@ Show the human this arc so they see where the relationship goes:
   fast turnaround, no big commitment.
 - **Week 1 — Repeatable lane.** Turn the quick win into a repeatable workflow:
   a prefilled workspace for your vertical, a recurring work item, a site +
-  email sequence, or a standing inference/processing job. You review outputs;
+  email sequence, or a standing inference/processing job. You review outputs.
   agents do the legwork.
 - **Ongoing — On Autopilot.** Hand a slice of your business to agents that run
   in the background through the Signal→…→Deploy pipeline, always with a

@@ -22,14 +22,14 @@ tests in `workers/api/src/l402-response-contract.test.ts`.
 Used only when the payment policy decision is `recoverable`. The response can
 include:
 
-- safe challenge ref;
-- product ID;
-- endpoint ref;
-- amount and spend cap;
-- expiry;
-- entitlement scope refs;
-- docs refs;
-- retry/action refs;
+- safe challenge ref.
+- product ID.
+- endpoint ref.
+- amount and spend cap.
+- expiry.
+- entitlement scope refs.
+- docs refs.
+- retry/action refs.
 - header refs for future `WWW-Authenticate: L402` and `X-OpenAgents-L402`
   behavior.
 
@@ -37,23 +37,23 @@ include:
 
 Used for missing auth or failed payment credentials:
 
-- malformed credential;
-- invalid signature/proof;
-- missing proof;
-- expired credential;
-- consumed or replayed credential;
-- resource mismatch;
+- malformed credential.
+- invalid signature/proof.
+- missing proof.
+- expired credential.
+- consumed or replayed credential.
+- resource mismatch.
 - amount mismatch.
 
 `403 Forbidden`
 
 Used for non-payment failures:
 
-- scope missing;
-- safety denied;
-- abuse denied;
-- private authority denied;
-- provider capacity unavailable;
+- scope missing.
+- safety denied.
+- abuse denied.
+- private authority denied.
+- provider capacity unavailable.
 - manual review required.
 
 These states intentionally do not include challenge details or pay-to-bypass
@@ -63,9 +63,9 @@ instructions.
 
 The contract integrates at the type level with:
 
-- #289 payment limit policy decisions;
-- #290 paid endpoint product records;
-- #291 buyer-side payment challenge records;
+- #289 payment limit policy decisions.
+- #290 paid endpoint product records.
+- #291 buyer-side payment challenge records.
 - #292 L402 credential verification results.
 
 It does not wire every route yet. Future route work should call these builders

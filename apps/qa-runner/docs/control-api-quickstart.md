@@ -40,7 +40,7 @@ Environment:
 | `QA_CONTROL_TOKEN_BUDGET` | `0`                      | default per-run token cap for real runs  |
 
 **No fake green:** with an empty token allowlist every request is rejected
-(401); a real run is refused (403 `not_armed`) unless `QA_CONTROL_ARM_REAL=1`;
+(401). A real run is refused (403 `not_armed`) unless `QA_CONTROL_ARM_REAL=1`.
 the mock path is honestly marked `spendCapable: false` / `decisionGrade: false`.
 
 ## Auth
@@ -106,7 +106,7 @@ Artifacts response (abridged):
 ```
 
 `verify` and `receipt` are **read-only passthrough**: this API reads them off
-`result.json` if present (another lane owns `verify`; `receipt` already landed)
+`result.json` if present (another lane owns `verify`, `receipt` already landed)
 and never defines or mutates them. `verify: null` means a verdict was not
 written — honest, not fabricated.
 
@@ -134,7 +134,7 @@ curl -s $B/evals/$EID -H "Authorization: Bearer $T"
 
 One API call starts the hosted-run composition: qa-runner control fanout,
 FleetRun-style caps, the nightly-matrix projection vocabulary, and a
-`/qa/{runRef}` share URL. The fixture tier is no-spend by default; GCE Tier-2
+`/qa/{runRef}` share URL. The fixture tier is no-spend by default. GCE Tier-2
 and CF Browser Rendering live tiers are represented as skip-safe tier rows
 unless the daemon is armed and a live runner receipt is attached.
 
@@ -190,9 +190,9 @@ QA_CONTROL_TOKENS="raynor:tok_demo_secret" pnpm run api
 | `GET`  | `/swarm-runs/:id`     | bearer | QA Swarm projection + `/qa/{runRef}` share URL + tier statuses              |
 
 OpenAI-compatible shapes where they fit: errors use the
-`{ error: { message, type, code } }` envelope; submit/status responses carry a
+`{ error: { message, type, code } }` envelope. Submit/status responses carry a
 stable `object` discriminator. The inference itself (khala-openrouter) is already
-OpenAI-compatible; this surface mirrors that envelope so existing clients' error
+OpenAI-compatible. This surface mirrors that envelope so existing clients' error
 handling works.
 
 ## Tests (mocks, no spend)

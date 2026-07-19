@@ -1,6 +1,6 @@
 # Khala quantization eval gate (book P1-7, #6090)
 
-Status: buildable-now metadata + guard + eval-gate machinery merged; the real
+Status: buildable-now metadata + guard + eval-gate machinery merged. The real
 quantized-model serving and the real quant-vs-original sweep are
 flag/owner/compute-gated (built but not armed). Decision-grade promotion now
 requires a structured real-sweep evidence bundle, not a bare boolean. Not
@@ -50,7 +50,7 @@ eval comparison vs the original precision.
 Which quantization modes may share a public model alias?
 
 - **An unqualified public alias** (`openagents/khala-code`) may be served by:
-  - the unquantized lane (always — same product); or
+  - the unquantized lane (always — same product). Or
   - a quantized lane only when its precision + backend are disclosed in the
     receipt AND it has passed the quantization eval gate. Until then the
     quantized lane must use a qualified alias.
@@ -73,14 +73,14 @@ All in `apps/openagents.com/workers/api/src/inference/`:
    aliasQualification / quantization). Builders collapse absent signals to honest
    sentinels (`UNKNOWN_QUANTIZATION`) — never a fabricated full precision. Added
    as a first-class `quantization` field on `KhalaTelemetryRecord`
-   (`khala-telemetry.ts`); an unmeasured request records the honest-unknown shape.
+   (`khala-telemetry.ts`). An unmeasured request records the honest-unknown shape.
 
 2. **Same-model-claim guard** (`khala-quantization-guard.ts`): a typed,
    fail-closed check over the served-model descriptor. `evaluateSameModelClaim`
-   returns a verdict; `assertSameModelClaim` throws `KhalaSameModelClaimError`.
+   returns a verdict. `assertSameModelClaim` throws `KhalaSameModelClaimError`.
    It REJECTS an undisclosed quantized lane under an unqualified alias, a
    `not_measured` lane under an unqualified alias, and a disclosed-but-ungated
-   quantized lane under an unqualified alias; it PASSES an unquantized lane, a
+   quantized lane under an unqualified alias. It PASSES an unquantized lane, a
    qualified alias, and a disclosed + eval-gate-qualified quantized lane. It is a
    bounded enum/field check over the STRUCTURED descriptor — not intent routing —
    the receipt-disclosure sibling of the Khala identity guard.
@@ -109,19 +109,19 @@ All in `apps/openagents.com/workers/api/src/inference/`:
   `RealQuantSweepNotArmedError` unless `armRealQuantSweep:true` plus an injected
   executor are owner-supplied. A decision-grade gate result (promoting a real lane
   to a public alias) requires this armed sweep over realistic traffic plus
-  `RealQuantSweepEvidence`; the default fixture path proves the gate logic only.
+  `RealQuantSweepEvidence`. The default fixture path proves the gate logic only.
 
 ## Decision-grade evidence requirements
 
 `decisionGrade:true` is accepted only when the evidence bundle proves all of:
 
-- owner approval/spend cap ref exists;
-- a public-safe sweep closeout ref exists and can be stored as the eval-gate ref;
-- workload, original model id, and quantized model id are non-empty;
+- owner approval/spend cap ref exists.
+- a public-safe sweep closeout ref exists and can be stored as the eval-gate ref.
+- workload, original model id, and quantized model id are non-empty.
 - original precision is `unquantized`, quantized precision is a concrete
-  reduced-precision value, and the two precisions differ;
-- sample count matches the paired comparison samples fed to the gate;
-- executed verifier, latency, and cost-basis evidence refs are all non-empty;
+  reduced-precision value, and the two precisions differ.
+- sample count matches the paired comparison samples fed to the gate.
+- executed verifier, latency, and cost-basis evidence refs are all non-empty.
 - at least one public-safe evidence ref is present.
 
 If any field is missing or mismatched, the gate may still return `passed:true`
@@ -134,9 +134,9 @@ claim.
 
 `khala-quantization.test.ts`, `khala-quantization-guard.test.ts`,
 `khala-quantization-eval-gate.test.ts` (40 new): quant metadata populates from a
-fixture served-model descriptor and records the honest sentinel when unknown; the
+fixture served-model descriptor and records the honest sentinel when unknown. The
 same-model guard rejects an undisclosed/unknown/ungated quantized alias and passes
-a disclosed-gated one and a qualified alias; the eval gate passes when quality
+a disclosed-gated one and a qualified alias. The eval gate passes when quality
 holds (or a small drop is offset by a cost-per-accepted win) and fails when the
 accepted-outcome rate drops beyond bound or without a cost win, fails an
 aggressive scope without ack, downgrades missing/incomplete decision-grade
@@ -146,4 +146,4 @@ evidence, and the real sweep is flag-gated off (no real serving in tests).
 
 Inference suites green (779 tests, 37 new), `typecheck`, `check:architecture`,
 `check:effect-topology`, `check:public-projection-freshness` all green. Not
-deployed; no spend.
+deployed. No spend.

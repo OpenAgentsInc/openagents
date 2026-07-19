@@ -1,7 +1,7 @@
 # Open Issue Delegation Plan
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-11
@@ -502,7 +502,7 @@ Use this split:
 | M10 overnight proof         | Dependencies and receipts                                  | Final overnight run and proof record                                     |
 | M14 exit gate               | Evidence refs from all lanes                               | Final decision record and parent issue closeout                          |
 | P-rung market work          | Dry-run/default-off proof where live settlement is blocked | No market go-live claim until settlement and visibility gates are merged |
-| W3 evaluation               | Prep/design only while the W2 corpus is unavailable        | Not part of MVP gate; keep blocked or separately verified                |
+| W3 evaluation               | Prep/design only while the W2 corpus is unavailable        | Not part of MVP gate. Keep blocked or separately verified                |
 
 ## Dependency Rules
 

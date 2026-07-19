@@ -33,8 +33,8 @@ disallowed, customer-owned, or manual-review prospects.
 
 `workers/api/src/targeted-site-rendered-capture.ts` exposes:
 
-- `recordTargetedSiteRenderedCaptureRun`;
-- list helpers by campaign, prospect, and normalized domain;
+- `recordTargetedSiteRenderedCaptureRun`.
+- list helpers by campaign, prospect, and normalized domain.
 - customer-safe and operator-safe projections.
 
 It reuses the static capture URL normalizer so rendered capture targets remain
@@ -47,18 +47,18 @@ Migration `0075_targeted_site_rendered_capture.sql` adds
 
 Each run records:
 
-- campaign id;
-- optional prospect id;
-- normalized domain;
-- capture-policy event id;
-- optional static capture run id;
-- rendered capture state and reason;
-- normalized target URL;
-- provider ref;
-- screenshot, rendered HTML, markdown, links, structured JSON, and crawl refs;
-- viewport and device refs;
-- bounded usage summary;
-- public-safe metadata;
+- campaign id.
+- optional prospect id.
+- normalized domain.
+- capture-policy event id.
+- optional static capture run id.
+- rendered capture state and reason.
+- normalized target URL.
+- provider ref.
+- screenshot, rendered HTML, markdown, links, structured JSON, and crawl refs.
+- viewport and device refs.
+- bounded usage summary.
+- public-safe metadata.
 - start, completion, creation, and archive timestamps.
 
 Runs are indexed by campaign, prospect, and normalized domain.
@@ -67,12 +67,12 @@ Runs are indexed by campaign, prospect, and normalized domain.
 
 Rendered capture states are:
 
-- `planned`;
-- `succeeded`;
-- `partial`;
-- `failed`;
-- `blocked`;
-- `manual_review`;
+- `planned`.
+- `succeeded`.
+- `partial`.
+- `failed`.
+- `blocked`.
+- `manual_review`.
 - `archived`.
 
 Reasons cover policy fetchability, static-capture insufficiency, screenshot
@@ -87,22 +87,22 @@ into a bypass service.
 
 Usage is bounded before storage:
 
-- browser milliseconds are capped at one hour;
-- bytes are capped at 50 MB;
-- page count is capped at 100;
-- estimated credits are capped at 10,000;
+- browser milliseconds are capped at one hour.
+- bytes are capped at 50 MB.
+- page count is capped at 100.
+- estimated credits are capped at 10,000.
 - cost evidence is a public-safe ref only.
 
 ## Projection And Redaction
 
 Customer-safe projections expose only:
 
-- campaign id;
-- prospect id;
-- normalized domain;
-- target URL;
-- state;
-- booleans for screenshot, markdown, and crawl availability;
+- campaign id.
+- prospect id.
+- normalized domain.
+- target URL.
+- state.
+- booleans for screenshot, markdown, and crawl availability.
 - timestamps.
 
 Operator-safe projections expose typed provider/output refs and bounded usage

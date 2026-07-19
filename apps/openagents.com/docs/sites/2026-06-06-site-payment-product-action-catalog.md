@@ -12,16 +12,16 @@ contract starts in `workers/api/migrations/0115_site_payment_catalog.sql`.
 The catalog records generated checkout products and paid actions outside the
 generated Site source. Each item is linked to:
 
-- Site and Site version refs;
+- Site and Site version refs.
 - optional deployment, customer order, workroom, manifest, and source digest
-  refs;
-- product or paid-action IDs;
-- price asset, denomination, and minor-unit amount;
-- entitlement scope;
-- settlement mode;
-- checkout path;
-- public projection state;
-- sandbox state;
+  refs.
+- product or paid-action IDs.
+- price asset, denomination, and minor-unit amount.
+- entitlement scope.
+- settlement mode.
+- checkout path.
+- public projection state.
+- sandbox state.
 - agent-readable metadata refs.
 
 Catalog records are not payment receipts and do not grant entitlements by
@@ -33,11 +33,11 @@ checkout intent, L402, reconciliation, and proof layers.
 The catalog supports public, customer, agent, and operator projections:
 
 - public projections show active non-hidden items and omit metadata and
-  operator refs;
+  operator refs.
 - customer projections can show reviewable products/actions without operator
-  refs;
+  refs.
 - agent projections include agent-readable metadata refs when the item is
-  marked agent-readable;
+  marked agent-readable.
 - operator projections include sanitized linkage refs for deployment, manifest,
   order, workroom, and source digest inspection.
 
@@ -50,10 +50,10 @@ payloads, checkout query state, and secret-shaped refs.
 The catalog converts Site products and paid actions into
 `OpenAgentsPaidEndpointProductRecord` values:
 
-- checkout products bind as `site_checkout`;
-- paid actions bind as `site_paid_action`;
+- checkout products bind as `site_checkout`.
+- paid actions bind as `site_paid_action`.
 - both use the `site_checkout` payment-policy surface until a separate
-  surface is required;
+  surface is required.
 - entitlements remain `resource` records scoped to the Site/version/item.
 
 The module also defines `OpenAgentsSitePaymentCatalogHostedCheckoutPlan`, which

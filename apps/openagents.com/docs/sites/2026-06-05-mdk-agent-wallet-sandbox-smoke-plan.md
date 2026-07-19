@@ -47,7 +47,7 @@ Important MDK behaviors from the reference code:
   with `Authorization: L402 <credential>:<preimage>`.
 - `withPayment` and `withDeferredSettlement` mint L402 credentials and bind
   amount, currency, resource, expiry, and sandbox state.
-- Sandbox checkouts can emit `sandbox="true"` in the L402 header and JSON body;
+- Sandbox checkouts can emit `sandbox="true"` in the L402 header and JSON body.
   sandbox credentials can bypass real preimage verification only when signed as
   sandbox.
 - Deferred settlement lets paid retries continue until the service succeeds and
@@ -139,7 +139,7 @@ npx @moneydevkit/agent-wallet@latest balance
 ### 1. Unpaid L402 challenge
 
 Call the paid Site action with an active registered OpenAgents agent bearer
-token. The token comes from the calling agent runtime; do not embed it in
+token. The token comes from the calling agent runtime. Do not embed it in
 generated public Site source.
 
 Expected:
@@ -245,7 +245,7 @@ Expected:
   are separate records.
 - Entitlement is scoped to the Site/action/product/account declared in the
   manifest.
-- Public projection says paid/unlocked only through safe refs; it does not
+- Public projection says paid/unlocked only through safe refs. It does not
   reveal invoice, preimage, mnemonic, payment hash, or provider payout data.
 - Payment evidence does not imply provider payout eligibility.
 
@@ -299,19 +299,19 @@ Default for Autopilot Sites should be hosted MDK through OpenAgents product surf
 
 Use hosted MDK when:
 
-- the Site is generated, static, or public;
-- OpenAgents is operating the payment boundary;
-- customer-owned merchant credentials are not reviewed and bound;
-- public proof and customer dashboards must stay redacted;
+- the Site is generated, static, or public.
+- OpenAgents is operating the payment boundary.
+- customer-owned merchant credentials are not reviewed and bound.
+- public proof and customer dashboards must stay redacted.
 - the goal is buyer payment, entitlement, and receipt evidence.
 
 Consider self-hosted `mdkd` only when:
 
-- there is a named operator responsible for the node;
-- the secret-binding mode has explicit review and rotation;
+- there is a named operator responsible for the node.
+- the secret-binding mode has explicit review and rotation.
 - logs and public projections are proven to redact raw invoices/preimages where
-  needed;
-- the Site can tolerate local node downtime and recovery procedures;
+  needed.
+- the Site can tolerate local node downtime and recovery procedures.
 - there is a clear reason hosted MDK is insufficient.
 
 Self-hosted `mdkd` must not be introduced as the default Site builder behavior.
@@ -320,16 +320,16 @@ Self-hosted `mdkd` must not be introduced as the default Site builder behavior.
 
 The smoke passes only when all of these are true:
 
-- unpaid challenge is correct and redacted;
-- over-cap payment is refused before payment dispatch;
-- under-cap sandbox/signet payment succeeds;
-- paid retry unlocks the exact action;
-- stale challenge is rejected;
-- same idempotency key is replay-safe;
-- different key creates a distinct payment flow;
+- unpaid challenge is correct and redacted.
+- over-cap payment is refused before payment dispatch.
+- under-cap sandbox/signet payment succeeds.
+- paid retry unlocks the exact action.
+- stale challenge is rejected.
+- same idempotency key is replay-safe.
+- different key creates a distinct payment flow.
 - generated Site source contains no MDK access token, wallet mnemonic, webhook
   secret, raw invoice, raw preimage, private key, payment hash, or payout
-  credential;
+  credential.
 - OpenAgents product surface records payment evidence, entitlement, accepted work, provider payout
   eligibility, and settlement as separate states.
 

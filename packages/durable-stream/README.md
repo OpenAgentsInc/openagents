@@ -2,7 +2,7 @@
 
 An Effect + Effect Schema **durable append-only offset-log** primitive with a
 pluggable storage port. Production persistence is implemented on Google Cloud
-with Cloud SQL/Postgres; this package owns the provider-neutral protocol core.
+with Cloud SQL/Postgres. This package owns the provider-neutral protocol core.
 It implements the four-part
 [Durable Streams](https://github.com/durable-streams/durable-streams) conformance
 contract — **ported, not vendored** (the upstream ElectricSQL repo is a read-only
@@ -22,13 +22,13 @@ EPIC: #6056. Core primitive: #6057.
 ## The four-part conformance contract
 
 1. **Offset-addressed replay** — reads from a stored offset return the exact
-   suffix; offsets are opaque, lexicographically-sortable, monotonic, strictly
+   suffix. Offsets are opaque, lexicographically-sortable, monotonic, strictly
    increasing, URL-safe, and never the reserved sentinels `-1`/`now`.
-2. **Resumability + EOF** — resume from `Stream-Next-Offset`; `Stream-Up-To-Date`
-   ≠ EOF; only `Stream-Closed` (durable, monotonic, idempotent) is EOF, signalled
+2. **Resumability + EOF** — resume from `Stream-Next-Offset`. `Stream-Up-To-Date`
+   ≠ EOF. Only `Stream-Closed` (durable, monotonic, idempotent) is EOF, signalled
    per read mode.
 3. **Exactly-once writes** — `(producerId, epoch, seq)` dedup, zombie fencing,
-   gap detection; validate+append serialized per `(stream, producerId)` and
+   gap detection. Validate+append serialized per `(stream, producerId)` and
    committed atomically by the storage adapter.
 4. **CDN-friendly fan-out** — cacheable catch-up reads (`ETag` varying with
    closure, `Cache-Control`, `Stream-Cursor`).
@@ -37,15 +37,15 @@ EPIC: #6056. Core primitive: #6057.
 
 | File                    | Role                                                     |
 | ----------------------- | -------------------------------------------------------- |
-| `src/offset.ts`         | offset codec (branded Effect Schema; lexicographic)      |
+| `src/offset.ts`         | offset codec (branded Effect Schema, lexicographic)      |
 | `src/protocol.ts`       | wire header/param constants + helpers                    |
-| `src/core.ts`           | transport-agnostic state machine (pure; Vitest-testable) |
+| `src/core.ts`           | transport-agnostic state machine (pure, Vitest-testable) |
 | `src/store.ts`          | `StreamStore` port + in-memory impl                      |
 | `src/http.ts`           | Web `Request`/`Response` adapter (+ SSE)                 |
 | `src/test-server.ts`    | Node-hostable test server (same core/http paths)         |
 
 The package has no cloud-provider imports. The protocol state machine is
-unit-testable under Node with `MemoryStreamStore`; the OpenAgents API supplies
+unit-testable under Node with `MemoryStreamStore`. The OpenAgents API supplies
 the Google Cloud/Cloud SQL production adapter.
 
 Stream URL scheme: `{base}/v1/stream/{path}` (matches the upstream conformance
@@ -61,7 +61,7 @@ pnpm run typecheck # tsc --noEmit, clean
 The owned tests in `src/*.test.ts` **replicate the upstream conformance YAML
 cases** (`projects/repos/durable-streams/packages/client-conformance-tests/test-cases/`)
 as Vitest tests driving raw `fetch` against the local test server. This is the
-"conformance suite as oracle" loop; the task explicitly permits replicating the
+"conformance suite as oracle" loop. The task explicitly permits replicating the
 YAML cases as Node/Effect tests.
 
 ### Honest conformance coverage
@@ -104,7 +104,7 @@ tests)** covering the four-part contract. Status by bucket:
   (`producer/batching`, `idempotent-json-batching`, `json-parsing-errors`).
 - **Held-connection live waiting** — the core is synchronous, so long-poll/SSE
   return the currently-available suffix immediately rather than blocking for new
-  data. The required 204/closed shapes and SSE framing are covered; the _waiting_
+  data. The required 204/closed shapes and SSE framing are covered. The _waiting_
   semantics (`fault-injection`, `retry-resilience`, `read-auto` reconnection,
   full `read-sse` 26-case streaming) are an adapter concern not exercised here.
 - **Retention/compaction** (`410 Gone` before earliest retained), `304

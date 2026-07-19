@@ -35,9 +35,9 @@ disallowed, customer-owned, or manual-review prospects.
 
 `workers/api/src/targeted-site-static-capture.ts` exposes:
 
-- `normalizeTargetedSiteStaticCaptureUrl`;
-- `recordTargetedSiteStaticCaptureRun`;
-- list helpers by campaign, prospect, and normalized domain;
+- `normalizeTargetedSiteStaticCaptureUrl`.
+- `recordTargetedSiteStaticCaptureRun`.
+- list helpers by campaign, prospect, and normalized domain.
 - customer-safe and operator-safe projections.
 
 The URL normalizer allows only same-origin `http` and `https` URLs for the
@@ -51,17 +51,17 @@ Migration `0074_targeted_site_static_capture.sql` adds
 
 Each run records:
 
-- campaign id;
-- optional prospect id;
-- normalized domain;
-- capture-policy event id;
-- static capture state and reason;
-- normalized homepage URL;
-- homepage, robots, sitemap, source-pack, and source-hash refs;
-- bounded selected page refs;
-- bounded same-origin asset refs;
-- bounded response summary;
-- public-safe metadata;
+- campaign id.
+- optional prospect id.
+- normalized domain.
+- capture-policy event id.
+- static capture state and reason.
+- normalized homepage URL.
+- homepage, robots, sitemap, source-pack, and source-hash refs.
+- bounded selected page refs.
+- bounded same-origin asset refs.
+- bounded response summary.
+- public-safe metadata.
 - start, completion, creation, and archive timestamps.
 
 Runs are indexed by campaign, prospect, and normalized domain.
@@ -70,12 +70,12 @@ Runs are indexed by campaign, prospect, and normalized domain.
 
 Static capture states are:
 
-- `planned`;
-- `succeeded`;
-- `partial`;
-- `failed`;
-- `blocked`;
-- `manual_review`;
+- `planned`.
+- `succeeded`.
+- `partial`.
+- `failed`.
+- `blocked`.
+- `manual_review`.
 - `archived`.
 
 Reasons are typed and include policy fetchability, homepage fetch success,
@@ -87,13 +87,13 @@ readiness.
 
 Customer-safe projections include counts and public-safe refs only:
 
-- campaign id;
-- prospect id;
-- normalized domain;
-- homepage URL;
-- state;
-- page and asset counts;
-- source-pack ref;
+- campaign id.
+- prospect id.
+- normalized domain.
+- homepage URL.
+- state.
+- page and asset counts.
+- source-pack ref.
 - timestamps.
 
 Operator-safe projections include the capture-policy event id, reason,

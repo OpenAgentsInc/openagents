@@ -31,7 +31,7 @@ folder and reviewing the current web and desktop surfaces.
 
 2026-06-21 update: the old web `/tassadar` live scene/custom element has been
 retired. The in-world Tassadar/Pylon surface now belongs in Autopilot Desktop
-Verse; the web route is a guardrail notice plus links to the public summary API
+Verse. The web route is a guardrail notice plus links to the public summary API
 and proof replay.
 
 Live snapshot checked while writing:
@@ -120,7 +120,7 @@ The components workbench already provides the UI side of the language:
 - Public/page examples/v4/AI Elements for larger compositions.
 
 For Tassadar, this means the product surface should not invent a new chrome. Use
-the workroom/data-display families for evidence, proof links, and ledger state;
+the workroom/data-display families for evidence, proof links, and ledger state.
 use the scene layer only for spatial comprehension.
 
 ### `/run`
@@ -202,7 +202,7 @@ proof inspection:
 - `sourceRefs`: the public refs that authorize the motion.
 - `generatedAt`: projection timestamp.
 - `expiresAt` or stale policy for liveness/presence motion.
-- `simulated`: true only for explicitly labeled simulation evidence; simulated
+- `simulated`: true only for explicitly labeled simulation evidence. Simulated
   motion must not share the real-settlement encoding.
 
 If any of that metadata is missing, the fallback is static state: show the node,
@@ -235,7 +235,7 @@ refs.
    `settlementMotions`, and `presenceMotions`, each carrying the metadata above.
 3. Make the web adapter responsible for deriving all motion events from
    `/api/public/tassadar-run-summary`, `/api/public/product-promises`, and
-   `/api/public/pylon-stats`; the renderer must not invent them from graph
+   `/api/public/pylon-stats`. The renderer must not invent them from graph
    topology.
 4. Keep `/components/training` and `/animations` demos honest by labeling
    unbound studies as static prototypes, or by feeding them fixture refs that
@@ -397,7 +397,7 @@ families.
    contributor nodes sit around the run, worker-validator pairs form replay
    beams, corpus sits as accumulation, settlement is a burst, blockers are gates.
 5. Use compact gate glyphs for aggregate stage concepts. Do not use pylon-like
-   bullseye/orb glyphs for `registered / 6 pylons seen` style stage counters;
+   bullseye/orb glyphs for `registered / 6 pylons seen` style stage counters.
    those are counters attached to a run phase, not the pylon records themselves.
    On `/tassadar`, keep those aggregate concepts out of the main 3D field unless
    they move into a clearly labeled legend or secondary support panel.
@@ -408,7 +408,7 @@ families.
    Static proof should stay static.
 7. Never use one glow for multiple truths. Online, assigned, verified, settled,
    and recipient-confirmed need separate encodings.
-8. The first read should be visual; the second read should be inspectable refs.
+8. The first read should be visual. The second read should be inspectable refs.
    Every important visual element needs a data-display peer.
 9. Zero states are first-class. A run with no verified traces should still look
    like a real run, not an empty marketing failure.
@@ -469,7 +469,7 @@ beam traffic, or payout bursts.
    existing data-display/workroom families become too repetitive.
 6. In Autopilot Desktop, keep the default Network pane broad and use Training
    Live for the run-specific grammar. The Network pane answers "is the fleet
-   alive?"; Training Live should answer "what happened to this run?"
+   alive?". Training Live should answer "what happened to this run?"
 
 ## Proof Replay Renderer Correction
 

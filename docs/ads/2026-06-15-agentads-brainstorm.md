@@ -1,7 +1,7 @@
 # AgentAds Brainstorm: Sponsored Opportunities For Agent Workflows
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -30,14 +30,14 @@ human is deciding how to get work accepted.
 The unit is not an impression and not an LLM seeing brand text. The OpenAgents
 native unit is the accepted outcome:
 
-1. a sponsor defines a public-safe offer or task;
-2. an agent or human chooses it with explicit authority;
-3. work, click, install, activation, or conversion produces a receipt;
+1. a sponsor defines a public-safe offer or task.
+2. an agent or human chooses it with explicit authority.
+3. work, click, install, activation, or conversion produces a receipt.
 4. revenue share settles only against the receipt graph.
 
 Kickbacks found developer wait-state inventory. AgentAds should aim one level
 deeper: developer and agent decision inventory. The highest-value moment is not
-"the model is thinking"; it is "the workflow needs a database, validator,
+"the model is thinking". It is "the workflow needs a database, validator,
 deployment surface, GPU, security scan, benchmark, or paid specialist."
 
 ## The product shape
@@ -70,15 +70,15 @@ and route through the existing authority and receipt systems.
 
 OpenAgents already has the primitives an ad network usually has to fake:
 
-- agent identity and tokens;
-- Forum coordination;
-- product-promise and proof discipline;
-- public-safe receipts;
-- Bitcoin/Lightning payment rails;
-- L402 and checkout primitives;
-- Pylon local compute;
-- Autopilot Sites commerce surfaces;
-- owner approval and scoped grants;
+- agent identity and tokens.
+- Forum coordination.
+- product-promise and proof discipline.
+- public-safe receipts.
+- Bitcoin/Lightning payment rails.
+- L402 and checkout primitives.
+- Pylon local compute.
+- Autopilot Sites commerce surfaces.
+- owner approval and scoped grants.
 - a strong rule that payment proof, accepted work, payout, and settlement are
   distinct states.
 
@@ -210,41 +210,41 @@ like paid useful work, not interruption.
 
 Add a sponsored topic/card type in Forum:
 
-- clearly labeled;
-- category allowlisted;
-- opt-outable per user/workspace;
-- no private data request by default;
-- public-safe claim/evidence links required;
+- clearly labeled.
+- category allowlisted.
+- opt-outable per user/workspace.
+- no private data request by default.
+- public-safe claim/evidence links required.
 - payout or reward terms stated up front.
 
 Agents can discover these like normal Forum work, but the agent must report:
 
-- what the sponsor wants;
-- what authority is needed;
-- what data would leave OpenAgents;
-- what receipt would prove completion;
+- what the sponsor wants.
+- what authority is needed.
+- what data would leave OpenAgents.
+- what receipt would prove completion.
 - what payout or reward state would count.
 
 ### 3. Sponsored tool suggestions in Autopilot
 
 When Autopilot sees a task that needs a service, it can show:
 
-- organic options;
-- sponsored option;
-- why it matches;
-- exact data/actions required;
-- owner approval buttons;
+- organic options.
+- sponsored option.
+- why it matches.
+- exact data/actions required.
+- owner approval buttons.
 - expected receipts.
 
 Good initial categories:
 
-- CI/debugging;
-- observability;
-- deploy previews;
-- Postgres/Redis/vector DB;
-- security scanning;
-- test generation;
-- docs/diagram generation;
+- CI/debugging.
+- observability.
+- deploy previews.
+- Postgres/Redis/vector DB.
+- security scanning.
+- test generation.
+- docs/diagram generation.
 - eval/tracing tools.
 
 Avoid anything that touches regulated advice, political persuasion, gambling,
@@ -263,10 +263,10 @@ for a qualified handoff or accepted result:
 This maps directly to OpenAgents' accepted-outcome economy. If the handoff
 produces accepted work, the receipt graph can split value among:
 
-- user/workspace;
-- agent operator;
-- tool/service sponsor;
-- verifier/grader;
+- user/workspace.
+- agent operator.
+- tool/service sponsor.
+- verifier/grader.
 - OpenAgents platform.
 
 ## Revenue model
@@ -289,25 +289,25 @@ CPM when OpenAgents can price actual work.
 
 Threats:
 
-- impression farming by idle agents;
-- bots clicking sponsor cards;
-- fake installs;
-- collusive handoffs;
-- prompt-injection disguised as sponsorship;
-- advertisers making unverifiable claims;
-- agents leaking private repo data to earn rewards;
+- impression farming by idle agents.
+- bots clicking sponsor cards.
+- fake installs.
+- collusive handoffs.
+- prompt-injection disguised as sponsorship.
+- advertisers making unverifiable claims.
+- agents leaking private repo data to earn rewards.
 - duplicate or non-dereferenceable receipts.
 
 Controls:
 
-- signed event receipts with idempotency keys;
-- viewability thresholds for human-visible cards;
-- owner approval receipts for action events;
-- one account/workspace caps and per-campaign frequency caps;
-- category review and advertiser allowlists;
-- public-safe evidence requirements;
-- advertiser refund state for fraud;
-- no billing on "agent-only saw text" events in the MVP;
+- signed event receipts with idempotency keys.
+- viewability thresholds for human-visible cards.
+- owner approval receipts for action events.
+- one account/workspace caps and per-campaign frequency caps.
+- category review and advertiser allowlists.
+- public-safe evidence requirements.
+- advertiser refund state for fraud.
+- no billing on "agent-only saw text" events in the MVP.
 - separation between buyer-side payment proof and provider payout settlement.
 
 ## What to build first
@@ -382,11 +382,11 @@ outcomes. Episode 237 says the network grows when agents can find useful work,
 prove it, and get paid. The launch plan says bold claims stay red until a
 non-owner receipt exists. AgentAds should obey all three:
 
-- route budget into useful work;
-- disclose the sponsor;
-- keep private context private;
-- require explicit authority;
-- pay only on receipts;
+- route budget into useful work.
+- disclose the sponsor.
+- keep private context private.
+- require explicit authority.
+- pay only on receipts.
 - learn from which opportunities became accepted outcomes.
 
 If this works, AgentAds is not a banner network. It is a demand-side router for

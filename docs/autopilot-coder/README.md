@@ -1,7 +1,7 @@
 # Autopilot Coder
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 This directory records the product and implementation audit trail for the
@@ -37,7 +37,7 @@ Forum reporting.
   workrooms, goals, SHC container execution, provider-account lease routing,
   billing/metering, token accounting, the coding-autopilot record layer)
   measured against the six wedge problems, the two-stacks finding (the web
-  product and the work-order/labor spine don't know each other exist), the
+  product and the work-order/labor spine do not know each other exist), the
   three-lane placement model anchored by Pylons (hosted SHC / owner Pylon /
   labor market), and the phased productize → unify → market roadmap. It now
   carries the Pack A timing overlay for proof/supervision operationalization:
@@ -49,14 +49,14 @@ Forum reporting.
   minimal managed policy. Pack C is now implemented as #4831-#4835, covering
   repository/worktree identity, change capture, file/shell/workspace authority,
   and delivery/PR readiness receipts. The public freshness/order-book hygiene
-  pair is closed by #4836/#4837; the next pack is intentionally not filed until
+  pair is closed by #4836/#4837. The next pack is intentionally not filed until
   the remaining MVP proof gates (#4768/#4772) have consumed Pack C evidence or
   been explicitly narrowed.
 - `2026-06-12-pylon-codex-day-to-day-readiness-audit.md`: immediate
   day-to-day readiness audit for switching owner coding to Pylon with Codex as
   the primary workhorse and Fable via the Claude Agent lane. Verdict:
   source-checkout daily-driver dogfood is close enough to prove with one
-  retained owner-watched run; full packaged replacement is still blocked by
+  retained owner-watched run. Full packaged replacement is still blocked by
   v0.3 packaging, retained proof, delivery ergonomics, and unattended/public
   readiness gates. `pylon work submit` commit pinning and explicit
   Codex/Fable adapter intent are implemented in source.

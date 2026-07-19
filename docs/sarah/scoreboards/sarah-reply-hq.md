@@ -3,7 +3,7 @@
 - Schema: `sarah-take-scoreboard.v1`
 - Take: `sarah-reply-hq` (2026-07-09)
 - Refs: #8610, #8618
-- **Advance: NO** — Audio defects from v1 all fixed (STT-verified); encode softness gone; residual MuseTalk 256^2 teeth softness. Baseline for the enhancement variants; no standalone owner playback verdict.
+- **Advance: NO** — Audio defects from v1 all fixed (STT-verified). Encode softness gone. Residual MuseTalk 256^2 teeth softness. Baseline for the enhancement variants. No standalone owner playback verdict.
 
 ## Input refs
 
@@ -15,7 +15,7 @@
 | Model: musetalk | 1.5 (256^2 mouth inpaint, fp16, batch 20) |
 | Model: cosyvoice | CosyVoice2-0.5B zero-shot + spoken-form normalizer |
 | Model: encode | libx264 CRF16 preset slow (2.6 Mbps) + loudnorm |
-| Recipe | raw MuseTalk paste-back, no enhancement; normalized-text audio re-synthesis; CRF16 encode |
+| Recipe | raw MuseTalk paste-back, no enhancement. Normalized-text audio re-synthesis. CRF16 encode |
 | Commits | hydralisk 40b2783 (spoken-form TTS normalizer: initialism lexicon + all-caps heuristic) |
 | Artifact | gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply_hq.mp4 |
 | Artifact | gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/qa2/ |
@@ -24,10 +24,10 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| STT round-trip (whole-clip, Gemini (independent round-trip on the final mux)) | PASS | 'A I' spoken as letters 3/3; 'coding agents' correct; all v1 defects fixed |
+| STT round-trip (whole-clip, Gemini (independent round-trip on the final mux)) | PASS | 'A I' spoken as letters 3/3. 'Coding agents' correct. All v1 defects fixed |
 | Loudness / true peak | -18.4 LUFS / -2.9 dBTP | target ≈ -16 LUFS / ≤ -3 dBTP |
 | Pause timing | WATCH | staccato letter-speech pacing from hard 'A I' letter-spacing |
-| Prosody (human verdict) | WATCH | letter-spaced 'A I … A P I' reads staccato; punctuation-prosody variant ('A.I.') adopted in v3 |
+| Prosody (human verdict) | WATCH | letter-spaced 'A I … A P I' reads staccato. Punctuation-prosody variant ('A.I.') adopted in v3 |
 | Prosody (LLM judge) | not run | — |
 | Initialism risk | — | normalizer letter-spacing 'A I' — correct words, robotic rhythm |
 
@@ -35,11 +35,11 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| **Owner playback verdict** | PENDING | no owner in-motion verdict recorded for hq alone; owner watched the enhanced derivative |
-| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured; QA2 frame inspection surfaced no offset |
-| Crop sharpness | WATCH | encode softness gone at CRF16; residual MuseTalk 256^2 teeth softness remains |
+| **Owner playback verdict** | PENDING | no owner in-motion verdict recorded for hq alone. Owner watched the enhanced derivative |
+| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured. QA2 frame inspection surfaced no offset |
+| Crop sharpness | WATCH | encode softness gone at CRF16. Residual MuseTalk 256^2 teeth softness remains |
 | Temporal boil/flicker | PASS | no flicker in QA2 sampled windows |
-| Chunk-boundary jerk | PASS | whole-timeline mouth-region mean \|diff\| 8.88 vs original 8.77 (statistically identical); native-fps jerk metrics not computed for this take |
+| Chunk-boundary jerk | PASS | whole-timeline mouth-region mean \|diff\| 8.88 vs original 8.77 (statistically identical). Native-fps jerk metrics not computed for this take |
 | Identity drift | PASS | — |
 | Paste-back seam | PASS | blend seam invisible in every sampled crop |
 

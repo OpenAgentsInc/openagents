@@ -19,16 +19,16 @@ in `workers/api/src/hosted-mdk-client.test.ts`.
 
 The hosted client accepts a request derived from:
 
-- a paid endpoint product record;
-- a buyer-side payment challenge record;
-- optional L402 credential payload metadata;
-- return and cancel refs;
-- customer-safe metadata refs;
+- a paid endpoint product record.
+- a buyer-side payment challenge record.
+- optional L402 credential payload metadata.
+- return and cancel refs.
+- customer-safe metadata refs.
 - sandbox/production flags.
 
 Supported payment amounts are:
 
-- USD cents;
+- USD cents.
 - bitcoin-denominated minor units represented as `bitcoin_millisatoshi`.
 
 Credit balances remain an OpenAgents ledger concern and are intentionally not a
@@ -39,11 +39,11 @@ hosted MDK checkout amount.
 `makeFakeOpenAgentsHostedMdkClient` returns deterministic refs for tests and
 local contract development:
 
-- checkout ref;
-- hosted checkout URL ref;
-- redacted invoice ref;
-- redacted payment hash ref;
-- provider ref;
+- checkout ref.
+- hosted checkout URL ref.
+- redacted invoice ref.
+- redacted payment hash ref.
+- provider ref.
 - entitlement/payment evidence state.
 
 The fake provider has explicit error states for missing configuration, unsafe
@@ -58,8 +58,8 @@ Treasury payout truth.
 
 The response contract hard-codes:
 
-- `providerPayoutAuthority: false`;
-- `acceptedWorkSettlementAuthority: false`;
+- `providerPayoutAuthority: false`.
+- `acceptedWorkSettlementAuthority: false`.
 - `settlementAuthority: buyer_payment_evidence_only`.
 
 ## Redaction Boundary
@@ -77,9 +77,9 @@ raw payment material.
 
 This contract integrates at the type level with:
 
-- #290 paid endpoint product catalog records;
-- #291 buyer payment challenge records;
-- #292 L402 credential payloads;
+- #290 paid endpoint product catalog records.
+- #291 buyer payment challenge records.
+- #292 L402 credential payloads.
 - #294 L402 header/payment proof handling.
 
 Future route work can call this client after policy, catalog, ledger, and L402

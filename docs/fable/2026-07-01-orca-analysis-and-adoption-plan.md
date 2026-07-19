@@ -8,7 +8,7 @@ out what to take or adapt from it in what order — including the mobile
 companion direction (Khala iOS reaching rough feature parity with Khala Code
 Desktop, minus a few things). Companion to the fleet fan-out instructions,
 the QA framework design, and the Effect integration audit in this folder.
-Documentation-only; flips no promise state.
+Documentation-only. Flips no promise state.
 Execution: Priorities 1–5 in §3 are scheduled in the unified
 [`ROADMAP.md`](./ROADMAP.md) — Priority 1 is folded into the fan-out
 Lane A/B foundation (one state store), Priority 2 into the status-spine
@@ -42,16 +42,16 @@ place, steerable from a phone) is three things to us at once:
 The single most important architectural fact: **Orca is not an
 SDK-orchestration engine. It is a terminal multiplexer with git-worktree
 management and a SQLite message bus.** Agents run as their real TUIs inside
-node-pty PTYs rendered by xterm.js; Orca learns their status by parsing
+node-pty PTYs rendered by xterm.js. Orca learns their status by parsing
 terminal OSC escape codes and title glyphs (Claude idle `✳`, Gemini
 `✦/◇/✋`) and by injecting managed hook scripts into each vendor's own
-config files; agents participate in coordination by shelling out to an
+config files. Agents participate in coordination by shelling out to an
 `orca orchestration` CLI that pokes a SQLite message queue. That is how it
 supports ~30 harnesses cheaply — and why it has no structured tool-call
 data, no real token accounting (it scrapes vendor usage files), no
 verification (a worker is "done" when it self-reports a three-sentence
 summary the coordinator trusts), no claim/dedup for parallel work, and no
-sandboxing (agents are full-credential local processes; approvals are
+sandboxing (agents are full-credential local processes, approvals are
 delegated to each TUI's own prompt).
 
 We are the inverse shape: deep typed integration (Codex app-server as the
@@ -65,16 +65,16 @@ spine, adopt their surfaces.**
 ## 2. Where We Are: The Five-Port Scoreboard
 
 The 2026-06-27 adaptation report extracted five ports. Honest status as of
-today (issues #6404–#6407, #7808, #7809 — all closed; the closing ≠ the
+today (issues #6404–#6407, #7808, #7809 — all closed, the closing ≠ the
 goal in three cases):
 
 | Port | What it was | Status |
 | --- | --- | --- |
 | 1. AgentRunner registry | Unify the ~80%-identical Claude/Codex executors behind one interface + declarative registry | **Shipped and live.** `apps/pylon/src/agent-runner-registry.ts` (PR #6505) is in the real assignment path (`assignment.ts` → `executeRegisteredAgentRunner`). |
-| 2. Typed coordinator + task DAG | Replace bash-supervisor ad-hoc state with a persisted task/dispatch/message model | **Built, tested, DORMANT.** `apps/pylon/src/orchestration/` (1,132 lines + 501 test lines; PRs #6588/#7813/#7818) is a faithful port — task DAG with dependency promotion, dispatch contexts with 3-strike circuit breaker and 5-min-fresh/10-min-hung liveness, base-drift guard (refuse >20 commits behind), group addressing (`@all`/`@idle`/`@runner:<kind>`), plus our own `VirtualHead` reservations. **A repo-wide grep finds zero runtime consumers.** The live fleet still runs on bash supervisor process-state. |
-| 3. Operator dashboard | Live/retained agent-status store + annotate-diff loop on the web | **Mock-data shell.** `/pro` page (PR #6596) renders the right shapes (`stateStartedAt` vs `updatedAt`, state history, diff comments) from hardcoded sample state; live ingest was an explicit follow-up that never followed. |
-| 4. Mobile companion | E2EE-paired phone: status subscription, finish notifications, steer | **Never filed, zero code.** Deliberately deferred on 06-28 ("mobile is secondary"); no issue exists. |
-| 5. Artanis action surface | Uniform status ingest + gated orchestration verbs | **Partial.** Approval-gate verbs shipped (`khala artanis approve/reject`); the orchestration verbs (task-create/list/dispatch) did not. Status ingest is Codex-lane-only. |
+| 2. Typed coordinator + task DAG | Replace bash-supervisor ad-hoc state with a persisted task/dispatch/message model | **Built, tested, DORMANT.** `apps/pylon/src/orchestration/` (1,132 lines + 501 test lines, PRs #6588/#7813/#7818) is a faithful port — task DAG with dependency promotion, dispatch contexts with 3-strike circuit breaker and 5-min-fresh/10-min-hung liveness, base-drift guard (refuse >20 commits behind), group addressing (`@all`/`@idle`/`@runner:<kind>`), plus our own `VirtualHead` reservations. **A repo-wide grep finds zero runtime consumers.** The live fleet still runs on bash supervisor process-state. |
+| 3. Operator dashboard | Live/retained agent-status store + annotate-diff loop on the web | **Mock-data shell.** `/pro` page (PR #6596) renders the right shapes (`stateStartedAt` vs `updatedAt`, state history, diff comments) from hardcoded sample state. Live ingest was an explicit follow-up that never followed. |
+| 4. Mobile companion | E2EE-paired phone: status subscription, finish notifications, steer | **Never filed, zero code.** Deliberately deferred on 06-28 ("mobile is secondary"). No issue exists. |
+| 5. Artanis action surface | Uniform status ingest + gated orchestration verbs | **Partial.** Approval-gate verbs shipped (`khala artanis approve/reject`). The orchestration verbs (task-create/list/dispatch) did not. Status ingest is Codex-lane-only. |
 
 Two adjacent pieces matter: `agent-status-reporter.ts` defines the
 runner-neutral status/control contract
@@ -89,13 +89,13 @@ T10.3 compatibility note (2026-07-02): `/api/operator/fleet/status` is now a
 deprecated admin-only compatibility envelope for the current iOS Fleet
 Inspector. It preserves the legacy `operator.fleet_status.v1` response shape
 but reads from the `pylon_agent_runner_status_events` spine used by
-`/api/operator/pro/status`; there is no separate fleet-status source of truth.
+`/api/operator/pro/status`. There is no separate fleet-status source of truth.
 Remove the route after T11.1 ships mobile pairing/transport and replaces this
 bespoke poll.
 
 Also confirmed: **we deliberately do not have Orca's compare-N-merge-winner
 flow**, and every layer of our system enforces the opposite invariant (one
-worker per distinct work unit; the fan-out instructions make the claim
+worker per distinct work unit. The fan-out instructions make the claim
 registry structural precisely because the June 29 burn produced duplicate
 PRs on 59 issues, up to 7 per issue). That is the right default for backlog
 burn-down. A bounded best-of-N mode could exist someday as an *explicit*
@@ -111,7 +111,7 @@ the operator snapshot with heavy client-side redaction. A `codex_agent_task`
 delegation client method exists but no UI calls it. There is no WebSocket,
 no push notifications, no pairing, no steering. (Side note the mobile docs
 should reconcile: the "voice app spec" describes voice features the code
-does not contain; the app matches the ChatGPT-style spec.)
+does not contain. The app matches the ChatGPT-style spec.)
 
 ## 3. What To Take From Orca, In Order
 
@@ -127,8 +127,8 @@ fleet fan-out instructions independently specify a `FleetRunSupervisor`
 that needs persisted state. **These are the same work item — do not build
 two state stores.** The FleetRun record and claim registry from the fan-out
 doc should be implemented *on* `apps/pylon/src/orchestration/` (tasks =
-work units with deps; dispatch contexts = workers with heartbeats, circuit
-breakers, and slots; messages = the lifecycle bus; virtual-head
+work units with deps. Dispatch contexts = workers with heartbeats, circuit
+breakers, and slots. Messages = the lifecycle bus. Virtual-head
 reservations = the merge-queue base pinning). The bash supervisors demote
 to process launchers driven by store state: live desired-slot, pause,
 dispatch-attempt, completion, and work-claim state is store-backed via
@@ -166,23 +166,23 @@ selectively:
   mobile-callable method is explicitly registered** (Orca's
   `mobile-rpc-allowlist.test.ts` is a discipline worth copying exactly).
 - **Adapt the transport**: Orca is LAN-direct (desktop is the WebSocket
-  server; remote reach requires Tailscale/VPN). Per the adaptation report,
+  server. Remote reach requires Tailscale/VPN). Per the adaptation report,
   ours should be **Durable-Object-relay-mediated** so it works for remote
   fleets and multiple devices, with APNs layered for background delivery
-  (Orca's socket-push only works foregrounded; our native app has no OTA
+  (Orca's socket-push only works foregrounded, our native app has no OTA
   constraint but also currently zero push capability). A LAN-direct fast
-  path can come later; the DO relay is the correct first transport for a
+  path can come later. The DO relay is the correct first transport for a
   fleet that already reports to the Worker.
 - **Feature parity target** ("more or less the same feature set, minus a
   few things"): the mobile app becomes a projection of the desktop's Fleet
   cockpit and Inbox — fleet run status and worker cards, account
   rate-limit meters, throughput gauges, **notify-on-finish/blocked**,
-  **approve/reject from the phone** (the Inbox's typed responses; note
+  **approve/reject from the phone** (the Inbox's typed responses, note
   `khala artanis approve <gateRef>` already exists in the CLI but not the
   app), **steer** (send a follow-up/objective to a run or worker), and
   bounded diff/PR review. **Minus**: full terminal emulation/splits,
   Design Mode/computer-use, worktree file management, and local execution
-  — the phone observes, decides, and steers; it does not host work.
+  — the phone observes, decides, and steers. It does not host work.
 - Sequencing inside this priority: (a) pairing + DO relay + read-only
   status subscription (replaces the bespoke poll), (b) push notifications
   on finish/blocked/approval-needed, (c) approvals + steer, (d) diff
@@ -192,7 +192,7 @@ selectively:
 ### Priority 4 — The review loop and cockpit polish
 
 - **Annotate-AI-diff-and-ship-back**: comment on diff lines and return the
-  comments to the agent as steering input. Orca's strongest UX loop; lands
+  comments to the agent as steering input. Orca's strongest UX loop. Lands
   in the desktop diff renderer first, mobile second, and pairs naturally
   with our verification gates (review what the verifier already blessed).
 - Source-control AI actions (commit-message/PR-body/fix-checks prompts) —
@@ -202,12 +202,12 @@ selectively:
 
 - **Terminal scrollback checkpointing** (`daemon-checkpoint-file.ts`
   pattern: checkpoint + incremental log with generation pairing) — only if
-  the desktop grows live terminal panes; our transcript-first UI may never
+  the desktop grows live terminal panes. Our transcript-first UI may never
   need it.
 - SSH/remote worker hosts (Orca's relay) — our answer is Pylon nodes on
-  other machines, which already exists conceptually; revisit when a second
+  other machines, which already exists conceptually. Revisit when a second
   machine matters.
-- Automations/schedules — we have Pylon scheduling primitives; expose them
+- Automations/schedules — we have Pylon scheduling primitives. Expose them
   through the same FleetRun surface rather than porting Orca's.
 - Agent-facing SKILL.md capability docs for the orchestration CLI — nice
   discipline, low cost, adopt opportunistically.
@@ -216,7 +216,7 @@ selectively:
 
 - **PTY + OSC-glyph status detection and vendor-config hook injection.**
   Our Codex app-server and Claude SDK adapters give structured events Orca
-  can only guess at. Breadth-per-effort is their trade; depth is ours.
+  can only guess at. Breadth-per-effort is their trade. Depth is ours.
 - **The 30-harness breadth** as a goal. Our target set is Codex, Claude
   Code, and Khala-routed (`codex | claude | auto`), per the multi-harness
   doc.
@@ -233,23 +233,23 @@ selectively:
 ## 4. Risks And Watch Items
 
 - **Their velocity.** ~57 commits/day means any feature-race on surface
-  breadth is unwinnable; the plan above deliberately races on spine
+  breadth is unwinnable. The plan above deliberately races on spine
   (verification, accounting, determinism, claims) and adopts only their
   stable, settled patterns (the orchestration schema and mobile security
   model have been stable while their recent churn is terminal/SSH/i18n
   hardening).
-- **Port-2 rot.** Dormant code drifts; wiring the store (Priority 1) is
+- **Port-2 rot.** Dormant code drifts. Wiring the store (Priority 1) is
   urgent precisely because the fan-out epic would otherwise build a
   competing state model and strand 1,600 lines of tested work.
 - **Two status vocabularies.** Until Priority 2 lands, the desktop, the
-  operator snapshot, and the runner-neutral contract are three dialects;
+  operator snapshot, and the runner-neutral contract are three dialects.
   every new consumer added before unification increases migration cost.
 - **Mobile scope creep.** The companion succeeds as a projection with four
-  verbs (observe, get notified, approve, steer); resisting terminal
+  verbs (observe, get notified, approve, steer). Resisting terminal
   emulation and file management on the phone is what keeps it shippable on
   the native-Swift, no-OTA policy.
 - **Naming/attribution hygiene.** Keep "Orca" out of product copy,
-  commits, and public projections; patterns only, per the standing policy
+  commits, and public projections. Patterns only, per the standing policy
   (and note for grep-archaeologists: most "orca" hits in older docs are
   `…ORCA…` substring false positives like `resolveValidatORCAndidates`).
 
@@ -258,7 +258,7 @@ selectively:
 Orca proved the product category and gifted us — under MIT — a tested
 orchestration data model, a taxonomy that prevents phantom coordination
 state, and a complete mobile-companion security design. We already ported
-the data model; it is sitting unwired while the live fleet still runs on
+the data model. It is sitting unwired while the live fleet still runs on
 bash process-state, and the mobile port was never even filed. The plan is
 therefore less "adopt more of Orca" than "finish adopting what we chose,
 in the order that serves the work already in flight": wire the

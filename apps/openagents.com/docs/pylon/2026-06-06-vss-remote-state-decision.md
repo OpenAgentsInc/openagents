@@ -40,13 +40,13 @@ internal retries are exhausted.
 
 Current Pylon wallet code already has an explicit local backup surface:
 
-- encrypted wallet backup export;
-- backup inspection;
-- backup restore;
-- phrase restore;
-- backup manifest status;
-- stale backup warnings;
-- explicit `--yes` gates in the TUI command surface; and
+- encrypted wallet backup export.
+- backup inspection.
+- backup restore.
+- phrase restore.
+- backup manifest status.
+- stale backup warnings.
+- explicit `--yes` gates in the TUI command surface. And
 - telemetry fields for backup readiness, manifest presence, artifact count,
   stale state, last export time, and last file digest.
 
@@ -57,11 +57,11 @@ That baseline should remain visible even if VSS is added later.
 A future VSS adapter may store only wallet-state material that the native
 Pylon/LDK runtime already needs to persist:
 
-- channel monitor state;
-- LDK node key-value state;
-- pathfinding/scoring state if the chosen runtime persists it there;
-- wallet metadata needed for recovery;
-- backup status metadata; and
+- channel monitor state.
+- LDK node key-value state.
+- pathfinding/scoring state if the chosen runtime persists it there.
+- wallet metadata needed for recovery.
+- backup status metadata. And
 - redacted restore evidence.
 
 OpenAgents product surface must not store that material. OpenAgents product surface should receive only redacted
@@ -75,28 +75,28 @@ client-side encryption is used.
 The following are never allowed in OpenAgents product surface, public docs, receipts, issue
 comments, agent manifests, customer-visible surfaces, or logs:
 
-- recovery phrases;
-- wallet entropy;
-- private keys;
-- raw channel monitor state;
-- raw VSS payloads;
-- VSS auth headers;
-- wallet credentials;
-- payment preimages;
-- raw invoices;
-- raw payout targets; or
+- recovery phrases.
+- wallet entropy.
+- private keys.
+- raw channel monitor state.
+- raw VSS payloads.
+- VSS auth headers.
+- wallet credentials.
+- payment preimages.
+- raw invoices.
+- raw payout targets. Or
 - unredacted payment identifiers.
 
 Pylon may display safe backup state such as:
 
-- `local_backup_current`;
-- `local_backup_stale`;
-- `vss_disabled`;
-- `vss_configured`;
-- `vss_sync_fresh`;
-- `vss_sync_stale`;
-- `vss_sync_failed`;
-- `restore_drill_passed`; and
+- `local_backup_current`.
+- `local_backup_stale`.
+- `vss_disabled`.
+- `vss_configured`.
+- `vss_sync_fresh`.
+- `vss_sync_stale`.
+- `vss_sync_failed`.
+- `restore_drill_passed`. And
 - `restore_drill_missing`.
 
 ## Restore Semantics
@@ -106,14 +106,14 @@ tested.
 
 A future restore flow should require:
 
-1. user consent before enabling VSS;
+1. user consent before enabling VSS.
 2. clear disclosure that Lightning channel state is not the same as a simple
-   phrase restore;
-3. a local encrypted backup export before enabling VSS for mainnet;
-4. a restore drill on signet/regtest before production defaulting;
-5. stale-state detection before starting a restored wallet;
-6. a single-writer lock so two active runtimes never use the same wallet state;
-7. operator-visible failed persistence and failed restore states; and
+   phrase restore.
+3. a local encrypted backup export before enabling VSS for mainnet.
+4. a restore drill on signet/regtest before production defaulting.
+5. stale-state detection before starting a restored wallet.
+6. a single-writer lock so two active runtimes never use the same wallet state.
+7. operator-visible failed persistence and failed restore states. And
 8. a local rollback or recovery runbook when remote persistence fails.
 
 Pylon should continue to say whether local backup is current, stale, or missing
@@ -123,19 +123,19 @@ even when VSS is configured.
 
 The user and operator surfaces need explicit states for:
 
-- VSS disabled;
-- VSS configured but never synced;
-- VSS sync stale;
-- VSS auth failed;
-- VSS unavailable;
-- VSS write conflict;
-- VSS version conflict;
-- VSS restore attempted;
-- VSS restore blocked by stale local state;
-- VSS restore succeeded;
-- VSS restore failed;
-- local backup missing;
-- local backup stale; and
+- VSS disabled.
+- VSS configured but never synced.
+- VSS sync stale.
+- VSS auth failed.
+- VSS unavailable.
+- VSS write conflict.
+- VSS version conflict.
+- VSS restore attempted.
+- VSS restore blocked by stale local state.
+- VSS restore succeeded.
+- VSS restore failed.
+- local backup missing.
+- local backup stale. And
 - single-writer lock conflict.
 
 These are not generic warning strings. They are product states that determine
@@ -160,15 +160,15 @@ Migration should be staged:
 
 Operator projection should show:
 
-- VSS mode;
-- auth mode;
-- provider kind;
-- last successful sync display time;
-- last failed sync display time;
-- restore drill status;
-- backup freshness;
-- conflict count;
-- blocked reason refs; and
+- VSS mode.
+- auth mode.
+- provider kind.
+- last successful sync display time.
+- last failed sync display time.
+- restore drill status.
+- backup freshness.
+- conflict count.
+- blocked reason refs. And
 - remediation refs.
 
 Public/customer/agent projections should hide provider details and show only
@@ -193,9 +193,9 @@ change wallet persistence.
 The next implementation work should continue with read-only payout and graph
 projection issues:
 
-- #355: accepted-work payout SLO projection;
-- #356: safe public accepted-work payout rows;
-- #357: read-only Lightning/Pylon graph API contract; and
+- #355: accepted-work payout SLO projection.
+- #356: safe public accepted-work payout rows.
+- #357: read-only Lightning/Pylon graph API contract. And
 - #358: accepted-work proof links in Sites/order receipts.
 
 Later Pylon/Rust work should add a VSS signet/regtest harness, single-writer

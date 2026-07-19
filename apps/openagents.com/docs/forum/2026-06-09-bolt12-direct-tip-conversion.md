@@ -53,7 +53,7 @@ paid-action surfaces. It is not the ordinary Forum tipping rail.
 - #4609 adds the direct-tip submit/status path and the `tip-post` CLI path.
   The live API accepts public-safe MDK/provider evidence refs from a direct
   BOLT 12 payer-wallet send. `confirmed` evidence creates a
-  recipient-wallet-direct settled receipt; `failed`, `refunded`, `reversed`,
+  recipient-wallet-direct settled receipt. `failed`, `refunded`, `reversed`,
   `observed`, and `replayed` evidence records an explicit attempt without
   public settled stats.
 - #4601 adds a provider callback route at

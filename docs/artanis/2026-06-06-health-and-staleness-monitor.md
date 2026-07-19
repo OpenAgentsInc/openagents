@@ -96,7 +96,7 @@ The public report also folds health blocker refs and caveats into the existing
 public blocker/caveat lists so stale health blocks public overclaiming.
 
 The heavier `/autopilot` operator console is intentionally left for #405 /
-`ARTANIS-019`; this issue provides the typed operator projection and public
+`ARTANIS-019`. This issue provides the typed operator projection and public
 report integration needed by that UI.
 
 ## Tests
@@ -109,10 +109,10 @@ Coverage lives in:
 
 The tests prove:
 
-- all required health signals are present;
-- stale/blocked health blocks overclaiming and creates recovery action refs;
-- healthy snapshots cannot carry overclaim blockers;
-- public projections redact operator and private refs;
+- all required health signals are present.
+- stale/blocked health blocks overclaiming and creates recovery action refs.
+- healthy snapshots cannot carry overclaim blockers.
+- public projections redact operator and private refs.
 - unsafe provider, runner, wallet, payment, customer, private repo, raw prompt,
-  raw log, raw timestamp, and secret material is rejected;
+  raw log, raw timestamp, and secret material is rejected.
 - `/artanis` renders the public Health metric.

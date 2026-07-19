@@ -1,8 +1,8 @@
-# Khala Code — Fleet Management (Product Spec)
+# Khala Code — Fleet Management (ProductSpec)
 
 Date: 2026-06-30
 
-Status: product spec for the **fleet-management** surface of Khala Code. Scopes
+Status: ProductSpec for the **fleet-management** surface of Khala Code. Scopes
 the "manage many coding agents from one place" capability, maps each feature to
 what OpenAgents has **already built**, and lists the remaining gaps. This is a
 planning artifact: it flips no promise state and broadens no public copy.
@@ -18,7 +18,7 @@ work, not the center of the default Khala Code execution path.
 getting Fleet working in Khala Code Desktop. Mobile/push, public-promise ops,
 mobile-dependent AaaS, and GEPA optimizer lanes are postponed. WS-17 closes on
 desktop-fleet readiness evidence (3 ready Codex accounts, fresh Pylon heartbeat,
-skip-safe live smoke, healthy read-only live status, and dry-run slot planning);
+skip-safe live smoke, healthy read-only live status, and dry-run slot planning).
 the old clean-2B-day overnight run waits for a real >=30-unit backlog and owner
 approval.
 
@@ -62,7 +62,7 @@ sending the owner's configs or code to a cloud. The capabilities:
    blocks, ready-for-review, failures.
 4. **Coordination & delegation** — route work, fan out, supervise, resolve
    conflicts, refill.
-5. **Local-first adoption** — adopt existing accounts / MCP / skills in place;
+5. **Local-first adoption** — adopt existing accounts / MCP / skills in place.
    never upload, never clobber.
 6. **Observability** — exact token accounting, redacted traces, receipts,
    closeouts.
@@ -81,7 +81,7 @@ sending the owner's configs or code to a cloud. The capabilities:
 - **`@openagentsinc/khala-tools`**: the provider-neutral tool runtime — read/ls/
   glob/grep/edit/write/apply_patch/exec_command/write_stdin/ask_user/todo_write/
   view_image/web_*/browser — pre-pivot native runtime coverage. After the July 1
-  Codex-wrapper pivot, this remains useful fallback/donor machinery; default
+  Codex-wrapper pivot, this remains useful fallback/donor machinery. Default
   coding parity should come from Codex app-server methods first.
 - **Pylon delegation**: `khala request` / `assignment run-no-spend`, the
   workspace materializer, Codex/Claude executors with isolated per-account homes,
@@ -98,10 +98,10 @@ the primitives we already have as one coherent operator UI.
 
 ### 3.1 Fleet visibility & status
 
-**Have:** `codex_fleet_status` desktop tool; `khala fleet status` / the
-`--live` terminal dashboard (#6429); the macOS fleet / node-readiness inspector
-(#6876); `provider go-online` capacity projection
-(`availableCodexAssignments`, per-account buckets); live assignment lifecycle
+**Have:** `codex_fleet_status` desktop tool. `khala fleet status` / the
+`--live` terminal dashboard (#6429). The macOS fleet / node-readiness inspector
+(#6876). `provider go-online` capacity projection
+(`availableCodexAssignments`, per-account buckets). Live assignment lifecycle
 events (`assignment_run.accepted/runtime_progress/completed`) emitted by the
 dispatcher. For the part-two recording slice, `codex_fleet_status` now also
 projects per-account free/busy/queued slots, active assignment rows, and a safe
@@ -110,14 +110,14 @@ Pylon APM token-rate summary with exact/pending/not-measured states.
 **Gap:** a single **fleet graph / board** that unifies accounts → readiness →
 advertised capacity → active assignments → which tools/MCP/filesystem roots each
 worker touches, with filters (broken-only, busy, missing-credential). The macOS
-inspector and `codex_fleet_status` are the seeds; they are not yet one visual map
+inspector and `codex_fleet_status` are the seeds. They are not yet one visual map
 across desktop + CLI + macOS.
 
 ### 3.2 Scoped workers (identity, capability, credentials)
 
 **Have:** each Codex account is an **isolated worker** under
 `<pylon home>/accounts/codex/<ref>` — `khala fleet connect` never touches the
-default `~/.codex` home; tokens stay local and are never printed. Readiness +
+default `~/.codex` home. Tokens stay local and are never printed. Readiness +
 capability refs (`readiness.state`, `capability.pylon.local_codex`),
 per-account quota/usage (`account-quota`, `account-usage`), OpenAuth account
 identity linking (#6862). Authority is data: the `khala-tools` permission
@@ -126,31 +126,31 @@ authority enum + presets (`inspect`/`coding`/`owner_local_full`/`network`/
 
 **Gap:** a human-readable **worker card** (purpose, model, tool scope, credential
 mode, allowed/denied tools, recent runs, cost, readiness) rendered in the UI. The
-data exists (capability refs, quota, authority enums); the card surface does not.
+data exists (capability refs, quota, authority enums). The card surface does not.
 
 ### 3.3 Inbox & approvals (human-in-the-loop)
 
 **Have:** the Pylon **approval queue** (`node/approval-queue.ts`) + bounded
-**auto-approval policy** (`node/auto-approval-policy.ts`); the `khala-tools`
+**auto-approval policy** (`node/auto-approval-policy.ts`). The `khala-tools`
 permission service with `allow/deny/always` and `saveScope` (`once/session/
 project`) + the session approval cache (Lane B); the `ask_user` tool for
-non-authority clarifications; notification projection/routing
-(`node/notification-projection.ts`, `notification-router.ts`); per-assignment
+non-authority clarifications. Notification projection/routing
+(`node/notification-projection.ts`, `notification-router.ts`). Per-assignment
 **closeout** as the "ready for review" signal (`khala closeout`).
 
 **Gap:** a single **Inbox** surface that folds these into one queue of items
 needing a human — `approval_required`, `run_blocked`, `ready_for_review`,
 `mcp_failed`, `missing_credential`, `memory/skill_update_pending` — each with
 allowed responses (approve / reject / edit / reply / rerun / open-file) and a
-resume hook. We have every primitive; we do not yet have the unified inbox view.
+resume hook. We have every primitive. We do not yet have the unified inbox view.
 
 ### 3.4 Coordination & delegation
 
 **Have — this is our strongest area.** Khala → Pylon → Codex delegation
-(`khala request --workflow codex_agent_task`); same-account parallel fanout via
-`OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY`; `khala spawn` and the desktop
-`codex_spawn`; a persistent **dispatch watcher** that fills free slots and
-**auto-merges CLEAN PRs**; and a **conflict-resolver worker** pattern that
+(`khala request --workflow codex_agent_task`). Same-account parallel fanout via
+`OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY`. `khala spawn` and the desktop
+`codex_spawn`. A persistent **dispatch watcher** that fills free slots and
+**auto-merges CLEAN PRs**. And a **conflict-resolver worker** pattern that
 rebases/tests/merges sibling PRs. (Proven live this session: a 10-wide fanout of
 the Codex-port backlog that produced ~20 merged PRs.) Capacity is gated honestly
 by advertised slots + system load, not raw process count.
@@ -161,13 +161,13 @@ inside Khala Code (start/stop, queue view, per-slot status, refill policy).
 GEPA self-optimization for delegation policy is postponed for the current
 desktop-fleet push.
 
-### 3.5 Local-first adoption ("adopt, don't import")
+### 3.5 Local-first adoption ("adopt, do not import")
 
 **Have:** `khala fleet connect` is exactly the adopt-in-place pattern — paste-free
 device login, isolated per-account home, registered into the local Pylon config,
 **never** uploading credentials or clobbering the owner's existing Codex session.
-MCP client + `khala mcp-server` (Lane H) for tool adoption; the tool planner +
-progressive disclosure (Lane I) for skills-style on-demand loading; everything
+MCP client + `khala mcp-server` (Lane H) for tool adoption. The tool planner +
+progressive disclosure (Lane I) for skills-style on-demand loading. Everything
 runs owner-local with the user's Codex app-server as the default coding harness.
 Hosted Khala/OpenRouter is legacy/fallback only, not the Fleet coding engine.
 
@@ -175,17 +175,17 @@ Hosted Khala/OpenRouter is legacy/fallback only, not the Fleet coding engine.
 existing skills / MCP servers / instruction files (`AGENTS.md`, `CLAUDE.md`)
 across harnesses (Codex, Claude Code, …) with reference / copy / ignore modes —
 the "scan my machine, show my setup as a fleet, change nothing" first-run flow.
-Today we adopt **Codex accounts** cleanly; we do not yet scan+adopt the broader
+Today we adopt **Codex accounts** cleanly. We do not yet scan+adopt the broader
 skills/MCP/instruction config surface.
 
 ### 3.6 Observability, traces, receipts
 
 **Have:** **exact** token accounting (`token_usage_events`, `usage_truth: exact`,
-per-turn rows posted from the worker); redacted owner-only **ATIF traces**
-(`agent_traces`, `visibility: owner_only`, schema `ATIF-v1.7`); raw event chunk
-archive (`pylon_codex_raw_event_chunks`); per-assignment **proof** + **closeout**
-checklists (`khala proof` / `khala closeout`); Rampart PII redaction on the
-desktop chat boundary; the public token counters as projections of exact rows.
+per-turn rows posted from the worker). Redacted owner-only **ATIF traces**
+(`agent_traces`, `visibility: owner_only`, schema `ATIF-v1.7`). Raw event chunk
+archive (`pylon_codex_raw_event_chunks`). Per-assignment **proof** + **closeout**
+checklists (`khala proof` / `khala closeout`). Rampart PII redaction on the
+desktop chat boundary. The public token counters as projections of exact rows.
 The desktop `codex_fleet_status` path now surfaces exact token rows and
 tokens/minute when Pylon APM/proof evidence provides them, reports active
 assignments as `pending` while rows have not arrived, and reports
@@ -200,12 +200,12 @@ prompts/secrets — the operator-facing view over the evidence we already store.
 A review of the broader agent-fleet landscape surfaces a few capabilities worth
 naming explicitly — most map onto primitives we already have.
 
-- **Promote a chat task into a saved worker.** Khala Code is chat-first; add a
+- **Promote a chat task into a saved worker.** Khala Code is chat-first. Add a
   one-click "save this as a reusable worker" that captures the instructions +
   tools + scope used in an ad-hoc run into a persisted, re-runnable worker. We
-  have the runtime; we lack the "save/promote" affordance.
+  have the runtime. We lack the "save/promote" affordance.
 - **A clean worker definition.** A worker is: instructions + tool scope + an
-  optional **schedule** (cron) + the **surfaces** it's reachable from + optional
+  optional **schedule** (cron) + the **surfaces** it is reachable from + optional
   **subagents** + **skills**. We have the pieces — Pylon scheduling
   (`tas/schedule-receipts.ts`), MCP tools (Lane H), the planner/skills (Lane I),
   subagents via spawn — but not one persisted worker-definition record.
@@ -213,24 +213,24 @@ naming explicitly — most map onto primitives we already have.
   autonomous** (its own isolated account/identity — `<pylon home>/accounts/...`).
   A second **user-scoped** mode (the worker acts with the invoking user's
   credentials and only sees what that user can) is a future addition for shared
-  use; the authority enum already separates `credential` as its own class.
+  use. The authority enum already separates `credential` as its own class.
 - **Per-tool human-in-the-loop toggle.** Beyond presets, allow requiring approval
   before a *specific* tool/action (e.g. any `create_pull_request`, any write
   outside the workspace). The permission policy + approval cache (Lane B) is the
-  substrate; the per-tool toggle is a UI/policy refinement.
+  substrate. The per-tool toggle is a UI/policy refinement.
 - **Workers that ask for help and remember the answer.** `ask_user` already lets
-  a worker ask a clarifying question; the addition is **persisting the answer**
+  a worker ask a clarifying question. The addition is **persisting the answer**
   into worker memory for future runs, through an approved **`memory_write`**
   (the authority class already exists in `khala-tools`).
 - **Memory governance (self-editing with default-HITL).** A worker editing its
-  own instructions/memory is powerful but risky; default to **staged write →
+  own instructions/memory is powerful but risky. Default to **staged write →
   human diff review → approve/reject**, with an explicit per-worker toggle to
-  allow auto-memory. This is the safe self-improvement pattern; it pairs with the
+  allow auto-memory. This is the safe self-improvement pattern. It pairs with the
   future offline delegation-optimization loop after desktop fleet is working and
   the owner reopens optimizer work.
 - **Event-triggered background workers.** Workers that run on events/schedules in
   the background (not just on demand), surfaced and unblocked through the Inbox.
-  We have scheduling + work-intake (`tas/work-intake.ts`); the trigger→run→inbox
+  We have scheduling + work-intake (`tas/work-intake.ts`). The trigger→run→inbox
   wiring is the gap.
 - **A worker template gallery.** Starter worker definitions for common jobs
   (issue burn-down, PR review, repo triage) so a new owner starts from a working
@@ -238,7 +238,7 @@ naming explicitly — most map onto primitives we already have.
 
 ## 4. The build list (prioritized)
 
-The engine is built; the gaps are surfaces and one orchestration promotion.
+The engine is built. The gaps are surfaces and one orchestration promotion.
 
 1. **Unified Inbox** (§3.3) — fold approval-queue + permission prompts +
    closeouts + notifications + MCP/credential failures into one queue with typed
@@ -258,8 +258,8 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
    redacted traces + closeouts.
 
 7. **Worker definition + save-as-worker** (§3.7) — persist instructions/tools/
-   scope/schedule/surfaces into a re-runnable worker; one-click promote from a
-   chat run; a template gallery.
+   scope/schedule/surfaces into a re-runnable worker. One-click promote from a
+   chat run. A template gallery.
 8. **Memory governance** (§3.7) — staged worker-memory writes with default-HITL
    diff review + per-worker auto-memory toggle, on the `memory_write` authority.
 9. **Event-triggered workers** (§3.7) — trigger → background run → Inbox unblock,
@@ -268,21 +268,21 @@ The engine is built; the gaps are surfaces and one orchestration promotion.
 ## 5. Non-goals / boundaries
 
 - **Local-first, no forced cloud.** The owner's configs, skills, MCP servers, and
-  code stay local; default coding flows stay inside the user's Codex
+  code stay local. Default coding flows stay inside the user's Codex
   app-server boundary. Hosted Khala/OpenRouter is an explicit legacy/fallback
   path, not the product-center model backend. Adoption is reference-in-place by
-  default; nothing is uploaded or clobbered.
-- **No new authority on the wire.** Owner-local full access stays a local toggle;
+  default. Nothing is uploaded or clobbered.
+- **No new authority on the wire.** Owner-local full access stays a local toggle.
   public/request payloads express permission *requests*, never danger overrides.
   "Prompt-unavailable never means allow."
 - **Exact accounting only.** Fleet views project from `token_usage_events` /
-  `agent_traces`; no synthesized counters; raw prompts/secrets/local paths never
+  `agent_traces`. No synthesized counters. Raw prompts/secrets/local paths never
   enter public projections.
-- **Don't rebuild the harnesses.** Codex app-server is the default execution
-  lane for Khala Code; Claude remains a delegated external lane when present.
+- **Do not rebuild the harnesses.** Codex app-server is the default execution
+  lane for Khala Code. Claude remains a delegated external lane when present.
   The native Khala runtime is explicit legacy/fallback. Fleet management is the
   layer above those harnesses, not a replacement for them.
-- **One fanout controller at a time** (the dispatch-gate / capacity invariant);
+- **One fanout controller at a time** (the dispatch-gate / capacity invariant).
   the supervised orchestration surface must respect advertised capacity + load.
 
 ## 6. UI design boundary: shared icons only
@@ -306,9 +306,9 @@ Khala Code surfaces:
 - `docs/gepa/2026-06-30-gepa-usage-and-fleet-delegation-optimization-loop.md`
 - `docs/codex/2026-06-30-codex-to-khala-code-porting-audit.md`
 
-Issue history (most of this is built; lanes merged this cycle):
+Issue history (most of this is built, lanes merged this cycle):
 - Tools: #7615–#7624 (read/ls/glob/grep/edit/write/apply_patch/exec/ask_user, etc.), #7629 (browser preset).
-- Codex-port lanes: #7652 (A), #7653 (C), #7654 (D), #7655 (E), #7656 (F), #7657 (G), #7658 (H), #7659 (I), #7660 (J), #7661 (K), #7662 (B); epic #7651.
+- Codex-port lanes: #7652 (A), #7653 (C), #7654 (D), #7655 (E), #7656 (F), #7657 (G), #7658 (H), #7659 (I), #7660 (J), #7661 (K), #7662 (B). Epic #7651.
 - Fleet/desktop: #6381 (`khala fleet link/connect`), #6429 (`fleet status --live`),
   #6876 (fleet / node-readiness inspector), #6855 (conversation persistence +
   history), #6864 (settings + model pill + usage/route), #6862 (OpenAuth account
@@ -319,9 +319,9 @@ Issue history (most of this is built; lanes merged this cycle):
 
 | Capability | State |
 | --- | --- |
-| Fleet visibility & status | partial — tools + macOS inspector exist; unified board missing |
-| Scoped workers (identity/creds) | strong — isolated accounts, capability/quota/authority; card UI missing |
-| Inbox & approvals | primitives strong (approval queue, permission cache, closeouts); unified Inbox missing |
-| Coordination & delegation | strong — fanout, spawn, watcher, merge-resolver proven; supervised UI missing |
-| Local-first adoption | strong for Codex accounts; multi-harness skills/MCP scanner missing |
-| Observability / traces | strong evidence (exact tokens, ATIF, closeouts); in-app trace viewer missing |
+| Fleet visibility & status | partial — tools + macOS inspector exist. Unified board missing |
+| Scoped workers (identity/creds) | strong — isolated accounts, capability/quota/authority. Card UI missing |
+| Inbox & approvals | primitives strong (approval queue, permission cache, closeouts). Unified Inbox missing |
+| Coordination & delegation | strong — fanout, spawn, watcher, merge-resolver proven. Supervised UI missing |
+| Local-first adoption | strong for Codex accounts. Multi-harness skills/MCP scanner missing |
+| Observability / traces | strong evidence (exact tokens, ATIF, closeouts). In-app trace viewer missing |

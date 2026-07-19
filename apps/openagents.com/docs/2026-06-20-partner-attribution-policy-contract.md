@@ -6,7 +6,7 @@ This note records the current #5524 partner-attribution boundary for
 The partner rail is explicit-agreement-only. A fulfilled paid customer event can
 feed the partner payout ledger only when an active `partner_agreements` row
 covers the paying customer at the event time. There is no inferred click or
-last-touch fallback on this rail; the referral rail owns referral payouts.
+last-touch fallback on this rail. The referral rail owns referral payouts.
 
 ## Operator Route
 
@@ -36,7 +36,7 @@ curl -fsS \
 ```
 
 The route is admin-token-gated, idempotent on `agreementRef`, and does not move
-money. It records who may be attributed later; payout eligibility is created
+money. It records who may be attributed later. Payout eligibility is created
 only when a real paid event is processed and the active agreement wins the
 policy decision.
 
@@ -82,7 +82,7 @@ rail and destination policy are explicitly armed.
 - The event time must satisfy `effectiveFromIso <= eventIso` and, when present,
   `eventIso < effectiveUntilIso`.
 - When multiple active agreements cover a customer, `design_partner` wins over
-  `affiliate`; within a role, the earliest effective agreement wins.
+  `affiliate`. Within a role, the earliest effective agreement wins.
 - A missing active agreement records no eligibility. There is no fallback.
 
 ## Remaining Blockers

@@ -22,7 +22,7 @@ This module makes that judgement deterministic and self-checkable:
 - `buildCodingQuickWinDeliveryEvidence` records repo, base ref, the customer's
   verification command (verbatim), the command exit code + captured output ref,
   and a reviewable diff ref. It **derives** `verificationStatus` from the exit
-  code (0 → passed, non-zero → failed, missing → not_run); a caller can never
+  code (0 → passed, non-zero → failed, missing → not_run). A caller can never
   assert "passed" without a real 0 exit, and a "passed" run must carry captured
   output so it can be re-checked.
 - `acceptableForHandback` is the single honest boolean a self-serve loop gates
@@ -38,7 +38,7 @@ This module makes that judgement deterministic and self-checkable:
 
 `blocker.product_promises.business_coding_quick_win_self_serve_missing`
 (partial). The self-serve delivery loop needs to validate its own output
-without an operator; this is the gate that lets it do so, and the bridge from
+without an operator. This is the gate that lets it do so, and the bridge from
 the green coding runtime to the existing business-quick-win receipt.
 
 It also tightens `business_coding_quick_win_paid_receipt_missing` indirectly:
@@ -52,7 +52,7 @@ rather than a hand-pasted string.
   change only supplies the delivery-acceptance gate, not the end-to-end loop.
 - Paid receipt: a real first paid coding-quick-win customer receipt
   (intake → delivery → accepted outcome → buyer_paid), per
-  `proof.claim_upgrade_receipts.v1`. No paid run exists yet; no state flips.
+  `proof.claim_upgrade_receipts.v1`. No paid run exists yet. No state flips.
 
 ## Validation
 

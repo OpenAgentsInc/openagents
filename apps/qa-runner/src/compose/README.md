@@ -6,7 +6,7 @@ run directory (raw `session.mp4` + `00-*.png` screenshots + `result.json` +
 step/keystroke labels, brand framing, and an optional **before/after
 side-by-side** of two runs.
 
-The raw `recordVideo` clip stays the _evidence_ artifact; this is the
+The raw `recordVideo` clip stays the _evidence_ artifact. This is the
 _shareable_ layer (Rhys, PRs, social).
 
 ## Design
@@ -58,7 +58,7 @@ pnpm --dir apps/qa-runner run compose -- --run runs/khala-zeratul-demo --plan-on
 
 Flags: `--run`, `--before`/`--after`, `--out`, `--brand`, `--plan-only`.
 
-If `ffmpeg` is not on `PATH`, the executor will fail; use `--plan-only` to verify
+If `ffmpeg` is not on `PATH`, the executor will fail. Use `--plan-only` to verify
 the plan offline.
 
 ### ffmpeg build requirements / graceful degradation
@@ -72,7 +72,7 @@ filter). The executor probes for `drawtext` at render time:
   framing, and verdict/pill overlays as colored `drawbox` blocks (so the verdict
   color and layout still read), drops plain text, and prints a NOTE. The render
   still succeeds and produces a valid mp4. Install a libfreetype-enabled ffmpeg
-  (`brew install ffmpeg` usually includes it; verify with
+  (`brew install ffmpeg` usually includes it, verify with
   `ffmpeg -filters | grep drawtext`) for full text.
 
 ## Files

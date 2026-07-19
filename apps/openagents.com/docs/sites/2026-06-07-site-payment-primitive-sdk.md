@@ -23,8 +23,8 @@ exists.
 | Payment discovery | Live | Public-safe read for catalog items, endpoints, prices, spend-cap hints, entitlement semantics, and implementation states. |
 | Commerce review | Live | Customer/operator read projection of generated checkout products and paid actions. |
 | Commerce review decisions | Operator-gated | Admin-token write path only. Does not create payment, access, deployment, payout, or settlement authority. |
-| Checkout intent | Config-gated | Uses OpenAgents product surface's hosted MDK-compatible route client when configured; otherwise returns explicit missing-configuration state. |
-| Checkout return | Live | Reads durable checkout state for `success`, `cancel`, or `status`; does not consume checkout query strings. |
+| Checkout intent | Config-gated | Uses OpenAgents product surface's hosted MDK-compatible route client when configured. Otherwise returns explicit missing-configuration state. |
+| Checkout return | Live | Reads durable checkout state for `success`, `cancel`, or `status`. Does not consume checkout query strings. |
 | MDK webhook reconciliation | Config-gated | Exact-source verification for dashboard Standard Webhooks, daemon invoice HMAC, or SDK node-control callbacks. |
 | Payment proof | Live | Public-safe buyer-side proof over checkout intent, receipt, reconciliation, and entitlement state. |
 | L402 challenge | Live contract | Creates a challenge envelope for declared paid actions. Does not spend funds. |
@@ -44,14 +44,14 @@ curl https://openagents.com/api/sites/SITE_ID/commerce/discovery
 
 Discovery returns:
 
-- checkout products and paid actions;
-- stable catalog refs, product IDs, action IDs, methods, and paths;
-- prices and denominations;
-- checkout, return, proof, L402, review, and account-binding endpoints;
-- sandbox/fake/live/gated implementation states;
-- spend-cap hints;
-- entitlement semantics;
-- L402 header semantics;
+- checkout products and paid actions.
+- stable catalog refs, product IDs, action IDs, methods, and paths.
+- prices and denominations.
+- checkout, return, proof, L402, review, and account-binding endpoints.
+- sandbox/fake/live/gated implementation states.
+- spend-cap hints.
+- entitlement semantics.
+- L402 header semantics.
 - redaction guarantees.
 
 Do not infer payment intent from arbitrary text. Select a typed catalog item by
@@ -115,10 +115,10 @@ curl https://openagents.com/api/sites/SITE_ID/commerce/payment-proofs/CHECKOUT_I
 
 Payment proof reads summarize:
 
-- checkout intent state;
-- buyer payment receipt, if present;
-- MDK reconciliation event, if present;
-- entitlement state, if present;
+- checkout intent state.
+- buyer payment receipt, if present.
+- MDK reconciliation event, if present.
+- entitlement state, if present.
 - explicit denial of accepted-work payout, provider payout, wallet-state, and
   final settlement claims.
 
@@ -184,7 +184,7 @@ Rules:
 - The price must fit within the supplied spend cap.
 - Challenge and redemption writes require an active registered OpenAgents
   agent bearer token plus an `Idempotency-Key`. Generated public Site source
-  must not embed or display that token; the calling agent supplies it from its
+  must not embed or display that token. The calling agent supplies it from its
   own private runtime.
 - Payment cannot grant missing owner, privacy, safety, moderation, repository,
   deployment, or payout authority.
@@ -204,12 +204,12 @@ Use the helper contract in:
 
 The helper contract builds source-safe request plans for:
 
-- discovery reads;
-- checkout intent creation;
-- checkout return reads;
-- payment proof reads;
-- L402 challenge creation;
-- L402 redemption;
+- discovery reads.
+- checkout intent creation.
+- checkout return reads.
+- payment proof reads.
+- L402 challenge creation.
+- L402 redemption.
 - redacted helper error envelopes.
 
 It validates request bodies against current OpenAgents product surface route schemas and rejects
@@ -269,8 +269,8 @@ POST /api/sites/{siteId}/commerce/mdk/webhooks
 
 OpenAgents product surface verifies the configured source family:
 
-- dashboard Standard Webhooks;
-- daemon invoice HMAC;
+- dashboard Standard Webhooks.
+- daemon invoice HMAC.
 - SDK node-control callback secret.
 
 Verified callbacks can update durable checkout status and create buyer payment
@@ -288,13 +288,13 @@ POST /api/sites/{siteId}/commerce/payout-bridges
 
 It is operator-authorized and requires:
 
-- verified server-side checkout intent state;
-- buyer payment receipt;
-- matched MDK reconciliation event;
-- accepted-work refs;
-- payout target approval;
-- wallet readiness;
-- amount and spend-cap checks;
+- verified server-side checkout intent state.
+- buyer payment receipt.
+- matched MDK reconciliation event.
+- accepted-work refs.
+- payout target approval.
+- wallet readiness.
+- amount and spend-cap checks.
 - Pylon/Nexus/Treasury release-gate evidence.
 
 Checkout return URLs, client success claims, raw provider events, duplicate

@@ -14,18 +14,18 @@ GET /api/sites/{siteId}/commerce/discovery
 
 The discovery projection includes:
 
-- checkout products and paid actions;
-- catalog refs, product IDs, action IDs, paths, and methods;
-- prices and exact denominations;
-- checkout intent endpoints;
-- commerce review endpoints;
-- payment proof endpoints;
-- L402 challenge and redemption endpoints for paid actions;
-- `WWW-Authenticate: L402` header semantics;
-- entitlement scope refs;
-- spend-cap hint refs;
-- sandbox state;
-- public projection state;
+- checkout products and paid actions.
+- catalog refs, product IDs, action IDs, paths, and methods.
+- prices and exact denominations.
+- checkout intent endpoints.
+- commerce review endpoints.
+- payment proof endpoints.
+- L402 challenge and redemption endpoints for paid actions.
+- `WWW-Authenticate: L402` header semantics.
+- entitlement scope refs.
+- spend-cap hint refs.
+- sandbox state.
+- public projection state.
 - whether each surface is available, fake-provider-only, gated, or planned.
 
 ## Current Surface States

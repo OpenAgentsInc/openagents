@@ -10,11 +10,11 @@ evidence, not authority. The source of truth is
 
 Program Runs cannot directly:
 
-- deploy;
-- send email;
-- create pull requests;
-- spend money;
-- mutate source-backed facts;
+- deploy.
+- send email.
+- create pull requests.
+- spend money.
+- mutate source-backed facts.
 - upgrade public claims.
 
 Those actions must route through future approval-gated Action Submissions.
@@ -24,7 +24,7 @@ Those actions must route through future approval-gated Action Submissions.
 The service exposes:
 
 - `assertProgramRunEvidenceOnly`, which rejects any Program Run record that
-  carries write-authority flags;
+  carries write-authority flags.
 - `denyProgramRunDirectEffect`, which always denies a direct-effect request from
   Program Run authority and names the attempted effect kind.
 

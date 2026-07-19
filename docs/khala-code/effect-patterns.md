@@ -27,7 +27,7 @@ Approved desktop-native examples:
   `type KhalaCodeHeadlessThreadEvent = typeof
   KhalaCodeHeadlessThreadEvent.Type`.
 - `packages/khala-qa-harness/src/scenario.ts` is the right contract shape for
-  QA scenario actions and oracles; new unions in this file should keep following
+  QA scenario actions and oracles. New unions in this file should keep following
   the schema-first style and derive their exported types from the schema where
   possible.
 
@@ -46,7 +46,7 @@ Replaces this anti-pattern:
 
 Use this when code needs environment, clocks, randomness, redaction, transport,
 or another dependency that should be swappable in tests. Model the dependency as
-a `Context.Service`; provide live and test layers explicitly.
+a `Context.Service`. Provide live and test layers explicitly.
 
 Approved desktop-native examples:
 
@@ -83,7 +83,7 @@ Approved desktop-native examples:
 
 - `clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts` wraps the
   Claude SDK query handle in `Effect.acquireRelease(...)`, closes the handle,
-  aborts the controller, and removes the active turn in the release action; the
+  aborts the controller, and removes the active turn in the release action. The
   async iterable is consumed inside `Effect.scoped`.
 - `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts` uses
   `Scope.addFinalizer(...)` so a supervisor stop closes the active loop and
@@ -121,7 +121,7 @@ Approved desktop-native examples:
   `KhalaCodeDesktopTokenUsageReportFailure` and
   `KhalaCodeDesktopTokenUsagePersistentFailure`. The reporter retries with
   `Schedule.exponential(...)` and then returns a typed persistent failure.
-  Those two classes hand-roll `extends Error` + `_tag`; for new failure types
+  Those two classes hand-roll `extends Error` + `_tag`. For new failure types
   prefer `Data.TaggedError` as in `ClaudeSdkRuntimeError` above.
 - `clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts` inspects
   the failed `Exit` with `Cause.isFailReason` before projecting token-usage

@@ -1,7 +1,7 @@
 # Hermes Agent tool-layer study for Khala built-in tools
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Issue: [#6956](https://github.com/OpenAgentsInc/openagents/issues/6956)
@@ -17,21 +17,21 @@ agent is installed.
 
 Hermes Agent is a Python-first, registry-driven terminal agent. Its key
 tool-layer pattern is: each tool module self-registers a model-facing OpenAI
-function schema plus a handler into `tools.registry`; `model_tools.py` resolves
-active toolsets into a filtered schema list; `agent/tool_executor.py` parses
+function schema plus a handler into `tools.registry`. `model_tools.py` resolves
+active toolsets into a filtered schema list. `agent/tool_executor.py` parses
 tool calls, applies middleware and guardrails, then dispatches sequentially or
 concurrently.
 
 The strongest ideas for OpenAgents are:
 
 - keep tool schemas, handlers, availability checks, metadata, and per-tool
-  output budgets together at registration time;
+  output budgets together at registration time.
 - expose a small coding core as first-class tools (`read_file`, `write_file`,
   `patch`, `search_files`, `terminal`, `process`) rather than making shell the
-  only primitive;
+  only primitive.
 - route all tool calls through one execution layer that can apply policy,
   checkpoints, middleware, progress callbacks, output persistence, and
-  deterministic result ordering;
+  deterministic result ordering.
 - treat large tool results as first-class artifacts by spilling them to a
   readable file with a preview, instead of silently truncating context.
 
@@ -61,9 +61,9 @@ Hermes groups tools in `toolsets.py`. The default shared core list
 
 The code-focused presets are more useful for Khala than the full platform
 bundles. `toolsets.py` defines `file` as `read_file`, `write_file`, `patch`,
-and `search_files`; `terminal` as `terminal` plus `process`; `coding` as a
+and `search_files`. `terminal` as `terminal` plus `process`. `coding` as a
 workspace posture containing files, terminal, web docs, skills, todo, memory,
-session search, clarify, execute-code, delegate, vision, and browser tools; and
+session search, clarify, execute-code, delegate, vision, and browser tools. And
 `hermes-acp` as an editor integration set without broad messaging/audio tools.
 
 The pattern to copy is the separation between individual tool categories,
@@ -91,7 +91,7 @@ The file tools in `tools/file_tools.py` are representative:
   creates parent directories, and should be replaced by `patch` for targeted
   edits.
 - `PATCH_SCHEMA` supports `mode: "replace" | "patch"`. Replace mode takes
-  `path`, `old_string`, `new_string`, and `replace_all`; patch mode takes a V4A
+  `path`, `old_string`, `new_string`, and `replace_all`. Patch mode takes a V4A
   patch string. The description tells the model to prefer it over `sed/awk` and
   says the implementation uses fuzzy matching and returns a unified diff.
 - `SEARCH_FILES_SCHEMA` combines grep and file-find behavior through
@@ -131,7 +131,7 @@ and optionally applies Tool Search progressive disclosure. The comment in that
 file says core Hermes tools are never deferred, while MCP/plugin tools can be
 hidden behind `tool_search`, `tool_describe`, and `tool_call` when their schema
 surface is too large. Khala should adopt the principle but keep the boundary
-crisper: built-ins should always be directly visible; external tools should be
+crisper: built-ins should always be directly visible. External tools should be
 discoverable, prefixed, and policy-scoped.
 
 ## Execution model
@@ -156,7 +156,7 @@ Read-only tools such as `read_file`, `search_files`, `web_search`,
 `web_extract`, `session_search`, and skill viewing are parallel-safe. File
 mutators are path-scoped and can run concurrently only when their paths do not
 overlap. Terminal commands default to sequential unless the system can prove
-they are safe; destructive command patterns include `rm`, `rmdir`, `cp`, `mv`,
+they are safe. Destructive command patterns include `rm`, `rmdir`, `cp`, `mv`,
 `sed -i`, `truncate`, `dd`, `shred`, `git reset`, `git clean`, `git checkout`,
 and overwrite redirection.
 
@@ -166,7 +166,7 @@ tools return `{"error": "Unknown tool: ..."}`. Async handlers are bridged by
 JSON tool errors instead of escaping the agent loop.
 
 Khala should copy the single execution choke point. Tool implementations should
-not decide policy or result persistence on their own; they should return typed
+not decide policy or result persistence on their own. They should return typed
 results into a central executor that owns ordering, approvals, observability,
 and failure shape.
 
@@ -195,7 +195,7 @@ Hermes has several layers:
 
 The most important design point is that Hermes treats command approval,
 editor-edit approval, and memory/skill write approval as different policies.
-Khala should do the same. A binary "tools allowed" flag is too blunt; file
+Khala should do the same. A binary "tools allowed" flag is too blunt. File
 edits, shell commands, networked browser actions, and persistent memory writes
 need separate Effect-modeled authority decisions.
 
@@ -240,12 +240,12 @@ stable local artifact ref.
 handler, toolset, availability, UI emoji, dynamic overrides, and output budget.
 In OpenAgents, this should be an Effect Schema-backed `ToolDefinition` with:
 
-- `name`, `displayName`, `description`, and optional model-family prompt text;
-- `inputSchema` and `outputSchema`;
+- `name`, `displayName`, `description`, and optional model-family prompt text.
+- `inputSchema` and `outputSchema`.
 - `authorityClass` such as read-only, workspace-write, shell, network, browser,
-  memory-write, or persistent-config-write;
-- `availability` as an Effect that can fail with a typed reason;
-- `execute` as an Effect returning a typed result or typed tool error;
+  memory-write, or persistent-config-write.
+- `availability` as an Effect that can fail with a typed reason.
+- `execute` as an Effect returning a typed result or typed tool error.
 - `render` metadata for Khala desktop.
 
 `toolsets.py` is useful but too stringly typed. Khala should model toolsets as
@@ -257,7 +257,7 @@ parallelism, progress, and result persistence naturally belong.
 
 Hermes' dynamic Tool Search is a good answer to huge extension surfaces, but
 Khala should not need it for the built-ins. First-party coding tools should
-remain directly callable; discovered MCP/plugin tools can use progressive
+remain directly callable. Discovered MCP/plugin tools can use progressive
 disclosure later.
 
 ## What OpenAgents should adopt / avoid (for Khala desktop + CLI tools)
@@ -290,7 +290,7 @@ Avoid:
 - String-only policy decisions. Use Effect Schema enums and typed decisions
   instead of ad hoc name lists wherever possible.
 - Treating shell as the universal file API. Hermes correctly tells the model to
-  prefer file/search tools over `cat`, `grep`, `sed`, and heredocs; Khala should
+  prefer file/search tools over `cat`, `grep`, `sed`, and heredocs. Khala should
   do the same.
 - Silent truncation. Large outputs should become inspectable artifacts.
 - Letting plugin/MCP tools shadow built-ins. External tools should be prefixed,

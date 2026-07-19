@@ -105,7 +105,7 @@ seeded RNG service. The rule (per `effect-solutions show testing`): **no
 `Date.now`, no `Math.random`, no `requestAnimationFrame`/wall-clock in tested
 logic** — those come from injected services so a test fully controls them.
 
-- `Clock` → Effect `TestClock` (advance time explicitly; no real sleeps).
+- `Clock` → Effect `TestClock` (advance time explicitly, no real sleeps).
 - `DeterministicRandom` → a seeded splitmix64 service (`next`, `nextInt`,
   `seedOf`) so "random" is reproducible and `seed` is part of the recorded
   evidence.
@@ -132,7 +132,7 @@ runKeyEventThroughFullPath(model, keyEvent, { actionMap? })
     }
 ```
 
-It runs the **real** `keyboardForwardDecision`; **only if it forwards** does it
+It runs the **real** `keyboardForwardDecision`. **Only if it forwards** does it
 build the `PressedKey` message and run the **real** reducer (`update`), then
 project the **real** `verseSceneVisualization`. This is the exact ordering of the
 live DOM handler in `subscriptions.ts`, so a feature tested through it is tested
@@ -166,7 +166,7 @@ Determinism comes from **replacing the page's `requestAnimationFrame` and
 `performance.now` with a driver-controlled fake clock before the element
 mounts**. The three-effect element builds its render loop with
 `createManagedFrameClock({ mode: "always" })`, which calls the *global* rAF and
-`performance.now`; by installing a fake rAF queue + a monotonic fake clock, the
+`performance.now`. By installing a fake rAF queue + a monotonic fake clock, the
 harness advances **exactly `frameSteps` frames of exactly `frameDeltaMs` each**,
 with no real animation frames and no wall-clock — identical pixels every run.
 This is the "drive the managed frame clock N fixed steps" requirement, achieved
@@ -175,7 +175,7 @@ without modifying three-effect (it already reads the injectable globals).
 The helper screenshots via CDP `Page.captureScreenshot`, decodes the PNG
 in-process (no image deps), and scores bright pixels **inside a region** so a
 test can assert e.g. "the crackling arc lights up bright pixels in the upper-mid
-band of the frame." A regression test asserts the arc is visible; a
+band of the frame." A regression test asserts the arc is visible. A
 deliberately-broken variant (beam dropped / evidence ref removed so the
 `evidence: "required"` gate suppresses it) renders a dark region and the test
 **fails** — catching Mode 2.
@@ -188,11 +188,11 @@ TestClock), with tests that run twice and assert identical output.
 ## How this would have caught the two bugs
 
 - **Keybinding (#6041):** the full-input-path harness runs
-  `keyboardForwardDecision` first; on broken bindings `forwarded === false`,
+  `keyboardForwardDecision` first. On broken bindings `forwarded === false`,
   `dispatched === false`, and the scene never spawns — a hard failure at the
   exact layer the bug lived in, instead of a reducer-only green.
 - **No-render:** the headless pixel harness steps deterministic frames and scores
-  pixels in the arc's region; an invisible arc (geometry dropped, evidence gate,
+  pixels in the arc's region. An invisible arc (geometry dropped, evidence gate,
   zero frames advanced) yields too-few bright pixels and fails, instead of a
   model-shape green.
 
@@ -230,7 +230,7 @@ impossible. Both are solved here:
    `shellTurn`, token resolution, etc. call) is absent in a plain browser. The
    entry installs a **test-controlled stub through the same `setRequest`/
    `pushInbound` seam** the live `main.ts` uses (`bridge.ts`), so the real Effect
-   Commands reach a scripted fake, not the network; the live `khalaToken` push is
+   Commands reach a scripted fake, not the network. The live `khalaToken` push is
    driven for streaming. `scriptKhala({ deltas, text, resolveBeforeStream })`
    even reproduces the terminal-answer-first **race** that doubled the Khala
    response. Reuses the #6045 deterministic-env layers for any service timing/seed.
@@ -278,7 +278,7 @@ Proof screenshots are committed under `docs/testing/proof/2026-06-22-replica-*`.
 - Pure harness tests (input path + deterministic layers): per-file via
   `bash apps/autopilot-desktop/scripts/run-tests.sh`, or individually with
   `bun test apps/autopilot-desktop/tests/full-input-path-harness.test.ts`.
-- Headless pixel regression (needs Chrome/Chromium; set `CHROME_PATH` if not at
+- Headless pixel regression (needs Chrome/Chromium, set `CHROME_PATH` if not at
   the default macOS location): `bun apps/autopilot-desktop/scripts/crackling-arc-pixel-regression.ts`.
   Gated behind a binary check so it skips cleanly where no Chromium is present.
 - **App replica (needs Chrome/Chromium + `bun run build:css` first):**

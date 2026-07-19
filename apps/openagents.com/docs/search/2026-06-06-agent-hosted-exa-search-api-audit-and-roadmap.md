@@ -62,7 +62,7 @@ moderation, owner accounts, Site deployment, or other OpenAgents surfaces.
 - Do not store raw provider payloads, private source archives, wallet material,
   provider tokens, or secret-shaped agent queries in public projections.
 - Do not weaken existing Adjutant enrichment review boundaries. Agent search is
-  an agent tool; Adjutant assignment enrichment remains assignment-scoped and
+  an agent tool. Adjutant assignment enrichment remains assignment-scoped and
   operator-reviewable.
 
 ## Source Material Reviewed
@@ -311,7 +311,7 @@ Recommended schema boundaries:
 
 - `query`: required string, bounded length.
 - `mode`: `basic`, `fresh`, `deep`, or `contents`.
-- `numResults`: small integer; lower max for free requests.
+- `numResults`: small integer. Lower max for free requests.
 - `category`: optional Exa category allowlist. Disable or paid-gate `people`
   in the first public release.
 - `includeDomains` and `excludeDomains`: optional bounded arrays of hostnames.
@@ -416,16 +416,16 @@ small to turn OpenAgents into an unpaid hosted search farm.
 
 Recommended first policy:
 
-- active registered agents only;
-- no unauthenticated public search;
-- `basic` mode only;
-- highlights only, no raw text;
-- low `numResults` ceiling;
-- cache-first behavior;
-- per-agent and per-credential hourly limits;
-- per-agent daily limits;
-- client fingerprint or IP secondary limits for abuse clustering;
-- global Exa daily safety budget independent of agent quota;
+- active registered agents only.
+- no unauthenticated public search.
+- `basic` mode only.
+- highlights only, no raw text.
+- low `numResults` ceiling.
+- cache-first behavior.
+- per-agent and per-credential hourly limits.
+- per-agent daily limits.
+- client fingerprint or IP secondary limits for abuse clustering.
+- global Exa daily safety budget independent of agent quota.
 - `people`, `deep`, `contents`, summaries, and text disabled unless paid.
 
 This document intentionally does not set final product numbers. A reasonable
@@ -471,15 +471,15 @@ Paid support can ship in stages:
 
 Every paid request should bind:
 
-- actor ref;
-- credential id or token prefix;
-- route and method;
-- request body digest;
-- idempotency key hash;
-- product id;
-- entitlement ref or receipt ref;
-- cache hit/miss;
-- mode and provider call count;
+- actor ref.
+- credential id or token prefix.
+- route and method.
+- request body digest.
+- idempotency key hash.
+- product id.
+- entitlement ref or receipt ref.
+- cache hit/miss.
+- mode and provider call count.
 - public-safe cost bucket or internal provider cost metric.
 
 Provider cost dollars can be recorded for operator economics, but public agent
@@ -629,30 +629,30 @@ Hosted search must enforce the same public-safe posture as AGENTS.md:
 
 Build `workers/api/src/agent-search.ts` or a small `agent-search/` module with:
 
-- request and response schemas;
-- mode-to-Exa policy mapping;
-- public-safe result projection;
-- query and URL safety validation;
-- request digest and idempotency hashing;
-- agent quota policy;
-- cache integration;
-- provider call execution using `makeExaClient`;
+- request and response schemas.
+- mode-to-Exa policy mapping.
+- public-safe result projection.
+- query and URL safety validation.
+- request digest and idempotency hashing.
+- agent quota policy.
+- cache integration.
+- provider call execution using `makeExaClient`.
 - metrics and request/source ledger writes.
 
 Build `workers/api/src/agent-search-routes.ts` with:
 
-- `POST /api/agents/search`;
-- bearer auth through `authenticateProgrammaticAgent`;
-- required `Idempotency-Key`;
-- JSON body parsing through existing boundary helpers;
-- `401`, `402`, `422`, `429`, `503`, and redacted provider error handling;
+- `POST /api/agents/search`.
+- bearer auth through `authenticateProgrammaticAgent`.
+- required `Idempotency-Key`.
+- JSON body parsing through existing boundary helpers.
+- `401`, `402`, `422`, `429`, `503`, and redacted provider error handling.
 - rate-limit headers and `X-OpenAgents-*` headers that match existing agent
   route style.
 
 Wire it in:
 
-- `workers/api/src/index.ts`;
-- `workers/api/src/worker-routes.ts`;
+- `workers/api/src/index.ts`.
+- `workers/api/src/worker-routes.ts`.
 - route tests.
 
 ### Phase 2: Free Quota And Cache
@@ -661,12 +661,12 @@ Add migration(s) for search request/source/quota/metric tables.
 
 Implement:
 
-- per-agent hourly quota;
-- per-agent daily quota;
-- per-credential quota;
-- global provider daily budget guard;
-- cache-first basic search;
-- idempotent replay with no duplicate provider call or duplicate charge;
+- per-agent hourly quota.
+- per-agent daily quota.
+- per-credential quota.
+- global provider daily budget guard.
+- cache-first basic search.
+- idempotent replay with no duplicate provider call or duplicate charge.
 - admin/operator metrics enough to tune free limits.
 
 ### Phase 3: Paid Entitlements
@@ -674,14 +674,14 @@ Implement:
 Add search products to the paid endpoint catalog or D1-backed catalog once that
 catalog becomes persistent:
 
-- basic daily pack;
-- deep search pack;
+- basic daily pack.
+- deep search pack.
 - contents pack.
 
 Implement either:
 
 - a generalized paid endpoint challenge/redeem path for `agent_api_endpoint`
-  products; or
+  products. Or
 - a search-specific preview/redeem pair:
 
 ```text
@@ -698,31 +698,31 @@ atomically.
 
 Update:
 
-- `docs/live/AGENTS.md`;
-- `workers/api/src/openagents-agent-onboarding.ts`;
-- generated SHA/version metadata for AGENTS.md;
-- `.well-known/openagents.json` capability manifest;
-- `/api/openapi.json`;
-- `/api/agents/home`;
+- `docs/live/AGENTS.md`.
+- `workers/api/src/openagents-agent-onboarding.ts`.
+- generated SHA/version metadata for AGENTS.md.
+- `.well-known/openagents.json` capability manifest.
+- `/api/openapi.json`.
+- `/api/agents/home`.
 - SDK seed or companion API docs if the route is meant for generated clients.
 
 Docs should include:
 
-- exact curl for free basic search;
-- exact `402` recovery instructions once paid flow is live;
-- rate-limit caveats;
-- no-secret/no-private-data warning;
-- citation guidance;
+- exact curl for free basic search.
+- exact `402` recovery instructions once paid flow is live.
+- rate-limit caveats.
+- no-secret/no-private-data warning.
+- citation guidance.
 - current mode matrix.
 
 ### Phase 5: Contents And Deep Modes
 
 After basic search and charging work:
 
-- add `/api/agents/search/contents` or contents mode;
-- enable summaries/text only under paid entitlements;
-- add stricter URL safety and max text bounds;
-- consider `deep-lite` or `deep` mode paid products;
+- add `/api/agents/search/contents` or contents mode.
+- enable summaries/text only under paid entitlements.
+- add stricter URL safety and max text bounds.
+- consider `deep-lite` or `deep` mode paid products.
 - decide whether `people` category remains disabled, paid, or
   operator-review-gated.
 
@@ -752,9 +752,9 @@ Core tests:
 
 Smoke tests:
 
-- local fake Exa base URL with deterministic result;
-- production smoke with a registered test agent and a harmless public query;
-- over-quota smoke;
+- local fake Exa base URL with deterministic result.
+- production smoke with a registered test agent and a harmless public query.
+- over-quota smoke.
 - paid preview/redeem smoke once payment flow is live.
 
 ## Open Questions

@@ -14,10 +14,10 @@ The Psionic-side external ask has landed in `OpenAgentsInc/psionic#1103` as
 
 The monorepo treats that lane as the source of:
 
-- planner-selected `(N, D)` cells;
-- one tiny training run per cell;
-- validation-loss results;
-- fit artifacts containing budget optima, exponents, and predicted best config;
+- planner-selected `(N, D)` cells.
+- one tiny training run per cell.
+- validation-loss results.
+- fit artifacts containing budget optima, exponents, and predicted best config.
 - public receipt/source refs suitable for Worker projection.
 
 Fitted laws are analysis artifacts that cite cell receipts. They are never
@@ -30,10 +30,10 @@ capability claims by themselves.
 
 The feed includes:
 
-- receipt-backed sweep cells;
-- verified-cell counts;
-- public fit artifacts when available;
-- blockers until at least 20 verified cells and a fit artifact exist;
+- receipt-backed sweep cells.
+- verified-cell counts.
+- public fit artifacts when available.
+- blockers until at least 20 verified cells and a fit artifact exist.
 - scope refs that settlement requires provider confirmation.
 
 The feed reads optional `a3ScalingSweep` evidence from a training run's

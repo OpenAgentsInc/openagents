@@ -6,13 +6,13 @@ not install runtimes, download model weights, launch an inference backend, open
 the desktop application, connect a Google account or MCP server, read local
 user state, or exercise a remote controller.
 
-## TL;DR
+## TL.DR
 
 Local Studio is the strongest open reference in this teardown set for the seam
 between a **self-hosted model control plane** and a **local coding-agent
 workbench**. One product discovers and installs vLLM, SGLang, llama.cpp, and MLX
-runtimes; launches and evicts model servers; reports GPU, process, download,
-log, and usage state; exposes an OpenAI-compatible inference proxy; and feeds
+runtimes. Launches and evicts model servers. Reports GPU, process, download,
+log, and usage state. Exposes an OpenAI-compatible inference proxy. And feeds
 those models into a Pi-based coding agent with files, Git, terminals, browser
 control, skills, plugins, MCP connectors, Google Workspace observation, speech,
 and a macOS Electron shell. [source]
@@ -41,30 +41,30 @@ remote-controller configuration. [source]
 Its most important OpenAgents lesson is therefore not “add local models.” It is
 to model local inference as a first-class placement with observable hardware,
 runtime, model, process, compatibility, and usage facts. A local model is not
-just another provider string; it has installation, resource ownership, startup,
+just another provider string. It has installation, resource ownership, startup,
 health, eviction, and recovery lifecycles.
 
 The current source snapshot also contains material counterexamples:
 
 - controller authentication correctly becomes mandatory on non-loopback binds,
   but may be explicitly disabled, while the privileged Next frontend is open by
-  default even in production unless an operator opts into a separate token;
+  default even in production unless an operator opts into a separate token.
 - the Electron-owned Next server and agent sidecar bind loopback without a
   per-generation capability, so another process under the same host authority
   can call shell, filesystem, agent-turn, browser, connector, and session
-  surfaces if it discovers their ports;
-- the Pi agent executes with host-user authority; permissions and selected
-  extensions are not demonstrated OS workload containment;
+  surfaces if it discovers their ports.
+- the Pi agent executes with host-user authority. Permissions and selected
+  extensions are not demonstrated OS workload containment.
 - a recipe may default `trust_remote_code` to true, plugins may resolve stdio
   executables, skills are discovered across several other agents' local stores,
-  and selected extension paths are loaded into the trusted Pi runtime;
+  and selected extension paths are loaded into the trusted Pi runtime.
 - the in-memory agent event log is capped at 2,000 entries and resets when a
   runtime fingerprint changes, while durable Pi JSONL, Local Studio metadata,
   current runtime state, and UI projections have separate identities and no
-  published admission/replay/repair law;
+  published admission/replay/repair law.
 - release signing exists for macOS, but the app disables the macOS App Sandbox
   and library validation, and update metadata is not tied to a public signed
-  component-compatibility ledger; and
+  component-compatibility ledger. And
 - the audited commit deleted 132 tracked test/support/fixture files totaling
   22,669 removed lines, removed all `test` scripts, and reduced CI to structural,
   type, lint, cleanup, and build checks, while `AGENTS.md` and the README still
@@ -72,7 +72,7 @@ The current source snapshot also contains material counterexamples:
 
 The central OpenAgents decision is: **adapt Local Studio's typed local-inference
 control plane, backend abstraction, hardware/resource observability, and
-controller/workbench separation; reject ambient loopback authority, host-user
+controller/workbench separation. Reject ambient loopback authority, host-user
 agent execution as a safety boundary, default remote-code trust, fragmented
 runtime truth, unsigned component drift, and a release gate with no executable
 behavioral tests.**
@@ -88,8 +88,8 @@ behavioral tests.**
 | Commit subject    | `fix: stabilize follow-up chat submission`                                                  | The latest change and the test-removal boundary discussed below    |
 | Product version   | root, controller, frontend, and agent-runtime packages at `2.0.0`                           | Current declared product generation                                |
 | License           | Apache License 2.0, copyright 2025 `0xSero`                                                 | Source reuse boundary                                              |
-| Source scale      | 786 tracked files; about 96,132 tracked TypeScript/TSX lines                                | Approximate implementation scale, excluding generated dependencies |
-| Primary runtimes  | Bun controller; Node/Next frontend; Node-packaged Pi sidecar; Electron desktop              | Actual process/runtime split                                       |
+| Source scale      | 786 tracked files. About 96,132 tracked TypeScript/TSX lines                                | Approximate implementation scale, excluding generated dependencies |
+| Primary runtimes  | Bun controller. Node/Next frontend. Node-packaged Pi sidecar. Electron desktop              | Actual process/runtime split                                       |
 | UI stack          | Next.js 16.2.7, React 19.2.1, Electron 43.1.1                                               | Current client foundation                                          |
 | Effect line       | `effect@4.0.0-beta.90` in controller-facing and frontend runtime packages                   | Typed runtime dependency, still a beta line                        |
 | Agent engine      | `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` `0.80.8`                      | Underlying coding-agent implementation                             |
@@ -100,13 +100,13 @@ model, or runtime artifact was inspected. [source]
 
 ### 1.2 Evidence labels
 
-- **`[source]`** — observed in the exact commit's tracked source or manifest;
+- **`[source]`** — observed in the exact commit's tracked source or manifest.
 - **`[history]`** — established by the public Git history at or before the exact
-  commit;
-- **`[schema]`** — encoded in a typed contract or Effect Schema;
-- **`[test]`** — encoded in a tracked executable test at the audited commit;
+  commit.
+- **`[schema]`** — encoded in a typed contract or Effect Schema.
+- **`[test]`** — encoded in a tracked executable test at the audited commit.
 - **`[inferred]`** — reasoned from several source observations rather than
-  directly asserted by one artifact; and
+  directly asserted by one artifact. And
 - **`[limitation]`** — a boundary on what the source-only audit can prove.
 
 There are intentionally no `[runtime]` observations in this document.
@@ -157,10 +157,10 @@ does not publish one compatibility ledger binding the exact set. [inferred]
 
 Version 2.0 consolidates the visible application into:
 
-- `/` for controller and hardware status;
-- `/agent` for the Workbench;
-- `/configure` for machines, models, integrations, and serving;
-- `/usage`, `/settings`, and `/logs`; and
+- `/` for controller and hardware status.
+- `/agent` for the Workbench.
+- `/configure` for machines, models, integrations, and serving.
+- `/usage`, `/settings`, and `/logs`. And
 - compatibility redirects from older recipe, discovery, integration, and
   server routes.
 
@@ -222,8 +222,8 @@ cleanup, captures bounded failure output, and confirms that orphaned vLLM
 workers are gone before declaring stop. [source]
 
 GPU leases distinguish at least LLM and speech ownership. Recipe GPU selectors
-resolve to UUIDs; unresolved selectors fail; an implicit all-GPU launch can fail
-when isolation cannot be verified; and a lease is released only after process
+resolve to UUIDs. Unresolved selectors fail. An implicit all-GPU launch can fail
+when isolation cannot be verified. And a lease is released only after process
 shutdown is confirmed. This is one of Local Studio's strongest seams because it
 turns VRAM conflict from a UI warning into a controller decision. [source]
 
@@ -251,7 +251,7 @@ event log for the coding agent. The Pi session store remains separate.
 
 The main window uses context isolation, disables Node integration, enables the
 renderer sandbox and web security, disables insecure mixed content and drag
-navigation, and loads a locally served origin. Window creation is denied;
+navigation, and loads a locally served origin. Window creation is denied.
 ordinary HTTP(S) links open externally. Top-level navigation is locked to the
 app origin, and microphone permission is restricted to the main frame, main
 web contents, exact app origin, and audio-only requests. [source]
@@ -286,7 +286,7 @@ be adopted without a cryptographic identity check. [source]
 
 Electron Builder packages arm64 macOS DMG/ZIP targets, Windows x64 NSIS, and a
 Linux AppImage. The macOS build uses hardened runtime and a named Developer ID,
-with an optional notarization command. The app is not App Sandbox-contained;
+with an optional notarization command. The app is not App Sandbox-contained.
 JIT and network client access are enabled, unsigned executable memory and DYLD
 environment variables are disabled, and library validation is disabled.
 [source]
@@ -311,7 +311,7 @@ service constructor, while Local Studio explicitly supplies its own extension
 paths. [source]
 
 Turn input distinguishes `prompt`, `steer`, and `follow_up`. A busy prompt
-defaults to steering; explicit control requests reject when the target is no
+defaults to steering. Explicit control requests reject when the target is no
 longer active. This is a meaningful semantic improvement over treating every
 message arriving during a stream as the same operation. [schema]
 
@@ -327,17 +327,17 @@ Pi owns its JSONL session files. Local Studio separately stores session
 metadata, archive state, project mapping, preferences, comments, plans, drafts,
 and view state. Runtime events receive a monotonically increasing in-process
 sequence and are retained in a 2,000-entry array. Status and SSE callers can ask
-for events after a cursor; replay clamps stale cursors and coalesces the UI.
+for events after a cursor. Replay clamps stale cursors and coalesces the UI.
 [source]
 
 This is good client resilience within one process generation. It is not durable
 event admission:
 
-- the event sequence starts at zero when the runtime fingerprint changes;
-- the in-memory log drops older events after 2,000 entries;
-- active state is process-local;
-- Pi JSONL identity and Local Studio runtime identity are joined heuristically;
-- several current projections live in separate JSON documents; and
+- the event sequence starts at zero when the runtime fingerprint changes.
+- the in-memory log drops older events after 2,000 entries.
+- active state is process-local.
+- Pi JSONL identity and Local Studio runtime identity are joined heuristically.
+- several current projections live in separate JSON documents. And
 - no schema version, synchronization marker, repair transaction, or loss
   receipt binds all of those facts.
 
@@ -348,7 +348,7 @@ replacement for its durable Thread/Turn/Item and Runtime Gateway contracts.
 
 The product exposes two tool planes:
 
-1. Pi's coding-agent tools and Local Studio-supplied Pi extensions; and
+1. Pi's coding-agent tools and Local Studio-supplied Pi extensions. And
 2. Next/desktop workbench routes for files, Git, terminals, browser, projects,
    comments, plans, canvas, skills, plugins, and connectors.
 
@@ -361,7 +361,7 @@ and time out after 60 seconds. These are useful application bounds. [source]
 They are not containment. A workspace may be nearly any non-system directory,
 the terminal executes a shell command with host-user authority, PTYs are native
 host processes, and Pi tool behavior depends on its own engine and extensions.
-Path checks reduce accidental scope; they do not isolate a malicious command or
+Path checks reduce accidental scope. They do not isolate a malicious command or
 model-generated process.
 
 ### 5.4 Browser, skills, plugins, and connectors
@@ -378,7 +378,7 @@ progressive disclosure, but source-name discovery is not provenance,
 compatibility, review, or authority. [source]
 
 Plugin discovery understands Codex plugin manifests. Bundled plugins can be
-marked trusted; other plugins may contribute skills, apps, and MCP servers.
+marked trusted. Other plugins may contribute skills, apps, and MCP servers.
 Plugin server paths are constrained to the bundle when relative, connectors
 start disabled, and tool allowlists can narrow enabled connectors. Google
 Workspace bindings additionally require exact managed shapes and read-only MCP
@@ -387,7 +387,7 @@ annotations before use. These are thoughtful controls. [source]
 Two important boundaries remain:
 
 - an absolute stdio command in a plugin manifest is accepted as an executable
-  target; and
+  target. And
 - connector and plugin processes run with host-user authority and an inherited
   environment plus configured secrets.
 
@@ -437,7 +437,7 @@ request-scoped capability is present in their shown HTTP contracts. The Next
 server forwards caller headers to the agent sidecar, but the sidecar itself has
 no authentication middleware. [source]
 
-Loopback blocks remote network reach by default; it does not distinguish the
+Loopback blocks remote network reach by default. It does not distinguish the
 Local Studio renderer from another local process. Port discovery is easy for a
 same-user process, and the stable frontend port is intentionally persisted.
 OpenAgents should not adopt loopback location as local authority.
@@ -452,12 +452,12 @@ unless the operator hardens the default or recipe. [source]
 
 The product also imports code through:
 
-- Python packages and backend upgrades;
-- Docker images;
-- llama.cpp binaries;
-- Pi extensions loaded through `jiti`;
-- plugin MCP stdio commands;
-- skills and prompt templates affecting model behavior; and
+- Python packages and backend upgrades.
+- Docker images.
+- llama.cpp binaries.
+- Pi extensions loaded through `jiti`.
+- plugin MCP stdio commands.
+- skills and prompt templates affecting model behavior. And
 - Chromium/browser content plus connector responses.
 
 These inputs need one supply-chain and capability law. Local custody does not
@@ -468,18 +468,18 @@ make downloaded model code, packages, extensions, or plugins trustworthy.
 Local Studio keeps model weights, controller SQLite, recipes, runtime venvs,
 logs, usage, Pi sessions, metadata, connectors, projects, settings, and OAuth
 material in several local roots. Connector configuration files are atomically
-written and chmodded `0600`; desktop OAuth values are encrypted through
+written and chmodded `0600`. Desktop OAuth values are encrypted through
 Electron `safeStorage` before a `0600` JSON vault write. [source]
 
 Remote data flow is feature-dependent:
 
-- a controller may run on another host;
-- model requests may reach a configured remote OpenAI-compatible provider;
-- Hugging Face supplies model metadata and downloads;
-- Google OAuth and Workspace adapters reach Google endpoints;
-- MCP HTTP connectors reach configured servers;
-- Sitegeist can use a relay token;
-- update and release flows reach GitHub; and
+- a controller may run on another host.
+- model requests may reach a configured remote OpenAI-compatible provider.
+- Hugging Face supplies model metadata and downloads.
+- Google OAuth and Workspace adapters reach Google endpoints.
+- MCP HTTP connectors reach configured servers.
+- Sitegeist can use a relay token.
+- update and release flows reach GitHub. And
 - browser automation reaches arbitrary user/model-selected sites.
 
 “Local-first” is directionally fair for default custody and execution, but it
@@ -493,16 +493,16 @@ operation.
 
 The source contains many worthwhile reliability patterns:
 
-- atomic temp-write/rename for JSON settings and metadata;
-- serialized per-file updates;
+- atomic temp-write/rename for JSON settings and metadata.
+- serialized per-file updates.
 - bounded HTTP request bodies, logs, browser snapshots, command output, and
-  in-memory event history;
+  in-memory event history.
 - explicit cancellation and cleanup for downloads, installs, launches,
-  processes, OAuth callbacks, MCP calls, CDP messages, and child servers;
-- launch failure budgets and health-based readiness;
-- GPU lease conflict and release-after-stop behavior;
-- session adoption and stale-navigation guards;
-- child-process supervision and restart backoff; and
+  processes, OAuth callbacks, MCP calls, CDP messages, and child servers.
+- launch failure budgets and health-based readiness.
+- GPU lease conflict and release-after-stop behavior.
+- session adoption and stale-navigation guards.
+- child-process supervision and restart backoff. And
 - log redaction plus public-safe error responses.
 
 These mechanics show serious operational intent even though they lack current
@@ -514,26 +514,26 @@ The parent commit `c42511e9` added three recorded Playwright E2E files and still
 contained a broad controller/frontend suite. The audited commit
 `4a16109f` then removed:
 
-- 132 tracked test, fixture, support, and replay files;
-- 22,669 lines net from those files and related test configuration;
+- 132 tracked test, fixture, support, and replay files.
+- 22,669 lines net from those files and related test configuration.
 - controller unit and integration suites for process, runtime, recipe, proxy,
-  speech, storage, GPU lease, redaction, streaming, and model contracts;
+  speech, storage, GPU lease, redaction, streaming, and model contracts.
 - frontend regression suites for sessions, replay, auth, filesystem bounds,
-  plugins, OAuth, navigation, terminals, settings, usage, and browser tools;
-- the three new Playwright E2E flows; and
+  plugins, OAuth, navigation, terminals, settings, usage, and browser tools.
+- the three new Playwright E2E flows. And
 - every package `test` and `test:integration` script. [history]
 
 The commit subject, `fix: stabilize follow-up chat submission`, does not disclose
 that verification reset. Current CI runs structural checks, controller
-typecheck/lint/cleanup, and the frontend quality gate; the quality gate runs
+typecheck/lint/cleanup, and the frontend quality gate. The quality gate runs
 lint, typecheck, dependency/dead-code/duplication/cycle checks, and a production
 build, but no behavioral test. [history] [source]
 
 Meanwhile:
 
-- root `AGENTS.md` still requires frontend tests and integration tests;
-- the README still tells contributors to run `npm run test:integration`;
-- the pull-request template still suggests tests; and
+- root `AGENTS.md` still requires frontend tests and integration tests.
+- the README still tells contributors to run `npm run test:integration`.
+- the pull-request template still suggests tests. And
 - `playwright` remains a frontend dependency and config file without tracked
   E2E specifications.
 
@@ -562,17 +562,17 @@ rollback receipt. [limitation]
 | Concern               | Local Studio                                                         | Closest or stronger reference                                 | OpenAgents consequence                                                 |
 | --------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | Local model lifecycle | First-class vLLM/SGLang/llama.cpp/MLX install, launch, health, evict | None in the teardown set at this breadth                      | Adapt the typed runtime/placement lifecycle                            |
-| Hardware truth        | NVIDIA/AMD/Intel/ROCm/CUDA probes, GPU leases, metrics               | T3 environment capabilities; Crabbox provider facts           | Make accelerator/capacity/lease facts explicit and receipted           |
+| Hardware truth        | NVIDIA/AMD/Intel/ROCm/CUDA probes, GPU leases, metrics               | T3 environment capabilities. Crabbox provider facts           | Make accelerator/capacity/lease facts explicit and receipted           |
 | Model endpoint        | OpenAI-compatible proxy over local or configured providers           | OpenCode provider layer                                       | Keep compatibility above exact backend/model identity                  |
-| Desktop shape         | Electron -> Next server -> Pi sidecar                                | OpenCode Electron server; Factory daemon                      | Prefer one generated engine contract and authenticated generation      |
-| Agent runtime         | Embedded Pi SDK with prompt/steer/follow-up                          | Amp steer/queue; OpenCode V2 admission                        | Add durable command identity, admission, replay, and terminal outcomes |
-| Sessions              | Pi JSONL plus Local Studio metadata and volatile event log           | Codex SQLite+JSONL; Claude append histories                   | Preserve adapter evidence but project into one canonical typed log     |
+| Desktop shape         | Electron -> Next server -> Pi sidecar                                | OpenCode Electron server. Factory daemon                      | Prefer one generated engine contract and authenticated generation      |
+| Agent runtime         | Embedded Pi SDK with prompt/steer/follow-up                          | Amp steer/queue. OpenCode V2 admission                        | Add durable command identity, admission, replay, and terminal outcomes |
+| Sessions              | Pi JSONL plus Local Studio metadata and volatile event log           | Codex SQLite+JSONL. Claude append histories                   | Preserve adapter evidence but project into one canonical typed log     |
 | Workbench             | Files, Git, terminals, browser, plans, canvas, projects              | Factory/OpenChamber/T3                                        | Keep progressive depth without renderer authority                      |
 | Extensions            | Skills, Codex plugins, MCP, Google adapters, Pi extensions           | Executor/OpenCode/Factory                                     | Require immutable capability generations and isolation                 |
-| Host access           | Opt-in frontend token; ambient loopback desktop/sidecar              | Codex scoped app-server; T3 DPoP environment access           | Reject port possession as authority                                    |
-| Workload isolation    | Not established for ordinary Pi/shell/plugin execution               | Codex Seatbelt/Landlock; Claude Cowork guest                  | Treat permission, policy, and containment separately                   |
-| Release proof         | Static CI, GitHub release, optional notarized Mac build              | OpenCode target matrix; OpenAgents signed ledger requirements | Restore behavior tests and bind every component to signed promotion    |
-| Test posture          | No tracked executable tests at audited commit                        | Grok PTY/race suite; prior Local Studio parent                | Do not admit the current gate as behavioral verification               |
+| Host access           | Opt-in frontend token. Ambient loopback desktop/sidecar              | Codex scoped app-server. T3 DPoP environment access           | Reject port possession as authority                                    |
+| Workload isolation    | Not established for ordinary Pi/shell/plugin execution               | Codex Seatbelt/Landlock. Claude Cowork guest                  | Treat permission, policy, and containment separately                   |
+| Release proof         | Static CI, GitHub release, optional notarized Mac build              | OpenCode target matrix. OpenAgents signed ledger requirements | Restore behavior tests and bind every component to signed promotion    |
+| Test posture          | No tracked executable tests at audited commit                        | Grok PTY/race suite. Prior Local Studio parent                | Do not admit the current gate as behavioral verification               |
 
 ## 9. What OpenAgents should adapt
 
@@ -595,20 +595,20 @@ retain the complete identity.
 Local Studio correctly distinguishes controller concerns from Pi session
 concerns. OpenAgents should keep its Runtime Gateway/Thread authority separate
 from a local-inference supervisor. A model server becoming healthy does not
-admit an agent turn; an agent turn completing does not prove model-process
+admit an agent turn. An agent turn completing does not prove model-process
 cleanup or release capacity.
 
 ### 9.3 Adopt backend specifications, not backend conditionals
 
 Each inference family should provide a typed capability implementation for:
 
-- discovery and compatibility;
-- install/upgrade identity;
-- model artifact compatibility;
-- launch arguments and environment;
-- health/readiness;
-- usage/metrics;
-- graceful and forced stop; and
+- discovery and compatibility.
+- install/upgrade identity.
+- model artifact compatibility.
+- launch arguments and environment.
+- health/readiness.
+- usage/metrics.
+- graceful and forced stop. And
 - recovery/cleanup.
 
 Local Studio's engine-spec pattern is the right starting point. OpenAgents
@@ -634,12 +634,12 @@ generated protocol across embedded, remote, CLI, SDK, and test transports.
 Local Studio's Status/Configure/Usage consolidation is a strong product model.
 Users need one answer to:
 
-- what hardware is available;
-- what is installed;
-- what model is loaded;
-- what owns each accelerator;
-- whether the endpoint is healthy;
-- what a turn will cost in time, memory, energy, and remote data flow; and
+- what hardware is available.
+- what is installed.
+- what model is loaded.
+- what owns each accelerator.
+- whether the endpoint is healthy.
+- what a turn will cost in time, memory, energy, and remote data flow. And
 - how to stop or repair it.
 
 Those facts should deepen the workroom without turning the workroom into a GPU
@@ -701,7 +701,7 @@ than scattered best-effort cleanup.
    mobile model selection and usage receipts.
 6. Add vLLM/SGLang only after install, remote-code, container, driver, health,
    cancellation, orphan cleanup, and rollback profiles are explicit.
-7. Keep extensions and model code in named fail-closed containment profiles;
+7. Keep extensions and model code in named fail-closed containment profiles.
    never inherit host authority from “local.”
 8. Require restored behavioral, fault, packaging, and real-backend evidence
    before any public local-inference promise.
@@ -729,7 +729,7 @@ updates, not only healthy-process polling.
 
 Most urgently, the audited revision removed the public executable evidence for
 the very boundaries that make the product consequential. The source remains
-valuable architecture evidence; the current green CI is not behavioral proof.
+valuable architecture evidence. The current green CI is not behavioral proof.
 
 OpenAgents should adapt the controller grammar and strengthen the laws: local
 inference as a typed receipted placement, explicit accelerator ownership,

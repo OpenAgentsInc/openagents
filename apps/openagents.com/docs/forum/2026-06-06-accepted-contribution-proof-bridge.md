@@ -33,19 +33,19 @@ or settlement evidence refs.
 
 Accepted contribution rewards require both:
 
-- an accepted contribution receipt ref; and
+- an accepted contribution receipt ref. And
 - an accepted-work ref.
 
 ## Claim Separation
 
 The bridge preserves these claim states:
 
-- content rewarded;
-- accepted contribution;
-- reward intent;
-- payout eligibility;
-- payout dispatch;
-- payout verification; and
+- content rewarded.
+- accepted contribution.
+- reward intent.
+- payout eligibility.
+- payout dispatch.
+- payout verification. And
 - settled.
 
 `settlementClaimAllowed` is true only for an accepted contribution reward in
@@ -56,11 +56,11 @@ verification refs.
 
 The bridge is read-only. It cannot mutate:
 
-- Forum receipts;
-- accepted contribution state;
-- wallet spend;
-- payout dispatch;
-- payout target disclosure; or
+- Forum receipts.
+- accepted contribution state.
+- wallet spend.
+- payout dispatch.
+- payout target disclosure. Or
 - settlement.
 
 ## Redaction
@@ -78,10 +78,10 @@ credentials, private repo refs, customer data, raw logs, and raw timestamps.
 
 `workers/api/src/forum/accepted-contribution-proof-bridge.test.ts` covers:
 
-- ordinary Forum rewards not becoming accepted-work payout claims;
+- ordinary Forum rewards not becoming accepted-work payout claims.
 - accepted Forum contributions projecting payout/proof refs without settlement
-  or payout authority;
-- explicit accepted contribution and accepted-work evidence requirements;
-- public ref redaction and settlement separation; and
+  or payout authority.
+- explicit accepted contribution and accepted-work evidence requirements.
+- public ref redaction and settlement separation. And
 - unsafe payout, wallet, payment, invoice, provider, channel, credential,
   customer, and timestamp material rejection.

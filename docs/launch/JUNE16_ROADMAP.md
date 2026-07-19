@@ -9,7 +9,7 @@
 
 - **Launch gate GREEN (#5012 closed):** both crucial promises live —
   `training.monday_decentralized_training_launch.v1` (#5014) and
-  `pylon.install_without_wallet_knowledge.v1` (#5015). Announced; run showed
+  `pylon.install_without_wallet_knowledge.v1` (#5015). Announced. Run showed
   `providerConfirmedSettledPayoutSats=5`, `qualifiedContributorCount=1`.
 - **Spark offline-receive rail GREEN:**
   `payments.offline_receive_spark_fallback.v1` flipped green on recipient-visible
@@ -42,7 +42,7 @@
   `pylon.install_without_wallet_knowledge.v1` (#5015 — self-serve install→earn,
   no operator staging of the contributor). Announced at
   `/blog/tassadar-run-is-live` (#5018) + the launch forum thread. #5124 verifier
-  bug fixed+regression-tested; #5051/#5061/#5121 closed. Run shows
+  bug fixed+regression-tested. #5051/#5061/#5121 Closed. Run shows
   `providerConfirmedSettledPayoutSats=5`, `qualifiedContributorCount=1`.
 - **Live promises:** source now targets **`2026-06-17.1`**
   (verified live at `/api/public/product-promises`). `.6` flipped the training
@@ -58,16 +58,16 @@
   Address**: `backup-receive --kind lightning-address` registers it,
   `report-readiness` publishes it on file beside the BOLT12 offer), #5151
   (heartbeat publishes live wallet readiness), and the Spark out-of-box
-  credential fix. Worker side **deployed** (`8d2f8f8f`; migrations `0194`–`0196`
+  credential fix. Worker side **deployed** (`8d2f8f8f`, migrations `0194`–`0196`
   applied) — readiness keeps `lightningAddress`, payout prefers BOLT12/MDK online
   and **falls back to paying the Lightning Address** (normal Lightning send, no
-  Spark sender; LSP-backed so it lands offline). **Community testing is open**
-  (forum CTA posted). Trigger is now recipient-confirmed on rc.12; Whitefang
+  Spark sender. LSP-backed so it lands offline). **Community testing is open**
+  (forum CTA posted). Trigger is now recipient-confirmed on rc.12. Whitefang
   and Orrery are tracked as documented recipient blockers in
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
   Auto-payout + auto-update gates still pending.
 - **Built-in hosted agent backend is LIVE:** `GEMINI_API_KEY` set + verified on
-  prod (`generateContent` returns real output); the keyless quota-gated grant
+  prod (`generateContent` returns real output). The keyless quota-gated grant
   route `POST /api/provider-accounts/google-gemini/grants/builtin` is deployed
   (worker version `016c665d`+). `autopilot.builtin_compute_agent.v1` is **yellow**
   — green needs the desktop executor calling the live route + a from-install
@@ -75,13 +75,13 @@
 - **Closed on the 15th** (stability pivot + launch backend): #5052–#5060, #5062–#5067,
   plus the short-term fixes #5056/#5057/#5058/#5059. Tassadar trace backend
   (#5052/#5053/#5054) is built + inert behind `TASSADAR_TRACE_PAIRING`.
-- **v1.0 release line (16th):** Pylon source is on the **v1.0** line; this RC is
+- **v1.0 release line (16th):** Pylon source is on the **v1.0** line. This RC is
   **rc3 = `1.0.0-rc.3`**. Stale `v0.3` labels scrubbed to v1.0 across the README,
   Pylon docs, and the promise registry (`738ea7d0f`, `c9c1059b2`), preserving the
   true published `0.3.0-rc2` npm receipts (the v1.0 RC was not on npm yet).
   **rc3 PUBLISHED (npm + GitHub):** leaf dep
   `@openagentsinc/autopilot-control-protocol@0.1.0` + `@openagentsinc/pylon@1.0.0-rc.3`
-  on the npm `rc` dist-tag (`latest` stays `0.2.5`); GitHub prereleases
+  on the npm `rc` dist-tag (`latest` stays `0.2.5`). GitHub prereleases
   `pylon-v1.0.0-rc.3` and `autopilot-desktop-v1.0.0-rc.3`. The desktop DMG is
   Developer-ID-signed + Apple-notarized + stapled (Gatekeeper-accepted), attached to
   the release and mirrored to `gs://openagentsgemini-oa-updates/desktop/`. A unified
@@ -98,10 +98,10 @@
   See §E.
 - **Forge product surface + component library (16th, assistant lane):** a large
   apps/web build wave landed on `main` — full status in §F. Epic A (shared Foldkit
-  component library `@openagentsinc/ui`) **complete & deployed to prod**; Forge
-  cockpit (`/autopilot`) + factory dashboard (`/forge`) live; `/business` landing
+  component library `@openagentsinc/ui`) **complete & deployed to prod**. Forge
+  cockpit (`/autopilot`) + factory dashboard (`/forge`) live. `/business` landing
   live (+ public `/components` gallery, now rendering **live** component instances
-  via #5108); workspace-primitive backend landed. The
+  via #5108). Workspace-primitive backend landed. The
   repo-wide **`typecheck:api` gate is green again** (`872cf8c47` — fixed the forum
   post-list error channel + two other pre-existing own-source errors). The wave
   continued with the real **`/login` page + email OTP** (#5111, deployed) and the
@@ -111,14 +111,14 @@
 
 - **🏠 Homepage pylon-stats — instant + near-realtime (#5050).** Owner reported the
   stats bar (PYLONS ONLINE / WORKING NOW / SATS SETTLED · 24H / TRAINING
-  CONTRIBUTORS) showed `…` for ~15s and didn't update live. Root cause:
+  CONTRIBUTORS) showed `…` for ~15s and did not update live. Root cause:
   `GET /api/public/pylon-stats` took ~5s/call from a **serial N+1** in the
   settlement-totals computation (up to 3 sequential D1 reads per settlement
   receipt) with **no caching** (`no-store`, recomputed per request/visitor), and
   the client only polled every **15s**. Fixed: parallelized the N+1
   (`Promise.all` + memoized intent reads, same semantics), added a ~4s in-isolate
   snapshot cache (test-bypassed), and dropped the client poll to **3s**. Warm
-  latency ~5s → sub-200ms; refresh ~5× faster. Follow-up #5171 now embeds the
+  latency ~5s → sub-200ms. Refresh ~5× faster. Follow-up #5171 now embeds the
   same cached `/api/public/pylon-stats` payload into the `/` and `/pylon` app
   shells, so the slot-text stats seed from real values before the first client
   fetch when the snapshot is available. Remaining phase 2 work: presence Durable
@@ -127,11 +127,11 @@
 - **🏠 Homepage SATS SETTLED + TRAINING CONTRIBUTORS corrected (17th follow-up).**
   The first #5050 pass fixed latency but the value still undercounted reality:
   `SATS SETTLED · 24H` only summed NIP-90 market receipts, excluding the real
-  direct treasury/tips-buffer payouts made during the launch-recognition work;
+  direct treasury/tips-buffer payouts made during the launch-recognition work.
   `TRAINING CONTRIBUTORS` still read hardcoded zeros. Fixed in the public stats
   projection: `publicRealSatsSettled24h` composes real settled treasury outflows,
   NIP-90 settled receipts, and accepted-work settlement receipts while avoiding
-  accepted-work/treasury double-counting; the homepage now prefers that field.
+  accepted-work/treasury double-counting. The homepage now prefers that field.
   Training contributors now read the live Tassadar run authority store's distinct
   contributor lease refs instead of stale registrations or constants. The older
   strict accepted-work gate remains separate: direct treasury outflows are not
@@ -147,7 +147,7 @@
   and `unclaimedDepositCount`, and the one-shot helper never claimed. Ruled out
   the bigint-balance theory (direct SDK probe: `balanceSats` is a number) and
   fixed the separate binary bug (the compiled binary baked a build-machine WASM
-  path; rc.11 embeds the WASM). **Proven end-to-end on `pylon-gcp-1`** (real
+  path. Rc.11 embeds the WASM). **Proven end-to-end on `pylon-gcp-1`** (real
   Linux, full egress): treasury → Spark Lightning Address → `backup-claim` →
   balance credited. Shipped rc.8→**rc.12** (OTA feed + npm `rc` + GH): `backup-claim`,
   `backup-status` now reads the real balance + surfaces read-only
@@ -164,11 +164,11 @@
   after MDK balance verification. **#5177 now adds direct Spark spend/withdraw:**
   `pylon wallet send --rail spark --confirm-send` pays from the node's own Spark
   backup balance to a BOLT11/Spark payment request or Lightning Address while
-  emitting public-safe digest refs only; this restores the old working Spark
+  emitting public-safe digest refs only. This restores the old working Spark
   send shape under the new consent/redaction boundary. **#5178 makes Spark the
   primary agent balance:** `pylon wallet status`, local control wallet-status,
   heartbeat/readiness, and the operator snapshot now source the agent-facing
-  balance from Spark; MDK is excluded from that public balance and remains
+  balance from Spark. MDK is excluded from that public balance and remains
   auxiliary for treasury/checkouts/legacy paths. **Resolved #5172:** the green
   `training.monday` gate stays green only for the scoped launch/run/verification
   and settlement-record path. The Orrery settlement receipt remains explicitly
@@ -181,7 +181,7 @@
   Added admin API reconciliation at
   `POST /api/operator/treasury/transactions/reconcile`, which checks the stored
   payment id against the treasury/tips-buffer MDK container and only then moves
-  the row to `settled` or `failed`; it never returns raw payment ids, hashes,
+  the row to `settled` or `failed`. It never returns raw payment ids, hashes,
   invoices, preimages, destinations, or wallet material. Worker cron now runs
   the same bounded reconciliation over pending outbound rows so future terminal
   outcomes are persisted without a manual operator hit. **Resolved #5173
@@ -191,7 +191,7 @@
   details are not hidden, and the Worker-side treasury/tips-buffer Container
   Durable Objects journal terminal outbound outcomes (`succeeded` / `failed`)
   after `/pay` or `/payments/{paymentId}` observes them. The journal stores only
-  terminal state and a public-safe `reasonRef`; it does not store raw daemon
+  terminal state and a public-safe `reasonRef`. It does not store raw daemon
   text, destinations, invoices, hashes, preimages, mnemonics, or tokens.
   Follow-up Orrery retries bracketed the Spark Lightning Address rail. The
   earlier post-#5173 run showed 25,000 sats succeeding while 30,000 / 40,000 /
@@ -200,11 +200,11 @@
   fingerprint. A later post-diagnostics pass changed the live result: 5,000
   sats succeeded, then 30,000 sats succeeded over the same Lightning Address
   rail. That pass also exposed and fixed a false `treasury_depleted` refusal
-  when the sidecar briefly returned `maxSendableSat:null`; the Worker now
+  when the sidecar briefly returned `maxSendableSat:null`. The Worker now
   retries the no-spend sendability read before refusing. Remaining honest test:
   refill treasury and retry full 40,000 / 50,000 single-invoice sends with the
   new balance-delta diagnostics. Policy:
-  `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`;
+  `docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md`.
   payment status:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
   **Latest Orrery payout follow-up (17th):** `c81e3b494` / deployed Worker
@@ -216,7 +216,7 @@
   the safe ledger and both showed Lightning Address → BOLT11 resolution,
   `paymentIdPresent:true`, and `balanceChanged:true`. The earlier pre-guard
   25,000-sat tips-buffer hang showed no later balance movement and no ledger row.
-  Remaining honest 40,000 / 50,000 single-invoice test still needs wallet refill;
+  Remaining honest 40,000 / 50,000 single-invoice test still needs wallet refill.
   current treasury/tips-buffer max-sendable is below those amounts and the
   fractional fallback policy would otherwise change the test.
   **Latest diagnostics follow-up (17th, later):** `90910cd5d` / deployed Worker
@@ -227,12 +227,12 @@
   without exposing destinations, BOLT11s, raw payment ids, hashes, preimages,
   mnemonics, or daemon text. Post-deploy Orrery Lightning Address retries:
   intended 5,000 sats hit the depleted-wallet 10% fallback because tips-buffer
-  only had ~3,898 sats max-sendable, so it paid 389 sats and settled; then
-  1,000 sats settled full; then 2,500 sats settled full with only 14 sats of
+  only had ~3,898 sats max-sendable, so it paid 389 sats and settled. Then
+  1,000 sats settled full. Then 2,500 sats settled full with only 14 sats of
   preflight route coverage remaining. Final live balances after the test:
   treasury ~82 sats max-sendable, tips-buffer ~15 sats max-sendable. Conclusion:
   Orrery's Lightning Address → BOLT11 path is live and settling at available
-  liquidity; the full 5,000 / 50,000 diagnostic retry now requires refilling a
+  liquidity. The full 5,000 / 50,000 diagnostic retry now requires refilling a
   payout wallet first. **#5179 follow-up:** hosted-MDK accepted-work payouts now
   formalize the chunk policy instead of forcing one fragile large send: reusable
   destinations (Spark Lightning Address, LNURL, BOLT12-style offers) above
@@ -256,7 +256,7 @@
 - **⚡ MDK scoped out of the agent path (#5181).** Spark Lightning Address is now
   the preferred Forum tip-recipient readiness/payout destination for agents.
   Pylon primary wallet status, heartbeat readiness, paid assignment admission,
-  and tip readiness no longer depend on a local MDK wallet; tip self-claim no
+  and tip readiness no longer depend on a local MDK wallet. Tip self-claim no
   longer mints an MDK BOLT12 offer. Forum readiness, reliable-tip ladder, sweeps,
   Artanis spend, and x-claim dispatch accept Spark Lightning Address first and
   retain BOLT12 only for legacy rows without a Spark destination, not as a
@@ -265,14 +265,14 @@
 - **⚡ Spark treasury rail + single treasury balance (#5183).** The website
   treasury container now exposes Spark treasury service endpoints
   (`/spark/balance`, `/spark/funding-destination`, `/spark/pay`) backed by the
-  Breez Spark SDK and the copied Bun SQLite storage adapter; it uses an explicit
+  Breez Spark SDK and the copied Bun SQLite storage adapter. It uses an explicit
   Spark treasury mnemonic when present, otherwise the canonical treasury
   mnemonic seeds the Spark rail too. Operator treasury payouts and Artanis spend
   prefer Spark treasury for Lightning Address/Spark destinations when Spark has
-  enough spendable balance; if Spark is unavailable
+  enough spendable balance. If Spark is unavailable
   or preflight-insufficient they fall back to the existing MDK treasury path, but
   a real Spark dispatch failure stops instead of attempting a second MDK send.
-  Raw Spark payment requests are accepted only as private operator/adapter input;
+  Raw Spark payment requests are accepted only as private operator/adapter input.
   public agent readiness remains the existing Spark Lightning Address projection
   because raw Spark addresses are treated as private wallet material.
   Accepted-work settlement can select `adapterKind: "spark_treasury"` for a
@@ -282,7 +282,7 @@
   follow-up moved 75 sats from MDK treasury into Spark treasury and proved
   repeatable Spark-origin sends to Whitefang's Spark-backed Lightning Address
   (5 sats, then 25 sats, both settled). Spark-preferred BOLT11 dispatch exposed
-  a Breez SDK `invalid_transferid_format` pre-spend failure; the container now
+  a Breez SDK `invalid_transferid_format` pre-spend failure. The container now
   retries that specific validation failure with `preferSpark:false`, so the
   payment still spends from Spark treasury while avoiding the broken
   Spark-preferred BOLT11 metadata path.
@@ -295,7 +295,7 @@
   settled Spark-treasury smoke sends, and still needs the remaining recognition
   closeout once the Spark treasury rail is funded.
   Orrery is marked do-not-resend: settled-sent is 234,639 sats against a 50k
-  debt, with the owner decision that the overage stays as hazard pay; recipient
+  debt, with the owner decision that the overage stays as hazard pay. Recipient
   confirmation still awaits Orrery's wallet-side read. The three legacy pending
   rows were reconciled through the supported API and remain `pending` because
   the containers still report no terminal outcome. Closeout:
@@ -314,27 +314,27 @@
 - **#5077** — fixed: Pylon post-start heartbeat diagnostics can now name absent
   private-material classes without tripping `projection.reason`, while actual
   bearer/invoice/Spark/key-shaped payloads still fail. Regression covered in
-  `apps/pylon/tests/presence.test.ts`; full `apps/pylon` suite passed.
+  `apps/pylon/tests/presence.test.ts`. Full `apps/pylon` suite passed.
 - **#5076** — closed: Forum recent-posts API stale tip-recipient readiness fixed
   (the read projection now rebuilds on write, same discipline as the closed #5056 lane).
 - **#5075** — closed: manifest/onboarding `AGENTS-CORE.md` sha256 drift fixed
-  (recompute + a guard so it can't drift again).
+  (recompute + a guard so it cannot drift again).
 - **#5066** — closed: Forum category topic lists now ordered by latest post activity
   (`5f6769df6`).
 
-## B. Tassadar executor-trace completion (backend built; pairing now ARMED in prod)
+## B. Tassadar executor-trace completion (backend built, pairing now ARMED in prod)
 
 - **`TASSADAR_TRACE_PAIRING=1` is now LIVE in prod** (set as a secret on the
-  `openagents-autopilot` Worker on the 16th — no code redeploy; secrets survive
+  `openagents-autopilot` Worker on the 16th — no code redeploy. Secrets survive
   future deploys). The pairing orchestration is no longer inert. It relaxes no
   `requireAdmin` and touches no settlement/payout, and the validator-candidate
   resolver still returns `[]`, so a pairing only _completes_ once a real,
   **distinct** validator device is present.
-- **Code audit (16th): the full loop is SHIPPED end-to-end; the only gap is
+- **Code audit (16th): the full loop is SHIPPED end-to-end. The only gap is
   automation, not infra.** Worker `submit-trace` + validator `validate` verbs are
-  both in published rc3 (#5054); `/replay-verdict` builds the `exact_trace_replay`
+  both in published rc3 (#5054). `/replay-verdict` builds the `exact_trace_replay`
   challenge that computes `Verified` on digest-match at creation (independent of
-  the resolver stub); `buildTassadarRunSettlement` (Verified → capped payout chain
+  the resolver stub). `buildTassadarRunSettlement` (Verified → capped payout chain
   → public `receipt.nexus.tassadar_run_settlement.…`) and the receipt-first
   promise flip are shipped. So a **manual two-device** proof needs no new code —
   only a real distinct validator device. Posted the code-grounded breakdown to the
@@ -343,14 +343,14 @@
   (`afcf1e13`).** Removes the manual `validate` coordination. As built:
   - **Worker:** new agent-gated `GET /api/training/contributions/next-unpaired?validatorDeviceRef=…`
     returns the oldest pending worker contribution from a **distinct** device
-    (public-safe refs; skips same-device; GET-only). Live-verified: returns
+    (public-safe refs, skips same-device, GET-only). Live-verified: returns
     Trigger's pending `kernel_trace` lease from a distinct device.
   - **Pylon:** `discoverNextUnpaired()` + `runValidatorAuto()` + opt-in CLI
     **`pylon training validate --auto [--watch …]`** (loads the committed pinned
-    fixture, discovers → replays → submits via `/replay-verdict`; no manual
+    fixture, discovers → replays → submits via `/replay-verdict`. No manual
     `--lease-ref`/`--workload`). **SHIPPED to contributors as
     `@openagentsinc/pylon@1.0.0-rc.5`** (npm `rc` dist-tag, `latest` stays
-    `0.2.5`; GitHub prerelease `pylon-v1.0.0-rc.5`). rc5 carries the #5121
+    `0.2.5`. GitHub prerelease `pylon-v1.0.0-rc.5`). rc5 carries the #5121
     auto-validator, the #5077 heartbeat projection fix, and the #5122 corrective
     fix for rc4's runtime version drift plus unauthenticated headless presence.
     CLI/npm-only RC (no new desktop DMG).
@@ -361,7 +361,7 @@
   - Guardrails unchanged: device-distinctness enforced server-side, routes stay
     `requireAgent`, settlement stays `requireAdmin` + bounded-spend (pairing/
     discovery only — no payout-authority change). 6 new worker route tests + 6 new
-    Pylon client tests; full deploy gate green.
+    Pylon client tests. Full deploy gate green.
   - Remaining to fully close: a live auto-validation on the current `@rc` that pairs a real
     distinct device → `Verified` (this is also the #5061 self-serve proof).
     Contributors can run it now: `npm i -g @openagentsinc/pylon@rc` →
@@ -408,7 +408,7 @@
   entities, verified worker/validator replay pairs into beams, and settled rows
   into payout bursts. `oa-tassadar-run` now listens for the emitted
   `node-selected` event and opens the public-safe training-run proof or receipt
-  URL when a node has one; unlinked nodes show a compact no-public-proof panel
+  URL when a node has one. Unlinked nodes show a compact no-public-proof panel
   and do not fabricate a beam, burst, or click-through target.
 
 ## C. Owner-gated launch green-flips (receipt-first — only the owner/live event can)
@@ -421,19 +421,19 @@
 
 ## D. Finish the built-in agent to green (#5063 backend closed)
 
-- Desktop built-in-agent executor calls the live `…/grants/builtin` route; run one
+- Desktop built-in-agent executor calls the live `…/grants/builtin` route. Run one
   **from-install "go online" smoke** on a clean machine (this Mac is macOS 26.4
   arm64 — Apple-FM/Gemini-capable) → flips `autopilot.builtin_compute_agent.v1`
-  green. (Concurrent session owns the desktop side; coordinate.)
+  green. (Concurrent session owns the desktop side, coordinate.)
 - Apple FM local lane epic **#5068** (children #5069–#5073) — local on-device
-  Foundation Models path; concurrent-session-owned; this Mac can host the
+  Foundation Models path. Concurrent-session-owned. This Mac can host the
   admitted-Mac smoke once the Swift bridge (#5069) lands.
 
 ## E. Offline-wallet receive resilience — bring back Spark as a backup receive (+ owed tips)
 
 **Root cause, not just a retry.** The owed tips (Whitefang Hermes + Trigger — both
 tip-_ready_ with BOLT12 offers, but `agent_wallet_send_failed` because their wallets
-weren't online/routable; 250 sats each owed) are a symptom of a real gap: a recipient
+were not online/routable. 250 Sats each owed) are a symptom of a real gap: a recipient
 must be **online with inbound liquidity** to receive a Lightning tip/payout. The fix
 is the **Spark backup-receive fallback** in
 `apps/pylon/docs/2026-06-15-spark-backup-receive-fallback-audit.md`.
@@ -450,25 +450,25 @@ is the **Spark backup-receive fallback** in
   so the backup works out-of-box, no manual key. Live-verified valid (returns a real
   mainnet static Spark address).
 - **#5080 — Bun support (CLOSED, `ef2986eae`):** the Breez SDK's default storage needs
-  `better-sqlite3` (unsupported in Bun); fixed with a faithful **`bun:sqlite`** port of
+  `better-sqlite3` (unsupported in Bun). Fixed with a faithful **`bun:sqlite`** port of
   the SDK storage injected via `SdkBuilder.withStorage()`. Independently smoke-verified
   under Bun 1.3.11 — real Spark address returned, no better-sqlite3 in the path.
 - **#5085 — legacy `migrate-spark` rewire (CLOSED, `d56480f40`):** the v0.2.5 RC-tester
   dead-end ("Missing Breez API key") is gone — `migrate-spark` now inits the user's old
   Spark wallet from their **12-word identity mnemonic** via the embedded-key Bun helper,
   detects balance, and sweeps to MDK on consent. Smoke-verified (no env key → no
-  `breez_api_key_missing`; `helperInitReady: true`).
+  `breez_api_key_missing`. `helperInitReady: true`).
 - Promise `payments.offline_receive_spark_fallback.v1`: **yellow** (receive path
-  live-proven under Bun; Bun-storage blocker cleared; blockers remaining:
+  live-proven under Bun. Bun-storage blocker cleared. Blockers remaining:
   `spark_backup_receive_live_smoke_missing`, `spark_receive_sync_reconcile_missing`).
 - **Out-of-box credential fix landed (#5078, this pass):** the receive-status
   path (`classifySparkBackupReceive`) was gating on env-only credentials and
   reporting `credential-missing` even though the helper resolver + legacy path
   already honor the embedded owner-authorized default Breez key. Fixed: the
   receive backup is now credential-ready out-of-box once opt-in is enabled (no
-  manual env key), matching the documented intent; runbook corrected; regression
+  manual env key), matching the documented intent. Runbook corrected. Regression
   test added. Verified locally: `backup-status` no longer returns
-  `credential-missing`; it proceeds to the Spark network init (which needs
+  `credential-missing`. It proceeds to the Spark network init (which needs
   outbound Breez connectivity — see below).
 - **Live smoke is environment-gated (needs Breez network):** the funded
   offline-recipient receive+reconcile is the owner-activation path and requires
@@ -478,8 +478,8 @@ is the **Spark backup-receive fallback** in
 - **Held payouts (now the launch-recognition sats, not the old 250):** during the
   16th green-gate run, real treasury sends hit `treasury_pay_failed` for **Trigger
   (50,000-sat recognition)** and **Whitefang (50,000-sat recognition + 5-sat
-  validator fee)** because their MDK/Lightning nodes weren't accepting inbound at
-  that moment; **Orrery's** worker 5-sat + 50k recognition dispatched (BOLT12
+  validator fee)** because their MDK/Lightning nodes were not accepting inbound at
+  that moment. **Orrery's** worker 5-sat + 50k recognition dispatched (BOLT12
   `pending`). These held payouts are the **live test material** for the Spark
   fallback below.
 - **#5151 (Trigger) — FIX IMPLEMENTED (`0fcacbc6b`), server deployed:**
@@ -491,34 +491,34 @@ is the **Spark backup-receive fallback** in
   Fixed both sides: the Pylon heartbeat now probes the local wallet
   (`classifyMdkWallet`, best-effort, injectable) and publishes real
   `walletReadiness` + a `walletReady` boolean (omitted on probe failure so the
-  server keeps the last value — no flap); the Worker `PylonApiHeartbeatRequest`
+  server keeps the last value — no flap). The Worker `PylonApiHeartbeatRequest`
   now accepts `walletReady` and the existing reducer projects it into
   `registration.walletReady` → public `walletReadyNow`. Worker deployed
-  (`09c5a042`); regression tests on both sides. **User-facing once the Pylon
+  (`09c5a042`). Regression tests on both sides. **User-facing once the Pylon
   change ships in the next RC** — the server already accepts it, but running
-  rc5 binaries don't send it yet, so #5151 stays open until that RC publishes.
+  rc5 binaries do not send it yet, so #5151 stays open until that RC publishes.
 - **Remaining (the gates, owner/live — see §H):** the scoped
   receive/claim/visible-backup-balance promise is green via Trigger's rc.12
-  proof. Whitefang and Orrery are no longer ambiguous; #5170 records them as
+  proof. Whitefang and Orrery are no longer ambiguous. #5170 Records them as
   documented blockers needing recipient Spark fallback target/proof collection.
 
 **Original goal — narrow, opt-in, receive-only Spark fallback (historical,
 superseded by #5177/#5178 Spark-primary agent wallet):**
 
 - MDK stays the primary wallet rail. Spark is a **backup receive target** only —
-  when MDK is offline or can't mint a receive request, Pylon can still hand out a
+  when MDK is offline or cannot mint a receive request, Pylon can still hand out a
   **static Spark address / single-use Spark invoice** (Spark addresses are static, so
   no liveness needed to receive), then **sync → detect → claim → sweep → reconcile**
   later under the existing legacy-Spark migration consent model.
 - **Strictly receive-only:** Spark does **not** regain send/payout, accepted-work
   settlement, or public payout-target authority without a separate gate. No raw
   historical Spark credential material reused.
-- Revive only the receive surface (derive signer from the Pylon identity mnemonic;
+- Revive only the receive surface (derive signer from the Pylon identity mnemonic,
   `wallet address`/`invoice` receive + deposit-claim lifecycle), per the audit's
   "External SDK Reality Check" (Breez SDK Spark `receivePayment` modes).
 - Once shipped, the offline-recipient case is solved: a tip/payout to an offline node
   lands on its Spark fallback and reconciles on next sync. Trigger has proven the
-  path; Whitefang and Orrery need the documented #5170 recipient target/proof
+  path. Whitefang and Orrery need the documented #5170 recipient target/proof
   follow-up before their recognition payouts are recipient-confirmed.
 
 (Comunero + Orrery tips already settled.) Files an issue when scoped into work.
@@ -528,15 +528,15 @@ superseded by #5177/#5178 Spark-primary agent wallet):**
 Building the **Forge** product (our software-factory category entry) on a shared
 component library, evolving `/autopilot` into the cockpit, and standing up the
 prefilled-workspace + `/business` funnel. Sequenced backlog is tracked under the
-epics below; not all lands today — the aim is the main spine.
+epics below. Not all lands today — the aim is the main spine.
 
 **Landed today (merged to `main`):**
 
 - **Epic A — `@openagentsinc/ui` component library (#5084, COMPLETE):** extracted
-  the shared Foldkit kit into `packages/ui` (#5081 `9658a8be1`); added the **AI
+  the shared Foldkit kit into `packages/ui` (#5081 `9658a8be1`). Added the **AI
   Elements** family — prompt-input/message/code-block/task/sources/tool/confirmation/
-  reasoning/web-preview (#5083 `70c522782`); shipped the public **`/components`**
-  gallery (#5082 `a93ede881`); icon-path follow-up (#5086 `34ab4237d`).
+  reasoning/web-preview (#5083 `70c522782`). Shipped the public **`/components`**
+  gallery (#5082 `a93ede881`). Icon-path follow-up (#5086 `34ab4237d`).
   **Deployed to prod** + `/components` made publicly servable.
   - **#5108 (CLOSED `81bdc9497`) — gallery renders LIVE component instances:**
     every family page now leads with real rendered components on a black surface
@@ -570,24 +570,24 @@ epics below; not all lands today — the aim is the main spine.
   returns a personal `/workspaces/{workspaceId}` invite URL, signed-in holders
   can claim an unbound invited workspace, holder reads record first view/revisit
   engagement, and `/api/workspaces/{workspaceId}/engagement` records the first
-  starter-run handoff. Operator reads expose engagement; holder projections still
+  starter-run handoff. Operator reads expose engagement. Holder projections still
   hide operator-only bindings. Contract:
   `docs/blitz/forge/2026-06-16-workspace-seeding-invite-engagement.md`.
 - **Login surface — real `/login` page + email OTP (#5111, CLOSED, deployed
   `d9113b02`):** `/login` is now a branded SPA page (`apps/web/src/page/login.ts`,
   over the constellation animation) offering **email one-time-code** sign-in +
-  GitHub — no longer a 302 to `/`. OpenAuth `CodeProvider`/`CodeUI` registered;
+  GitHub — no longer a 302 to `/`. OpenAuth `CodeProvider`/`CodeUI` registered.
   `success()` accepts `provider:'code'`, upserts by verified email, issues the
-  same session; `UserSubject` widened to `'github' | 'email'`. Auth-code email
+  same session. `UserSubject` widened to `'github' | 'email'`. Auth-code email
   goes **direct via Resend** (interim, decoupled from the `EmailService` ledger).
-  Gating preserved (login only authenticates; product stays downstream-gated) —
+  Gating preserved (login only authenticates, product stays downstream-gated) —
   recorded as the "Login Surface" invariant. The architecture rule was relaxed to
   allow the real login route while still banning the deleted _simulated_ auth
   symbols. Audit + posture: `docs/auth/2026-06-16-login-and-auth-audit.md`.
   **#5120 hardening is now shipped:** `/code/authorize` send/resend is guarded by
-  D1-backed per-IP, per-normalized-email, and global hourly caps; stale code
-  sessions are rejected after 10 minutes before session issuance; sender/storage
-  failure fails closed; code subjects no longer include the raw code; and tests
+  D1-backed per-IP, per-normalized-email, and global hourly caps. Stale code
+  sessions are rejected after 10 minutes before session issuance. Sender/storage
+  failure fails closed. Code subjects no longer include the raw code. And tests
   cover the fail-closed and throttle paths.
 - **`/animations` internal three.js playground (deployed `d0cf8a5e`):** a scrollable
   `/animations` page of self-contained WebGL experiments via a `makeAnimationView`
@@ -601,7 +601,7 @@ epics below; not all lands today — the aim is the main spine.
   (`docs/auth/2026-06-16-cloudflare-email-automation-audit.md`) now owns the single
   **"Unified Email & Auth Strategy — what we do when"** roadmap (provider-role
   matrix + DONE/NOW/NEXT/LATER sequence). Net: **no change to shipped login** —
-  Resend stays the auth transport now; Cloudflare (dedicated auth subdomain) is the
+  Resend stays the auth transport now. Cloudflare (dedicated auth subdomain) is the
   forward target, reached only after a verified-destination smoke + a provider
   adapter behind `EmailService`. The provider-adapter code slice is now in source:
   `cloudflare_email` is allowed in the typed/D1 email ledger and rendered emails
@@ -610,7 +610,7 @@ epics below; not all lands today — the aim is the main spine.
   (remaining phases: verified-destination smoke → auth → lifecycle+reconciliation
   → inbound routing).
 
-**Targeted next (this session / soon — won't all land today):**
+**Targeted next (this session / soon — will not all land today):**
 
 - **Epic D — customer-#1 dogfood (#5104):** **D2** (#5097) shipped the
   customer-#1 dogfood strip on `/forge`: live only when Runs + provider-pool
@@ -648,7 +648,7 @@ epics below; not all lands today — the aim is the main spine.
   `docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md`.
 - **Epic G — fold the terminal-agent-systems into the Forge Autopilot Coder
   (#5107, long arc):** runtime spine already built (Agent Runtime Kernel + tools,
-  Pack A/B/C, worktree materialization); next, surface diff-review, plan/todo,
+  Pack A/B/C, worktree materialization). Next, surface diff-review, plan/todo,
   resume, context+repo-memory, retrieval in the cockpit. **First Forge Coder
   systems wave is complete:** #5123-#5144 opened, implemented, documented,
   commented, and closed the projection/readiness foundation across diff review,
@@ -671,8 +671,8 @@ epics below; not all lands today — the aim is the main spine.
   material omission tests. **H3 landed:** #5147 adds authority-gated
   session-control contracts to the Session navigation lane: supported
   resume/fork/rewind/cancel actions render as POST controls only when fresh
-  public-safe authority and policy refs are present; unsupported, stale, and
-  under-authorized actions remain disabled with explicit blocker refs; public-
+  public-safe authority and policy refs are present. Unsupported, stale, and
+  under-authorized actions remain disabled with explicit blocker refs. Public-
   safe control receipts render without raw transcripts, local paths, prompts,
   provider payloads, or private repo content. **H4 landed:** #5148 adds the
   durable refs-only repository-memory profile inside the Context snapshot lane,
@@ -698,7 +698,7 @@ epics below; not all lands today — the aim is the main spine.
   operator-facing foundation, but it is not the whole "~all terminal-agent
   systems" parent epic. Roughly, the first wave touches the key starting
   systems named in #5107 and gives them safe projections, tests, and readiness
-  gates; that is about a quarter of the long-arc product incorporation, not a
+  gates. That is about a quarter of the long-arc product incorporation, not a
   final green. The H-wave action/integration layer is now complete: H1-H6 moved
   diff inspection, plan mutation receipts, session controls, repository memory,
   bounded live retrieval, and guarded extensibility requests from read-only
@@ -727,13 +727,13 @@ three things tested live on that RC.** Audit of each as of 2026-06-16:
   The model landed in rc.7/rc.8 + the worker: a recipient registers a static
   **Lightning Address** via their Spark backup wallet (`backup-receive --kind
 lightning-address`) and publishes it on file beside their BOLT12
-  (`report-readiness`); the treasury payout path now **resolves a Lightning
+  (`report-readiness`). The treasury payout path now **resolves a Lightning
   Address via LNURL-pay → BOLT11 (`lnurl-pay.ts`) before the MDK send**, in both
   `executeTreasuryPayout` and the operator endpoint, for primary + fallback. No
   Spark sender on our side. **Proven live: Trigger's held 50,000-sat recognition
   PAID** through this rail — address → LNURL → BOLT11 → `status: succeeded`,
   treasury balance moved (~105k→55k). The earlier `treasury_pay_failed` was the
-  missing LNURL resolution, now shipped; failure reasons are also no longer
+  missing LNURL resolution, now shipped. Failure reasons are also no longer
   masked. rc.8 also fixed the `appendLedgerEvent` crash + clean exit + mysql2
   (#5162).
 - **Promise flip:** Trigger's recipient-side rc.12 proof confirms the real
@@ -745,7 +745,7 @@ lightning-address`) and publishes it on file beside their BOLT12
   blockers instead of ambiguous "sent but invisible" payouts:
   `docs/payments/2026-06-17-launch-recognition-spark-recipient-status.md`.
   Whitefang needs rc.12+ Spark Lightning Address publish + treasury retry +
-  `backup-claim` / `backup-status`; Orrery needs either the pending BOLT12
+  `backup-claim` / `backup-status`. Orrery needs either the pending BOLT12
   settled/reconciled or the same Spark fallback publish/retry/claim/status
   path. They no longer block the scoped product promise. The single-balance
   follow-up is separate: #5168 shipped the unified balance view and #5169
@@ -762,11 +762,11 @@ lightning-address`) and publishes it on file beside their BOLT12
   including selecting MDK-vs-Spark by recipient liveness, and recording the
   receipt — without a human running the payout command per pairing.
 - **Status:** the settlement-receipt + treasury-payout rails exist and were
-  exercised manually for the green flip; the **automatic** dispatch on Verified
+  exercised manually for the green flip. The **automatic** dispatch on Verified
   (bounded, with MDK→Spark fallback selection) is **not yet wired/tested**. Test
   on the RC against the held payouts.
 - Boundary: payout _approval_ stays operator-gated / bounded-spend (a permanent
-  safety control); "auto-payout" automates _dispatch within those bounds_, not
+  safety control). "Auto-payout" automates _dispatch within those bounds_, not
   unbounded self-spend.
 
 ### Gate 3 — Auto-update (in prod) — ✅ VERIFIED (2026-06-16)
@@ -775,15 +775,15 @@ lightning-address`) and publishes it on file beside their BOLT12
   default-on OTA self-updater shipped in **`1.0.0-rc.1`** (commit `9f5319c89`,
   #5042) and is in **every v1.0 RC signed binary since** (rc.1, rc.2, rc.7,
   rc.8 — all on the feed). It runs **on node startup** (`maybeAutoUpdate()` in
-  `apps/pylon/src/index.ts`, before the node boots; opt out with
+  `apps/pylon/src/index.ts`, before the node boots. Opt out with
   `PYLON_DISABLE_AUTOUPDATE`). **It only updates a compiled standalone binary:**
   `resolveSelfBinaryPath()` returns null for a `bun src/index.ts` source run or
   the npm `-g` CLI, so auto-update is a deliberate no-op there. So **for
   auto-update to be expected to work, run the standalone signed Pylon binary (or
   Autopilot Desktop, which bundles it) as a node** — on each (re)launch it pulls
-  the latest signed RC. Source checkouts update via `git pull`; npm via
+  the latest signed RC. Source checkouts update via `git pull`. Npm via
   `npm install -g @openagentsinc/pylon@rc`. (This is why Trigger, on a source
-  checkout, doesn't auto-update — not a build problem; his run mode.)
+  checkout, does not auto-update — not a build problem. His run mode.)
 - **Built + PROVEN LIVE.** Both Pylon binaries + Autopilot Desktop ship
   **default-on, ed25519-signature-verified OTA** from `updates.openagents.com`,
   fail-closed. Verified end-to-end against the LIVE feed: driving the real
@@ -830,14 +830,14 @@ held contributor payouts), (2) auto-payout, (3) auto-update in prod — then cut
 final v1.0 and start promoting. The held recognition payouts (Trigger + Whitefang
 50k each, Whitefang's 5-sat validator fee) are the live test material for #5078.
 
-Section **A** is fully closed; the apps/web wave (Epic A live-render #5108,
+Section **A** is fully closed. The apps/web wave (Epic A live-render #5108,
 `/login` #5111 + OTP hardening #5120, `/animations`) has landed and deployed.
 With B3 (#5089 Forge Automations), C2 (#5093 operator
 seeding/invite/engagement), and D2 (#5097 customer-#1 dogfood strip) now landed,
 the clean non-overlapping assistant-lane work is the remaining **email strategy
 smoke** (onboard Cloudflare Email Sending, add the restricted staging
 `send_email` binding, send one verified-destination operator notification through
-the new `cloudflare_email` adapter; see the unified strategy doc), and Epic G
+the new `cloudflare_email` adapter. See the unified strategy doc), and Epic G
 Forge Autopilot Coder surfaces. The owner-gated green-flips (**B/C** §C,
 built-in agent §D) still need the owner + a real second device + the concurrent
 desktop session. Coordinate to avoid the duplicate-work collisions seen on #5067.
@@ -845,9 +845,9 @@ desktop session. Coordinate to avoid the duplicate-work collisions seen on #5067
 ## Coordination note
 
 Multiple sessions are pushing to `main` in parallel (registry churned `.1`→`.11` on
-the 15th, `.1`→`.4` on the 16th; many `.claude/worktrees` + `tmp/oa-*` agent worktrees
+the 15th, `.1`→`.4` on the 16th. Many `.claude/worktrees` + `tmp/oa-*` agent worktrees
 active). Worktree isolation holds for subagents — the contention people see is a
 session's _own main-loop_ editing the shared checkout while its subagents run. Keep
-work in isolated worktrees with rebase-before-push; deploy only from a
+work in isolated worktrees with rebase-before-push. Deploy only from a
 clean `origin/main` checkout (never the shared working tree, which carries the
 other session's uncommitted WIP).

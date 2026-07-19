@@ -88,7 +88,7 @@ Acceptance:
 - Desktop clients can render plan state without parsing TUI transcript text.
 - Subagent and side-conversation controls round-trip through Codex-owned thread
   or turn state.
-- Approval actions are explicit and typed; unavailable controls return stable
+- Approval actions are explicit and typed. Unavailable controls return stable
   reason codes.
 
 ## Filing 4: `codex.app_server.gap.ide_mentions_diff`

@@ -40,7 +40,7 @@ typed internal/external demand split.
   `docs/metrics/2026-06-15-accepted-outcomes-per-kwh.md` (section 5b).
 - Registry updated (no state change): `proof.demand_provenance.v1` stays
   **planned** with accurate safeCopy/verification noting the first serving
-  surface; `metrics.accepted_outcomes_per_kwh.v1` stays **yellow** with the
+  surface. `metrics.accepted_outcomes_per_kwh.v1` stays **yellow** with the
   demand-provenance evidence ref. Registry version bumped to `2026-06-19.7`.
 
 `proof.demand_provenance.v1` green still requires the *remaining*
@@ -73,7 +73,7 @@ Evidence test suites re-verified green this pass:
 
 | id | gap / owner action |
 | --- | --- |
-| `claims.world_first_ai_training_paid_bitcoin.v1` | needs the real training-paid-bitcoin world-first event + receipt; aspirational claim must not go green without it |
+| `claims.world_first_ai_training_paid_bitcoin.v1` | needs the real training-paid-bitcoin world-first event + receipt. Aspirational claim must not go green without it |
 | `claims.world_first_public_llm_computer_training_run.v1` | needs the real public LLM-computer training run + receipt |
 | `mobile.voice_session_evidence_transcript_ingest.v1` | product decision: pick STT vendor + capture path, then wire ingest endpoint, AI proposal gen, approval UI |
 | `models.tassadar_percepta_executor.v1` | executor model capability + benchmark/settlement evidence (substrate in `psionic`) |
@@ -83,7 +83,7 @@ Evidence test suites re-verified green this pass:
 
 | id | note |
 | --- | --- |
-| `proof.demand_provenance.v1` | advanced this pass (first serving surface); green needs remaining projections + receipt |
+| `proof.demand_provenance.v1` | advanced this pass (first serving surface). Green needs remaining projections + receipt |
 | `mobile.autopilot_remote_control.v1` | Pylon remote bridge transport (#5000) → Expo read-only app to TestFlight (#5001) → write actions (#5002-5004). Build per `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md` — NO Expo/EAS cloud. |
 | `mobile.voice_approval_companion.v1` | depends on mobile projection + voice command approval receipts + cross-device workroom sync |
 | `claims.pursued_world_first_largest_agentic_sales_force.v1` | aspirational — stays planned forever |

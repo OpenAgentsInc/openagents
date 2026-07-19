@@ -35,7 +35,7 @@ The GYM needs two layers of fixtures:
 
 **A. Quick/taste fixtures** (no cost, deterministic, for harness proof):
 - The existing `SAMPLE_DECISION_SUITE_CONFIG` in `fixtures.ts` with synthetic shapes (short-chat 350/220, code-artifact 2400/1800, long-codebase-32k 32000/600).
-- OpenCode specific: the `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` smoke task: "read docs/faq/khala-inference-quickstart.md and reply with base=...; model=..."
+- OpenCode specific: the `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` smoke task: "read docs/faq/khala-inference-quickstart.md and reply with base=.... Model=..."
 - Crossy-road north-star prompt: "build a really high quality single html file crossy road game with three.js"
 
 **B. Owner-armed realistic fixtures** (decision-grade, need real spend approval):
@@ -155,4 +155,4 @@ BenchmarkReport {
 - **Budget:** what msat cap should the first armed sweep carry?
 - **Surface:** is the first comparison on the OpenCode coding-agent surface (tool calling) or direct chat-completion quality (rubric/verifier)?
 
-**Resolved by owner:** GYM = benchmarking gym; Big Pickle (space) = main free model in OpenCode.
+**Resolved by owner:** GYM = benchmarking gym. Big Pickle (space) = main free model in OpenCode.

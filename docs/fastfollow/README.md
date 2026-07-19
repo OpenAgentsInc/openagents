@@ -15,15 +15,15 @@ backlog, repository instructions, or Full Auto:
 - FastFollowSpec owns learning intent: **what should be studied and why**.
 - A roadmap, issue, accepted plan, or work packet owns sequencing and
   implementation admission.
-- A current explicit owner direction can be persisted as that accepted plan;
+- A current explicit owner direction can be persisted as that accepted plan.
   this is separate target authority, not self-admission by Fast Follow.
 - Full Auto owns unattended continuation of an already authorized local
-  session. It may consume Fast Follow work; Fast Follow does not widen Full
+  session. It may consume Fast Follow work. Fast Follow does not widen Full
   Auto authority.
 
 The authored convention is a nearest-scope `FASTFOLLOW.md` beside the relevant
 `AGENTS.md`. Its frontmatter and typed JSON blocks form the machine projection.
-Nested projects may define their own file; the nearest file replaces the
+Nested projects may define their own file. The nearest file replaces the
 parent unless a future format adds explicit, digest-pinned composition. There
 is no implicit merge in format 0.1.
 
@@ -40,7 +40,7 @@ is no implicit merge in format 0.1.
 4. [`Surface-vision gap analysis`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
    — target-side crosswalk from the teardown/episode evidence into Full Auto,
    workbench, release, mobile, web, and trust-layer outcomes. It is proposal
-   evidence; the Sol master owns the reconciled queue.
+   evidence. The Sol master owns the reconciled queue.
 5. [`../../specs/openagents/fast-follow.product-spec.md`](../../specs/openagents/fast-follow.product-spec.md)
    — product intent and acceptance criteria for the native system.
 6. [`SUGGESTED_ISSUES.md`](SUGGESTED_ISSUES.md) — dependency-ordered,
@@ -65,22 +65,22 @@ shared study service already exists.
 
 The current OpenAgents Desktop Full Auto implementation already:
 
-- owns durable `FullAutoRun` missions and lifecycles in Electron main;
+- owns durable `FullAutoRun` missions and lifecycles in Electron main.
 - persists objective, done condition, workspace, provider profile, transition
-  attribution, liveness, and bounded report identity across restart;
+  attribution, liveness, and bounded report identity across restart.
 - admits multiple independently active runs per Desktop profile, each with a
   distinct run/thread identity, and keeps Pause, Stop, retry, stall, cap, and
-  terminal dispositions distinct;
+  terminal dispositions distinct.
 - uses repository `AGENTS.md`, README, docs, issues, and bounded
-  ProductSpec/AssuranceSpec context as candidate sources;
+  ProductSpec/AssuranceSpec context as candidate sources.
 - takes one concrete useful action per continuation through the serialized
-  lease/reconciliation path;
-- preserves manual objective-safe provider handoff in a bounded envelope; and
+  lease/reconciliation path.
+- preserves manual objective-safe provider handoff in a bounded envelope. And
 - publishes a bounded live run projection that mobile can prioritize.
 
 The visible Desktop surface is a dedicated compact launcher, read-only run
 view, and persistent multi-run monitor. The private
-analyzer/comparison pipeline is now landed (#8973); the six-test owner-visible
+analyzer/comparison pipeline is now landed (#8973). The six-test owner-visible
 batch, new AssuranceSpec, and packaged release gate remain open. Current
 `main` therefore proves the run core and private analysis, not the finished AFK
 product or autonomous provider/account rotation.
@@ -89,7 +89,7 @@ The owner admitted the ordered initial program on 2026-07-16 in
 [`2026-07-16-fast-follow-expansion-accepted-plan.md`](../sol/2026-07-16-fast-follow-expansion-accepted-plan.md).
 Implementation sessions consume its next bounded work packet directly. They do
 not open a feature issue because this repository reserves GitHub issues for
-reproducible bugs; claim/worktree, verification, release, and public-promise
+reproducible bugs. Claim/worktree, verification, release, and public-promise
 gates still apply.
 
 Because the OpenAgents `AGENTS.md` points Full Auto at `FASTFOLLOW.md`, an
@@ -163,12 +163,12 @@ dedupe keys prevent the system from reopening the same rejected idea forever.
 Fast Follow is a natural bootstrap corpus for Khala's typed Blueprint system:
 
 - the fixed program controls resolution, pinning, research, evaluation,
-  proposal, admission, implementation, verification, and closeout;
+  proposal, admission, implementation, verification, and closeout.
 - semantic models operate inside typed research/planning modules, never by
-  rewriting control flow;
-- StudyPackets and target outcomes create reusable training/evaluation data;
+  rewriting control flow.
+- StudyPackets and target outcomes create reusable training/evaluation data.
 - GEPA/DSPy-class optimization may later propose better module parameters
-  against executed outcomes and cost; and
+  against executed outcomes and cost. And
 - no optimizer, packet, model, or agent may self-promote, dispatch, merge,
   release, spend, or change a public promise.
 

@@ -29,25 +29,25 @@ OpenAgentsInc/openagents@6983d0512
 
 The Pylon launcher now accepts:
 
-- `--setup-mdk-wallet`;
-- `--mdk-wallet-home`;
-- `--mdk-wallet-port`;
+- `--setup-mdk-wallet`.
+- `--mdk-wallet-home`.
+- `--mdk-wallet-port`.
 - `--mdk-receive-amount-sats`.
 
 The launcher uses `npx @moneydevkit/agent-wallet@latest` locally. It may call
 `init --show`, `init`, `balance`, and `receive`, then posts:
 
-- `POST /api/pylons/{pylonRef}/wallet-readiness`;
+- `POST /api/pylons/{pylonRef}/wallet-readiness`.
 - `POST /api/pylons/{pylonRef}/payout-target-admission`.
 
 The submitted values are public-safe refs:
 
-- `wallet.public.mdk_agent_wallet.<digest>`;
-- `receive.redacted.mdk_agent_wallet.<digest>`;
-- `payout_target.public.mdk_agent_wallet.<digest>`;
+- `wallet.public.mdk_agent_wallet.<digest>`.
+- `receive.redacted.mdk_agent_wallet.<digest>`.
+- `payout_target.public.mdk_agent_wallet.<digest>`.
 - `balance.mdk_agent_wallet.minimum_satisfied` or
-  `balance.mdk_agent_wallet.minimum_not_satisfied`;
-- `admission.public.requested`;
+  `balance.mdk_agent_wallet.minimum_not_satisfied`.
+- `admission.public.requested`.
 - `policy.public.operator_review_required`.
 
 The launcher must not submit or print an MDK mnemonic, wallet config, raw
@@ -87,10 +87,10 @@ Result:
 
 The OpenAgents product surface route coverage now includes payout-target admission statuses:
 
-- `pending`;
-- `approved`;
-- `revoked`;
-- `blocked`;
+- `pending`.
+- `approved`.
+- `revoked`.
+- `blocked`.
 - `stale`.
 
 The redaction coverage rejects raw payment and wallet material, exact wallet

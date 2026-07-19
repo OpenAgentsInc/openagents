@@ -39,12 +39,12 @@ passed:
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Persistence | Passed | #403, `workers/api/src/artanis-persistence.test.ts` |
-| Scheduled runner | Passed for bounded status projection | #404 implemented the runner; #512 proves bounded no-spend/no-dispatch scheduled status operation. |
+| Scheduled runner | Passed for bounded status projection | #404 implemented the runner. #512 Proves bounded no-spend/no-dispatch scheduled status operation. |
 | Operator console | Passed | #405, `/autopilot`, `GET /api/operator/artanis/console` |
 | Approval gates | Passed | #393/#405, approve/reject endpoints |
 | Forum delivery | Passed | #406 delivery bridge and #418 delivery verification refs |
 | Forum listener | Passed | #407 read-only listener/triage and #418 listener verification refs |
-| Nexus/Pylon adapter | Passed for monitoring/fake dispatch | #408 and `GET /api/public/pylon-stats`; live dispatch remains separately gated. |
+| Nexus/Pylon adapter | Passed for monitoring/fake dispatch | #408 and `GET /api/public/pylon-stats`. Live dispatch remains separately gated. |
 | Marketplace intake | Passed | #410 operator intake and triage APIs |
 | Continual-learning templates | Passed | #411 benchmark/GEPA/DSPy/LoRA template ledger |
 | Payment/reward boundary | Passed | #412 simulation-only reward smoke and no wallet spend authority |
@@ -78,7 +78,7 @@ GEPA/Pylon smoke contract from #511 lives in
 The bounded scheduled-runner proof from #512 lives in
 `workers/api/src/artanis-gepa-scheduled-runner-proof.ts` and is documented in
 `docs/artanis/2026-06-08-bounded-gepa-scheduled-runner.md`. That proof permits
-bounded public-safe status operation only; it does not grant assignment
+bounded public-safe status operation only. It does not grant assignment
 dispatch, automatic Forum publishing, provider mutation, model training,
 runtime promotion, settlement mutation, or wallet spend.
 
@@ -226,7 +226,7 @@ Publication mistake:
 - Disable the scheduler.
 - Reject the relevant publication approval gate.
 - Post a correction in the Artanis status topic.
-- Keep the mistaken post only as historical evidence; do not hide the mistake
+- Keep the mistaken post only as historical evidence. Do not hide the mistake
   by rewriting the public proof trail.
 
 Dispatch mistake:

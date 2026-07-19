@@ -47,7 +47,7 @@ Psionic:
 
 The first Pylon pass should support both documented small Qwen3.5 rows:
 
-- `qwen3.5:0.8b` as the lowest-footprint local smoke and fallback row;
+- `qwen3.5:0.8b` as the lowest-footprint local smoke and fallback row.
 - `qwen3.5:2b` as the first coding-agent/tool-loop quality row.
 
 Pylon should expose them through an optional `psionic_qwen35` backend profile
@@ -63,12 +63,12 @@ workloads should download the Psionic binary and Qwen artifacts.
 
 The smallest useful first pass is an attach-only backend:
 
-1. operator starts or installs Psionic;
-2. operator points Pylon at the Psionic base URL;
-3. Pylon checks `/health` and `/v1/models`;
-4. Pylon advertises local Qwen capability refs only for admitted model rows;
+1. operator starts or installs Psionic.
+2. operator points Pylon at the Psionic base URL.
+3. Pylon checks `/health` and `/v1/models`.
+4. Pylon advertises local Qwen capability refs only for admitted model rows.
 5. Pylon lowers provider-neutral LLM requests and tool definitions into
-   OpenAI-compatible chat/responses calls;
+   OpenAI-compatible chat/responses calls.
 6. Pylon records redacted transcript, tool-call, and capability receipts.
 
 ## What Psionic Already Proves
@@ -89,13 +89,13 @@ The documented artifact identity is:
 
 That row proves:
 
-- real GGUF artifact detection as `qwen35`;
-- real tokenizer/template facts;
-- Qwen multimodal prompt-projection facts for image/video markers;
-- deterministic tiny qwen35 native CUDA execution through Psionic;
-- generic server publication and request execution;
-- `/v1/chat/completions` and `/v1/responses` surface coverage;
-- bounded qwen35 tool-loop continuation evidence through the responses pilot;
+- real GGUF artifact detection as `qwen35`.
+- real tokenizer/template facts.
+- Qwen multimodal prompt-projection facts for image/video markers.
+- deterministic tiny qwen35 native CUDA execution through Psionic.
+- generic server publication and request execution.
+- `/v1/chat/completions` and `/v1/responses` surface coverage.
+- bounded qwen35 tool-loop continuation evidence through the responses pilot.
 - explicit refusal boundaries for unsupported multimodal and structured-output
   paths.
 
@@ -123,13 +123,13 @@ Relevant retained evidence:
 The 2B row is the right first row for Pylon's optional coding-agent backend
 because it already has retained evidence for:
 
-- required tool turns;
-- auto plain-text turns;
-- multi-turn tool loops;
-- same-turn parallel tool calls;
-- invalid-argument truthful refusal;
-- streamed tool turns;
-- serialized two-city tool loop behavior;
+- required tool turns.
+- auto plain-text turns.
+- multi-turn tool loops.
+- same-turn parallel tool calls.
+- invalid-argument truthful refusal.
+- streamed tool turns.
+- serialized two-city tool loop behavior.
 - repeated exact-hit warm-path reuse.
 
 ## Psionic Server Shape Pylon Should Attach To
@@ -151,11 +151,11 @@ The binary supports multiple `-m` model artifacts, `--backend cpu|cuda|metal`,
 
 The Pylon first pass should assume attach mode:
 
-- default base URL: `http://127.0.0.1:8080`;
-- readiness path: `/health`;
-- model list path: `/v1/models`;
-- chat path: `/v1/chat/completions`;
-- responses path: `/v1/responses`;
+- default base URL: `http://127.0.0.1:8080`.
+- readiness path: `/health`.
+- model list path: `/v1/models`.
+- chat path: `/v1/chat/completions`.
+- responses path: `/v1/responses`.
 - management status path, when present:
   `/psionic/management/status`.
 
@@ -180,15 +180,15 @@ pylon psionic models install qwen35-2b-q8_0 --manifest-url <model-manifest-url> 
 
 The install flow runs machine checks before downloading anything:
 
-- supported platform: macOS or Linux;
-- supported architecture: `darwin-arm64`, `linux-x64`, or `linux-arm64`;
-- backend viability: Metal on `darwin-arm64`, admitted CPU fallback on Linux;
-- memory and disk budgets;
-- no competing model workload if the installer is about to run a local smoke;
-- Psionic release manifest verification;
-- model artifact manifest verification;
-- SHA-256 verification before binary/model placement;
-- digest-addressed cache placement under the Pylon cache;
+- supported platform: macOS or Linux.
+- supported architecture: `darwin-arm64`, `linux-x64`, or `linux-arm64`.
+- backend viability: Metal on `darwin-arm64`, admitted CPU fallback on Linux.
+- memory and disk budgets.
+- no competing model workload if the installer is about to run a local smoke.
+- Psionic release manifest verification.
+- model artifact manifest verification.
+- SHA-256 verification before binary/model placement.
+- digest-addressed cache placement under the Pylon cache.
 - explicit operator consent for each model artifact.
 
 Current manifest URLs are operator- or env-supplied. Psionic now has
@@ -209,15 +209,15 @@ the v0.3 package into a heavy ML distribution.
 
 Add a third runtime backend family alongside Apple FM and Gemini:
 
-- backend kind: `psionic_qwen35`;
-- profile id: `psionic-qwen35-local`;
-- capability ref: `probe.backend.psionic_qwen35`;
-- default base URL: `http://127.0.0.1:8080`;
+- backend kind: `psionic_qwen35`.
+- profile id: `psionic-qwen35-local`.
+- capability ref: `probe.backend.psionic_qwen35`.
+- default base URL: `http://127.0.0.1:8080`.
 - env override order: explicit `--base-url`, `PYLON_PSIONIC_BASE_URL`,
-  `PROBE_PSIONIC_BASE_URL`, default;
-- auth mode: `none` for local attach;
-- attach mode: `attach_existing`;
-- stream mode: OpenAI-compatible SSE when streaming is requested;
+  `PROBE_PSIONIC_BASE_URL`, default.
+- auth mode: `none` for local attach.
+- attach mode: `attach_existing`.
+- stream mode: OpenAI-compatible SSE when streaming is requested.
 - supported endpoints: `/v1/chat/completions`, `/v1/responses`.
 
 Implemented attach-only surfaces:
@@ -245,12 +245,12 @@ admitted launch model.
 Live evidence captured on June 9, 2026:
 
 - command:
-  `PYLON_PSIONIC_BASE_URL=http://127.0.0.1:18080 node --import tsx src/index.ts psionic smoke --json`;
+  `PYLON_PSIONIC_BASE_URL=http://127.0.0.1:18080 node --import tsx src/index.ts psionic smoke --json`.
 - Psionic server:
   `psionic-openai-server` with `execution_engine = psionic`, Metal backend, and
-  `Qwen_Qwen3.5-0.8B-Q4_K_M.gguf`;
+  `Qwen_Qwen3.5-0.8B-Q4_K_M.gguf`.
 - Pylon result: `state = passed`, `inference = real_psionic_openai_compatible`,
-  text `psionic pylon live`, usage `input=21 output=5 total=26`;
+  text `psionic pylon live`, usage `input=21 output=5 total=26`.
 - admission result: blocked from launch advertisement by
   `blocker.psionic_qwen35.artifact_digest_unverified` and
   `blocker.psionic_qwen35.qwen35_model_missing` because the local Q4 artifact is
@@ -258,11 +258,11 @@ Live evidence captured on June 9, 2026:
 
 The backend should reuse Pylon's provider-neutral LLM core:
 
-- `ProbeLlmRequest`;
-- `ProbeLlmMessage`;
-- `ProbeLlmToolDefinition`;
-- `ProbeLlmToolChoice`;
-- `dispatchProbeLlmTool`;
+- `ProbeLlmRequest`.
+- `ProbeLlmMessage`.
+- `ProbeLlmToolDefinition`.
+- `ProbeLlmToolChoice`.
+- `dispatchProbeLlmTool`.
 - `ProbeLlmUsage`.
 
 It should not create a separate Qwen-only tool runtime. Tool planning should
@@ -280,34 +280,34 @@ Pylon should admit these two rows in the first pass:
 
 Implemented model-row gate:
 
-- `/v1/models` rows are decoded into observed public-safe model refs first;
+- `/v1/models` rows are decoded into observed public-safe model refs first.
 - a Qwen-looking row is not admitted unless it carries either a verified
-  artifact digest or a public-safe artifact/model manifest ref;
+  artifact digest or a public-safe artifact/model manifest ref.
 - the retained 0.8B digest
   `afb707b6b8fac6e475acc42bc8380fc0b8d2e0e4190be5a969fbf62fcc897db5`
-  admits `model.psionic.qwen35.0_8b.q8_0`;
+  admits `model.psionic.qwen35.0_8b.q8_0`.
 - 2B admission currently requires a public-safe manifest ref because this repo
-  does not yet carry a retained 2B digest authority;
+  does not yet carry a retained 2B digest authority.
 - path-like model IDs are hashed in doctor output and are not used as public
-  refs;
+  refs.
 - coding-agent selection prefers `model.psionic.qwen35.2b.q8_0` when both rows
-  are admitted;
+  are admitted.
 - 2B-required work is refused with
   `blocker.psionic_qwen35.model_2b_missing` when only 0.8B is admitted.
 
 Pylon should prefer the 2B row for coding-agent tasks when both are ready. It
 should use 0.8B for:
 
-- install smoke;
-- health and latency probes;
-- simple local answer tasks;
+- install smoke.
+- health and latency probes.
+- simple local answer tasks.
 - fallback when 2B is absent but local Qwen is still useful.
 
 It should refuse tasks that require the 2B row when only 0.8B is available:
 
-- multi-step coding-agent work;
-- paid inference tasks;
-- benchmark claims that name Hermes compatibility;
+- multi-step coding-agent work.
+- paid inference tasks.
+- benchmark claims that name Hermes compatibility.
 - launch copy that says Pylon has a high-quality local coding model.
 
 ## Capability Projection
@@ -316,28 +316,28 @@ It should refuse tasks that require the 2B row when only 0.8B is available:
 `blocker.backend.local_model_inventory_unproven`. Replace or refine it with
 Psionic-specific rows:
 
-- `backend.psionic.openai_server`;
-- `backend.psionic.qwen35`;
-- `model.psionic.qwen35.0_8b.q8_0`;
+- `backend.psionic.openai_server`.
+- `backend.psionic.qwen35`.
+- `model.psionic.qwen35.0_8b.q8_0`.
 - `model.psionic.qwen35.2b.q8_0`.
 
 Projected health should include only public-safe refs:
 
-- backend ready/configured/missing;
-- model refs;
-- supported endpoint refs;
-- model-cache state;
-- release identity ref, if a signed Psionic sidecar is used;
-- artifact digest refs, not local paths;
+- backend ready/configured/missing.
+- model refs.
+- supported endpoint refs.
+- model-cache state.
+- release identity ref, if a signed Psionic sidecar is used.
+- artifact digest refs, not local paths.
 - blocker refs.
 
 Projected health must not expose:
 
-- raw GGUF paths;
-- environment dumps;
-- bearer tokens;
-- provider secrets;
-- private network topology;
+- raw GGUF paths.
+- environment dumps.
+- bearer tokens.
+- provider secrets.
+- private network topology.
 - local benchmark transcripts.
 
 ## Tool-Call Integration
@@ -352,21 +352,21 @@ Hermes compatibility proof is retained there.
 Implemented surface:
 
 - `makePsionicQwenClient().complete(...)` accepts `ProbeLlmRequest` and
-  `ProbeLlmTools`;
-- lowers system/user/assistant/tool turns to OpenAI-compatible chat messages;
-- lowers `ProbeLlmToolDefinition` to OpenAI-compatible function tools;
-- maps `auto`, `none`, `required`, and named tool choices to `tool_choice`;
-- parses non-streaming `message.tool_calls`;
-- parses streaming `delta.tool_calls` with chunked argument assembly;
-- dispatches local tools through `dispatchProbeLlmTool`;
-- appends assistant tool-call turns and tool-result turns;
-- enforces a max model round-trip count;
+  `ProbeLlmTools`.
+- lowers system/user/assistant/tool turns to OpenAI-compatible chat messages.
+- lowers `ProbeLlmToolDefinition` to OpenAI-compatible function tools.
+- maps `auto`, `none`, `required`, and named tool choices to `tool_choice`.
+- parses non-streaming `message.tool_calls`.
+- parses streaming `delta.tool_calls` with chunked argument assembly.
+- dispatches local tools through `dispatchProbeLlmTool`.
+- appends assistant tool-call turns and tool-result turns.
+- enforces a max model round-trip count.
 - emits content-redacted transcript and tool-call receipts.
 
 Required behavior:
 
-- keep the chat/completions client attach-only;
-- keep prompts, local paths, model files, and provider secrets out of receipts;
+- keep the chat/completions client attach-only.
+- keep prompts, local paths, model files, and provider secrets out of receipts.
 - preserve provider-neutral request/tool/usage contracts so assignment routing
   can select Psionic without a Qwen-only tool runtime.
 
@@ -376,9 +376,9 @@ Use `/v1/responses` when Pylon needs response-state replay.
 
 Required behavior:
 
-- preserve `previous_response_id`;
-- preserve tool replay as `role = tool` with the tool name;
-- surface Psionic response-state refs in private receipts;
+- preserve `previous_response_id`.
+- preserve tool replay as `role = tool` with the tool name.
+- surface Psionic response-state refs in private receipts.
 - public projection should only carry redacted refs and status.
 
 The responses loop is not required for the first useful `chat.completions`
@@ -423,13 +423,13 @@ Paid inference is not part of the first pass.
 Implemented assignment/launch gate surface:
 
 - assignment leases may carry `psionicQwenRequirements` for
-  `workClass = local_inference`;
+  `workClass = local_inference`.
 - admission selects from admitted Psionic Qwen model refs and distinguishes
-  0.8B fallback from 2B-required work;
+  0.8B fallback from 2B-required work.
 - 2B-required work emits `blocker.psionic_qwen35.model_2b_missing` when only
-  0.8B is admitted;
-- no-spend closeouts attach only public Psionic backend/model/receipt refs;
-- launch copy may use bounded optional-local-inference language only;
+  0.8B is admitted.
+- no-spend closeouts attach only public Psionic backend/model/receipt refs.
+- launch copy may use bounded optional-local-inference language only.
 - Qwen training and paid Qwen inference remain blocked launch claims.
 
 ## Blocker Refs
@@ -455,7 +455,7 @@ Add specific blockers:
 
 - Add `psionic_qwen35` backend profile and registry entry.
 - Add env/config resolution:
-  - `PYLON_PSIONIC_BASE_URL`;
+  - `PYLON_PSIONIC_BASE_URL`.
   - `PROBE_PSIONIC_BASE_URL` as a compatibility alias.
 - Add `pylon backend psionic doctor`.
 - Add health/model-list client.
@@ -483,8 +483,8 @@ Add specific blockers:
   non-admitted evidence.
 - Implemented: 2B tool-loop case in the client test harness.
 - Implemented: model preference policy:
-  - prefer 2B for coding-agent mode;
-  - allow 0.8B for smoke/fallback/simple local tasks;
+  - prefer 2B for coding-agent mode.
+  - allow 0.8B for smoke/fallback/simple local tasks.
   - refuse 2B-required assignments when only 0.8B is present.
 - Implemented: launch gate copy allows "optional local Qwen inference backend"
   only after attach and smoke gates pass, and model advertisement still requires
@@ -537,12 +537,12 @@ Blocked until later gates:
 
 The first pass is done when:
 
-- `pylon backend psionic doctor --json` reports health and model rows;
-- `pylon inventory --json` shows safe Psionic backend/model refs;
-- a fake Psionic server test covers 0.8B and 2B model-list admission;
-- a fake Psionic server test covers required tool calls;
-- a fixture or local smoke proves 0.8B plain text generation;
-- a fixture or local smoke proves 2B required-tool and multi-turn tool loops;
+- `pylon backend psionic doctor --json` reports health and model rows.
+- `pylon inventory --json` shows safe Psionic backend/model refs.
+- a fake Psionic server test covers 0.8B and 2B model-list admission.
+- a fake Psionic server test covers required tool calls.
+- a fixture or local smoke proves 0.8B plain text generation.
+- a fixture or local smoke proves 2B required-tool and multi-turn tool loops.
 - docs and launch gates distinguish optional inference from training and paid
   work.
 

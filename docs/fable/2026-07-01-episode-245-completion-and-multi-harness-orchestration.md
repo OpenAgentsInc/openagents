@@ -9,7 +9,7 @@ minimal-change path that also moves toward orchestrating between multiple
 harnesses (Codex, Claude Code, Khala). It flips no promise state and broadens
 no public copy.
 Execution: the P0–P3 sequence in §3.3 is consolidated into the unified
-[`ROADMAP.md`](./ROADMAP.md); the full Claude chat-harness plan this doc
+[`ROADMAP.md`](./ROADMAP.md). The full Claude chat-harness plan this doc
 defers is `2026-07-01-claude-code-parity-and-codex-synergies.md`.
 
 ## 1. Where Episode 245 Stands
@@ -19,7 +19,7 @@ filed as issues and handed to Codex. The italic completion segment requires,
 on camera:
 
 1. Issues #7798–#7801 closed on `main`.
-2. Khala Code with the Fleet hotbar; a condensed sidebar fleet representation
+2. Khala Code with the Fleet hotbar. A condensed sidebar fleet representation
    (accounts, active workers, free slots, auth blockers) opening into the
    main Fleet panel.
 3. `Run delegate` showing the deterministic `khala.fleet.delegate` trace with
@@ -34,7 +34,7 @@ on camera:
 
 | Requirement | State | Evidence |
 | --- | --- | --- |
-| #7798, #7799, #7800, #7801 closed | DONE | `gh issue view` — all CLOSED; zero open issues repo-wide |
+| #7798, #7799, #7800, #7801 closed | DONE | `gh issue view` — all CLOSED. Zero open issues repo-wide |
 | `smoke:part2-ui` | PASS | Fresh run in a clean worktree: desktop + mobile, all three steps green, screenshots under `var/khala-code-desktop/part2-ui-recording-smoke` |
 | Deterministic delegate trace renders | DONE | The smoke's Fleet screenshot shows the full module list with `advertise_capacity: recovered` and `1/1 accepted` |
 | Gym proof pane renders | DONE | Gym screenshot shows `gated_proposal_ready`, `10000 bps`, `decisionGrade: false`, candidate/proposal refs, the Arbiter graph, and the caveat refs |
@@ -90,28 +90,28 @@ prompt working.
    hard blocker candidate.
 2. **The Gym "Optimize delegation policy" button is fixture-backed.** Both
    it and "Load demo proof" load the canned bridge proof
-   (`main.ts` → `loadGymDemoOptimization()`); no live Mutalisk run starts
+   (`main.ts` → `loadGymDemoOptimization()`). No live Mutalisk run starts
    from the UI. The italic script already describes this as the
    preview/proof path, so it is recordable as written — but say "preview"
    on camera, not "a live optimizer just ran".
 3. **The condensed sidebar fleet representation needs a look.** The italic
    asks for account/worker/slot/auth-blocker counts visible at the sidebar
    level before opening the Fleet panel. The hotbar + Fleet panel render in
-   the smoke; whether the condensed entry carries those counts was not
+   the smoke. Whether the condensed entry carries those counts was not
    verified in this audit. If it is icon-only today, that is a small,
    contained UI addition — not a blocker if the shot order becomes "click
    Fleet, read the top-of-panel summary".
 4. **Live `Run delegate` needs a live Pylon.** The Fleet panel's delegate
    runner is wired to the real backend (`codexFleetDelegateRun` →
-   `spawnCodexInstances` → real Pylon CLI); fixture mode needs no pins,
+   `spawnCodexInstances` → real Pylon CLI). Fixture mode needs no pins,
    real-work mode locally refuses until `repo`/`commit`/`verify` pins are
    present. For an on-camera accepted assignment ref, a live Pylon with a
    ready connected account must be up.
 
 ## 2. Advice: Complete The Episode With What Exists
 
-Minimal-change recommendation: **change nothing before recording; rehearse
-one live path; pick shots by what the rehearsal proves.**
+Minimal-change recommendation: **change nothing before recording. Rehearse
+one live path. Pick shots by what the rehearsal proves.**
 
 ### 2.1 Pre-recording rehearsal checklist (~30 minutes)
 
@@ -139,8 +139,8 @@ that is the strongest possible close (the exact prompt that failed at 4:12
 in the recorded half now succeeding through the deterministic program).
 
 If step 3 fails: the likely culprits, in order — the pinned Codex build
-rejecting `mcp_servers.*` config writes over app-server; the reload not
-picking up the server; the `bun` command path inside the MCP server spawn;
+rejecting `mcp_servers.*` config writes over app-server. The reload not
+picking up the server. The `bun` command path inside the MCP server spawn.
 or Pylon not live. The fail-soft blocker ref will say which. In that case
 record the italic segment exactly as scripted (Fleet panel `Run delegate` is
 real-backend and does not depend on the MCP bridge), and hold the casual
@@ -153,7 +153,7 @@ the panel demonstrates it.
 - The Gym pane: call it what it is — a preview-backed proof of the loop
   (`decisionGrade=false`, `gated_proposal_ready`, owner approval still
   required). The italic script already does this well.
-- Do not claim live GEPA optimization ran from the button; it loads the
+- Do not claim live GEPA optimization ran from the button. It loads the
   public-safe fixture proof.
 - The accepted assignment ref on screen should come from a real fixture
   delegate run (no-spend closeout), which the panel supports today.
@@ -204,24 +204,24 @@ The real deltas to Codex parity, ranked by whether the dropdown needs them:
 
 Needed for a credible "delegate to Claude Code" option:
 
-1. **Connect UX** — `khala fleet connect` is Codex-device-auth only; Claude
+1. **Connect UX** — `khala fleet connect` is Codex-device-auth only. Claude
    accounts are hand-assembled. A `khala fleet connect --harness claude`
    path (wrapping `claude setup-token` into an isolated home) is the
    biggest UX gap.
 2. **Fleet tooling is Codex-named** — the desktop ships
-   `khala-codex-fleet-tools.ts` only; `khala-burndown.ts` hard-codes
-   `codex_agent_task`; the deterministic program's precondition/blocker
+   `khala-codex-fleet-tools.ts` only. `khala-burndown.ts` hard-codes
+   `codex_agent_task`. The deterministic program's precondition/blocker
    vocabulary is Codex-specific (`advertised_codex_capacity`,
    `no_available_codex_capacity`).
 
 Deferrable (bounded lane is fine without them):
 
 3. Execution posture — Claude delegated runs are bounded-workspace
-   deny-by-default; only Codex has the owner-local full-access posture.
-4. No PR publisher analogue; local-verification closeouts only.
+   deny-by-default. Only Codex has the owner-local full-access posture.
+4. No PR publisher analogue. Local-verification closeouts only.
 5. Observability — no raw-event chunks and no ATIF trace ingest yet. The
    bounded Pylon-Claude lane does emit an exact assignment-turn token row to
-   `/api/pylon/claude/turns`; closeout now exposes whether that row was
+   `/api/pylon/claude/turns`. Closeout now exposes whether that row was
    reported, missing, unconfigured, or failed to post.
 
 **T9.7 landing note (2026-07-02):** the desktop-fleet slice of Claude closeout
@@ -232,7 +232,7 @@ such as `result.public.pylon.claude_agent_task.token_usage_reported` plus typed
 blockers for `token_usage_missing`, `token_usage_report_failed`, and
 `token_usage_reporter_unconfigured`. The CI smoke now requires the reporter
 route. The posture decision is intentionally conservative: public/fleet Claude
-assignments do not use `bypassPermissions`; PR publishing and raw-event/ATIF
+assignments do not use `bypassPermissions`. PR publishing and raw-event/ATIF
 ingest remain deferred until Claude workers graduate from bounded
 local-verification work to PR delivery.
 
@@ -266,7 +266,7 @@ refs, and dispatch gate all exist:
   harness is safe: control flow stays code, only the account pool and
   workflow id vary.
 - `auto` = Khala smart routing. The server already has the seams
-  (`coding-workflow-classifier.ts`, `autopilot-work-adapter-selection.ts`);
+  (`coding-workflow-classifier.ts`, `autopilot-work-adapter-selection.ts`).
   `auto` initially can be a trivial local rule (prefer the kind with free
   advertised slots), then graduate to the server classifier, then become a
   GEPA-optimizable *parameter* of the delegation program — never its
@@ -282,9 +282,9 @@ refs, and dispatch gate all exist:
   modules or self-promote at runtime.
 
 This gives the owner's dropdown its full meaning without inverting the
-pivot: **the chat harness stays a wrapper decision (Axis A); "or whomever
+pivot: **the chat harness stays a wrapper decision (Axis A). "Or whomever
 else" is a delegation decision (Axis B).** A Codex-mode chat can spawn
-Claude workers; a Khala-mode chat can spawn Codex workers; nothing about
+Claude workers. A Khala-mode chat can spawn Codex workers. Nothing about
 the parity contract changes.
 
 ### 3.3 Minimal-change sequence
@@ -299,9 +299,9 @@ the parity contract changes.
   are missing (§1.3.3).
 - **P2 (this week): the Axis B target.** `workerKind` through
   `codex_spawn`/`khala.fleet.delegate`/the Fleet delegate form with
-  `codex | claude`; `khala fleet connect --harness claude`; de-Codex-name
+  `codex | claude`. `khala fleet connect --harness claude`. De-Codex-name
   the shared fleet tooling (`khala-codex-fleet-tools.ts` →
-  fleet-tools with a kind parameter; fix the `khala-burndown.ts`
+  fleet-tools with a kind parameter. Fix the `khala-burndown.ts`
   hard-coding). The Claude executor and server rails need no changes for
   bounded fixture/checkout work. This is the same work item as Lane B4 of
   `2026-07-01-fleet-fanout-coding-instructions.md` — implement it once,
@@ -309,7 +309,7 @@ the parity contract changes.
 - **P3 (partly landed in T9.3): `auto` and Khala-as-router.** Local
   free-slot rule → server classifier → GEPA-optimized routing parameters,
   admission-gated through the same Gym path the episode demos. The
-  classifier-biased parameter layer is in; broader Khala-as-router and
+  classifier-biased parameter layer is in. Broader Khala-as-router and
   deferrable Claude gaps (full-access posture decision, PR publisher,
   ATIF/per-turn rows) remain for when Claude workers graduate from
   analysis/bounded work to PR delivery.
@@ -326,18 +326,18 @@ advisory contract, not as merge or dispatch authority.
 
 ### 3.4 Invariants to keep while doing this
 
-- Isolated worker homes for every harness; never touch `~/.codex` or the
+- Isolated worker homes for every harness. Never touch `~/.codex` or the
   owner's live `~/.claude` session from connect flows.
 - The MCP approval prompt stays at the Codex tool boundary for
   message-triggered delegation.
-- The Codex parity contract stays scoped to the Codex chat harness; a
+- The Codex parity contract stays scoped to the Codex chat harness. A
   harness toggle must not smuggle the legacy runtime back in as a silent
   fallback (today's explicit-flag + banner behavior is right — the toggle
   should keep the visible labeling).
 - Exact-only token accounting per lane (`pylon-codex-own-capacity` /
-  `pylon-claude-own-capacity`); counters remain projections.
+  `pylon-claude-own-capacity`). Counters remain projections.
 - Optimizer candidates (including future routing parameters) never
-  auto-promote; Action Submission + owner approval always gate admission.
+  auto-promote. Action Submission + owner approval always gate admission.
 
 ## 4. Bottom Line
 

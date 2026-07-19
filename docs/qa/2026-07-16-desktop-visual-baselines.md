@@ -29,13 +29,13 @@ Its machine-readable invocation and receipt contract is checked in at
 `docs/qa/swarm/desktop-visual-lane.json`. Success is exit code 0 plus the
 `[openagents-desktop visual-baseline] gate OK ` line whose JSON payload has
 schema `openagents.qa.desktop-visual-lane.v1` and `lane: "desktop"`. QA-1 may
-embed that payload unchanged in its dated findings report; it must not infer
+embed that payload unchanged in its dated findings report. It must not infer
 success from screenshots or build output alone.
 
 On drift the gate prints a `gate FAILED — pixel drift` line naming the scratch
 directory holding side-by-side review artifacts
 (`<state>.side-by-side.png` = baseline | current | drift mask, plus
-`<state>.current.png`). Review the artifacts; if the drift is intended, land
+`<state>.current.png`). Review the artifacts. If the drift is intended, land
 the change together with a `--update-baselines` refresh so the review diff
 shows the new pixels.
 
@@ -65,7 +65,7 @@ animations and caret disabled, clock frozen to the fixture instant):
 
 Baselines live in `apps/openagents-desktop/visual-baselines/` (PNG per state +
 `manifest.json` with sha256, dimensions, capture geometry, and thresholds).
-Baselines are platform-pinned (`darwin-arm64`); the gate refuses to compare
+Baselines are platform-pinned (`darwin-arm64`). The gate refuses to compare
 across platforms.
 
 ## How it works

@@ -81,7 +81,7 @@ architecture and execution plans. They are not public benchmark claims.
 ## Current Decisions
 
 - `plan.md` is now the issue-creation and execution-order source of truth.
-  The older audits explain rationale and boundaries; they do not supersede
+  The older audits explain rationale and boundaries. They do not supersede
   the ordered cross-repo issue series in `plan.md`.
 - The benchmark apparatus should be public OpenAgents infrastructure.
 - The private `cloud` repo is source material and backfill, not the desired
@@ -181,18 +181,18 @@ optimizer-accepted evidence.
 
 Every claim should name:
 
-- dataset and version;
-- split;
-- task selector;
-- agent slug;
-- model/backend;
-- Probe commit;
-- candidate hash;
-- retry and timeout policy;
-- verifier or scorer result;
-- cost and duration;
-- artifact availability;
-- redaction state;
+- dataset and version.
+- split.
+- task selector.
+- agent slug.
+- model/backend.
+- Probe commit.
+- candidate hash.
+- retry and timeout policy.
+- verifier or scorer result.
+- cost and duration.
+- artifact availability.
+- redaction state.
 - whether the evidence is retained, validation, frozen holdout, or live public
   claim evidence.
 

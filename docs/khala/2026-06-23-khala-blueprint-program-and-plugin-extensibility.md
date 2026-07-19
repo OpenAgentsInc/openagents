@@ -57,7 +57,7 @@ surface:
   is the Action Submission repository: proposals reference evidence refs
   (including StudyBench closeout refs) and carry evidence-only authority — no
   direct execution, mutation, or payout flags. This preserves the historical
-  Blueprint invariant that "Program Runs are decision evidence; they do not
+  Blueprint invariant that "Program Runs are decision evidence. They do not
   authorize writes."
 - **The optimizer (GEPA).** GEPA-class reflective prompt/program optimization
   is the offline improvement loop. The bounded scheduled runner contract is
@@ -68,7 +68,7 @@ surface:
   claim-level failures
   ([`../research/machine-studying/2026-06-17-openagents-studybench-mvp-issue-roadmap.md`](../research/machine-studying/2026-06-17-openagents-studybench-mvp-issue-roadmap.md)).
   (Historical naming note: earlier drafts referred to a `probe.li_candidate.v1`
-  / `psionic.probe_li_candidate_manifest.v1` lane; the surface that exists
+  / `psionic.probe_li_candidate_manifest.v1` lane. The surface that exists
   today is the GEPA candidate manifest above.)
 - **The learned coordinator (Khala's composition brain).** TRINITY (a tiny
   head over a frozen LM's hidden state, trained by separable CMA-ES against a
@@ -80,7 +80,7 @@ surface:
   and the M6/M7 lanes in
   [`khala-buildout-roadmap.md`](khala-buildout-roadmap.md). Psionic already
   has the verify/govern half (candidate/shadow contract, module-eval receipts,
-  promotion gates); the coordinator rides that machinery unchanged.
+  promotion gates). The coordinator rides that machinery unchanged.
 
 ### Why these are one system, not three
 
@@ -91,12 +91,12 @@ surfaces map cleanly:
 
 | DSPy / Blueprint concept | Khala surface (this repo) |
 |---|---|
-| Signature (typed I/O contract) | `signature-lookup.ts` selection; `program_signature` contributions |
-| Module version (swappable impl) | a route/role choice + prompt/policy the coordinator selects; Psionic candidate artifacts |
-| Optimizer (improve against a metric) | GEPA candidate feedback (`psionic.probe_gepa_candidate_manifest.v1`); TRINITY sep-CMA-ES; Conductor GRPO |
+| Signature (typed I/O contract) | `signature-lookup.ts` selection. `program_signature` contributions |
+| Module version (swappable impl) | a route/role choice + prompt/policy the coordinator selects. Psionic candidate artifacts |
+| Optimizer (improve against a metric) | GEPA candidate feedback (`psionic.probe_gepa_candidate_manifest.v1`). TRINITY sep-CMA-ES. Conductor GRPO |
 | Metric / terminal reward | the **executed verifier verdict** + acceptance receipt (e.g. the khala-code crossy-road rubric, `test_passed`) |
 | Decision evidence (no writes) | Program Run / Action Submission evidence-only authority |
-| Promotion gate | Psionic promoted/candidate + shadow governance; cost-per-accepted-outcome |
+| Promotion gate | Psionic promoted/candidate + shadow governance. Cost-per-accepted-outcome |
 
 The thesis: a Khala request is (FUTURE, fully) a **typed Blueprint program
 call** — a signature selects a composed module (plan/write/verify), GEPA tunes
@@ -114,17 +114,17 @@ becomes "compose to win the benchmark" rather than "route to one model."
 ## 2. Blueprint extensibility via the Tassadar plugin marketplace
 
 Read [`../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md`](../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md)
-in full for the lineage; the short version is that OpenAgents has built "a
+in full for the lineage. The short version is that OpenAgents has built "a
 marketplace where independently authored units of machine capability are
 listed, discovered, composed into agents, metered per use, and paid for in
 Bitcoin, with revenue flowing automatically to everyone whose component did
-work" twice (the 2024 agent store; Blueprint signatures) and is building the
+work" twice (the 2024 agent store, Blueprint signatures) and is building the
 verifiable third generation (Tassadar digest-pinned modules whose execution is
 its own receipt).
 
 The direction for Khala: the Blueprint/program layer is the natural **host**
 for that extensibility. Independently authored capability units —
-starter-plugin-class deterministic units today; (FUTURE) Tier-E
+starter-plugin-class deterministic units today. (FUTURE) Tier-E
 conformance-tested compiled modules — become **module versions behind Khala
 program signatures**. They are:
 
@@ -139,7 +139,7 @@ program signatures**. They are:
 - **(FUTURE) Paid in Bitcoin with a revenue split** to component authors —
   the audit's "the trace itself decomposes who computed what," reviving the
   2024 store's 60/20/20 split *grounded on evidence* rather than asserted by
-  bookkeeping. This is gated on a real settlement loop and owner arming; today
+  bookkeeping. This is gated on a real settlement loop and owner arming. Today
   payment work is Bitcoin/Spark-only and deliberately bounded
   ([`khala-buildout-roadmap.md`](khala-buildout-roadmap.md)).
 
@@ -159,17 +159,17 @@ the first": the sequencing is window → factory → conformance-tested module
 library behind ABI tokens → *only then* listing/discovery/settlement surfaces.
 Any proposal to build marketplace/listing UI ahead of a conformance-tested
 module library is the 2024 mistake attempting a comeback. Tier-S (learned)
-goods may never borrow Tassadar's exactness vocabulary; Tier-N (effectful)
+goods may never borrow Tassadar's exactness vocabulary. Tier-N (effectful)
 goods inherit the full Blueprint governance (Source Authority, Action
 Submission, approval, receipts).
 
 ## 3. Current vs Future (honest split)
 
-| Capability | Today (exists) | FUTURE (direction; gated) |
+| Capability | Today (exists) | FUTURE (direction, gated) |
 |---|---|---|
 | Typed signature layer | `signature-lookup.ts` selection, `program_signature` / `signature_contribution` kinds, evidence-only Action Submissions | Khala request fully expressed as a typed Blueprint program call (signature → composed module → executed reward) |
-| Optimizer | bounded GEPA status-projection runner (no train/promote authority); StudyBench → `psionic.probe_gepa_candidate_manifest.v1` candidate feedback | GEPA-optimized Khala prompts/policies promoted on cost-per-accepted-outcome, behind release gates |
-| Learned coordinator | Psionic verify/govern half (candidate/shadow contract, module-eval receipts, promotion gates); M6/M7 scaffold + primitives P1–P5 roadmap | TRINITY router shadow→promoted; M7 Conductor composing plan/write/verify to win the head-to-head |
+| Optimizer | bounded GEPA status-projection runner (no train/promote authority). StudyBench → `psionic.probe_gepa_candidate_manifest.v1` candidate feedback | GEPA-optimized Khala prompts/policies promoted on cost-per-accepted-outcome, behind release gates |
+| Learned coordinator | Psionic verify/govern half (candidate/shadow contract, module-eval receipts, promotion gates). M6/M7 scaffold + primitives P1–P5 roadmap | TRINITY router shadow→promoted. M7 Conductor composing plan/write/verify to win the head-to-head |
 | Capability units / plugins | starter plugin catalog: 6 cataloged deterministic plugins, typed `StarterPluginRegistration`, no-marketplace boundary | conformance-tested Tier-E compiled modules behind ABI tokens, composed into Khala programs |
 | Discovery | semantic signature lookup (typed selectors) | open-protocol listing/discovery adapter (SKL / NIP-DS class), owner-gated, post-module-library |
 | Metering | `metering-hook.ts`, `openagents` receipt block, Bitcoin/Spark payout path (bounded test) | per-trace revenue *decomposition* → automatic split to component authors |
@@ -178,11 +178,11 @@ Submission, approval, receipts).
 ## Pointers
 
 - [`khala-buildout-roadmap.md`](khala-buildout-roadmap.md) — the sequenced
-  M0–M8 buildout; M6 (learned coordinator) and M7 (Conductor) are the
+  M0–M8 buildout. M6 (learned coordinator) and M7 (Conductor) are the
   composition layer this direction depends on.
 - [`inference-engineering-book/khala-investigation-notes.md`](../inference/inference-engineering-book/khala-investigation-notes.md)
   and [`inference-engineering-book/README.md`](../inference/inference-engineering-book/README.md)
-  — "Khala is an inference platform + control plane"; reward inputs must
+  — "Khala is an inference platform + control plane". Reward inputs must
   reflect accepted outcome per sat and per second.
 - [`../sakana/psionic-coordinator-roadmap.md`](../sakana/psionic-coordinator-roadmap.md),
   [`../sakana/conductor-2512.04388v5.md`](../sakana/conductor-2512.04388v5.md),

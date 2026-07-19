@@ -3,7 +3,7 @@
 - Schema: `sarah-take-scoreboard.v1`
 - Take: `sarah-reply-v1` (2026-07-09)
 - Refs: #8610, #8611, #8618
-- **Advance: NO** — Agent frame-QA GO on identity/sync (zero jitter, invisible seam); audio FAIL ('AI' as 'eye', 'coding' slur, -0.2 dBFS peak). Superseded by hq.
+- **Advance: NO** — Agent frame-QA GO on identity/sync (zero jitter, invisible seam). Audio FAIL ('AI' as 'eye', 'coding' slur, -0.2 dBFS peak). Superseded by hq.
 
 ## Input refs
 
@@ -15,7 +15,7 @@
 | Model: musetalk | 1.5 (256^2 mouth inpaint, fp16, batch 20) |
 | Model: cosyvoice | CosyVoice2-0.5B zero-shot (no text normalizer yet) |
 | Model: encode | libx264 ~1.0 Mbps |
-| Recipe | raw MuseTalk paste-back, no enhancement; pre-normalizer audio |
+| Recipe | raw MuseTalk paste-back, no enhancement. Pre-normalizer audio |
 | Artifact | gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_oav1_reply.mp4 |
 | Artifact | gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply.wav |
 | Artifact | gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/qa/ |
@@ -24,10 +24,10 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| STT round-trip (whole-clip, dual independent transcription) | FAIL | 'AI' rendered as 'eye'; 'coding agents' slurred to 'Cody's agents' (heard identically by both passes) |
+| STT round-trip (whole-clip, dual independent transcription) | FAIL | 'AI' rendered as 'eye'. 'Coding agents' slurred to 'Cody's agents' (heard identically by both passes) |
 | Loudness / true peak | — / -0.2 dBTP | target ≈ -16 LUFS / ≤ -3 dBTP |
-| Pause timing | WATCH | inter-sentence pauses slightly compressed/robotic (one continuous 371-char take); peak -0.2 dBFS near clipping, mean -18.5 dB — loudnorm added in hq |
-| Prosody (human verdict) | WATCH | energetic, clearly the reference voice; pacing slightly robotic between sentences (rated 8/10); no LLM judge yet in this era |
+| Pause timing | WATCH | inter-sentence pauses slightly compressed/robotic (one continuous 371-char take). Peak -0.2 dBFS near clipping, mean -18.5 dB — loudnorm added in hq |
+| Prosody (human verdict) | WATCH | energetic, clearly the reference voice. Pacing slightly robotic between sentences (rated 8/10). No LLM judge yet in this era |
 | Prosody (LLM judge) | not run | — |
 | Initialism risk | — | no spoken-form normalizer yet — 'AI' spoken as 'eye' |
 
@@ -35,10 +35,10 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| **Owner playback verdict** | PENDING | no explicit owner in-motion verdict recorded; QA1 GO was agent frame inspection; superseded by the hq/enhanced/v3 ladder |
+| **Owner playback verdict** | PENDING | no explicit owner in-motion verdict recorded. QA1 GO was agent frame inspection. Superseded by the hq/enhanced/v3 ladder |
 | A/V sync (start / middle / end) | PASS / PASS / PASS | mouth state tracks speech onset/offset across sampled boundaries (QA1) |
-| Crop sharpness | WATCH | mouth soft/mushy: ~1.0 Mbps encode softness on top of the MuseTalk 256^2 ceiling; teeth a soft bright band at 2x zoom |
-| Temporal boil/flicker | PASS | zero single-frame jitter in consecutive-frame bursts (7.0 s burst; t=5 s and t=12 s tiles) |
+| Crop sharpness | WATCH | mouth soft/mushy: ~1.0 Mbps encode softness on top of the MuseTalk 256^2 ceiling. Teeth a soft bright band at 2x zoom |
+| Temporal boil/flicker | PASS | zero single-frame jitter in consecutive-frame bursts (7.0 s burst, t=5 s and t=12 s tiles) |
 | Chunk-boundary jerk | PASS | — |
 | Identity drift | PASS | pixel-identical to source outside the mouth crop (paste-back architecture) |
 | Paste-back seam | PASS | no seam line, color shift, or chin discontinuity at any sampled timestamp incl. tilted head at t=18 s |
@@ -60,7 +60,7 @@ Bad-frame exclusions:
 | --- | --- |
 | Render wall | 119 s |
 | GPU | GCE g2-standard-8, 1x NVIDIA L4 24 GB (us-central1-b) |
-| Cost estimate | $6 (full OAV-1 session ~7 h wall (~1.5 h busy) incl. env setup and two monitor-stall gaps; this render itself 119 s) |
+| Cost estimate | $6 (full OAV-1 session ~7 h wall (~1.5 h busy) incl. env setup and two monitor-stall gaps, this render itself 119 s) |
 | Artifact existence (object_exists) | PASS — monitors rewritten to artifact existence after two log-marker stall incidents (OAV-1 receipt §6.1) |
 | Host disposition | left_running (staged for OAV-2/OAV-3 (host later became prod_render_node after the 2026-07-09 /sarah flip)) |
 | GCS index updated | yes |

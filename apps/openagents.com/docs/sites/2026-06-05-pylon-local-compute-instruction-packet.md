@@ -118,9 +118,9 @@ explicitly ask for the native Windows experimental path.
 
 Current native Windows caveat:
 
-- the launcher source maps `win32` to Windows;
-- docs describe a `pylon-v<version>-windows-x86_64.zip` asset shape; and
-- tests cover Windows archive naming and `.exe` paths;
+- the launcher source maps `win32` to Windows.
+- docs describe a `pylon-v<version>-windows-x86_64.zip` asset shape. And
+- tests cover Windows archive naming and `.exe` paths.
 - but no current native Windows release asset or retained native Windows smoke
   was observed in the readiness audit.
 

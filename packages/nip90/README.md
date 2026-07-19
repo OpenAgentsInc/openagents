@@ -37,7 +37,7 @@ This package covers protocol-only behavior:
   acceptance feedback on `7000`, and decode-time rejection of raw prompts,
   private paths, credentials, and payment material
 - NIP-LBR provider-bond feedback on `7000`: `provider_bond`, `bond_release`,
-  and `bond_forfeit` variants carry only public refs and integer msat amounts;
+  and `bond_forfeit` variants carry only public refs and integer msat amounts.
   release/forfeit terminal outcomes are XOR and remain protocol-only
 - NIP-DS dataset listing kind `30404`
 - NIP-DS dataset offer kind `30406`
@@ -60,7 +60,7 @@ This package covers protocol-only behavior:
   canonical projection of the public-safe refs. `verifyLbrLaborCloseoutDigest`
   re-derives the digest and `receiptRef` so any reader can confirm the receipt
   dereferences the exact lifecycle that produced it. This is the labor market's
-  dereferenceable-receipt rung; it moves no sats and grants no settlement
+  dereferenceable-receipt rung. It moves no sats and grants no settlement
   authority. If a `bond_release` or `bond_forfeit` event is supplied, its
   terminal bond outcome is included in the canonical digest.
 

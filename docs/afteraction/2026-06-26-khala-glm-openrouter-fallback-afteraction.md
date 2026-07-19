@@ -1,7 +1,7 @@
 # 2026-06-26 Khala GLM / OpenRouter Fallback After-Action
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## Status
@@ -64,7 +64,7 @@ Gemini, or Fireworks.
 
 - Pinned the OpenRouter Khala fallback upstream model in code to
   `openrouter/free`.
-- Armed OpenRouter from `OPENROUTER_API_KEY` presence only; the legacy model env
+- Armed OpenRouter from `OPENROUTER_API_KEY` presence only. The legacy model env
   is ignored by registration.
 - Split Khala routing so conversational turns prioritize fast lanes
   (`Gemini -> Fireworks -> GLM -> OpenRouter`) while agent/tool turns prioritize

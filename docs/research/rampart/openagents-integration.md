@@ -1,7 +1,7 @@
 # OpenAgents Integration Notes
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Rampart fits best as an owner-local privacy prefilter, not as an authority
@@ -126,7 +126,7 @@ after Rampart for values outside Rampart's taxonomy:
 - Local filesystem paths when traces can cross a public/private boundary.
 - Internal assignment refs or owner-only IDs if a surface is public.
 
-Keep those recognizers centralized and typed; do not scatter one-off regexes
+Keep those recognizers centralized and typed. Do not scatter one-off regexes
 through feature code.
 
 ## Implemented Wrapper
@@ -167,7 +167,7 @@ note or package lock:
 - Device backend policy, including WebGPU fallback behavior.
 - Keep-label policy.
 
-The researched package was `@nationaldesignstudio/rampart@0.1.2`; the observed
+The researched package was `@nationaldesignstudio/rampart@0.1.2`. The observed
 Hugging Face revision was `bc423a63513f9ee88a1fc27ad0711ea741431351`.
 
 ## Acceptance Checklist

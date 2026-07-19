@@ -3,7 +3,7 @@
 - Updated: 2026-07-10
 - Destination: `apps/openagents-mobile` on Expo, React Native, SwiftUI Liquid
   Glass, and Effect Native
-- Program authority: Sol roadmap rev-24; mobile is a purpose-built fleet
+- Program authority: Sol roadmap rev-24. Mobile is a purpose-built fleet
   supervision and continuity client, never a miniature desktop workbench
 
 ## Current truthful baseline
@@ -14,7 +14,7 @@
 | Real response/error | Public generic Khala stream with typed failure state | Landed baseline | No canned assistant reply |
 | New chat | Clear the current in-memory Khala transcript | Landed baseline | Does not mint a fictional session or durable reference |
 | Minimal composer | One real SwiftUI Liquid Glass composer | Build 116 correction | No duplicate Effect Native composer in the transcript |
-| Official typed icon names | Shared Effect Native icon catalog | Landed | Native shell uses SF Symbols; renderer remains typed |
+| Official typed icon names | Shared Effect Native icon catalog | Landed | Native shell uses SF Symbols. Renderer remains typed |
 | Cross-device conversations | Khala Sync projection | Not started in mobile | Local state never claims to be authority |
 | Fleet supervision | Activity, attention, control, receipts, handoff | Not started in mobile | Requires authoritative Sync/Fleet contracts |
 | Desktop editor/terminal | No mobile equivalent | Deliberately absent | Mobile does not pretend to be a coding workbench |

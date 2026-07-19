@@ -1,7 +1,7 @@
 # P6/P7 (#4782 / #4783) — Remaining-Work Map
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -34,7 +34,7 @@ public receipts.
   `evaluateProviderAvailability` refuses market work when
   `ownedQueueDepth !== 0` (own work preempts). The worker gate
   `apps/openagents.com/workers/api/src/market-provider-policy.ts`
-  `evaluateMarketProviderMode` is default-off; turn it on with the documented
+  `evaluateMarketProviderMode` is default-off. Turn it on with the documented
   owner defaults (consent ref, pricing policy ref, earnings-visibility ref,
   `ownWorkPreemption=true`, `maxJobSats=25000`, `minQuoteSats=1000`,
   `settlementBridgeReady=true` — P4 #4780 is CLOSED). A focused test asserting
@@ -68,9 +68,9 @@ public-tier floor enforced server-side, paid in USD credits → P4 USD→sats br
   (`market-provider-policy.ts`, `pylon-bitcoin-accounting-receipts.ts`).
 - **What to wire:** Lane C as a placement fallback tier in the work-order
   placement policy (own Pylon → SHC → market), with the **public-tier floor
-  enforced server-side** (only `public`-tier repos may leave first-party lanes);
-  customer opt-in + per-order budget ceiling; funding via the P4 USD→sats bridge;
-  validator-pass-before-release; delivery through the same artifact layer so a
+  enforced server-side** (only `public`-tier repos may leave first-party lanes).
+  customer opt-in + per-order budget ceiling. Funding via the P4 USD→sats bridge.
+  validator-pass-before-release. Delivery through the same artifact layer so a
   market-fulfilled order looks identical to a first-party one.
 - **Live proof:** submit a public-tier Autopilot work order with owned capacity
   forced dark + customer opt-in → it fans out to the market → the provider Pylon
@@ -92,7 +92,7 @@ genuine blocker for both #4782 and #4783's live proofs:
   token (Raynor) authenticates as an agent but has **no customer-order grant**,
   so every submit returns **401 unauthorized** (verified by direct probe).
 - #4782's owner-job leg needs a *real* owner Autopilot work order dispatched to
-  the provider node; #4783's leg needs a *real* product order. Both require that
+  the provider node. #4783'S leg needs a *real* product order. Both require that
   customer-order-granted credential. It cannot be faked (and the run mandate
   says not to fake the owner-job receipt).
 
@@ -138,7 +138,7 @@ The owner authorized provisioning the credential. Done + verified:
 slice). This is the same whole-repo-verification problem already fixed for codex
 labor (network-denied, self-contained slice). The clean path is the
 self-contained runtime gate (`executeRuntimeGate` sum-fixture) or a scoped
-verification command; routing the assignment there yields a clean `accepted`
+verification command. Routing the assignment there yields a clean `accepted`
 closeout. Once an owner job closes clean, #4782 = that owner job + a same-day
 market job (`drive-labor-chain.ts`, already proven via #4966) + preemption
 (`evaluateProviderAvailability`) + earnings, all on `pylon.5e0fbea1`.

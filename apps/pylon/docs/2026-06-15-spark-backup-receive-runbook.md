@@ -11,7 +11,7 @@ scoped product promise
 `payments.offline_receive_spark_fallback.v1`
 
 from blocked to green. The receive/claim/visible-backup-balance path is now
-green; the consolidation follow-up (#5169) adds the consented Spark-to-MDK
+green. The consolidation follow-up (#5169) adds the consented Spark-to-MDK
 sweep described in Step 4.
 
 Read alongside:
@@ -25,7 +25,7 @@ Read alongside:
 After #5177, #5178, and #5181, Spark is now the primary agent wallet balance
 and the preferred agent readiness destination. The backup-receive commands below
 still describe the safe receive/claim path, but MDK is no longer the primary
-agent-balance rail; it remains a checkout/treasury and explicit legacy
+agent-balance rail. It remains a checkout/treasury and explicit legacy
 consolidation rail.
 
 - Spark receive remains public-safe and opt-in for target publication. Spark
@@ -47,7 +47,7 @@ consolidation rail.
 - config: `<pylon-home>/wallet/spark-backup/config.json`
 - SDK storage: `<pylon-home>/wallet/spark-backup/sdk/`
 - cached local target: `<pylon-home>/wallet/spark-backup/receive-target.json`
-  (mode `0600`; holds raw wallet-operable receive material)
+  (mode `0600`, holds raw wallet-operable receive material)
 - reconciliation ledger: existing Pylon ledger events
   (`backup-receive-selected`, `spark-backup-reconcile-swept`)
 
@@ -66,7 +66,7 @@ sources, or the shell that launches Pylon). Do NOT commit it, do NOT paste it
 into issues, logs, the Forum, or any public projection. A real key value is
 intentionally NOT recorded in this runbook.
 
-The Spark network defaults to `mainnet`; set `PYLON_SPARK_BACKUP_NETWORK=regtest`
+The Spark network defaults to `mainnet`. Set `PYLON_SPARK_BACKUP_NETWORK=regtest`
 for a regtest test wallet.
 
 **A manual key is NOT required (#5078):** an embedded, owner-authorized default
@@ -89,7 +89,7 @@ disabled regardless of any key.
 
 The wallet seed is the node's existing local identity mnemonic
 (`<pylon-home>/identity.mnemonic`). It is read only to seed the SDK closure
-in-process; it is never returned, logged, or emitted.
+in-process. It is never returned, logged, or emitted.
 
 ## Step 3 — offline-recipient receive smoke
 
@@ -106,7 +106,7 @@ redacted refs.
    The `unifiedBalance` block shows `mdkSpendableSats`,
    `sparkBackupCreditedSats`, `sparkBackupClaimableSats`,
    `sparkBackupPendingSweepSats`, and `totalVisibleSats`. The total is visible
-   value, not one spendable MDK balance; Spark backup sats remain non-MDK-
+   value, not one spendable MDK balance. Spark backup sats remain non-MDK-
    spendable until a later consented sweep records a reconcile receipt.
 
 1. Confirm enablement and helper readiness (no funds, no movement):
@@ -147,7 +147,7 @@ redacted refs.
    watch the funds move through detected / pending / credited. `backup-status`
    surfaces the next local reconcile action (`recommendSparkSweep`): pending
    `waitingForPreimage` HTLCs report `claim-pending` and
-   `action.wallet.spark_backup.run_backup_claim`; once a balance is credited it
+   `action.wallet.spark_backup.run_backup_claim`. Once a balance is credited it
    reports `sweep-to-mdk-recommended` and
    `action.wallet.spark_backup.run_migrate_spark_with_consent`.
 
@@ -190,7 +190,7 @@ backup funds into its OWN MDK wallet.
    MDK-spendable yet.
 
    Without `--destination-ready` the sweep refuses with
-   `state: "sweep-failed"` and `blocker.wallet.spark_backup.mdk_destination_not_ready`;
+   `state: "sweep-failed"` and `blocker.wallet.spark_backup.mdk_destination_not_ready`.
    funds stay untouched. Settlement is NEVER marked as completed on a failed or
    unconsented sweep.
 
@@ -226,14 +226,14 @@ explicit `--show-local-target` local terminal print):
 - raw helper stdout/stderr
 
 `assertPublicProjectionSafe` enforces this on every projection and ledger
-record; the wallet tests assert raw Spark material is rejected.
+record. The wallet tests assert raw Spark material is rejected.
 
 ## Receive-only boundary (non-negotiable)
 
 - No Spark send to third parties. The only fund movement is the consented
   sweep of the node's OWN received funds into its OWN MDK wallet.
-- `PayoutTargetKind` does not gain `spark_address`; `admitPayoutTarget` is
-  unchanged; there is no public payout-target authority for Spark.
+- `PayoutTargetKind` does not gain `spark_address`. `admitPayoutTarget` is
+  unchanged. There is no public payout-target authority for Spark.
 - Funds remain non-settled until Spark sync plus the consented reconcile.
 
 ## Live integration smoke

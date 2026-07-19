@@ -1,12 +1,12 @@
 # Autopilot & Pylon v1.0-rc — tester install guide
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-15. Audience: invited testers. These are **release candidates**
 (`1.0.0-rc.2`, RC/canary channel only — not the public stable release). Both
-ship **default-on auto-update**, so once you're on an RC you'll get newer RCs
+ship **default-on auto-update**, so once you are on an RC you'll get newer RCs
 automatically.
 
 There are two ways to participate. Most testers want **Autopilot Desktop** (the
@@ -35,7 +35,7 @@ so Gatekeeper opens it normally (no right-click-open workaround needed).
 5. Auto-update is **on by default** (checks at launch + every 6h). To opt out,
    set `AUTOPILOT_DISABLE_AUTOUPDATE=1` in the launch environment.
 
-**Verify it's genuinely ours** (optional, recommended):
+**Verify it is genuinely ours** (optional, recommended):
 ```sh
 spctl -a -vvv -t exec "/Applications/Autopilot Desktop-canary.app"
 # expect: accepted · source=Notarized Developer ID
@@ -51,7 +51,7 @@ owner-gated until those builds are signed, notarized or packaged, and published.
 ## B. Pylon (headless CLI) — macOS & Linux
 
 Pylon is a single self-contained binary (no Node/Bun install needed). It is
-**signed with our ed25519 release key** (kid `2dbe811d19f67528`); the binary
+**signed with our ed25519 release key** (kid `2dbe811d19f67528`). The binary
 verifies its own updates against that pinned key and **fails closed**.
 
 Platforms: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`.
@@ -94,7 +94,7 @@ bun src/index.ts --help
 - These are **RC builds for testing**, not the public stable release. Behavior,
   copy, and pricing may change before GA.
 - The training-run launch itself is gated separately — installing an RC lets you
-  exercise the app/node; the live paid run goes live when we announce it.
+  exercise the app/node. The live paid run goes live when we announce it.
 - Report issues in the Product Promises Forum
   (<https://openagents.com/forum/f/product-promises>) or, for concrete
   reproducible bugs, the strict bug form.

@@ -11,10 +11,10 @@ gate instead of inferred from raw attribution or order counts.
 
 The gate separates:
 
-- attribution captured;
-- reward eligible;
-- payout pending;
-- settled;
+- attribution captured.
+- reward eligible.
+- payout pending.
+- settled.
 - Bitcoin withdrawal copy allowed.
 
 This keeps the launch promise honest: referral attribution can be live while
@@ -29,8 +29,8 @@ not create Bitcoin payout liability.
 
 Reward eligibility requires:
 
-- at least one public attribution ref;
-- at least one public paid-workflow ref;
+- at least one public attribution ref.
+- at least one public paid-workflow ref.
 - no active policy blocker refs.
 
 The gate blocks reward eligibility and payout state for policy blockers such as

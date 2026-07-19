@@ -20,29 +20,29 @@ send, payment action, or source mutation.
 `OpenAgentsAuditExportScope` covers the fulfillment records operators need to
 review:
 
-- `order`;
-- `site`;
-- `site_revision`;
-- `site_version`;
-- `deployment`;
-- `workroom`;
-- `assignment`;
-- `artifact`;
-- `evidence_bundle`;
-- `email`;
-- `billing_payment`;
-- `forum_activity`;
-- `public_claim`; and
+- `order`.
+- `site`.
+- `site_revision`.
+- `site_version`.
+- `deployment`.
+- `workroom`.
+- `assignment`.
+- `artifact`.
+- `evidence_bundle`.
+- `email`.
+- `billing_payment`.
+- `forum_activity`.
+- `public_claim`. And
 - `receipt`.
 
 ## Contracts
 
 The export layer defines:
 
-- `OpenAgentsAuditExportRequest`;
-- `OpenAgentsAuditExportItem`;
-- `OpenAgentsAuditExportDenial`;
-- `OpenAgentsAuditExportBundle`; and
+- `OpenAgentsAuditExportRequest`.
+- `OpenAgentsAuditExportItem`.
+- `OpenAgentsAuditExportDenial`.
+- `OpenAgentsAuditExportBundle`. And
 - `OpenAgentsAuditExportBundleProjection`.
 
 Requests carry the audience, requester ref, approved-by ref, requested scope
@@ -63,8 +63,8 @@ The export contract consumes `OmniDataPolicyEnvelope` from
 
 An item is included only when:
 
-- its data policy can project directly to the requested audience;
-- `omniDataPolicyExportAllowed` returns true; and
+- its data policy can project directly to the requested audience.
+- `omniDataPolicyExportAllowed` returns true. And
 - no export or retention ref denies export.
 
 An item is omitted when it is safe to acknowledge but not export for that
@@ -83,11 +83,11 @@ records are not exportable through this contract.
 
 The live audiences are:
 
-- public;
-- customer;
-- agent;
-- team;
-- operator; and
+- public.
+- customer.
+- agent.
+- team.
+- operator. And
 - private.
 
 Public and agent exports only include public-safe evidence. Customer exports
@@ -106,18 +106,18 @@ details.
 
 The contract rejects refs containing:
 
-- private customer data;
-- raw emails;
+- private customer data.
+- raw emails.
 - API keys, bearer tokens, callback tokens, cookies, OAuth material, and
-  secrets;
+  secrets.
 - provider accounts when unsafe, provider grants, provider tokens, and raw
-  provider payloads;
+  provider payloads.
 - wallet material, invoices, payment proofs, payment hashes, preimages, payout
-  addresses, payout destinations, and payout targets;
-- private repo material;
-- raw runner logs;
-- raw source archives;
-- raw prompts, raw webhooks, and raw payloads; and
+  addresses, payout destinations, and payout targets.
+- private repo material.
+- raw runner logs.
+- raw source archives.
+- raw prompts, raw webhooks, and raw payloads. And
 - raw timestamps.
 
 The shared redaction regression suite now covers this export boundary.
@@ -126,12 +126,12 @@ The shared redaction regression suite now covers this export boundary.
 
 `workers/api/src/audit-export-contracts.test.ts` covers:
 
-- schema/projection decoding;
-- included, omitted, and denied item grouping;
-- customer/public/operator projection behavior;
-- explicit payment-private export requirements;
-- deletion/retention-sensitive denial;
-- generated/created friendly labels; and
+- schema/projection decoding.
+- included, omitted, and denied item grouping.
+- customer/public/operator projection behavior.
+- explicit payment-private export requirements.
+- deletion/retention-sensitive denial.
+- generated/created friendly labels. And
 - unsafe ref and raw timestamp rejection.
 
 `workers/api/src/redaction-regression.test.ts` now includes audit export in the

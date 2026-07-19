@@ -2,7 +2,7 @@
 
 Date: 2026-07-19  
 Issue: [#9016](https://github.com/OpenAgentsInc/openagents/issues/9016)  
-Status: implemented foundation; not a production editor or release-rung promotion
+Status: implemented foundation. Not a production editor or release-rung promotion
 
 ## Decision
 
@@ -10,7 +10,7 @@ Admit exactly `monaco-editor@0.55.1` and `@pierre/diffs@1.2.12` as
 replaceable renderer projections. Reject `monaco-vim@0.4.4` and
 `@replit/codemirror-vim@6.3.0`. Use an app-owned, public-Monaco
 `VimModeController` contract, off by default. Own one provenance-pinned Tokyo
-Night data projection. Keep the IDE-02 path index in TypeScript/Effect; there
+Night data projection. Keep the IDE-02 path index in TypeScript/Effect. There
 is no measured Rust case.
 
 The opt-in package fixture proves these decisions in real Electron development
@@ -23,8 +23,8 @@ basic-IDE gate.
 
 | Artifact                       | Decision | Immutable identity                                                                                   | License / notice                     | Direct runtime graph                                                                                                            | Installed package bytes |
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------: |
-| `monaco-editor@0.55.1`         | adopt    | upstream commit `516f350bdaf7a82f6731bd128a9ec86a6e5fa47d`; registry integrity `sha512-jz4x…AFl9A==` | MIT; package license retained        | `marked@14.0.0`, `dompurify@3.2.7`                                                                                              |              72,635,377 |
-| `@pierre/diffs@1.2.12`         | adopt    | upstream commit `9466c467ae6fc03501b6bca74c12f717d70293a7`; registry integrity `sha512-pY/g…a1cLQ==` | Apache-2.0; package license retained | `@shikijs/transformers`, `diff`, `hast-util-to-html`, `lru_map`, `shiki`, `@pierre/theming`, `@pierre/theme`; React 18/19 peers |               5,232,264 |
+| `monaco-editor@0.55.1`         | adopt    | upstream commit `516f350bdaf7a82f6731bd128a9ec86a6e5fa47d`. Registry integrity `sha512-jz4x…AFl9A==` | MIT. Package license retained        | `marked@14.0.0`, `dompurify@3.2.7`                                                                                              |              72,635,377 |
+| `@pierre/diffs@1.2.12`         | adopt    | upstream commit `9466c467ae6fc03501b6bca74c12f717d70293a7`. Registry integrity `sha512-pY/g…a1cLQ==` | Apache-2.0. Package license retained | `@shikijs/transformers`, `diff`, `hast-util-to-html`, `lru_map`, `shiki`, `@pierre/theming`, `@pierre/theme`. React 18/19 peers |               5,232,264 |
 | `monaco-vim@0.4.4`             | reject   | upstream commit `f7f085732795f58f0fee5d03a46bdc459d6c8a30`                                           | MIT                                  | not installed                                                                                                                   |               0 shipped |
 | `@replit/codemirror-vim@6.3.0` | reject   | exact registry integrity is recorded in the schema decision                                          | MIT                                  | not installed                                                                                                                   |               0 shipped |
 
@@ -36,9 +36,9 @@ Desktop manifest and lockfile. No range admits a later package silently.
 
 The focused production license inventory also resolves `@pierre/theme`,
 `@shikijs/transformers`, `hast-util-to-html`, `lru_map`, `marked`, and `shiki`
-as MIT; `@pierre/theming` as Apache-2.0; `diff@9.0.0` as BSD-3-Clause; and
+as MIT. `@pierre/theming` as Apache-2.0. `diff@9.0.0` as BSD-3-Clause. And
 `dompurify@3.2.7` as `(MPL-2.0 OR Apache-2.0)`. Release notice generation must
-retain those transitive notices; the top-level package license alone is not a
+retain those transitive notices. The top-level package license alone is not a
 complete inventory.
 
 Focused public VS Code candidates are not smuggled in by Monaco. `vscode-uri`,
@@ -58,28 +58,28 @@ the owned worker/asset adapter rather than through package defaults.
 The private `openagents-app:` protocol now declares worker support and serves
 only normalized allowlisted renderer assets. CSP remains:
 
-- `default-src 'none'`;
-- `script-src 'self'` and `worker-src 'self'`;
-- `connect-src 'none'`;
-- no `unsafe-eval`;
+- `default-src 'none'`.
+- `script-src 'self'` and `worker-src 'self'`.
+- `connect-src 'none'`.
+- no `unsafe-eval`.
 - no remote worker, theme, font, image, or source-map URL.
 
 The admission graph emits editor, JSON, CSS, HTML, TypeScript, and Pierre
 workers as immutable local assets. The real Electron probe observes every
-request through `webRequest`; all requests use `openagents-app:` in both
+request through `webRequest`. All requests use `openagents-app:` in both
 development and ASAR runs. The probe performs three complete mount/dispose
 cycles and one injected TypeScript-worker construction failure in each layout.
 Every disposal and failure reaches zero Monaco models and zero tracked workers.
 
 Each successful cycle proves:
 
-- four Monaco models and one view;
-- editor/JSON/CSS/HTML/TypeScript worker readiness;
-- unified and side-by-side Pierre diffs;
-- controlled line selection, annotation, context, and Tokyo Night styling;
-- a live Pierre worker pool;
-- a 200-file Pierre `CodeView` review with only five viewport items mounted;
-- no external request; and
+- four Monaco models and one view.
+- editor/JSON/CSS/HTML/TypeScript worker readiness.
+- unified and side-by-side Pierre diffs.
+- controlled line selection, annotation, context, and Tokyo Night styling.
+- a live Pierre worker pool.
+- a 200-file Pierre `CodeView` review with only five viewport items mounted.
+- no external request. And
 - exact teardown before the next generation.
 
 ## Bundle, source-map, startup, and memory evidence
@@ -105,7 +105,7 @@ The ordinary `boot.js` contains no Monaco, Pierre, worker-constructor, or
 fixture marker. Its JavaScript/CSS byte shape is unchanged from the IDE-00
 candidate. The 40.8 ms first-paint p95 movement is therefore recorded as noisy
 whole-process A/B evidence, not falsely attributed to editor code that is
-absent from the graph; both candidates remain inside the established startup
+absent from the graph. Both candidates remain inside the established startup
 budgets. IDE-03 must remeasure the real lazy editor route and chat-only delta.
 
 Pierre's public root export currently makes Vite emit the complete dynamic
@@ -115,7 +115,7 @@ it is not acceptable to ship accidentally. The build therefore emits the
 fixture only when `OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE_BUILD=1`. IDE-05 must
 either narrow the public package closure or accept a written production budget
 before integrating review. Vite's generated Rolldown runtime is the sole
-JavaScript asset without its own map; all dependency/module chunks and workers
+JavaScript asset without its own map. All dependency/module chunks and workers
 are attributable.
 
 ## Monaco boundary
@@ -165,7 +165,7 @@ Visual/Line/Block, Replace, operator pending, motions/counts/operators/text
 objects, marks/registers/repeat/search/find, join/indent/case/paste,
 undo/redo, explicit system clipboard, bounded Ex/save/close translation, IME,
 screen readers, keyboard layouts, multi-cursor, split scoping, focus/Escape,
-restart persistence, and handler teardown. IDE-03 implements that contract;
+restart persistence, and handler teardown. IDE-03 implements that contract.
 IDE-01 does not pretend a keymap exists yet.
 
 ## Tokyo Night projection
@@ -181,7 +181,7 @@ diff/conflict roles, terminal ANSI/cursor/selection, and Problems, Output,
 debug, review/proposal, browser, and status states. Theme data is installed
 before model or view construction and never recreates a model/session.
 
-The upstream faint foreground `#787c99` was adjusted to `#8990ad`; it reaches
+The upstream faint foreground `#787c99` was adjusted to `#8990ad`. It reaches
 5.42:1 against `#1a1b26`. Primary, muted, faint, blue, red, yellow, and green
 semantic foregrounds all meet at least 4.5:1 in the checked contrast fixture.
 Pierre explicitly records `allowUnsafeCss: false` and
@@ -218,10 +218,10 @@ credential, database, approval, projection, and receipt ownership never move.
 
 Machine-readable evidence:
 
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-audit.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-typescript-index.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-startup.json`;
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-audit.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-typescript-index.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-startup.json`.
 - behavior contract `openagents_desktop.ide_package_admission.v1`.
 
 Reproduction:

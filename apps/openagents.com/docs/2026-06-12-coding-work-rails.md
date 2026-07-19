@@ -60,7 +60,7 @@ tier policy:
 | --- | --- | --- |
 | `byok_readiness_probe` | `qualification_probe` | presence-tier (the probe IS the evidence) |
 | `bounded_no_spend_smoke` | `shadow_window_work` | presence-tier by construction (warmup-state shadow work) |
-| `accepted_closeout` | `verified_closeout` | compute-tier ONLY from an `active` ladder state with verification outcome refs; presence-tier (`presence_unmerged_work_not_active`) anywhere earlier |
+| `accepted_closeout` | `verified_closeout` | compute-tier ONLY from an `active` ladder state with verification outcome refs. Presence-tier (`presence_unmerged_work_not_active`) anywhere earlier |
 
 An accepted closeout without verification outcome refs has no tier at
 all — the existing refusal in `classifyReceiptTier` holds unchanged.
@@ -93,8 +93,8 @@ to the shared `work_class.coding.local_coding_agent_session` shape:
 
 | Gate | Requirement | Stated rationale |
 | --- | --- | --- |
-| `gate.device_admission.coding.node_or_bun_runtime_present.v1` | `node_or_bun_runtime_present` at_least 1 | both adapters load their SDKs lazily in the Pylon host process; no runtime, no session |
-| `gate.device_admission.coding.workspace_write_sandbox_supported.v1` | `workspace_write_sandbox_supported` at_least 1 | coding assignments run under a workspace-write sandbox pinned to the bounded working directory (Codex lane: read-only anywhere narrows, never expands); a host that cannot enforce it is excluded, not run unsandboxed |
+| `gate.device_admission.coding.node_or_bun_runtime_present.v1` | `node_or_bun_runtime_present` at_least 1 | both adapters load their SDKs lazily in the Pylon host process. No runtime, no session |
+| `gate.device_admission.coding.workspace_write_sandbox_supported.v1` | `workspace_write_sandbox_supported` at_least 1 | coding assignments run under a workspace-write sandbox pinned to the bounded working directory (Codex lane: read-only anywhere narrows, never expands). A host that cannot enforce it is excluded, not run unsandboxed |
 | `gate.device_admission.coding.sdk_session_host_ram_headroom_floor.v1` | `host_ram_headroom_gb` at_least 8 | an SDK session holds a conversation, workspace materialization, and verification run in host memory at once |
 
 Two coding-host probe kinds (`node_or_bun_runtime_present`,

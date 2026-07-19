@@ -24,11 +24,11 @@ and image-build controls.
 
 OpenAgents product surface stores only safe refs for those pieces at this stage:
 
-- class name ref;
-- Durable Object binding ref;
-- image ref;
-- capacity ref;
-- health ref;
+- class name ref.
+- Durable Object binding ref.
+- image ref.
+- capacity ref.
+- health ref.
 - policy and smoke refs.
 
 The contract does not expose Cloudflare account IDs, raw binding internals,
@@ -39,18 +39,18 @@ surfaces.
 
 `workers/api/src/real-cloudflare-container-runner.ts` adds:
 
-- `OpenAgentsRealCloudflareContainerRunnerReadiness`;
-- `OpenAgentsRealCloudflareContainerRunnerBindingRefs`;
-- `OpenAgentsRealCloudflareContainerRunnerControlReceipt`;
-- `OpenAgentsRealCloudflareContainerRunnerControlPlane`;
-- blocked-gate calculation for enabled/configured/policy/smoke/control/trust;
+- `OpenAgentsRealCloudflareContainerRunnerReadiness`.
+- `OpenAgentsRealCloudflareContainerRunnerBindingRefs`.
+- `OpenAgentsRealCloudflareContainerRunnerControlReceipt`.
+- `OpenAgentsRealCloudflareContainerRunnerControlPlane`.
+- blocked-gate calculation for enabled/configured/policy/smoke/control/trust.
 - `makeRealCloudflareContainerRunnerAdapter`.
 
 The adapter accepts the existing backend-neutral gateway request types:
 
-- dispatch;
-- cancel;
-- health check;
+- dispatch.
+- cancel.
+- health check.
 - lifecycle callback.
 
 It returns normal gateway dispatch receipts for dispatch, cancel, and callback
@@ -60,12 +60,12 @@ operations, and gateway health status for health checks.
 
 The real adapter does not call its control plane unless all required gates pass:
 
-- policy is selected;
-- backend is enabled;
-- class name, Durable Object binding, and image refs are configured;
-- staging smoke has passed;
-- operator policy approval exists;
-- a real control plane is injected/bound;
+- policy is selected.
+- backend is enabled.
+- class name, Durable Object binding, and image refs are configured.
+- staging smoke has passed.
+- operator policy approval exists.
+- a real control plane is injected/bound.
 - dispatch workload trust is allowed.
 
 When a gate fails, the adapter returns a blocked receipt with only safe gate
@@ -76,14 +76,14 @@ unsafe control-plane receipts still raise typed gateway errors.
 
 The adapter rejects:
 
-- raw provider tokens;
-- OAuth material;
-- callback token values;
-- raw source archives;
-- raw runner logs;
-- private prompts;
-- wallet or payment secrets;
-- customer emails or names;
+- raw provider tokens.
+- OAuth material.
+- callback token values.
+- raw source archives.
+- raw runner logs.
+- private prompts.
+- wallet or payment secrets.
+- customer emails or names.
 - generic secret-shaped payloads.
 
 Control-plane receipts are decoded and checked before they become gateway
@@ -94,12 +94,12 @@ credentials through the adapter.
 
 This issue does not:
 
-- deploy a Container image;
-- bind a live Container Durable Object;
-- mount customer source;
-- resolve provider account credentials;
-- run OpenCode or Codex inside a Container;
-- enable automatic failover;
+- deploy a Container image.
+- bind a live Container Durable Object.
+- mount customer source.
+- resolve provider account credentials.
+- run OpenCode or Codex inside a Container.
+- enable automatic failover.
 - change customer-visible infrastructure claims.
 
 Those belong to the later image lifecycle, closeout receipt, and failover

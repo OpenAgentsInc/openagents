@@ -33,7 +33,7 @@ returning referral internals in customer responses.
 `agent_referral_attributions`
 
 - Provides the future owner-claimed agent helper path.
-- Public agent mutation remains gated; this table only creates the durable
+- Public agent mutation remains gated. This table only creates the durable
   linkage target needed when that claim path is implemented.
 
 ## Runtime Behavior
@@ -64,12 +64,12 @@ returning referral internals in customer responses.
 
 Customer order responses do not include:
 
-- referral attribution ids;
-- public source refs;
-- invite refs or token hashes;
-- payment material;
-- provider grants;
-- wallet material; or
+- referral attribution ids.
+- public source refs.
+- invite refs or token hashes.
+- payment material.
+- provider grants.
+- wallet material. Or
 - referred-user/referrer private data.
 
 Future owner/operator dashboards can inspect aggregates through separate

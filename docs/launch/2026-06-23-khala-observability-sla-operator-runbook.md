@@ -108,15 +108,15 @@ Rollback actions:
 
 After any rollback or disablement, run the readiness-only smoke and record:
 
-- deployed Worker version or rollback target;
-- gateway readiness status or disabled response;
-- affected model id, if known;
-- public receipt refs that demonstrate the incident, if any;
+- deployed Worker version or rollback target.
+- gateway readiness status or disabled response.
+- affected model id, if known.
+- public receipt refs that demonstrate the incident, if any.
 - whether real settlement was armed.
 
 ## Disable Gateway
 
-The inference gateway is guarded by `INFERENCE_GATEWAY_ENABLED`; absent or
+The inference gateway is guarded by `INFERENCE_GATEWAY_ENABLED`. Absent or
 non-on values fail closed. When disabled, `/v1/gateway/readiness`, `/v1/models`,
 `/v1/quote`, and `/v1/chat/completions` should reject as disabled rather than
 advertising paid serving.
@@ -136,14 +136,14 @@ Expected after disablement: HTTP `404` with a public-safe
 
 The khala-code executed-verifier dispatch is guarded by
 `KHALA_ACCEPTANCE_DISPATCH_ENABLED`. The callback route also requires
-`ACCEPTANCE_VERDICT_CALLBACK_TOKEN`; without that token, verdict ingestion fails
+`ACCEPTANCE_VERDICT_CALLBACK_TOKEN`. Without that token, verdict ingestion fails
 closed.
 
 Disable dispatch when:
 
-- the runner host is down or producing inconsistent verdicts;
-- queue lag is accumulating;
-- callback authentication or receipt backfill looks suspicious;
+- the runner host is down or producing inconsistent verdicts.
+- queue lag is accumulating.
+- callback authentication or receipt backfill looks suspicious.
 - public receipts would otherwise imply executed verification that did not run.
 
 Disablement keeps the delivered completion path honest: khala-code receipts stay
@@ -153,10 +153,10 @@ Disablement keeps the delivered completion path honest: khala-code receipts stay
 
 Khala real payout requires multiple gates:
 
-- `OPENAGENTS_KHALA_LOOP_ARMED` must be exactly `armed`;
+- `OPENAGENTS_KHALA_LOOP_ARMED` must be exactly `armed`.
 - `OPENAGENTS_REAL_SETTLEMENT_GATE` must authorize the requested adapter, run,
-  contributor, amount, per-payout cap, daily cap, and eligibility source;
-- the settlement engine must see an executed accepted outcome;
+  contributor, amount, per-payout cap, daily cap, and eligibility source.
+- the settlement engine must see an executed accepted outcome.
 - the contributor must have a registered payout destination.
 
 Turn off spend or payout by disabling either owner gate:
@@ -188,8 +188,8 @@ jq '{modelCount: (.data | length), models: [.data[].id]}' /tmp/khala-models.json
 
 Launch expectation:
 
-- HTTP `200`;
-- the intended Khala model id is present;
+- HTTP `200`.
+- the intended Khala model id is present.
 - the model is also counted as servable by `/v1/gateway/readiness`.
 
 If `/v1/models` lists a model that readiness does not mark servable, stop broad
@@ -213,8 +213,8 @@ Triage by status:
 | Status | Meaning | Operator action |
 | --- | --- | --- |
 | `ready` | Every published catalog model is servable. | Continue launch smoke. |
-| `degraded` | Some catalog models are hidden because a lane is unarmed. | Launch only if the intended model is servable; comment with hidden lanes. |
-| `unavailable` | No published model is servable. | Do not launch paid traffic; check provider credentials and gateway flag. |
+| `degraded` | Some catalog models are hidden because a lane is unarmed. | Launch only if the intended model is servable. Comment with hidden lanes. |
+| `unavailable` | No published model is servable. | Do not launch paid traffic. Check provider credentials and gateway flag. |
 
 ## Check Receipts
 
@@ -243,9 +243,9 @@ jq '{
 
 Broad launch expectation:
 
-- completion receipt dereferences with HTTP `2xx`;
-- `requestedModel` and `servedModel` are present;
-- verification state is honest (`verified` only after executed acceptance);
+- completion receipt dereferences with HTTP `2xx`.
+- `requestedModel` and `servedModel` are present.
+- verification state is honest (`verified` only after executed acceptance).
 - settlement fields are false or dry-run unless owner-armed real payout was
   explicitly approved.
 
@@ -267,7 +267,7 @@ bun run smoke:khala:gateway-readiness -- --approve-live-spend
 ```
 
 The old billing/MPP proof smoke was retired with the standalone MPP/x402 chat
-endpoint in #8387. Validate the keyed gateway and current billing routes instead;
+endpoint in #8387. Validate the keyed gateway and current billing routes instead.
 do not use removed MPP smoke commands for incident response.
 
 ## SLA And Incident Classes
@@ -277,17 +277,17 @@ do not use removed MPP smoke commands for incident response.
 | P0 spend or payout risk | unexpected real settlement, cap bypass suspicion, private receipt leakage | 15 minutes | Disable settlement gates, preserve public refs, notify owner |
 | P0 gateway outage during broad launch | all Khala requests fail or readiness `unavailable` | 15 minutes | Disable gateway or roll back Worker, then readiness smoke |
 | P1 degraded serving | intended model unavailable, one provider lane down, receipt route broken | 1 hour | Keep dogfood only, record readiness and receipt evidence |
-| P1 verifier drift | khala-code says `verified` without executed verdict or runner backlog grows | 1 hour | Disable acceptance dispatch; receipts must remain honest |
+| P1 verifier drift | khala-code says `verified` without executed verdict or runner backlog grows | 1 hour | Disable acceptance dispatch. Receipts must remain honest |
 | P2 docs/dashboard mismatch | public copy overstates model, billing, settlement, or benchmark state | 1 business day | Downgrade copy or link the missing evidence |
 
 Incident notes should include only public-safe evidence:
 
-- base URL;
-- deployed Worker version or commit hash;
-- readiness status and servable model count;
-- model id;
-- public receipt URL or ref;
-- smoke check names;
+- base URL.
+- deployed Worker version or commit hash.
+- readiness status and servable model count.
+- model id.
+- public receipt URL or ref.
+- smoke check names.
 - flags disabled or rolled back.
 
 ## Broad Launch Exit Criteria

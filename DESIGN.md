@@ -4,9 +4,9 @@ The OpenAgents house style. StarCraft-Protoss energy: a dark void with
 luminous blue energy, precise high-craft, technical typography. This is the
 **base design language for all OpenAgents surfaces** — public explainer pages,
 the Khala API surface, and (over time) the in-app product chrome. New surfaces
-inherit this; they do not invent a new palette.
+inherit this. They do not invent a new palette.
 
-The canonical token source is `@effect-native/tokens`; OpenAgents surfaces use
+The canonical token source is `@effect-native/tokens`. OpenAgents surfaces use
 its `khalaTheme` projection. This file documents the Protoss *brand* layer that
 sits on top of those semantic roles: the glow palette, the energy motif, and
 how to apply them. Renderer-specific CSS variables are projections of that
@@ -15,19 +15,19 @@ theme, not a second token authority.
 ## Theme
 
 - **Mood:** the void of space lit by Protoss psionic energy. Near-black,
-  blue-tinted background; luminous blue energy as the only saturated color;
-  crisp white primary text; cool desaturated blue-grays for secondary text.
+  blue-tinted background. Luminous blue energy as the only saturated color.
+  crisp white primary text. Cool desaturated blue-grays for secondary text.
 - **Mode:** dark, always. The physical scene: a developer at night reading an
   engineering pitch on a screen that glows blue. The product runs over a
   persistent 3D pylon scene (HDR-emissive blue cores blooming through an
-  `UnrealBloomPass`) dimmed by a 75%-black scrim; surfaces float over that void.
+  `UnrealBloomPass`) dimmed by a 75%-black scrim. Surfaces float over that void.
 - **Color strategy:** *Restrained.* Tinted near-black neutrals + one committed
   blue accent (≤ ~10% of the surface), carried by glow rather than fills.
   Never drenched, never gradient-washed.
 
 ## Color
 
-OKLCH where authoring new tokens; the legacy app tokens are hex/rgba and are
+OKLCH where authoring new tokens. The legacy app tokens are hex/rgba and are
 preserved as-is.
 
 ### Energy accents (the Protoss blue)
@@ -44,7 +44,7 @@ canvas behind it share one palette.
 - **Soft blue ink** `#8fb6ff` — desaturated blue for eyebrow text and link
   text on dark surfaces. Meets AA on the near-black panel.
 - **Faint blue glow** `rgba(58,123,255, .12–.35)` — for `box-shadow` glow
-  halos, divider gradients, and hairline rings. The glow is the motif; reach
+  halos, divider gradients, and hairline rings. The glow is the motif. Reach
   for it instead of solid fills.
 
 ### Surfaces (tinted blacks — never pure #000)
@@ -67,13 +67,13 @@ canvas behind it share one palette.
 
 ### Contrast rules
 
-- Body ≥ 4.5:1; large/bold headings ≥ 3:1; placeholder text ≥ 4.5:1.
+- Body ≥ 4.5:1. Large/bold headings ≥ 3:1. Placeholder text ≥ 4.5:1.
 - Gray-on-blue is banned. Secondary text over a blue tint uses a lighter blue,
   not gray.
 
 ## Typography
 
-- **Family:** `Berkeley Mono` (the shipped technical font; `--font-family-mono`).
+- **Family:** `Berkeley Mono` (the shipped technical font, `--font-family-mono`).
   It is the brand voice — earned, not costume — because OpenAgents is genuinely
   an engineering product. Headings, eyebrows, code, and key labels are mono.
   Long-form prose may fall back to the sans stack for reading comfort, but the
@@ -84,7 +84,7 @@ canvas behind it share one palette.
   *first* hero only — section rhythm is carried by glowing dividers + numbered
   index, NOT an eyebrow on every section (avoid the AI eyebrow grammar).
 - **Eyebrow:** mono, uppercase, wide tracking (`0.22em`), `#8fb6ff`. One on the
-  hero; section headings use a small glowing index marker instead.
+  hero. Section headings use a small glowing index marker instead.
 - **Body:** 1.6–1.7 line-height (light type on dark needs the room), capped at
   65–75ch.
 - **Code:** mono, `#d7e2f0` on the sunken surface.
@@ -106,7 +106,7 @@ canvas behind it share one palette.
 - Centered single column, `min(100%, 880px)`, generous side gutter so the 3D
   scene breathes around it.
 - Rhythm by variation: large section separations (`mt-16`-class) with tight
-  groupings inside. Vary, don't uniform-pad.
+  groupings inside. Vary, do not uniform-pad.
 - Dividers are energized hairlines: a thin line that fades from
   `rgba(58,123,255,.4)` to transparent — a glowing seam, not a flat gray rule.
 - Cards only where they are the right affordance (the two model ids, the
@@ -126,17 +126,17 @@ The signature move. Energy is conveyed by light, not by fills or gradients:
   faint inner glow), replacing the per-section eyebrow.
 - **Focus ring:** `ring-2 ring-[#3a7bff]/70` + faint glow — visible on dark.
 - Bloom proper lives in the 3D scene (`UnrealBloomPass`, HDR cores). The flat
-  UI *echoes* it with shadow-glow; it does not try to re-implement bloom in CSS.
+  UI *echoes* it with shadow-glow. It does not try to re-implement bloom in CSS.
 
 ## Motion
 
 - Restrained and intentional. Ease-out (quart/quint/expo) only — **no bounce,
   no elastic** (Protoss is precise, not springy).
-- A single tasteful hero entrance and hover-glow lifts; not fade-on-scroll for
+- A single tasteful hero entrance and hover-glow lifts. Not fade-on-scroll for
   every section.
 - Energized borders may have a very slow, low-amplitude glow pulse (echoing the
   scene's pulsing cores) — subtle, never strobing.
-- `prefers-reduced-motion: reduce`: pulses become static glow; transitions
+- `prefers-reduced-motion: reduce`: pulses become static glow. Transitions
   become instant or a crossfade. Content is visible by default and never gated
   behind a class-triggered reveal (headless/hidden-tab safe).
 
@@ -149,6 +149,6 @@ back-button (z-20) → any modal/toast above. No arbitrary `9999`.
 
 - No gradient text, no `background-clip: text`.
 - No side-stripe (`border-left`) accents — full borders / glow / index markers.
-- No violet/purple SaaS gradients; the only saturated hue is the energy blue.
-- No pure-`#000` UI surfaces (tint the blacks); `#000` is the scene only.
+- No violet/purple SaaS gradients. The only saturated hue is the energy blue.
+- No pure-`#000` UI surfaces (tint the blacks). `#000` is the scene only.
 - No card-in-card. No eyebrow on every section. No bounce easing.

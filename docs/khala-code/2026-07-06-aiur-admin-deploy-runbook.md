@@ -3,7 +3,7 @@
 Date: 2026-07-06
 Owns: `apps/aiur/` — the owner-only OpenAgents admin panel for the Khala
 Code mobile-only MVP (epic #8467). AIUR-1 (#8499) scaffold + owner-only
-auth + Khala Sync connection; AIUR-2 (#8500) credits console; AIUR-3
+auth + Khala Sync connection. AIUR-2 (#8500) credits console. AIUR-3
 (#8501) ops views.
 
 ## What this is
@@ -26,7 +26,7 @@ entirely from Cloud Run. DNS is a DNS-only (grey-cloud) CNAME →
 Run domain mapping cert is provisioned, and the legacy Cloudflare Worker
 `openagents-aiur` (account `arcadecd@gmail.com`) has been **deleted**. The
 old `wrangler.jsonc` Worker deploy path is retired — do not run
-`bun run --cwd apps/aiur deploy` (wrangler) for production; the sole
+`bun run --cwd apps/aiur deploy` (wrangler) for production. The sole
 production path is `deploy:cloudrun` below. The `wrangler.jsonc` and the
 legacy Worker sections in this doc are kept only as historical reference.
 
@@ -50,7 +50,7 @@ request. Rollback: `gcloud run services update-traffic openagents-aiur
 It reuses the shared `auth.openagents.com` OpenAuth issuer's GitHub
 provider (same downstream client id, `openagents-web`, as the main web
 app — Aiur is simply a newly allow-listed redirect hostname for that
-client; see
+client. See
 `apps/openagents.com/workers/api/src/auth/mobile-session.ts`
 `authIssuerAllowsWebRedirectHostname`). After a session is verified, Aiur
 applies its OWN hard allowlist gate

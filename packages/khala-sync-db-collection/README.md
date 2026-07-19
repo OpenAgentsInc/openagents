@@ -61,7 +61,7 @@ maps `desiredSlots` updates to the named `fleet.setDesiredSlots` mutator.
 ## Chat thread helper
 
 `chatThreadKhalaSyncCollectionOptions` binds an owner personal scope to the
-`chat_thread` entity type. Inserts map to `chat.createThread`; title updates
+`chat_thread` entity type. Inserts map to `chat.createThread`. Title updates
 map to `chat.renameThread`. The helper keeps optimistic rows visible while the
 server supplies authoritative timestamps, so it defaults `awaitServerSync` to
 `false` for chat rows.

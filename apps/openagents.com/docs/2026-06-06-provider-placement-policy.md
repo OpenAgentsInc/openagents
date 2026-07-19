@@ -20,52 +20,52 @@ production provider state.
 
 `OpenAgentsProviderPolicy` records:
 
-- provider ref;
-- backend kind;
-- provider trust tier;
-- provider state;
-- maximum workload trust;
-- allowed work kinds;
-- allowed data classifications;
-- allowed classified surfaces;
-- provider eligibility refs;
-- policy refs;
-- caveat refs;
-- disabled reason refs; and
+- provider ref.
+- backend kind.
+- provider trust tier.
+- provider state.
+- maximum workload trust.
+- allowed work kinds.
+- allowed data classifications.
+- allowed classified surfaces.
+- provider eligibility refs.
+- policy refs.
+- caveat refs.
+- disabled reason refs. And
 - cooldown refs.
 
 Provider states are:
 
-- `available`;
-- `draining`;
-- `cooldown`;
-- `disabled`; and
+- `available`.
+- `draining`.
+- `cooldown`.
+- `disabled`. And
 - `blocked`.
 
 Provider trust tiers are:
 
-- `public`;
-- `customer_visible`;
-- `reviewed_private`;
-- `legal_sensitive`;
-- `payment_private`;
-- `provider_private`;
-- `internal_only`; and
+- `public`.
+- `customer_visible`.
+- `reviewed_private`.
+- `legal_sensitive`.
+- `payment_private`.
+- `provider_private`.
+- `internal_only`. And
 - `blocked`.
 
 ## Placement Request
 
 `OpenAgentsProviderPlacementRequest` records:
 
-- the classified data policy envelope from #329;
-- requested backend kind;
-- required workload trust;
-- work kind;
-- owner grant refs;
-- operator approval refs;
-- legal review refs;
-- payment policy refs;
-- policy exception refs; and
+- the classified data policy envelope from #329.
+- requested backend kind.
+- required workload trust.
+- work kind.
+- owner grant refs.
+- operator approval refs.
+- legal review refs.
+- payment policy refs.
+- policy exception refs. And
 - evidence refs.
 
 Work kinds cover orders, Sites, Site revisions, artifacts, agent API actions,
@@ -79,22 +79,22 @@ payment-sensitive actions, and customer asset processing.
 
 Hard blockers cannot be overridden by ordinary policy exception refs:
 
-- provider blocked;
-- provider disabled;
-- provider draining/cooldown;
-- blocked provider trust tier; and
+- provider blocked.
+- provider disabled.
+- provider draining/cooldown.
+- blocked provider trust tier. And
 - no-external-provider classification routed to a non-internal provider.
 
 Overrideable blockers include:
 
-- backend mismatch;
-- workload trust too low;
-- work kind not allowed;
-- classified surface not allowed;
-- data classification not allowed;
-- required provider eligibility missing;
-- private repo owner grant missing;
-- legal review/operator approval missing; and
+- backend mismatch.
+- workload trust too low.
+- work kind not allowed.
+- classified surface not allowed.
+- data classification not allowed.
+- required provider eligibility missing.
+- private repo owner grant missing.
+- legal review/operator approval missing. And
 - payment policy missing.
 
 Overrideable blockers can be bypassed only when a policy exception ref is
@@ -116,13 +116,13 @@ can show safe internal refs, but still reject raw secrets and raw payloads.
 
 The contract rejects:
 
-- provider grants, provider tokens, provider payloads, and raw auth state;
-- private customer data;
-- callback tokens, bearer tokens, OAuth material, API keys, and secrets;
-- wallet material, invoices, payment proofs, preimages, and payout targets;
-- private repo refs;
-- raw runner logs;
-- raw source archives; and
+- provider grants, provider tokens, provider payloads, and raw auth state.
+- private customer data.
+- callback tokens, bearer tokens, OAuth material, API keys, and secrets.
+- wallet material, invoices, payment proofs, preimages, and payout targets.
+- private repo refs.
+- raw runner logs.
+- raw source archives. And
 - raw timestamps.
 
 ## Relationship To Existing Repo Placement
@@ -139,10 +139,10 @@ and private repository work.
 
 `workers/api/src/provider-placement-policy.test.ts` covers:
 
-- schema/projection decoding;
-- public Site placement on an available eligible provider;
-- unavailable provider hard denials;
-- no-external-provider hard denials;
-- explicit policy-exception overrides for overrideable mismatches;
-- owner, legal review, and payment policy requirements; and
+- schema/projection decoding.
+- public Site placement on an available eligible provider.
+- unavailable provider hard denials.
+- no-external-provider hard denials.
+- explicit policy-exception overrides for overrideable mismatches.
+- owner, legal review, and payment policy requirements. And
 - projection redaction and unsafe ref rejection.

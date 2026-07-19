@@ -12,21 +12,21 @@ Owning package: `packages/managed-sandbox-contract`
 This is the canonical OpenAgents domain contract for one owner-scoped,
 lease-bounded agent sandbox on Google Cloud. Product consumers, Sarah, the IDE,
 the control plane, target adapters, and compatibility facades all exchange this
-identity. Provider objects and compatibility API objects are projections; they
+identity. Provider objects and compatibility API objects are projections. They
 are never the resource authority.
 
 ## Stable identity
 
 `ManagedSandboxResourceSchema` binds:
 
-- `sandboxRef`, owner, tenant, program, and exact work-unit identity;
-- portable attachment identity and attachment generation;
+- `sandboxRef`, owner, tenant, program, and exact work-unit identity.
+- portable attachment identity and attachment generation.
 - independently fenced resource generation, optimistic version, and event
-  sequence;
+  sequence.
 - one `openagents_managed` Google Cloud target, region, adapter, and admitted
-  `gce_vm` or `firecracker_microvm` isolation class;
-- immutable image digest and profile ref;
-- bounded lease, USD-micro budget, and explicit capabilities; and
+  `gce_vm` or `firecracker_microvm` isolation class.
+- immutable image digest and profile ref.
+- bounded lease, USD-micro budget, and explicit capabilities. And
 - distinct lifecycle, lease, guest, filesystem, ingress, runtime, `acceptingWork`,
   and cleanup facts.
 
@@ -64,8 +64,8 @@ binds each command outcome to the final generation, version, lifecycle,
 events, artifacts, optional typed error, and public-safe observation time.
 
 A caller retries with the same command and idempotency bytes. Different bytes
-under the same idempotency identity refuse; they do not reinterpret a previous
-effect. Reconciliation records uncertainty as `recovery_required`; it never
+under the same idempotency identity refuse. They do not reinterpret a previous
+effect. Reconciliation records uncertainty as `recovery_required`. It never
 rounds an unknown provider result up to success.
 
 ## Durable lifecycle authority
@@ -94,7 +94,7 @@ An exact retry returns the durable `pending` state or settled receipt.
 Different bytes under the same command or idempotency identity refuse.
 A settled receipt retry must match the durable settlement fingerprint.
 A process restart can list commands with `pending` status for reconciliation.
-Unknown cleanup becomes `recovery_required`; it never becomes deletion.
+Unknown cleanup becomes `recovery_required`. It never becomes deletion.
 
 Native reconnect pages read the append-only event sequence.
 Each compatibility translator has a separate optimistic projection version.
@@ -169,22 +169,22 @@ The exact Phase-1 method/status/error corpus is exported as
 
 | SDK method / route                                          | Success     | Canonical native service                         | Declared projection loss / refusal                                     |
 | ----------------------------------------------------------- | ----------- | ------------------------------------------------ | ---------------------------------------------------------------------- |
-| `me` · `GET /v1/me`                                         | 200         | `ManagedSandboxAccountProjection.currentOwner`   | owner-safe identity only; no credentials or provider account           |
-| `limits` · `GET /v1/limits`                                 | 200         | `ManagedSandboxCapacityProjection.currentLimits` | bounded availability only; no quota authority or topology              |
-| `boxes` · `GET /v1/boxes`                                   | 200         | `ManagedSandboxService.list`                     | Box state is derived; native generation/facts remain authoritative     |
+| `me` · `GET /v1/me`                                         | 200         | `ManagedSandboxAccountProjection.currentOwner`   | owner-safe identity only. No credentials or provider account           |
+| `limits` · `GET /v1/limits`                                 | 200         | `ManagedSandboxCapacityProjection.currentLimits` | bounded availability only. No quota authority or topology              |
+| `boxes` · `GET /v1/boxes`                                   | 200         | `ManagedSandboxService.list`                     | Box state is derived. Native generation/facts remain authoritative     |
 | `create` · `POST /v1/boxes`                                 | 200/201/202 | `ManagedSandboxService.create`                   | request is expanded into exact native scope or refused before effects  |
 | `get` · `GET /v1/boxes/{id}`                                | 200         | `ManagedSandboxService.inspect`                  | lifecycle label cannot collapse native fact dimensions                 |
-| `update` · `PATCH /v1/boxes/{id}`                           | 200         | `ManagedSandboxService.update`                   | only admitted lease/budget fields; generic provider mutation refuses   |
-| `remove` · `DELETE /v1/boxes/{id}`                          | 200/202/204 | `ManagedSandboxService.delete`                   | acceptance or `pending` is not cleanup; native receipt owns completion |
+| `update` · `PATCH /v1/boxes/{id}`                           | 200         | `ManagedSandboxService.update`                   | only admitted lease/budget fields. Generic provider mutation refuses   |
+| `remove` · `DELETE /v1/boxes/{id}`                          | 200/202/204 | `ManagedSandboxService.delete`                   | acceptance or `pending` is not cleanup. Native receipt owns completion |
 | `stop` · `POST /v1/boxes/{id}/stop`                         | 200/202     | `ManagedSandboxService.stop`                     | stopped only after durable checkpoint and observed guest stop          |
-| `resume` · `POST /v1/boxes/{id}/resume`                     | 200/202     | `ManagedSandboxService.resume`                   | filesystem restart only; no memory/process continuity claim            |
+| `resume` · `POST /v1/boxes/{id}/resume`                     | 200/202     | `ManagedSandboxService.resume`                   | filesystem restart only. No memory/process continuity claim            |
 | `prompt` · `POST /v1/boxes/{id}/prompt`                     | 200/202     | `ManagedSandboxRuntimeService.dispatch`          | provider/model/harness/generation are native truth                     |
 | `promptRunStatus` · `GET /v1/boxes/{id}/prompts/{promptId}` | 200         | `ManagedSandboxRuntimeService.inspectTurn`       | SDK status cannot substitute for terminal receipt                      |
 | `events` · `GET /v1/boxes/{id}/events`                      | 200         | `ManagedSandboxRuntimeService.readEvents`        | translator/native cursor and omitted kinds are mandatory               |
-| `interrupt` · `POST /v1/boxes/{id}/interrupt`               | 200/202     | `ManagedSandboxRuntimeService.interrupt`         | targets one native turn; replay does not create another interrupt      |
+| `interrupt` · `POST /v1/boxes/{id}/interrupt`               | 200/202     | `ManagedSandboxRuntimeService.interrupt`         | targets one native turn. Replay does not create another interrupt      |
 | `readFile` · `GET /v1/boxes/{id}/files`                     | 200         | `ManagedSandboxWorkspaceService.readFile`        | native root/symlink/secret/quota policy applies first                  |
 | `writeFile` · `PUT /v1/boxes/{id}/files`                    | 200/201     | `ManagedSandboxWorkspaceService.writeFile`       | native root/symlink/secret/quota policy applies first                  |
-| `command` · `POST /v1/boxes/{id}/commands`                  | 200         | `ManagedSandboxWorkspaceService.executeCommand`  | bounded argv/cwd/time/output only; no ambient generic shell grant      |
+| `command` · `POST /v1/boxes/{id}/commands`                  | 200         | `ManagedSandboxWorkspaceService.executeCommand`  | bounded argv/cwd/time/output only. No ambient generic shell grant      |
 | `artifact` · `GET /v1/boxes/{id}/artifacts?path=…`          | 200         | `ManagedSandboxWorkspaceService.readArtifact`    | digest/size/generation/retention remain native receipt truth           |
 
 The admitted error vocabulary is

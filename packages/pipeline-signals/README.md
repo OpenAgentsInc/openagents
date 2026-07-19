@@ -8,10 +8,10 @@ Two primitives:
 
 - `makeDrainableWorker(process)` — a queue-backed worker whose `drain` effect
   settles when the queue is empty AND all in-flight work has completed.
-  Failures in `process` never kill the worker loop or hang `drain`; wire
+  Failures in `process` never kill the worker loop or hang `drain`. Wire
   `onFailure` to publish a failure milestone.
 - `makePipelineSignalBus<S>()` — a typed milestone bus on Effect PubSub.
-  Pipelines publish schema-tagged milestone signals; tests and orchestration
+  Pipelines publish schema-tagged milestone signals. Tests and orchestration
   subscribe *before* triggering work, then `awaitPipelineSignal(subscription,
   predicate)` for the exact milestone instead of sleeping or polling.
 

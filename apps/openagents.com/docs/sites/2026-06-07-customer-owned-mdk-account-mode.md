@@ -71,13 +71,13 @@ without exposing credentials or implying payout settlement.
 
 Customer and public projections redact:
 
-- hosted secret-binding refs;
-- customer and order refs;
-- reviewer refs;
-- MDK credentials;
-- wallet material;
-- invoices, payment hashes, and preimages;
-- provider grants;
+- hosted secret-binding refs.
+- customer and order refs.
+- reviewer refs.
+- MDK credentials.
+- wallet material.
+- invoices, payment hashes, and preimages.
+- provider grants.
 - raw timestamps.
 
 Operator projections may include hosted secret-binding refs so an operator can

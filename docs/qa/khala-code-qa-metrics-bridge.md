@@ -19,13 +19,13 @@ against the shared `khalaCodeQaMetricBudgets` data before it is returned.
 The bridge uses the same RPC schema path in browser preview and packaged
 Electrobun:
 
-- browser preview: renderer calls `/rpc/qaMetricSample`; `/rpc/qaMetrics`
+- browser preview: renderer calls `/rpc/qaMetricSample`. `/rpc/qaMetrics`
   reads the host snapshot.
 - browser preview: `/rpc/events` chat-turn SSE is decoded through the shared
   chat event schema and applied to the renderer, so `sse.event_to_ui_ms` and
   `turn_start.first_event_ms` can be sampled in Mode D, not only in packaged
   native RPC.
-- packaged app: renderer calls the native Electrobun `qaMetricSample` request;
+- packaged app: renderer calls the native Electrobun `qaMetricSample` request.
   `qaMetrics` reads the same host snapshot.
 
 `qaMetricSample` is classified as read-only-safe preview telemetry. It is

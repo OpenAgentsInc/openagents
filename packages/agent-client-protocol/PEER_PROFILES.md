@@ -3,7 +3,7 @@
 `@openagentsinc/agent-client-protocol/profiles` is the declarative
 peer-profile contract, trusted registry, and fail-closed admission path for
 foreign Agent Client Protocol agents. Grok CLI (`grok agent stdio`) and Cursor
-Agent CLI (`agent acp`) are the two reference profiles; both use the same
+Agent CLI (`agent acp`) are the two reference profiles. Both use the same
 validated contract and keep their vendor extensions in separate modules
 (`./extensions/grok`, `./extensions/cursor`).
 
@@ -64,7 +64,7 @@ post-install replacement, version drift, an impostor binary answering the
 probe, and caller-supplied argv/env overrides.
 
 Mitigations: launch plans exist only via `resolveAcpTrustedLaunchPlan` and are
-copied exclusively from the registered profile; admission refuses any
+copied exclusively from the registered profile. Admission refuses any
 `requestedLaunchOverride` outright (`caller_launch_override_rejected`).
 `evaluateAcpExecutableTrust` verifies platform, requested-executable and
 resolved-basename identity, a pinned `x.y.z` version outside every denied
@@ -83,7 +83,7 @@ terminal, auto-approval, or network authority.
 
 Mitigations: `deriveAcpSupportState` derives supported/experimental/
 incompatible from profile version ranges **plus** fresh, digest-bound
-conformance evidence — never from a provider name or wire version alone; with
+conformance evidence — never from a provider name or wire version alone. With
 no pinned live evidence the reference profiles admit at most `experimental`.
 Observed capabilities and extension methods outside the profile are
 quarantined, not granted. Grants keep `permissionAutoApproval` structurally
@@ -104,18 +104,18 @@ or environment values.
 Profile changes live under `packages/agent-client-protocol/src/profiles/**`.
 Their required local or owned-runner gate runs this package's generated check,
 typecheck, and tests together with the conformance package's artifact check,
-typecheck, and tests. Repository policy forbids GitHub-hosted workflows; an
+typecheck, and tests. Repository policy forbids GitHub-hosted workflows. An
 agent or owned runner invokes those package commands and records their evidence.
 The pinned **live** compatibility matrix required to mark a peer `supported` is
-owned by the release gate (#8897); its passing records enter admission as
+owned by the release gate (#8897). Its passing records enter admission as
 `kind: "live"` evidence bound to the exact binary digest.
 
 ## Adding a peer
 
 1. Author a declarative profile against `parseAcpTrustedPeerProfile` (new
-   module under `src/profiles/`); put any vendor extensions in their own
+   module under `src/profiles/`). Put any vendor extensions in their own
    module under `src/extensions/`.
-2. Register it in the trusted registry; hermetic tests must pass.
-3. Ship fixture conformance evidence; the peer admits as `experimental`.
+2. Register it in the trusted registry. Hermetic tests must pass.
+3. Ship fixture conformance evidence. The peer admits as `experimental`.
 4. Land pinned live-matrix evidence (#8897) and a `supported` version range in
-   the same revision bump; only then does admission derive `supported`.
+   the same revision bump. Only then does admission derive `supported`.

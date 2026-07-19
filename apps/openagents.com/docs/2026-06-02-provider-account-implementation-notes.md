@@ -19,12 +19,12 @@ raw ChatGPT/Codex credential payloads or OpenCode runtime auth payloads.
 `packages/provider-account-schema` owns the shared Effect Schema types and the
 Vortex-derived secret-reference policy:
 
-- branded refs and ids;
-- provider account status and health enums;
-- connection attempt status/source/method enums;
-- auth grant status enums;
-- public provider-account response models;
-- secret-material detection;
+- branded refs and ids.
+- provider account status and health enums.
+- connection attempt status/source/method enums.
+- auth grant status enums.
+- public provider-account response models.
+- secret-material detection.
 - public secret-reference validation.
 
 The package accepts refs such as `codex-auth://...`, `secret://...`,
@@ -37,10 +37,10 @@ OpenAI API keys, bearer tokens, OAuth token JSON fields, private keys,
 
 Migration `0009_provider_accounts.sql` adds:
 
-- `provider_accounts`;
-- `provider_account_connection_attempts`;
-- `provider_account_auth_grants`;
-- `provider_account_events`;
+- `provider_accounts`.
+- `provider_account_connection_attempts`.
+- `provider_account_auth_grants`.
+- `provider_account_events`.
 - `runner_sessions`.
 
 Column names intentionally avoid raw token names such as `access_token`,
@@ -53,10 +53,10 @@ from these rows rather than returning rows directly.
 GitHub issue #2 adds the first browser-visible ChatGPT/Codex connection
 surface in `workers/api`:
 
-- `GET /api/provider-accounts`;
-- `POST /api/provider-accounts/chatgpt-codex/device-login/start`;
-- `GET /api/provider-accounts/chatgpt-codex/device-login/:attemptId`;
-- `POST /api/provider-accounts/:providerAccountRef/disconnect`;
+- `GET /api/provider-accounts`.
+- `POST /api/provider-accounts/chatgpt-codex/device-login/start`.
+- `GET /api/provider-accounts/chatgpt-codex/device-login/:attemptId`.
+- `POST /api/provider-accounts/:providerAccountRef/disconnect`.
 - a signed-in homepage panel listing ChatGPT/Codex accounts and active device
   login attempts.
 
@@ -77,7 +77,7 @@ success, the Worker exchanges the returned authorization code for OAuth tokens,
 stores the OpenCode auth JSON under a private KV key
 `provider-auth:<providerAccountRef>`, deletes the transient device-login key,
 and records only `codex-auth://provider-account_...` in D1. Pending attempts
-created before this KV storage existed cannot be completed; a refresh will mark
+created before this KV storage existed cannot be completed. A refresh will mark
 those stale attempts failed so the user can start a new connection.
 
 This means issue #2 can start and display a real device login ceremony, list
@@ -90,8 +90,8 @@ revocation.
 GitHub issue #3 adds broker/service callbacks for the device-login attempts
 started by issue #2:
 
-- `POST /api/provider-accounts/chatgpt-codex/device-login/:attemptId/connected`;
-- `POST /api/provider-accounts/chatgpt-codex/device-login/:attemptId/failed`;
+- `POST /api/provider-accounts/chatgpt-codex/device-login/:attemptId/connected`.
+- `POST /api/provider-accounts/chatgpt-codex/device-login/:attemptId/failed`.
 - `POST /api/provider-accounts/:providerAccountRef/health`.
 
 These routes intentionally do not accept browser-session auth. They require a
@@ -106,7 +106,7 @@ account `connected` / `healthy`, clears public ceremony fields on the attempt,
 and writes a `login_connected` event. The failed callback records
 `failed`, `denied`, or `expired` attempt state, maps account state to `denied`
 or `expired`, and writes the corresponding event. The health callback lets SHC
-or a runner mark `healthy`, `unhealthy`, or `requires_reauth`; a revoked Codex
+or a runner mark `healthy`, `unhealthy`, or `requires_reauth`. A revoked Codex
 token should map to `requires_reauth`.
 
 Operator sanity checks now use the same provider-auth class as the runner
@@ -131,7 +131,7 @@ it can reach D1 or event metadata.
 
 GitHub issue #4 adds the SHC/OpenCode grant boundary:
 
-- `POST /api/provider-accounts/:providerAccountRef/grants`;
+- `POST /api/provider-accounts/:providerAccountRef/grants`.
 - `POST /api/provider-accounts/chatgpt-codex/grants/resolve`.
 
 Grant issue is a browser-session route. It requires the provider account to be
@@ -169,19 +169,19 @@ sync/API state.
 Allowed public sync collections are centralized in
 `PROVIDER_ACCOUNT_PUBLIC_COLLECTIONS`:
 
-- `provider_accounts_public`;
-- `provider_connection_attempts_public`;
-- `provider_account_events_public`;
-- `provider_account_grants_public`;
+- `provider_accounts_public`.
+- `provider_connection_attempts_public`.
+- `provider_account_events_public`.
+- `provider_account_grants_public`.
 - `runner_sessions_public`.
 
 The worker projection functions now run every public value through
 `assertProviderAccountPublicProjection` before returning or preparing it for a
 future sync patch:
 
-- `toPublicProviderAccount`;
-- `toPublicProviderConnectionAttempt`;
-- `toPublicProviderAccountGrant`;
+- `toPublicProviderAccount`.
+- `toPublicProviderConnectionAttempt`.
+- `toPublicProviderAccountGrant`.
 - `toPublicProviderAccountEvent`.
 
 Those projections deliberately omit raw rows, `secretRef`,
@@ -192,9 +192,9 @@ the public event shell.
 
 `packages/provider-account-schema` owns the shared secret scanner and redactor:
 
-- `containsProviderSecretMaterial`;
-- `assertNoProviderSecretMaterial`;
-- `redactProviderAccountSecretMaterial`;
+- `containsProviderSecretMaterial`.
+- `assertNoProviderSecretMaterial`.
+- `redactProviderAccountSecretMaterial`.
 - `redactProviderAccountLogValue`.
 
 The scanner covers OpenAI API keys, bearer headers, OAuth token field names,
@@ -205,9 +205,9 @@ messages now pass through the redactor before being returned to callers.
 Tests now cover:
 
 - credential-shaped text detection, including representative OpenCode auth
-  JSON;
-- redaction of authorization headers and escaped OpenCode auth JSON in logs;
-- migration-policy rejection of raw credential column names;
+  JSON.
+- redaction of authorization headers and escaped OpenCode auth JSON in logs.
+- migration-policy rejection of raw credential column names.
 - public projection rejection for account, connection attempt, grant, and event
-  values that contain credential-shaped material;
+  values that contain credential-shaped material.
 - public account/grant API shape omitting secret refs.

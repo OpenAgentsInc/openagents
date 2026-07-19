@@ -51,11 +51,11 @@ counters.
 
 The regression suite covers:
 
-- zero-counter blockers;
-- stale heartbeat expiration;
-- wallet-ready without assignment readiness;
-- a two-Pylon fresh heartbeat ready smoke;
-- Artanis report propagation; and
+- zero-counter blockers.
+- stale heartbeat expiration.
+- wallet-ready without assignment readiness.
+- a two-Pylon fresh heartbeat ready smoke.
+- Artanis report propagation. And
 - browser dashboard rendering of the gate state.
 
 Run the focused checks with:

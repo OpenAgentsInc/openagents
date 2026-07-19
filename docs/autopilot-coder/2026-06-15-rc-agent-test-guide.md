@@ -1,7 +1,7 @@
 # Agent test guide — Autopilot & Pylon v1.0-rc
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-15 (rev 2). **Audience: a tester's coding/automation agent**
@@ -14,9 +14,9 @@ channel only (`1.0.0-rc.2`).
 > verification, every `--json` command, and booting the node — works on a vanilla
 > machine with **zero** coding-agent SDKs installed (`@openai/codex-sdk`,
 > `@anthropic-ai/claude-agent-sdk`, etc.). The **only** SDK-gated step is the
-> optional managed-session spawn (§4). **If you don't have an SDK, skip §4 — a
+> optional managed-session spawn (§4). **If you do not have an SDK, skip §4 — a
 > no-SDK run is a complete, passing test.** Nothing in the core path imports,
-> requires, or trips on an agent SDK; a Pylon with no SDK simply doesn't advertise
+> requires, or trips on an agent SDK. A Pylon with no SDK simply does not advertise
 > the coding-session lane.
 
 Human installers: use `docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md`.
@@ -44,8 +44,8 @@ Return one JSON object:
   `"skipped-no-sdk"` (no SDK installed — **this is a PASS**, not a failure).
 - A run with `signatureVerified: true`, all core commands in `commandsOk`, and
   `sessionSpawned: "skipped-no-sdk"` is a **fully successful** RC test.
-- Capture stderr verbatim in `notes` for anything that errors. Don't hide
-  failures — but also don't count an SDK-gated skip as a failure.
+- Capture stderr verbatim in `notes` for anything that errors. Do not hide
+  failures — but also do not count an SDK-gated skip as a failure.
 
 ---
 
@@ -62,7 +62,7 @@ URL=$(python3 -c "import json;print(json.load(open('feed.json'))['releases'][0][
 curl -fsS "$URL" -o pylon && chmod +x pylon
 ```
 
-**Option B — build from source** (always works; needed while the feed is unpublished):
+**Option B — build from source** (always works, needed while the feed is unpublished):
 ```sh
 git clone https://github.com/OpenAgentsInc/openagents
 cd openagents/apps/pylon && bun install
@@ -84,9 +84,9 @@ A mismatch is a **hard fail** — stop. Set `signatureVerified` accordingly.
 
 ## 3. Exercise the agent surface (headless, all JSON, NO SDK needed)
 
-Pylon is agent-steerable; `help --json` is the machine-readable catalog. Use an
+Pylon is agent-steerable. `help --json` is the machine-readable catalog. Use an
 isolated home so you never touch a real node, and **read stdout only** — these
-commands print JSON to stdout; logs go to stderr, so `2>&1` will corrupt your
+commands print JSON to stdout. Logs go to stderr, so `2>&1` will corrupt your
 parse. Pipe with `2>/dev/null` (or capture stdout separately).
 
 ```sh
@@ -127,15 +127,15 @@ $B update --check --json 2>/dev/null   # SEE NOTE BELOW
 { "status": "error", "error": "update feed https://updates.openagents.com/pylon/rc/<plat>/feed.json returned 404", "applied": false }
 ```
 That 404 is a **feed-publishing state, not a binary failure** — the client route
-is correct, the artifact just isn't served yet. Record it as
+is correct, the artifact just is not served yet. Record it as
 `update-check: feed-unpublished` and **do not** count it as a binary defect.
 (Publishing the feed is a maintainer task — see the install guide's maintainer
-section.) Set `commandsOk` to include `update-check` once the feed is live;
+section.) Set `commandsOk` to include `update-check` once the feed is live.
 otherwise note `feed-unpublished`.
 
 ## 4. OPTIONAL — managed agent session (requires a coding agent SDK + credentials)
 
-**Skip this entire section if you don't have a coding agent SDK installed.** The
+**Skip this entire section if you do not have a coding agent SDK installed.** The
 RC is fully validated by §1–§3 without it. This step exercises a managed coding
 session, which requires:
 
@@ -187,7 +187,7 @@ Outcomes:
 - SDK + creds present → the session should reach `completed` with `pong.txt`
   created and the verify passing → `sessionSpawned: true`.
 
-## 5. Default-on auto-update (don't fight it)
+## 5. Default-on auto-update (do not fight it)
 
 Pylon checks for updates at startup by default and self-replaces (verifying
 against the pinned key). For a bounded test, opt out so the binary stays fixed:
@@ -206,15 +206,15 @@ APP="/path/to/Autopilot Desktop-canary.app"
 spctl -a -vvv -t exec "$APP"                       # expect: accepted / Notarized Developer ID
 codesign -dvv "$APP" 2>&1 | grep TeamIdentifier    # expect: HQWSG26L43
 ```
-The app bundles + runs the same Pylon node headlessly; the Pylon binary test above
+The app bundles + runs the same Pylon node headlessly. The Pylon binary test above
 covers node behavior. GUI interaction is a human task.
 
 ---
 
 ## Boundaries for the testing agent
 
-- **Don't** publish to npm, deploy, or flip any promise/registry state — read/exercise only.
-- **Don't** run on a real funded node home; always use a throwaway `PYLON_HOME`.
-- The wallet `balance` is real but tiny (test sats); don't attempt payouts.
+- **Do not** publish to npm, deploy, or flip any promise/registry state — read/exercise only.
+- **Do not** run on a real funded node home. Always use a throwaway `PYLON_HOME`.
+- The wallet `balance` is real but tiny (test sats). Do not attempt payouts.
 - **No SDK is required and none should be installed for the core test.** Report
   an SDK-gated skip as `"skipped-no-sdk"` (a pass), never as a failure.

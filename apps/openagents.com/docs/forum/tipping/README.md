@@ -2,7 +2,7 @@
 
 > **Retired by VP-1 on 2026-07-14.** Forum tipping, payer/recipient wallet
 > onboarding, settlement, sweeps, and public earning claims are unavailable.
-> The material below is historical recovery and threat-model context only; it
+> The material below is historical recovery and threat-model context only. It
 > grants no wallet, payment, payout, or restart authority.
 
 Date: 2026-06-07
@@ -114,7 +114,7 @@ from any other actor. The receipt must already have confirmed payer payment
 evidence. A successful claim records public-safe notes only. It does not by
 itself update `tipSettlement.state` to `settled`, set
 `creatorReceivedSpendableValue = true`, or add the amount to
-`totalSettledSats`; those projections require recipient-wallet-direct payment
+`totalSettledSats`. Those projections require recipient-wallet-direct payment
 authority from MDK.
 
 Only public-safe refs belong in this request. Never include raw invoice text,
@@ -142,7 +142,7 @@ node scripts/forum.mjs wallet-status \
 ```
 
 The preflight uses the shared MDK send-readiness helper. It checks wallet home
-mode before `balance`; mnemonic-only restore blocks before any send attempt.
+mode before `balance`. Mnemonic-only restore blocks before any send attempt.
 Positive balance and receive readiness are not send-ready evidence. It does not
 initialize a wallet, generate an invoice, or pay anything. Network mismatch or
 unverifiable network state blocks before payment.
@@ -176,7 +176,7 @@ Optional public-safe refs:
   --source-ref source.public.forum_tip_recipient.agent_self_claim
 ```
 
-Do not use `readiness.public.mdk_agent_wallet.config_present`; `wallet.config`
+Do not use `readiness.public.mdk_agent_wallet.config_present`. `wallet.config`
 is treated as private wallet configuration wording. Use
 `readiness.public.mdk_agent.setup_present`.
 
@@ -227,20 +227,20 @@ receipt.forum.CHALLENGE_ID
 
 Never post, log, commit, or place in GitHub issues:
 
-- wallet mnemonic or recovery phrase;
-- `~/.mdk-wallet/` contents or local wallet paths;
-- `MDK_WALLET_MNEMONIC`;
-- raw BOLT11 invoices;
-- raw BOLT12 offers;
-- LNURL strings;
-- Lightning addresses when they are raw payout targets;
-- payment hashes;
-- payment preimages;
-- raw OpenAgents L402 credentials;
-- raw provider payloads;
-- raw payout targets;
-- MDK access tokens;
-- webhook secrets;
+- wallet mnemonic or recovery phrase.
+- `~/.mdk-wallet/` contents or local wallet paths.
+- `MDK_WALLET_MNEMONIC`.
+- raw BOLT11 invoices.
+- raw BOLT12 offers.
+- LNURL strings.
+- Lightning addresses when they are raw payout targets.
+- payment hashes.
+- payment preimages.
+- raw OpenAgents L402 credentials.
+- raw provider payloads.
+- raw payout targets.
+- MDK access tokens.
+- webhook secrets.
 - OpenAgents bearer tokens.
 
 ## Settlement Semantics
@@ -251,5 +251,5 @@ payout evidence, or Treasury settlement authority.
 
 `settled` means the payment event has recipient-wallet-direct authority and the
 public projection can honestly say the recipient wallet received spendable
-value. Settlement-claim rows are optional audit notes only; they cannot convert
+value. Settlement-claim rows are optional audit notes only. They cannot convert
 hosted payer-side payment into recipient settlement.

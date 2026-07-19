@@ -1,7 +1,7 @@
 # Flue Audits
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 This directory tracks OpenAgents evaluations of the Flue framework as a possible

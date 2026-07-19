@@ -38,9 +38,9 @@ The promise stays **planned**. Still genuinely missing:
    and invokes `normalizeErcotLmpResponse` to populate a real
    `ArtanisPylonPowerMarketWindowRecord` with `claimState: 'measured'`.
 2. **Work-class flex profiles from real telemetry** — schemas exist
-   (`pylon-flexible-load-profiles.ts`); real per-workload measurements
+   (`pylon-flexible-load-profiles.ts`). Real per-workload measurements
    needed.
 3. **Real flexible-load event history** — schemas exist
-   (`pylon-flexible-load-events.ts`); the training-marathon curtailment
+   (`pylon-flexible-load-events.ts`). The training-marathon curtailment
    drill receipt is the intended first real event.
 4. **Owner sign-off** — required for any green flip per the promise rules.

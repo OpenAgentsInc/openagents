@@ -11,12 +11,12 @@ The load-bearing tests reproduce the Rust executor's trace digest
 byte-for-byte on the committed fixtures:
 
 - `fixtures/tassadar-poc-loop-sum-v1.json` — the original
-  backward-branch loop `TassadarProgram`; regeneration recipe is the
+  backward-branch loop `TassadarProgram`. Regeneration recipe is the
   ignored `dump_poc_fixture` test in psionic
   `crates/psionic-compiler/src/tassadar_alm_numeric.rs`.
 - `fixtures/tassadar-compiled-program-corpus-v1.json` — the C1
   run-facing corpus of four distinct psionic-derived programs
-  (loop-sum, arithmetic, memory roundtrip, factorial state machine);
+  (loop-sum, arithmetic, memory roundtrip, factorial state machine).
   regeneration recipe is the ignored
   `dump_numeric_program_corpus_fixture` test in the same psionic file.
 

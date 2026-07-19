@@ -21,10 +21,10 @@ policy into public refs.
 
 This bridge defines:
 
-- the private Cloud inputs that are eligible for pricing;
-- the customer-facing ledger outputs written by `openagents.com`;
-- the separation between metering, priced line items, and settlement receipts;
-- the required markup rules for compute and Model-2 inference;
+- the private Cloud inputs that are eligible for pricing.
+- the customer-facing ledger outputs written by `openagents.com`.
+- the separation between metering, priced line items, and settlement receipts.
+- the required markup rules for compute and Model-2 inference.
 - the retained refs-only projections shared across the private/public boundary.
 
 ## Inputs From Cloud
@@ -83,10 +83,10 @@ customer-facing compute markup configured by `openagents.com`.
 The priced line item must retain:
 
 - `usage_ref`, pointing to the private resource-usage receipt digest or bridge
-  usage ref;
+  usage ref.
 - compute class and metered dimensions only when those dimensions are
-  public-safe for the account surface;
-- `pricing_policy_ref`, pointing to the public ledger pricing policy version;
+  public-safe for the account surface.
+- `pricing_policy_ref`, pointing to the public ledger pricing policy version.
 - `amount_microusd`, the customer-facing debit or invoice amount.
 
 Raw provider cost and private fleet placement remain private Cloud material.
@@ -171,24 +171,24 @@ applicable.
 
 Public retained projections are refs-only. They may contain:
 
-- `usage_ref`;
-- `resource_usage_receipt_digest`;
-- `internal_accounting_receipt_digest`;
-- `priced_line_item_ref`;
-- `credit_ledger_entry_ref` or `invoice_line_item_ref`;
-- `pricing_policy_ref`;
-- `settlement_receipt_ref`, when settlement has occurred;
-- coarse product labels such as `compute` or `model_2_inference`;
+- `usage_ref`.
+- `resource_usage_receipt_digest`.
+- `internal_accounting_receipt_digest`.
+- `priced_line_item_ref`.
+- `credit_ledger_entry_ref` or `invoice_line_item_ref`.
+- `pricing_policy_ref`.
+- `settlement_receipt_ref`, when settlement has occurred.
+- coarse product labels such as `compute` or `model_2_inference`.
 - customer-visible amount fields that belong to the public ledger.
 
 Public retained projections must not contain:
 
-- raw provider cost or raw provider invoices;
-- raw customer identity beyond the public ledger account ref;
+- raw provider cost or raw provider invoices.
+- raw customer identity beyond the public ledger account ref.
 - payment method material, processor secrets, bearer tokens, wallet seeds,
-  private keys, or raw capability credentials;
+  private keys, or raw capability credentials.
 - private fleet topology, raw node placement, raw provider account refs, or
-  internal settlement policy;
+  internal settlement policy.
 - unredacted logs, prompts, artifacts, or workroom filesystem paths.
 
 ## Validation Rules
@@ -202,7 +202,7 @@ Public retained projections must not contain:
   or remain unpriced until trustworthy cost is available.
 - `count_source = unavailable` or `usage.unavailable` must remain visible in
   refs-only projections for unpriced usage.
-- Settlement receipts must cite priced line item refs; metering receipts alone
+- Settlement receipts must cite priced line item refs. Metering receipts alone
   are not settlement proof.
 - Public retained projections must remain refs-only and must reject raw cost,
   customer payment material, secrets, private topology, and raw accounting

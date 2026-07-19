@@ -1,7 +1,7 @@
 # OpenCode Token Counter Attribution Plan
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Worker 07 of 10. Source: `docs/inference/2026-06-25-khala-inference-gtm-push.md`.
@@ -17,7 +17,7 @@ Prove that OpenCode-served inference increments the public Khala tokens-served c
 - Already verified under 24-wide concurrent stress — the recorder is monotonic and durable.
 - The public counter intentionally aggregates everything. The gateway also accepts
   optional safe attribution headers and stores them in
-  `token_usage_events.safe_metadata_json`; owner-gated per-tool rollups are F1
+  `token_usage_events.safe_metadata_json`. Owner-gated per-tool rollups are F1
   (#6252), not public counter dimensions.
 
 ## 2. Proving OpenCode Increments the Counter
@@ -61,7 +61,7 @@ send custom headers.
    analytics split over these safe metadata fields. This is **not** on the
    public counter.
 4. **Dogfood dashboard** — Query the F1 analytics split daily. The public
-   counter stays aggregate; the internal dashboard breaks out the split.
+   counter stays aggregate. The internal dashboard breaks out the split.
 
 ### Honesty rules (anti-vanity guardrails)
 
@@ -70,7 +70,7 @@ send custom headers.
 | The public counter is **always** aggregate, never broken out by source | No per-source query parameters on public endpoints |
 | External attribution claims ("OpenCode served X tokens") must come from the internal attribution endpoint, **not** from subtracting dogfood from aggregate | The dogfood dashboard is the single source of truth for per-tool numbers |
 | If a tool's attribution header is missing/untrusted, it is treated as unlabeled aggregate traffic | Default is safe — under-attribution is honest, over-attribution is not |
-| Internal dogfood traffic uses registered `oa_agent_` tokens, not free-tier mint keys | Free-tier tokens are indistinguishable from external; registered tokens carry operator metadata for the attribution header |
+| Internal dogfood traffic uses registered `oa_agent_` tokens, not free-tier mint keys | Free-tier tokens are indistinguishable from external. Registered tokens carry operator metadata for the attribution header |
 
 ### Rollout sequence
 
@@ -79,7 +79,7 @@ send custom headers.
 3. **Tag all internal systems** (qa-runner, Autopilot, Probe) with their demand
    kind/source/client.
 4. **Tag ecosystem recipes when possible** — AI SDK and LangChain JS can set
-   custom headers; Aider, Cline, and Continue should use fresh per-tool keys
+   custom headers. Aider, Cline, and Continue should use fresh per-tool keys
    until F1 can roll up request metadata.
 5. **Verify delta discipline.** Run the automated check from §2 with headers set
    where supported. Confirm the public counter increments and, once F1 exists,
@@ -90,9 +90,9 @@ send custom headers.
 | Claim | Data source | Honest framing |
 |---|---|---|
 | "Khala served N tokens total today" | Public counter | Aggregate, includes internal + external |
-| "OpenCode sessions served M tokens through Khala" | Attribution endpoint or fresh-key test window | Only if headers/key scope bind the traffic to OpenCode; else say "at least" |
-| "X external developers tried Khala via OpenCode" | Count distinct `oa_agent_` keys used in OpenCode sessions | Not derivable from token counts alone; needs key-level attribution |
-| "Khala tokens grew W% week-over-week" | Public history endpoint | Aggregate; internal growth is real growth but should note if mostly dogfood |
+| "OpenCode sessions served M tokens through Khala" | Attribution endpoint or fresh-key test window | Only if headers/key scope bind the traffic to OpenCode. Else say "at least" |
+| "X external developers tried Khala via OpenCode" | Count distinct `oa_agent_` keys used in OpenCode sessions | Not derivable from token counts alone. Needs key-level attribution |
+| "Khala tokens grew W% week-over-week" | Public history endpoint | Aggregate. Internal growth is real growth but should note if mostly dogfood |
 
 The public-facing `/khala` page shows the aggregate counter. The per-tool numbers stay in our analytics. Never publish a per-tool number without also publishing the methodology (which header, what window, internal-only caveats if any).
 

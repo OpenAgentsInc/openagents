@@ -20,15 +20,15 @@ change dispatch, connect providers, export data, or deploy anything by itself.
 
 The classification enum now covers:
 
-- `public`;
-- `customer`;
-- `team`;
-- `operator`;
-- `private`;
-- `legal_sensitive`;
-- `provider_private`;
-- `payment_private`;
-- `secret_bearing`; and
+- `public`.
+- `customer`.
+- `team`.
+- `operator`.
+- `private`.
+- `legal_sensitive`.
+- `provider_private`.
+- `payment_private`.
+- `secret_bearing`. And
 - `deletion_retention_sensitive`.
 
 The new `deletion_retention_sensitive` class is for records that are safe to
@@ -39,21 +39,21 @@ delete/retention-sensitive state is attached.
 
 `OmniDataPolicyEnvelope` can classify these surfaces:
 
-- `order`;
-- `site`;
-- `site_revision`;
-- `workroom`;
-- `artifact`;
-- `evidence_bundle`;
-- `task_packet`;
-- `agent_api_payload`;
-- `forum_topic`;
-- `forum_post`;
-- `forum_receipt`;
-- `forum_payment_ref`;
-- `receipt`;
-- `payment_ref`;
-- `provider_account`; and
+- `order`.
+- `site`.
+- `site_revision`.
+- `workroom`.
+- `artifact`.
+- `evidence_bundle`.
+- `task_packet`.
+- `agent_api_payload`.
+- `forum_topic`.
+- `forum_post`.
+- `forum_receipt`.
+- `forum_payment_ref`.
+- `receipt`.
+- `payment_ref`.
+- `provider_account`. And
 - `customer_asset`.
 
 Safe `provider_account` refs are allowed because provider-account objects are
@@ -65,9 +65,9 @@ provider payloads, and raw auth state remain unsafe.
 `omniDataPolicyProjectionDecision(record, audience)` maps classification and
 audience to one of:
 
-- `allow`;
-- `redact`;
-- `omit`; or
+- `allow`.
+- `redact`.
+- `omit`. Or
 - `deny`.
 
 Public and agent audiences can only directly allow public data. Customer
@@ -84,10 +84,10 @@ returns `omit`. Blocked trust or non-private secret-bearing projections return
 
 Every policy envelope carries:
 
-- `retentionPolicyRefs`;
-- `exportPolicyRefs`;
-- `redactionPolicyRefs`;
-- `providerEligibilityRefs`; and
+- `retentionPolicyRefs`.
+- `exportPolicyRefs`.
+- `redactionPolicyRefs`.
+- `providerEligibilityRefs`. And
 - `evidenceRefs`.
 
 `omniDataPolicyExportAllowed(record, audience)` only allows export when the
@@ -107,12 +107,12 @@ allowed through this helper.
 `omniRequiredProviderEligibilityRefs(record)` returns future placement-policy
 requirements based on classification:
 
-- public data can run on `provider.eligibility.public`;
-- customer-visible data requires `provider.eligibility.customer_visible`;
-- team/operator/private data requires `provider.eligibility.reviewed_private`;
-- legal-sensitive data requires `provider.eligibility.legal_sensitive`;
-- provider-private data requires `provider.eligibility.provider_private`;
-- payment-private data requires `provider.eligibility.payment_private`; and
+- public data can run on `provider.eligibility.public`.
+- customer-visible data requires `provider.eligibility.customer_visible`.
+- team/operator/private data requires `provider.eligibility.reviewed_private`.
+- legal-sensitive data requires `provider.eligibility.legal_sensitive`.
+- provider-private data requires `provider.eligibility.provider_private`.
+- payment-private data requires `provider.eligibility.payment_private`. And
 - secret-bearing or deletion/retention-sensitive data requires
   `provider.eligibility.no_external_provider`.
 
@@ -124,24 +124,24 @@ placement restrictions.
 
 Policy envelopes reject refs containing:
 
-- private customer emails or customer names/values;
-- provider grants, tokens, or raw payloads;
-- callback tokens, bearer tokens, OAuth material, API keys, and secrets;
+- private customer emails or customer names/values.
+- provider grants, tokens, or raw payloads.
+- callback tokens, bearer tokens, OAuth material, API keys, and secrets.
 - wallet material, invoices, payment hashes, payment proofs, preimages, and
-  payout targets;
+  payout targets.
 - raw runner logs, raw provider payloads, raw prompts, raw emails, raw source
-  archives, and raw webhooks;
-- private repo refs; and
+  archives, and raw webhooks.
+- private repo refs. And
 - raw timestamps.
 
 ## Tests
 
 `workers/api/src/omni-data-classification.test.ts` now covers:
 
-- schema/projection decoding;
-- allow/redact/omit/deny audience decisions;
-- customer, public, team, operator, agent, and private audience behavior;
-- export/retention denial behavior;
-- explicit sensitive export policy requirements;
-- provider-eligibility refs by classification; and
+- schema/projection decoding.
+- allow/redact/omit/deny audience decisions.
+- customer, public, team, operator, agent, and private audience behavior.
+- export/retention denial behavior.
+- explicit sensitive export policy requirements.
+- provider-eligibility refs by classification. And
 - unsafe ref rejection.

@@ -2,12 +2,12 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
-Status: deployed (control node persistent); live GCE per-session provisioner
+Status: deployed (control node persistent). Live GCE per-session provisioner
 proven end-to-end (acquire -> in_use -> release, zero leaks). Autonomous coding
 push leg is gated on creds (see NEEDS-OWNER).
 
@@ -30,9 +30,9 @@ VMs (`oa-codex-sess-*`) are always torn down by the provisioner.
 | Image | `us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/oa-codex-control:cloud95` |
 | Control port | `8787`, firewall `oa-codex-control-port`, restricted to IAP range `35.235.240.0/20` + owner CIDR (NOT open to the world) |
 | Labels | `openagents-managed=control`, `openagents-component=codex-control` |
-| Container networking | `hostNetwork: true` so the daemon's `:8787` listener is reachable on the VM NIC; the GCE firewall is the access boundary |
+| Container networking | `hostNetwork: true` so the daemon's `:8787` listener is reachable on the VM NIC. The GCE firewall is the access boundary |
 
-The instance external IP is ephemeral; read it live with
+The instance external IP is ephemeral. Read it live with
 `gcloud compute instances describe oa-codex-control-1 --project openagentsgemini
 --zone us-central1-a --format='value(networkInterfaces[0].accessConfigs[0].natIP)'`.
 
@@ -68,7 +68,7 @@ OA_CODEX_GCE_USE_METADATA_ADC=true
 
 The container runs with `hostNetwork: true` (konlet container declaration) so
 the `:8787` listener is reachable on the VM NIC. `OA_CODEX_AUTH_JSON_ROOT` is
-mandatory at startup even for provisioner-only operation; the account subdir is
+mandatory at startup even for provisioner-only operation. The account subdir is
 only populated when a real Codex run is enabled (see NEEDS-OWNER).
 
 ## Reaching the control API
@@ -84,7 +84,7 @@ gcloud compute start-iap-tunnel oa-codex-control-1 8787 \
 curl -sS http://localhost:18787/healthz -H "Authorization: Bearer $OA_CODEX_CONTROL_TOKEN"
 ```
 
-The bearer token is held by the owner; it is not committed. Rotate by redeploy
+The bearer token is held by the owner. It is not committed. Rotate by redeploy
 with a fresh `--control-token`.
 
 ## How worker VMs are provisioned and torn down
@@ -194,7 +194,7 @@ the provisioner using the VM's metadata-server ADC (NO key files):
   STOPPING -> gone.
 - `openagents.resource_usage_receipt.v1` emitted (`vmSeconds: 27`).
 - Run terminal status `failed` at the Codex step (this provisioner-only image
-  bundles no codex/opencode binary and no auth grant — expected; the VM
+  bundles no codex/opencode binary and no auth grant — expected. The VM
   lifecycle still completed and tore down). Post-run: zero `oa-codex-sess-*`.
 
 This is the full provision -> attach -> teardown loop proven from the deployed
@@ -223,7 +223,7 @@ cannot fully provide:
    managed always-on node, the preferred path is the openagents.com grant
    resolver (`OA_CODEX_GRANT_RESOLVE_URL` + `OA_CODEX_RUNNER_GRANT_TOKEN`), which
    is NOT present in `.secrets`.
-2. The control image does not bundle the `codex` / `opencode` CLI; a run-capable
+2. The control image does not bundle the `codex` / `opencode` CLI. A run-capable
    image (or worker bootstrap) needs them. Today's image is provisioner-only +
    control API.
 3. GitHub push: the control daemon enables repo checkout/push only when a write
@@ -240,4 +240,4 @@ OWNER ACTION to complete the push loop:
 - a run-capable control image (codex/opencode bundled) once cloud#96/#97 land.
 
 Until then the node is deployed and the worker-VM provision/teardown loop is
-proven; the code-change-and-push leg is the remaining creds-gated step.
+proven. The code-change-and-push leg is the remaining creds-gated step.

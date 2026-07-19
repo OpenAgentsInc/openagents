@@ -14,10 +14,10 @@ Initial profile defaults:
 
 API-key resolution follows the Opencode-compatible order:
 
-1. explicit API key option;
-2. `GOOGLE_GENERATIVE_AI_API_KEY`;
-3. `GEMINI_API_KEY`;
-4. `PROBE_OPENAGENTS_BEARER_TOKEN` when `PROBE_OPENAGENTS_BASE_URL` is also set;
+1. explicit API key option.
+2. `GOOGLE_GENERATIVE_AI_API_KEY`.
+3. `GEMINI_API_KEY`.
+4. `PROBE_OPENAGENTS_BEARER_TOKEN` when `PROBE_OPENAGENTS_BASE_URL` is also set.
 5. typed missing-credential failure.
 
 Gemini auth receipts record only the source label and `apiKeyRedacted: true`.
@@ -72,9 +72,9 @@ overridden with `PROBE_WORKSPACE_ROOT=/Users/christopherdavid/work`. The
 initial starter tool menu includes:
 
 - `read_file`: reads a UTF-8 file under the configured tool root, capped to a
-  small text slice;
-- `list_files`: lists files below a workspace-relative directory;
-- `search_code`: searches workspace files with ripgrep;
+  small text slice.
+- `list_files`: lists files below a workspace-relative directory.
+- `search_code`: searches workspace files with ripgrep.
 - `current_time`: returns the current local timestamp.
 
 Chat output uses ANSI colors when stdout is a terminal. For scripts and logs,
@@ -93,7 +93,7 @@ Runner assignments can select Gemini with:
 ```
 
 Gemini assignments require the runner capability `probe.backend.gemini_api`.
-They do not require an OpenAgents product surface provider-account grant in this pass; the API key
+They do not require an OpenAgents product surface provider-account grant in this pass. The API key
 is resolved from the runner environment using the same precedence as local CLI
 calls. Apple FM remains the default backend profile for existing assignments
 that do not select Gemini.
@@ -112,14 +112,14 @@ Gemini request lowering lives in
 It converts the provider-neutral Probe LLM request contract into Gemini
 `streamGenerateContent` bodies:
 
-- top-level Probe system messages become Gemini `systemInstruction`;
+- top-level Probe system messages become Gemini `systemInstruction`.
 - chronological system messages inside the transcript become wrapped user
-  system-update text;
-- user text and media become Gemini `user` content parts;
+  system-update text.
+- user text and media become Gemini `user` content parts.
 - assistant text, reasoning, and tool-call history become Gemini `model`
-  content parts;
-- tool results become Gemini `functionResponse` parts;
-- Probe tool definitions become Gemini native function declarations;
+  content parts.
+- tool results become Gemini `functionResponse` parts.
+- Probe tool definitions become Gemini native function declarations.
 - tool choice maps to Gemini function-calling modes.
 
 Tool schemas are sanitized in
@@ -144,12 +144,12 @@ the parser sums those fields when both are available.
 `makeGeminiClient` exposes a `complete` method that sends Probe LLM requests to
 Gemini and handles native function-call continuation:
 
-1. lower the current Probe transcript into Gemini `contents`;
-2. send native function declarations;
-3. parse Gemini SSE events;
+1. lower the current Probe transcript into Gemini `contents`.
+2. send native function declarations.
+3. parse Gemini SSE events.
 4. dispatch emitted function calls through Probe's provider-neutral tool
-   runtime;
-5. append assistant tool-call history and user `functionResponse` history;
+   runtime.
+5. append assistant tool-call history and user `functionResponse` history.
 6. repeat until Gemini returns final text or the round-trip limit is reached.
 
 The loop uses Gemini native function declarations and responses. It does not
@@ -160,9 +160,9 @@ reuse the Apple FM callback URL bridge.
 Gemini receipts live in `packages/runtime/src/backends/gemini/receipts.ts`.
 They cover:
 
-- backend availability;
-- backend failures;
-- transcript summaries;
+- backend availability.
+- backend failures.
+- transcript summaries.
 - native tool-call summaries.
 
 Receipts store profile/model/source labels and normalized usage, but not raw
@@ -171,7 +171,7 @@ request headers.
 
 `reportGeminiBackendCapability` advertises the `probe.backend.gemini_api`
 capability only when a Gemini API key can be resolved. Gemini direct API
-support reports SSE streaming and native tool calls; it does not report Apple FM
+support reports SSE streaming and native tool calls. It does not report Apple FM
 callback support.
 
 ## Test Coverage

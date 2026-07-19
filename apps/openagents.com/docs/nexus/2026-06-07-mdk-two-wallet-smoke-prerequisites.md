@@ -14,7 +14,7 @@ an isolated Pylon edge test wallet, then record public-safe OpenAgents product s
 
 This prerequisite checklist defines what must exist before that smoke can run.
 Issue #431 has now run against those prerequisites. This document remains the
-setup source of truth; the evidence doc records the completed movement proof.
+setup source of truth. The evidence doc records the completed movement proof.
 
 ## Required Non-Secret State
 
@@ -24,7 +24,7 @@ The smoke is ready only when all of these public-safe facts are true:
 | --- | --- | --- |
 | Treasury wallet existence | An isolated OpenAgents treasury test wallet exists under operator control. | `wallet.test.openagents_treasury` or another stable redacted wallet ref. |
 | Pylon wallet existence | A separate isolated Pylon edge test wallet exists under operator or Pylon-local control. | `wallet.test.pylon_edge` or another stable redacted wallet ref. |
-| Funding readiness | The treasury test wallet has enough spendable bitcoin for the bounded test amount plus fee buffer. | `balance.mdk_agent_wallet.minimum_satisfied`; never the exact balance. |
+| Funding readiness | The treasury test wallet has enough spendable bitcoin for the bounded test amount plus fee buffer. | `balance.mdk_agent_wallet.minimum_satisfied`. Never the exact balance. |
 | Receive readiness | The Pylon edge test wallet can produce a fresh Lightning invoice or other supported destination for the smoke. | A redacted invoice/destination ref such as `invoice.redacted.mdk_agent_wallet.<digest>`. |
 | Payout target approval | OpenAgents product surface has an active approval for the redacted Pylon payout target. | `payout_target_approval.<stable-ref>` plus `payout_target.public.<digest>`. |
 | Accepted work evidence | The test has a tiny accepted-work fixture or operator-test assignment. | `accepted_work.test.<stable-ref>` or `assignment.test.<stable-ref>`. |
@@ -49,16 +49,16 @@ tracked repo or under an ignored path.
 
 Do not commit:
 
-- `config.json`;
-- mnemonic or seed phrase;
-- daemon state;
-- payment history;
-- raw invoice;
-- payment hash;
-- preimage;
-- exact balance;
-- raw payout destination;
-- local wallet home path when it reveals a user or host; or
+- `config.json`.
+- mnemonic or seed phrase.
+- daemon state.
+- payment history.
+- raw invoice.
+- payment hash.
+- preimage.
+- exact balance.
+- raw payout destination.
+- local wallet home path when it reveals a user or host. Or
 - provider access tokens or webhook secrets.
 
 ## Funding Requirement
@@ -71,7 +71,7 @@ The readiness check should compare the wallet balance against the planned smoke
 amount plus a fee buffer, but any public or durable record should store only a
 bucketed readiness ref:
 
-- `balance.mdk_agent_wallet.minimum_satisfied`; or
+- `balance.mdk_agent_wallet.minimum_satisfied`. Or
 - `balance.mdk_agent_wallet.minimum_not_satisfied`.
 
 Do not record the exact wallet balance in Pylon API events, payout receipts,
@@ -105,28 +105,28 @@ private executor boundary.
 
 The #431 public receipt can say:
 
-- a real MDK agent-wallet adapter attempted a bounded bitcoin payout;
-- the source was the isolated OpenAgents treasury test wallet ref;
-- the destination was an approved redacted Pylon edge payout target ref;
-- the payout amount bucket or configured cap;
-- the adapter attempt ref;
-- the redacted payment ref digest;
-- the reconciliation result ref;
-- the settlement receipt ref; and
+- a real MDK agent-wallet adapter attempted a bounded bitcoin payout.
+- the source was the isolated OpenAgents treasury test wallet ref.
+- the destination was an approved redacted Pylon edge payout target ref.
+- the payout amount bucket or configured cap.
+- the adapter attempt ref.
+- the redacted payment ref digest.
+- the reconciliation result ref.
+- the settlement receipt ref. And
 - the idempotency/ref replay status.
 
 It must not say:
 
-- raw invoice;
-- raw payment hash;
-- preimage;
-- mnemonic;
-- wallet config;
-- wallet home path;
-- exact wallet balance;
-- private payout target;
-- provider access token;
-- webhook secret; or
+- raw invoice.
+- raw payment hash.
+- preimage.
+- mnemonic.
+- wallet config.
+- wallet home path.
+- exact wallet balance.
+- private payout target.
+- provider access token.
+- webhook secret. Or
 - private customer or operator data.
 
 ## Current Code Alignment
@@ -143,12 +143,12 @@ should receive only redacted destination and payment refs.
 
 #431 executed the live movement run:
 
-- identified the two isolated wallet homes;
-- confirmed bucketed treasury funding readiness;
-- approved the redacted Pylon payout target;
-- created the tiny operator-test fixture;
-- dispatched and reconciled the payout through OpenAgents product surface authority;
-- proved idempotency prevented double spend; and
+- identified the two isolated wallet homes.
+- confirmed bucketed treasury funding readiness.
+- approved the redacted Pylon payout target.
+- created the tiny operator-test fixture.
+- dispatched and reconciled the payout through OpenAgents product surface authority.
+- proved idempotency prevented double spend. And
 - wrote the public-safe receipt chain.
 
 See `docs/nexus/2026-06-07-mdk-two-wallet-smoke-evidence.md` for the redacted

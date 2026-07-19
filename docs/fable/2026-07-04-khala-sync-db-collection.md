@@ -14,7 +14,7 @@ sync transactions with `begin`, `truncate`, `write`, `commit`, and `markReady`.
 
 It intentionally does not persist a second row store. Browser clients can supply
 the SQLite-WASM-backed Khala Sync store and Bun clients can supply the
-`bun:sqlite` store; the adapter itself depends only on the shared session and
+`bun:sqlite` store. The adapter itself depends only on the shared session and
 overlay interfaces.
 
 ## Mutation Matching

@@ -20,7 +20,7 @@ assignments without bypassing the existing Pylon assignment rail.
 
 The bridge refuses to create an assignment when:
 
-- the validator Pylon ref equals the worker Pylon ref; or
+- the validator Pylon ref equals the worker Pylon ref. Or
 - the challenge contribution ref contains the validator Pylon ref.
 
 Those blockers make the worker validating its own contribution structurally

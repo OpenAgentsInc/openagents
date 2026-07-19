@@ -3,7 +3,7 @@
 - Schema: `sarah-take-scoreboard.v1`
 - Take: `sarah-reply-enhanced` (2026-07-09)
 - Refs: #8610, #8618
-- **Advance: NO** — OWNER PLAYBACK FAIL: choppier, plastic, less humanlike in motion — after passing stills QA. Full-strength per-frame GFPGAN is banned as a default; tamed recipe (v3) replaces it.
+- **Advance: NO** — OWNER PLAYBACK FAIL: choppier, plastic, less humanlike in motion — after passing stills QA. Full-strength per-frame GFPGAN is banned as a default. Tamed recipe (v3) replaces it.
 
 ## Input refs
 
@@ -25,10 +25,10 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| STT round-trip (whole-clip, Gemini (same audio as hq)) | PASS | 'A I' letters 3/3; 'coding agents' correct |
+| STT round-trip (whole-clip, Gemini (same audio as hq)) | PASS | 'A I' letters 3/3. 'Coding agents' correct |
 | Loudness / true peak | -18.4 LUFS / -2.9 dBTP | target ≈ -16 LUFS / ≤ -3 dBTP |
 | Pause timing | WATCH | staccato letter-speech pacing (same audio as hq) |
-| Prosody (human verdict) | WATCH | same staccato letter-spaced audio as hq; clipped audio likely amplified the clipped-viseme percept |
+| Prosody (human verdict) | WATCH | same staccato letter-spaced audio as hq. Clipped audio likely amplified the clipped-viseme percept |
 | Prosody (LLM judge) | not run | — |
 | Initialism risk | — | normalizer letter-spacing 'A I' — correct words, robotic rhythm |
 
@@ -37,11 +37,11 @@
 | Gate | Status | Notes |
 | --- | --- | --- |
 | **Owner playback verdict** | FAIL | OWNER VERDICT: choppier, plastic, way less humanlike in motion — after passing stills QA (crisp teeth, no measured flicker, invisible seam) |
-| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured; frame inspection surfaced no offset |
-| Crop sharpness | PASS | individual tooth definition, crisp lip edges — in stills; the sharpness is the problem in motion |
+| A/V sync (start / middle / end) | not run / not run / not run | not separately re-measured. Frame inspection surfaced no offset |
+| Crop sharpness | PASS | individual tooth definition, crisp lip edges — in stills. The sharpness is the problem in motion |
 | Temporal boil/flicker | WATCH | no measured boil at sampled 24-frame windows (2.92 vs hq 2.82 mean diff at t=8 s) — but playback percept is per-frame GAN mode-snapping, invisible to frame-diff statistics |
 | Chunk-boundary jerk | PASS | metrics statistically identical to the original — the owner-perceived choppiness is per-frame GAN restoration, not gross frame-level jitter |
-| Identity drift | WATCH | no drift in stills; over-restored skin/teeth texture reads uncanny/plastic in motion |
+| Identity drift | WATCH | no drift in stills. Over-restored skin/teeth texture reads uncanny/plastic in motion |
 | Paste-back seam | PASS | seam invisible in every sampled crop |
 
 Motion metrics (mouth crop, lower jerk = smoother):

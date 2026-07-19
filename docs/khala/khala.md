@@ -14,7 +14,7 @@
 > non-breaking aliases that resolve to the same handlers, so existing OpenAI
 > client integrations do not break. The standalone MPP/x402 chat endpoint was
 > retired in #8387 and is no longer part of the live Khala surface. Older
-> `/v1/...` references below predate the canonical-base move; read them as the
+> `/v1/...` references below predate the canonical-base move. Read them as the
 > `/api/v1/...` canonical path.
 
 Khala is a single OpenAI-compatible inference endpoint that **behaves like one
@@ -24,7 +24,7 @@ work in Bitcoin. The name follows our world: the **Khala** is the psionic link
 that joins many minds into one (the same role Tassadar and Artanis play).
 
 This is a generic industry pattern — Sakana's Fugu is the clearest public
-statement of "a multi-agent system delivered as one model" ([Sakana AI][1]);
+statement of "a multi-agent system delivered as one model" ([Sakana AI][1]).
 OpenRouter and LiteLLM occupy nearby points. Khala's differentiator is what no
 closed router has: **verified work, Pylon contributors, Bitcoin settlement, and
 Tassadar modules**, wired in from day one.
@@ -35,13 +35,13 @@ Khala is **not** a new codebase. It is:
 
 - a set of **virtual model IDs** (`openagents/khala-*`) exposed through the
   existing gateway route `POST /v1/chat/completions` on
-  `apps/openagents.com/workers/api`;
+  `apps/openagents.com/workers/api`.
 - the **`ModelRouter` seam** (cheapest-viable selection, #5482) evolved into the
-  **Khala coordinator** (heuristic → learned);
+  **Khala coordinator** (heuristic → learned).
 - the existing **`InferenceProviderAdapter` / `InferenceProviderRegistry`**
   (`src/inference/provider-adapter.ts`) as the **worker pool** (Fireworks #5479,
   Vertex Anthropic #5480, partner passthrough #5481, + Pylon shard-WAN serving,
-  + Tassadar modules);
+  + Tassadar modules).
 - the existing **`MeteringHook`** (#5477) extended to write **receipts** and, for
   verified lanes, trigger **settlement**.
 
@@ -59,21 +59,21 @@ the coordinator design (`docs/sakana/`), the verification recipe lessons
 
 ## 2. Design principles
 
-1. **One endpoint outside, many agents inside.** External callers see one model;
+1. **One endpoint outside, many agents inside.** External callers see one model.
    internally Khala assembles workers per request.
 2. **Verified, not trusted.** Correctness is established by independent
    verification (test command / replay / verification-class challenge), never by
-   the producing model self-grading. (See §6; the empirical case is TMAX's
+   the producing model self-grading. (See §6, the empirical case is TMAX's
    reward-hacking finding — `docs/research/tmax/synthesis.md` §3.)
 3. **Receipts underneath, not chain-of-thought.** Expose routing class,
    verification class, cost, and a receipt id — never the internal CoT.
-4. **Cost per accepted outcome is the north-star** metric; per-token billing is
+4. **Cost per accepted outcome is the north-star** metric. Per-token billing is
    the compatibility default, accepted-outcome pricing is the goal for
    coding/agentic lanes.
 5. **The coordinator interface is swappable.** Heuristic v0 must be replaceable
    by a learned coordinator without changing the API or the adapters.
 6. **Bitcoin-native economics.** Every call meters provider cost and OpenAgents
-   price in msat; verified-work lanes settle to the worker and validator.
+   price in msat. Verified-work lanes settle to the worker and validator.
 
 ## 3. Public API surface
 
@@ -83,16 +83,16 @@ OpenAI-compatible, on the existing Worker routes:
 - `POST /v1/chat/completions` — OpenAI Chat Completions shape (streaming +
   non-streaming). `/v1/messages` (Anthropic) is a left seam.
 - **Auth:** per-account API-key / agent bearer token
-  (`authenticateProgrammaticAgent`); **balance gate** (`readAgentBalance`),
+  (`authenticateProgrammaticAgent`). **Balance gate** (`readAgentBalance`),
   `402` on insufficient credits.
 
 ### Model tiers
 
-| Model ID | Lane | Behaviour |
+| Model ID | Lane | Behavior |
 |---|---|---|
-| `openagents/khala-mini` | cheap default | cheapest-viable router over the pool; good for agents; priced above blended cost |
-| `openagents/khala-pro` | stronger | escalates to stronger models + a verifier pass; higher price |
-| `openagents/khala-code` | coding | coding-optimized; runs tests / verification commands; returns a receipt |
+| `openagents/khala-mini` | cheap default | cheapest-viable router over the pool. Good for agents. Priced above blended cost |
+| `openagents/khala-pro` | stronger | escalates to stronger models + a verifier pass. Higher price |
+| `openagents/khala-code` | coding | coding-optimized. Runs tests / verification commands. Returns a receipt |
 | `openagents/khala` *(later)* | full | learned coordinator over frontier APIs + Pylons + verified Tassadar modules |
 | `openagents/tassadar` *(later)* | executor | Tassadar executor-class modules where exact replay applies |
 
@@ -148,7 +148,7 @@ The `openagents` block carries a non-breaking `telemetry` summary — the canoni
 public-safe **Khala request-lifecycle telemetry** the inference-engineering book's
 P0-1 asks us to record *before* optimizing serving. The full typed schema is
 `apps/openagents.com/workers/api/src/inference/khala-telemetry.ts` (Effect Schema,
-`openagents.khala.telemetry.v1`); the book P0-1 cross-reference is
+`openagents.khala.telemetry.v1`). The book P0-1 cross-reference is
 [`2026-06-23-khala-telemetry-scorecard-book-p0-1.md`](2026-06-23-khala-telemetry-scorecard-book-p0-1.md).
 
 **Honest measured-vs-`not_measured` discipline.** Every numeric is either a real
@@ -175,19 +175,19 @@ margin) / settlement state / blocker refs — is the dereferenceable depth behin
 | total wall-clock | measured | gateway edge (request accept → completion) |
 | TTFT | measured on the **true-streaming** path | first content delta − request accept |
 | inter-token latency / perceived TPS | measured on the **true-streaming** path | derived from completion tokens + generation wall-clock |
-| request class | measured | stream -> `interactive_stream`; detached internal work -> `async_job` |
+| request class | measured | stream -> `interactive_stream`. Detached internal work -> `async_job` |
 | route / provider / served model | measured | coordinator + adapter |
 | verification class / executed verdict / scalar reward | measured | reuse of the existing `khala-code` verifier verdict (no parallel grader) |
-| cached input tokens | measured when the provider reports a cached dimension (book P0-2, #6084); else `not_measured` | provider `usage.cachedPromptTokens` (Fireworks `prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`, Gemini `cachedContentTokenCount`) → block + record `cachedInputTokens` |
-| unaccounted tokens (`total − (prompt + completion)`) | measured when all three counts are measured (book P0-2, #6084) | reconciliation in the record builder; surfaces the real billed reasoning/thinking/tool-use dimension behind the live total-vs-sum gap |
+| cached input tokens | measured when the provider reports a cached dimension (book P0-2, #6084). Else `not_measured` | provider `usage.cachedPromptTokens` (Fireworks `prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`, Gemini `cachedContentTokenCount`) → block + record `cachedInputTokens` |
+| unaccounted tokens (`total − (prompt + completion)`) | measured when all three counts are measured (book P0-2, #6084) | reconciliation in the record builder. Surfaces the real billed reasoning/thinking/tool-use dimension behind the live total-vs-sum gap |
 | provider / gateway / verifier / settlement time split | `not_measured` (no split instrumentation yet) | future per-stage timers |
 | queue / batch wait | chat path: `not_measured`. The old async batch lane was removed in #8384, so no live batch wait receipt is exposed today. | future detached-job design |
-| cache-affinity hash | measured for Khala requests with an account/session/codebase key (book P0-2, #6084); else `null` with a `cache_affinity_key_not_resolved` `blockerRef` | one-way `hashCacheAffinityKey(account/session/codebase)` |
+| cache-affinity hash | measured for Khala requests with an account/session/codebase key (book P0-2, #6084). Else `null` with a `cache_affinity_key_not_resolved` `blockerRef` | one-way `hashCacheAffinityKey(account/session/codebase)` |
 | region / fallback reason | `not_measured` / `null` (not wired on the gateway yet) | future region wiring |
 | cost basis / price / margin bucket | `not_measured` on this hot path (the immediate block omits raw economics) | metering hook (receipt-first) feeds the full record |
 
 **Privacy (INVARIANTS).** The cache-affinity key is recorded only as a one-way
-FNV-1a hash; no raw account/session/codebase key, prompt, completion,
+FNV-1a hash. No raw account/session/codebase key, prompt, completion,
 chain-of-thought, amount, destination, or payment material is ever a telemetry
 field — only token counts, durations, neutral classifiers, public refs, and the
 coarse margin bucket.
@@ -226,7 +226,7 @@ The six deliverables, all in `apps/openagents.com/workers/api/src/inference/`:
    sorted object keys, stable tool order) so the same logical inputs always
    produce byte-identical prefix text and the same `stablePrefixHash`.
 3. **Cache-affinity keys** — `deriveCacheAffinityKey({account, session?,
-   codebase?})` composes the dimensions into one raw key; it is recorded ONLY as
+   codebase?})` composes the dimensions into one raw key. It is recorded ONLY as
    the one-way `hashCacheAffinityKey` digest (`cacheAffinityKeyHash` in telemetry/
    receipt). The raw account/session/codebase key never leaves the gateway.
 4. **Provider session affinity** — `sessionAffinityParams` sets Fireworks
@@ -247,12 +247,12 @@ The six deliverables, all in `apps/openagents.com/workers/api/src/inference/`:
    codebase/account follow-up tries the cache-WARM lane first, via a typed
    `CacheWarmthOracle` keyed by the affinity HASH (no ad-hoc string routing). A
    warm hint is promoted only when the lane is still in the plan AND healthy AND
-   allowed by the privacy/region pin policy; otherwise the cheapest-viable plan is
+   allowed by the privacy/region pin policy. Otherwise the cheapest-viable plan is
    preserved. The seam is inert by default (no oracle wired → plan unchanged), so
    existing behavior is unaffected until the Worker wires the oracle.
 
 Privacy (INVARIANTS): every cross-boundary projection of the affinity key is the
-one-way FNV-1a digest; the raw key, prompt, and volatile content never enter the
+one-way FNV-1a digest. The raw key, prompt, and volatile content never enter the
 stable prefix hash, the telemetry, the receipt, or the provider header.
 
 ## 4. Request flow
@@ -289,7 +289,7 @@ telemetry `requestClass`:
 
 | Request shape | Transport | `requestClass` | Wait telemetry |
 |---|---|---|---|
-| **Interactive** (a human/agent waits on it) | **Streaming SSE** — `stream:true`, true pass-through (#6035); first byte ~1s, every chunk resets the edge idle-timer so a 3-min generation never 524s | `interactive_stream` | `queueWaitMs` ~`not_measured`/0 (no edge queue); no batch wait |
+| **Interactive** (a human/agent waits on it) | **Streaming SSE** — `stream:true`, true pass-through (#6035). First byte ~1s, every chunk resets the edge idle-timer so a 3-min generation never 524s | `interactive_stream` | `queueWaitMs` ~`not_measured`/0 (no edge queue). No batch wait |
 | **Detached / minutes-long / agentic** | Future async job design - submit -> `202 {jobId, receiptRef}` -> a Queue, DO, or Workflow runs it off the request path -> a dereferenceable receipt | `async_job` | future owner-approved detached-job receipt |
 | **Live multi-subscriber UI** (cockpit, Verse projection) | **Durable Object + hibernatable WebSocket** | (world transport, not the chat gateway) | — |
 
@@ -327,8 +327,8 @@ The coordinator is the only genuinely new capability. It evolves on a fixed
 interface so the API and adapters never change:
 
 - **v0 — heuristic router** (the current `ModelRouter`, #5482): cheap/simple →
-  small/open or Gemini Flash; coding → best coding backend; long context →
-  Gemini/Claude; verifier pass → cheap checker or deterministic test; failure →
+  small/open or Gemini Flash. Coding → best coding backend. Long context →
+  Gemini/Claude. Verifier pass → cheap checker or deterministic test. Failure →
   fallback to stronger model.
 - **v1 — TRINITY-style logit router:** a tiny hidden-state head picks
   `(worker, role)` (Thinker/Worker/Verifier), trained by evolution against the
@@ -361,7 +361,7 @@ verification-class registry (`docs/sakana/tassadar-run-integration.md`):
 | `seeded` | re-run under `seeded_replication` (fixed seed/temp) | stochastic LLM outcomes |
 | `test_passed` | a deterministic test / verification command passed | `khala-code` |
 | `failed` | cheap pre-screen failed, or an executed acceptance suite rejected the artifact | `khala-code` |
-| `exact_trace_replay` | independent device re-executed; digests matched | executor / kernel-parity work |
+| `exact_trace_replay` | independent device re-executed. Digests matched | executor / kernel-parity work |
 
 Why independent verification, not self-grading: TMAX (App. D.6) showed an RL'd
 agent will **tamper with its own checker** if it can reach it. Khala's verifier
@@ -380,7 +380,7 @@ verifier command ref, and verifier worker provenance. The hot Worker route may
 pre-screen and enqueue a runnable artifact, but a pre-screen alone remains
 `verification: "unverified"`, `executed: false`, and `verified: false` until the
 out-of-Worker runner posts the callback. The supported product path is acceptance
-contract injection; bare-prompt success remains residual, with arbitrary-task
+contract injection. Bare-prompt success remains residual, with arbitrary-task
 contract discovery tracked as #6010-F / Q4.
 
 **Quantization disclosure (book P1-7 / #6090).** A model served at a reduced
@@ -404,7 +404,7 @@ weights-only / FP8 before aggressive KV-cache or attention quantization. See
   status, receipt id — receipt-first from the provider `usage`, never an
   estimate.
 - **Pricing:** per-token / per-credit first (cost basis × per-model multiplier
-  over real cost; see `2026-06-19-pricing-model.md`), card or **Bitcoin (BTC =
+  over real cost. See `2026-06-19-pricing-model.md`), card or **Bitcoin (BTC =
   discount)**. Add **accepted-outcome pricing** for `khala-code`/agentic lanes as
   verification matures.
 - **Settlement:** every inference dollar can split three ways — OpenAgents
@@ -414,25 +414,25 @@ weights-only / FP8 before aggressive KV-cache or attention quantization. See
 
 ## 8. Distribution
 
-1. **Host it ourselves first** — `openagents.com/v1/chat/completions`; prove
+1. **Host it ourselves first** — `openagents.com/v1/chat/completions`. Prove
    usage, pricing, uptime, receipts.
 2. **OpenAI-compatible** — OpenRouter, Open WebUI, LiteLLM, LangChain,
    Cursor-like tools, and agents work with minimal changes.
 3. **OpenRouter, two ways, in order:** (a) use OpenRouter as a *backend
-   provider* inside Khala for quick coverage ([OpenRouter][2]); (b) become an
+   provider* inside Khala for quick coverage ([OpenRouter][2]). (B) become an
    OpenRouter *provider* so users can select `openagents/khala-mini` inside
    OpenRouter ([OpenRouter][3]) — `khala-mini` → `khala-pro` → `khala` /
    `tassadar`.
 
 ## 9. Safety & policy
 
-- **No chain-of-thought exposure**; expose receipts, routing class, verification
+- **No chain-of-thought exposure**. Expose receipts, routing class, verification
   class, and cost.
 - **Opt-out pool control** — callers can restrict which workers/providers
   participate (compliance / data-residency / export-control), the same control
   Fugu offers, plus our admission standard: earned/mined Bitcoin welcome,
   shitcoin-spam not.
-- **Legible and steerable** — every outcome dereferences to a receipt; learned
+- **Legible and steerable** — every outcome dereferences to a receipt. Learned
   coordinators ship as shadow candidates under the promoted/candidate contract
   before taking live routing authority.
 
@@ -462,7 +462,7 @@ OpenAgents Cloud is the one-stop "Agent Cloud" spanning **inference, fine-tuning
 training, sandboxes, agentic compute, tasks, data** (and future primitives) on
 **one credit balance (USD or Bitcoin), one referral relationship, revshare
 everywhere**. Khala is the *inference* primitive — the first lit by the revenue
-spine; the others plug into the identical `accepted-outcome → receipt → settle`
+spine. The others plug into the identical `accepted-outcome → receipt → settle`
 machinery as they mature. Every Khala dollar fans three ways: OpenAgents margin +
 the serving node + the referrer.
 
@@ -471,7 +471,7 @@ the serving node + the referrer.
 Khala attaches to the spine at exactly five points (the gateway README's
 `MeteringHook`/balance-gate seams are where these land):
 
-1. **Credit-balance read** — `readAgentBalance(...).availableMsat`; `402` on
+1. **Credit-balance read** — `readAgentBalance(...).availableMsat`. `402` on
    insufficient. Gates the request before any worker call.
 2. **Credit-balance decrement (receipt-first)** — `MeteringHook` (#5477) writes a
    `billing_ledger_entries` row from the provider `usage`, never an estimate.
@@ -479,7 +479,7 @@ Khala attaches to the spine at exactly five points (the gateway README's
    referral.
 3. **Referral attribution — RL-1** (`site-referral-payout-ledger.ts`,
    `site_referral_payout_ledger_entries`): the metering receipt becomes the
-   `qualifyingEventRef`; a row accrues at the default 5%
+   `qualifyingEventRef`. A row accrues at the default 5%
    (`SITE_REFERRAL_PAYOUT_PERCENT_BPS`) and runs `eligible → approved →
    dispatched → settled`. **Refer once, earn forever** applies to *all* of a
    referred account's inference — and, cross-category, to everything else they
@@ -506,7 +506,7 @@ earn the moment it comes online. A Pylon becomes a Khala worker by:
 
 - **registering capability** (NIP-89 refs like
   `capability.public.pylon.nip90.text_inference.v0.3` + heartbeat readiness),
-- **accepting dispatch** (whole small models now; large models sharded across N
+- **accepting dispatch** (whole small models now, large models sharded across N
   Pylons via the shard-WAN pipeline later),
 - producing an **exact-parity receipt** (`psionic.serve.*_run_receipt.v1`,
   naming nodes/layer-ranges/token hashes + the greedy-parity verdict) that makes
@@ -520,7 +520,7 @@ ask-plan → execute → consume-receipt), behind the existing
 ### Substrate: Psionic
 
 The boundary is strict: **Psionic owns execution + evidence and never holds
-money; Khala (product layer) owns pricing, payout, referral, and routing.**
+money. Khala (product layer) owns pricing, payout, referral, and routing.**
 Psionic is also where the learned coordinator is *trained* (primitives P1–P5,
 `docs/sakana/psionic-coordinator-roadmap.md`) — so the Khala coordinator is
 trained in Psionic and served through Khala. Psionic's non-negotiable payment
@@ -533,7 +533,7 @@ Khala's `verification` field draws from the **Tassadar verification-class
 registry**, and the verified worker pool + the run's flywheel (verified work →
 better model → lower cost → more demand) are what make composition beat scale
 over time. The learned coordinator's terminal reward *is* the Tassadar verdict
-(§5; `docs/sakana/tassadar-run-integration.md`).
+(§5, `docs/sakana/tassadar-run-integration.md`).
 
 ### Operation: Artanis under bounded authority
 
@@ -548,7 +548,7 @@ caps). Three connection modes (mostly **new** work):
   Gemini via Cloudflare AI Gateway) at the Khala endpoint.
 - **Operate Khala under bounds** — Artanis proposes routing/quota changes as
   approval-gated `artanis-work-routing.ts` records (work class `inference`,
-  target the gateway); it never mutates routing directly — `provider_mutation`
+  target the gateway). It never mutates routing directly — `provider_mutation`
   and `runtime_promotion` are gated kinds.
 - **Fund verified-work settlement** — within its bounded treasury envelope.
 
@@ -567,11 +567,11 @@ visualization, and Autopilot consumption onto the head-to-head north-star demo,
 see [`khala-buildout-roadmap.md`](khala-buildout-roadmap.md).
 
 - **Phase 0 — MVP gateway (M0 / #6008, code landed).** `GET /v1/models` + `POST /v1/chat/completions`, auth + balance gate, cheapest-viable router (#5482), real adapters (Fireworks/Vertex/passthrough), and receipt-first metering already exist. **Khala work landed:** `openagents/khala-mini` is a first-class priced catalog alias backed by the Vertex Gemini lane (#6018), and Khala responses carry the non-breaking `openagents` disclosure block (`requested_model`, `served_model`, `worker`, `lane`, `verification:'none'`). Khala stays paid (not free-tier). *Remaining (owner-gated):* enable `INFERENCE_GATEWAY_ENABLED` + wire provider secrets in prod, then run the live OpenAI-SDK smoke that returns a metered completion + receipt — the final acceptance proof.
-- **Phase 1 — real supply + metering.** Fireworks (#5479, live), Vertex Anthropic (#5480), passthrough (#5481); real per-model decrement (#5477); streaming. **Khala work:** `khala-pro` (escalate + verifier pass), `khala-code` (run tests / verification command → `test_passed`). *Success:* `khala-code` returns receipts with a verification class on real coding tasks.
-- **Phase 2 — verification classes + settlement.** Wire `seeded_replication` and `exact_trace_replay` into the `verification` field; settle Bitcoin to worker + validator on verified lanes; accepted-outcome pricing for `khala-code`. *Success:* a verified coding outcome settles sats to a contributor with a public receipt.
-- **Phase 3 — learned coordinator (TRINITY lane).** Build Psionic primitives P1–P5; train the logit router by sep-CMA-ES on the verification verdict; ship as a **shadow candidate** against the heuristic router; promote on verified-work-per-sat. *Success:* learned router beats heuristic on cost-per-accepted-outcome in shadow.
-- **Phase 4 — Conductor lane + Tassadar modules.** GRPO-trained NL planner (DPPO + FP32 head) for `khala`/agentic tasks; add Pylon shard-WAN serving and verified Tassadar modules to the pool; apply as an OpenRouter provider. *Success:* `openagents/khala` available in OpenRouter, composing open + frontier + module workers.
-- **Phase 5 — full Khala.** Frontier APIs + open Pylons + verified Tassadar modules + Bitcoin-settled work under one learned coordinator; `openagents/tassadar` exposed where exact replay applies. *Success:* frontier-grade outcomes at composed cost, every contribution verified and paid.
+- **Phase 1 — real supply + metering.** Fireworks (#5479, live), Vertex Anthropic (#5480), passthrough (#5481). Real per-model decrement (#5477). Streaming. **Khala work:** `khala-pro` (escalate + verifier pass), `khala-code` (run tests / verification command → `test_passed`). *Success:* `khala-code` returns receipts with a verification class on real coding tasks.
+- **Phase 2 — verification classes + settlement.** Wire `seeded_replication` and `exact_trace_replay` into the `verification` field. Settle Bitcoin to worker + validator on verified lanes. Accepted-outcome pricing for `khala-code`. *Success:* a verified coding outcome settles sats to a contributor with a public receipt.
+- **Phase 3 — learned coordinator (TRINITY lane).** Build Psionic primitives P1–P5. Train the logit router by sep-CMA-ES on the verification verdict. Ship as a **shadow candidate** against the heuristic router. Promote on verified-work-per-sat. *Success:* learned router beats heuristic on cost-per-accepted-outcome in shadow.
+- **Phase 4 — Conductor lane + Tassadar modules.** GRPO-trained NL planner (DPPO + FP32 head) for `khala`/agentic tasks. Add Pylon shard-WAN serving and verified Tassadar modules to the pool. Apply as an OpenRouter provider. *Success:* `openagents/khala` available in OpenRouter, composing open + frontier + module workers.
+- **Phase 5 — full Khala.** Frontier APIs + open Pylons + verified Tassadar modules + Bitcoin-settled work under one learned coordinator. `openagents/tassadar` exposed where exact replay applies. *Success:* frontier-grade outcomes at composed cost, every contribution verified and paid.
 
 ## 12. Build spec (for a coding agent)
 
@@ -602,7 +602,7 @@ Requirements:
 ## 13. Open questions
 
 - Real committed-use Vertex per-token cost (the one true pricing unknown — pull
-  from the billing export; see `2026-06-19-pricing-model.md`).
+  from the billing export. See `2026-06-19-pricing-model.md`).
 - Where the verifier pass for `khala-pro` runs (cheap checker model vs
   deterministic) and its sampling rate vs cost.
 - Settlement latency on verified lanes (verdict → sat) and how it surfaces in the
@@ -612,7 +612,7 @@ Requirements:
 - ~~Which quantization modes may share a public model alias?~~ **Resolved (P1-7 /
   #6090):** an unqualified public alias may be served by a quantized lane only
   when its precision/backend are disclosed in the receipt **and** the lane passed
-  the quantization eval gate; otherwise the lane uses a qualified alias that names
+  the quantization eval gate. Otherwise the lane uses a qualified alias that names
   the precision. Honestly-unknown precision (`not_measured`) may not share an
   unqualified alias. See §6 + the eval-gate doc.
 

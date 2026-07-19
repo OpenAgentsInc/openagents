@@ -22,7 +22,7 @@ chat log saying "looks fine."
    Index entry (or receipt listing) records every new object under
    `gs://openagentsgemini-oa-artifacts/sarah-avatar/…`.
 4. **Token/GPU cost estimate recorded.**
-   Approximate is fine; silence is not. Record wall clock + GPU class +
+   Approximate is fine. Silence is not. Record wall clock + GPU class +
    estimated USD when known.
 5. **No secrets in artifacts.**
    No raw prompts that embed secrets, API keys, private prospect PII, live
@@ -74,7 +74,7 @@ bun run test:gpu-media-closeout
 | `issueRefs` | string[] | e.g. `["#8610", "#8625"]` |
 | `startedAt` / `endedAt` | ISO-8601 | `endedAt` ≥ `startedAt` |
 | `host` | object | `name`, `project`, `zone`, `machineType`, `gpu` |
-| `hostDisposition` | object | `status`: `stopped` \| `deleted` \| `left_running`; if `left_running`, `reason` required (non-empty) |
+| `hostDisposition` | object | `status`: `stopped` \| `deleted` \| `left_running`. If `left_running`, `reason` required (non-empty) |
 | `artifacts` | array | Each: `uri` (`gs://…` or absolute `file://` / path), `kind`, `bytes?`, `sha256?` |
 | `artifactChecks` | array | Each: `uri`, `method`: **must be** `object_exists` (not `log_marker`) |
 | `gcsIndex` | object | `updated`: true, `indexUri?` or `entries[]` |
@@ -99,15 +99,15 @@ bun run test:gpu-media-closeout
 
 ## Relationship to other SQ issues
 
-- **SQ-1** scoreboard sits *beside* the media artifact; closeout proves the
+- **SQ-1** scoreboard sits *beside* the media artifact. Closeout proves the
   artifact exists and the host/cost state is honest. The scoreboard's
   operational-gates section embeds this checklist: schema/CLI in
   `packages/sarah-take-scoreboard` (`score-take`), records under
   `docs/sarah/scoreboards/`.
-- **SQ-4** hardens the live renderer; closeout still applies to every offline
+- **SQ-4** hardens the live renderer. Closeout still applies to every offline
   bake and experiment matrix run (SQ-2).
 - **OAV-1 receipt** (`2026-07-09-oav1-offline-proof-receipt.md`) is the
-  narrative proof; going forward attach a v1 closeout JSON as well.
+  narrative proof. Going forward attach a v1 closeout JSON as well.
 
 ## Exit for #8625
 

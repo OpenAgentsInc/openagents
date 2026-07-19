@@ -102,7 +102,7 @@ email, missing Resend config, duplicate lifecycle events, and provider failure
 do not roll back assignment, order, Site, or deployment state. When an email
 ledger row exists, the relevant assignment/Site notification event stores
 `email_message_id`. Provider failures store redacted `errorName` and
-`errorMessage` in the private/operator event payload; customer/public
+`errorMessage` in the private/operator event payload. Customer/public
 projections must not expose raw provider errors.
 
 ## Production Config And Ledger Inspection
@@ -119,14 +119,14 @@ raw provider payloads.
 
 Safe output fields:
 
-- config status;
-- whether each Resend secret name is present or missing;
-- idempotency key;
-- email message ID when a matching ledger row exists;
-- message status;
-- provider name;
-- provider message ID when safe;
-- delivery ID and delivery status; and
+- config status.
+- whether each Resend secret name is present or missing.
+- idempotency key.
+- email message ID when a matching ledger row exists.
+- message status.
+- provider name.
+- provider message ID when safe.
+- delivery ID and delivery status. And
 - redacted error name.
 
 On June 5, 2026, production returned:
@@ -156,11 +156,11 @@ GET /api/operator/email-deliveries?siteId=<site_project_id>
 The response includes:
 
 - message kind, template slug, status, idempotency key, source-authority ref,
-  and safe provider message ID;
-- delivery attempt count and latest delivery status;
-- skipped reason for `email_config_missing` or suppression states;
-- redacted provider error name/message;
-- related order IDs, Site IDs, assignment IDs, and event refs; and
+  and safe provider message ID.
+- delivery attempt count and latest delivery status.
+- skipped reason for `email_config_missing` or suppression states.
+- redacted provider error name/message.
+- related order IDs, Site IDs, assignment IDs, and event refs. And
 - safe operator next action.
 
 The inspection projection does not select or expose `text_body`, `html_body`,
@@ -192,11 +192,11 @@ side effects.
 
 Safe operator checks:
 
-- invalid signed payloads return `401` and write no rows;
+- invalid signed payloads return `401` and write no rows.
 - duplicate `svix-id` values return a duplicate result and write no repeated
-  side effects;
+  side effects.
 - delivered/failed/bounced/complained events update only bounded projection
-  fields; and
+  fields. And
 - webhook inspection must not expose raw provider bodies, headers, secrets, or
   rendered email content.
 
@@ -211,14 +211,14 @@ bunx vitest run src/email.test.ts
 
 The tests cover:
 
-- present config and successful Resend response;
-- missing config skip recorded as an email ledger failure;
-- failed provider response recorded with redacted error state;
-- idempotency preventing duplicate provider sends;
-- Adjutant customer notification rendering without raw HTML leakage; and
+- present config and successful Resend response.
+- missing config skip recorded as an email ledger failure.
+- failed provider response recorded with redacted error state.
+- idempotency preventing duplicate provider sends.
+- Adjutant customer notification rendering without raw HTML leakage. And
 - every order/Sites lifecycle subtype rendering with deterministic
   idempotency, customer-safe status and next action copy, and secret-shaped
-  input rejection; and
+  input rejection. And
 - existing out-of-credits email rendering and Resend request behavior.
 
 ## Production Send Rule

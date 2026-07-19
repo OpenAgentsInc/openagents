@@ -8,7 +8,7 @@ desktop app through the 2026-07-17 T3 Code mobile documents — into one
 consolidated statement of what OpenAgents should incorporate into its three
 product surfaces: **OpenAgents Desktop**, **OpenAgents mobile**, and
 **openagents.com**. It deliberately does not ground itself in the current
-implementation state of the codebase; it asks what the accumulated competitive
+implementation state of the codebase. It asks what the accumulated competitive
 evidence says the products should become. Per the README convention, this is
 design evidence, not implementation authority: the Sol roadmap, typed
 contracts, issues, tests, and receipts remain the authorities for what is
@@ -28,7 +28,7 @@ cross-teardown adaptation analysis.
 
 ---
 
-## 1. The market has converged on a shape; the trust half is unclaimed
+## 1. The market has converged on a shape. The trust half is unclaimed
 
 Read together, thirty-one documents describe one striking fact: every
 serious product in this space — OpenAI's Codex desktop, Anthropic's Claude
@@ -48,14 +48,14 @@ OpenChamber — has independently converged on the same architecture:
    iOS Remote Control, Amp's web/mobile thread control, T3's full mobile
    workbench, OpenChamber's relay, Codex's drive-my-Mac pairing).
 5. A workbench that can **grow from chat into a basic IDE without surrendering
-   engine authority** — Zed demonstrates the coherent target; Monaco and Pierre
-   provide practical OpenAgents editor/tree/diff projections; files,
+   engine authority** — Zed demonstrates the coherent target. Monaco and Pierre
+   provide practical OpenAgents editor/tree/diff projections. Files,
    diagnostics, terminals, search, review, and previews remain projections over
    one typed workspace service graph.
 6. **Collaboration and execution are separate relationships** — multAIplayer
    lets several authenticated people discuss, propose, inspect, and review
    while one explicit host device owns the repository, Codex process,
-   credentials, and native approvals; host transfer is an explicit epoch
+   credentials, and native approvals. Host transfer is an explicit epoch
    transition, not ambient shared-shell access.
 
 That convergence is validation: the one-engine/many-clients thesis is no
@@ -70,17 +70,17 @@ consistency, what *none* of these products ship:
   `committed/pushed/reviewed/merged/accepted`.
 - **Host-portable sessions** — session identity that survives movement between
   machines without forking authority or history. Cursor's handoff is
-  their-cloud-only; T3's threads are environment-local; Amp's are
+  their-cloud-only. T3's threads are environment-local. Amp's are
   cloud-canonical.
 - **Release provenance** — Amp ships with its minisign verification commented
-  out and a binary that fails Gatekeeper; Grok Build's updater is unsigned;
-  Cursor keeps a plain-HTTP backup update URL; Factory publishes checksums
-  with no signature pin; T3's audited DMG shipped Gatekeeper-dead; Command
+  out and a binary that fails Gatekeeper. Grok Build's updater is unsigned.
+  Cursor keeps a plain-HTTP backup update URL. Factory publishes checksums
+  with no signature pin. T3's audited DMG shipped Gatekeeper-dead. Command
   Code self-updates over npm unsigned.
 - **Usage, model, and data-flow truth** — Cursor had two pricing crises and a
   concealed base-model swap (Composer 2 post-trained on Kimi K2.5, outed
-  forensically); Amp hides model identity behind mode names; Factory's
-  privacy pages contradict each other; Command Code posts an undisclosed
+  forensically). Amp hides model identity behind mode names. Factory's
+  privacy pages contradict each other. Command Code posts an undisclosed
   hardware fingerprint and calls a hosted inference loop "local."
 - **Economic participation** — revenue sharing, idle-compute markets, open
   settlement. Never attempted by anyone (the Cursor teardown's episode-195
@@ -113,26 +113,26 @@ depends on it.
   Delivery Receipt.
 - **Generated clients from one Effect Schema source** for TypeScript, and for
   any future Swift/Kotlin/Rust surface — plus JSON Schema fixtures and drift
-  tests. Stable and experimental API bundles gated separately; capability
+  tests. Stable and experimental API bundles gated separately. Capability
   advertisement tied to actual handler coverage (the Codex app-server analysis
   shows T3 advertising `experimentalApi: true` while handling 3 of 10 reverse
   requests, which can deadlock turns — the named anti-pattern).
 - **Durable admission before execution.** OpenCode V2 is the strongest
   reference: every input is durably recorded (client-chosen idempotent ID,
-  causal parent, typed delivery intent) *before* any scheduling; promotion to
-  the model happens atomically at a safe boundary; exact retry reconciles,
+  causal parent, typed delivery intent) *before* any scheduling. Promotion to
+  the model happens atomically at a safe boundary. Exact retry reconciles,
   conflicting reuse fails. Pending input is never model-visible. This is what
   makes mobile follow-ups, offline outboxes, and crash recovery honest.
 - **Steer vs queue vs interrupt as three explicit verbs with different
   owners.** Amp ships the cleanest gestures (Enter queues, double-Enter
-  steers at the next safe point, double-Escape interrupts); Codex ships the
+  steers at the next safe point, double-Escape interrupts). Codex ships the
   correct wire discipline (`turn/steer` with an expected-turn-ID
-  compare-and-set; a queue promoted only after quiescence). T3's bug — a
+  compare-and-set. A queue promoted only after quiescence). T3's bug — a
   keyboard path issuing a second `turn/start` mid-turn that Codex silently
   converts to steering — is the named failure of leaving this implicit.
 - **Three read surfaces, named and contractual:** bounded current
-  projections; a durable per-aggregate replayable log with a replay-to-live
-  sync marker; and a volatile live event stream documented as lossy.
+  projections. A durable per-aggregate replayable log with a replay-to-live
+  sync marker. And a volatile live event stream documented as lossy.
   Reconnect is **repair, not replay** — where a gap cannot be reconstructed,
   the thread carries an honest `transient_gap` marker rather than fabricated
   completions.
@@ -146,7 +146,7 @@ depends on it.
   remote Pylon, mobile Sync, web, and tests differ only in transport and
   credential acquisition.
 - **Interruption as control flow.** User decline is an interruption, never a
-  fabricated tool failure; tool fibers are owned in sets; uninterruptible
+  fabricated tool failure. Tool fibers are owned in sets. Uninterruptible
   masks exist only around state settlement.
 - **Engine lifecycle as product state.** Grok Build's shared leader and
   Factory's daemon prove the shape: a long-lived authenticated local
@@ -162,7 +162,7 @@ depends on it.
   engine keeps authority and rewrites prompt, tools, wire requests, response
   grammar, title/compaction calls, reminders, and result encoding to imitate a
   foreign agent dialect. OpenAgents must model both explicitly. A real Codex,
-  Claude Code, Grok, Cursor, or Open Interpreter process is a runtime adapter;
+  Claude Code, Grok, Cursor, or Open Interpreter process is a runtime adapter.
   “Kimi Code policy inside Open Interpreter” is an inner emulation binding,
   not a Kimi runtime.
 - **One content-addressed emulation manifest.** Policy ID is insufficient.
@@ -177,7 +177,7 @@ depends on it.
   model × wire × native-tool × platform × authority/containment compatibility
   before a thread starts. Recommendations are typed/evaluated advice, never
   hard-coded model-name execution routing. Incompatible named policy is a
-  typed refusal or a separately confirmed native fallback; the effective
+  typed refusal or a separately confirmed native fallback. The effective
   policy can never silently differ from the selected label. Switching policy
   starts or forks a thread with explicit lineage and losses rather than
   mutating conversation semantics in place.
@@ -195,7 +195,7 @@ depends on it.
 - **Collaboration scope is not a second engine.** Attach membership, device,
   visibility, room-safe projection, retention, and current execution attachment
   to the canonical Thread/Work Unit. A participant proposal enters durable
-  admission; only the current generation-fenced attachment can resolve it
+  admission. Only the current generation-fenced attachment can resolve it
   through WorkContext, policy, containment, approval, and effects. multAIplayer
   proves the interaction while OpenAgents keeps Sync and receipts as truth.
 - **Handoff changes attachment, not ambient state.** Bind outgoing and incoming
@@ -222,10 +222,10 @@ protocol shows why those facts differ).
 The catalog's most repeated finding is that **permission UX is not
 containment**, and every competitor conflates them somewhere: Grok Build ships
 sandbox-off-by-default with warn-and-continue degradation and a no-op macOS
-network restriction; Factory's sandbox is an opt-in beta that leaves the main
-process outside; Amp runs tools without approval by default and shows no OS
-sandbox at all; T3 defaults to `danger-full-access` with approvals off while
-shipping excellent DPoP access crypto — the "authority inversion"; Command
+network restriction. Factory's sandbox is an opt-in beta that leaves the main
+process outside. Amp runs tools without approval by default and shows no OS
+sandbox at all. T3 defaults to `danger-full-access` with approvals off while
+shipping excellent DPoP access crypto — the "authority inversion". Command
 Code's configured deny rules are literally never evaluated, and its autonomous
 goal verifier fails open ("verifier unavailable — accepted self-claim").
 Claude Code's seven-layer authority table and Codex's fail-closed Windows
@@ -250,7 +250,7 @@ refusal are the honest references.
   the exact current execution attachment may admit it through policy. A
   handoff fences the prior generation and invalidates unconsumed approvals.
   multAIplayer's native request-bound positive confirmations are the useful
-  reference; its host-user shell remains permission plus confinement, not
+  reference. Its host-user shell remains permission plus confinement, not
   complete containment.
 - **Approval taxonomy as behavior contracts.** The Codex computer-use skill
   ships a four-tier consent model worth porting nearly verbatim: hand-off
@@ -267,7 +267,7 @@ refusal are the honest references.
   secrets is never "allow," never "done," and never "ship unsigned." Four
   separate products exhibit the fail-open bug class.
 - **Child authority is an intersection, never a widening.** OpenCode permits
-  subagents wider permissions than their parents; that is rejected. Child
+  subagents wider permissions than their parents. That is rejected. Child
   authority = parent grant ∩ child policy ∩ WorkContext ∩ containment.
 - **A hermetic execution profile** (from Claude Code's "bare" mode): suppress
   every ambient input — hooks, plugins, memory, learned preferences,
@@ -277,11 +277,11 @@ refusal are the honest references.
 - **Typed, capped, attributed context fragments** (Codex): every piece of
   model context carries a source, scope, content hash, token cap, and
   public/private classification — context provenance a user can inspect.
-- **Credential custody rules:** clients are tokenless renderers (Codex);
+- **Credential custody rules:** clients are tokenless renderers (Codex).
   secrets live in encrypted stores with OS keychain custody, never plaintext
   fallbacks (Claude Code's non-macOS plaintext fallback is called
   unacceptable), never renderer-visible (OpenCode hands its sidecar password
-  to the renderer; OpenChamber exposes runtime tokens), and never held raw by
+  to the renderer. OpenChamber exposes runtime tokens), and never held raw by
   a coordinator on the execution path (Crabbox's central flaw). Crabbox's
   **credential-destination provenance lattice** — every credential
   destination tagged by the trust class of the config source that routed it,
@@ -302,22 +302,22 @@ of section 3.
 ### 4.1 Shell and hardening
 
 - **Stock Electron, hardened, is the settled answer.** Anthropic ships stock
-  Electron; OpenAI's Owl fork buys nothing OpenAgents needs. Incorporate the
+  Electron. OpenAI's Owl fork buys nothing OpenAgents needs. Incorporate the
   concrete hardening list both vendors converge on: context isolation,
   sandboxed renderers, `nodeIntegration` off, Electron fuses locked
-  (RunAsNode, NODE_OPTIONS, inspect args disabled; cookie encryption; ASAR
+  (RunAsNode, NODE_OPTIONS, inspect args disabled, cookie encryption, ASAR
   integrity), sender-origin validation and Effect Schema decoding on **every**
-  IPC message (OpenCode leaves most IPC schema-unvalidated; Factory has ~69
+  IPC message (OpenCode leaves most IPC schema-unvalidated, Factory has ~69
   handlers with no sender validation — both named gaps), dedicated privileged
   schemes for packaged assets rather than `file://`, partitioned sessions for
   artifact/preview/terminal/browser surfaces, deny-by-default permission,
   navigation, and window-open handlers.
 - **A locally versioned renderer, never a live site as the desktop app.**
   Claude desktop's live-`claude.ai` WebContentsView is the named
-  anti-pattern; predictability and offline inspectability are product
+  anti-pattern. Predictability and offline inspectability are product
   advantages.
 - **Server-first topology:** the engine runs behind the typed protocol (in a
-  utility process or as the local Pylon supervisor); Electron main owns
+  utility process or as the local Pylon supervisor). Electron main owns
   lifecycle and native integration only — never conversation state, provider
   calls, tools, Git, or PTYs. Renderer capabilities arrive as brokered,
   scoped, expiring grants (OpenCode's capability-token file grants,
@@ -344,7 +344,7 @@ of section 3.
   canonical `WorkContext`, multi-root relative file references, revisioned
   documents, and generation-bound intents—not by importing Zed's GPUI/Project
   object graph.
-- **Monaco for editing; pinned Pierre for tree and diff presentation.** Zed is
+- **Monaco for editing. Pinned Pierre for tree and diff presentation.** Zed is
   the behavior and architecture reference, not the component dependency. The
   Pierre tree projection needs Zed-grade multi-root identity, folded
   directories, stable virtualization, sticky context, Git/diagnostic/conflict
@@ -359,7 +359,7 @@ of section 3.
 - **Transcript engine before richer cards:** virtualization, a turn
   navigator/minimap, and performance budgets as merge gates. OpenChamber's
   reducer discipline (touched-field cloning cut a message list from 1,972
-  renders to 296; per-directory coalescing flushed at frame intervals) and
+  renders to 296. Per-directory coalescing flushed at frame intervals) and
   its event-pipeline rigor (eager subscription before response body,
   heartbeats, last-event-id, stale-stream detection, interruptible backoff)
   are D1-grade requirements, not polish.
@@ -377,17 +377,17 @@ of section 3.
   blocked — with "Steer now" disabled until a real provider turn ID exists,
   and queue never silently becoming steer.
 - **Inline decision stack:** approvals, questions, and plan reviews render at
-  the causal point in the timeline; simple approvals inline rather than
+  the causal point in the timeline. Simple approvals inline rather than
   modal.
 
 ### 4.3 Subagents: render the tree everyone retains and hides
 
 The two rendering analyses converge on a striking asymmetry: both Codex and
 Claude Code **retain** rich multi-agent topology (Codex in an explicit
-agent-graph store with BFS traversal; Claude in complete per-agent JSONL
+agent-graph store with BFS traversal. Claude in complete per-agent JSONL
 sidechains with 97% reconstructible edges) and both **render** almost none of
 it — Codex's TUI flattens the tree to one-line edges, a 6-item status feed,
-and one visible transcript; an in-flight spawn renders *nothing* until it
+and one visible transcript. An in-flight spawn renders *nothing* until it
 resolves. This is the cheapest large differentiator in the catalog:
 
 - Persist one canonical typed agent graph for OpenAgents' own runs (explicit
@@ -396,8 +396,8 @@ resolves. This is the cheapest large differentiator in the catalog:
 - Render the complete roster with live per-child status, causal inline child
   cards at the exact spawn point in the parent timeline (a link projection,
   never transcript flattening), and direct navigation into each child's full
-  independent transcript. Desktop gets a three-pane density; mobile a
-  drill-down; **no capability tier by surface** — the same typed projection
+  independent transcript. Desktop gets a three-pane density. Mobile a
+  drill-down. **No capability tier by surface** — the same typed projection
   renders honestly everywhere, with explicit navigable collapse allowed and
   silent truncation defined as a bug.
 - Import foreign histories (Claude sidechains, Codex rollouts) through
@@ -419,7 +419,7 @@ resolves. This is the cheapest large differentiator in the catalog:
   (Claude Code: auto-remove unchanged, retain changed, refuse dirty/unpushed,
   age-gated cleanup, cleanup receipts), bound to Work Units, owners, and
   delivery receipts. Cross-worktree session resume (Grok Build) included.
-- **Task state separated from delivery state:** `completed` is not `landed`;
+- **Task state separated from delivery state:** `completed` is not `landed`.
   the delivery lifecycle is first-class in the protocol and visible in the
   UI.
 - **Best-of-N and plan-first as typed fan-out:** Cursor's `/best-of-N` and
@@ -433,7 +433,7 @@ resolves. This is the cheapest large differentiator in the catalog:
 
 - **Terminal renderer family over one typed transcript projection:**
   full-screen TUI, Grok Build's native-scrollback mode (finalized blocks
-  committed once to terminal history; only the live turn pinned), headless
+  committed once to terminal history. Only the live turn pinned), headless
   JSON, and ACP — with emulator-backed PTY test matrices, race/fuzz
   scenarios, and checked-in p50/p95/p99 frame-time baselines as release
   gates.
@@ -442,9 +442,9 @@ resolves. This is the cheapest large differentiator in the catalog:
   audio, explicit finish, adaptive finalization, accept-partial UX.
 - **Ambient memory only private-by-construction.** Codex's Chronicle
   (continuous screen OCR + rolling summaries into a profile) proves the
-  product line exists; OpenAgents' version, if built, is local-first and
+  product line exists. OpenAgents' version, if built, is local-first and
   owner-controlled by construction — and borrows Skysight's anti-injection
-  contract (sticky taint; descriptive-not-directive output; privileged
+  contract (sticky taint, descriptive-not-directive output, privileged
   content reduced or omitted).
 
 ### 4.6 Packaging, updates, releases
@@ -469,7 +469,7 @@ The build/update analyses give a precise composite:
   renderer, VM/guest images, and plugins — identity, version, hash,
   signature, protocol min/max, channel, last-known-good, rollback rules,
   and a user-visible receipt. Both frontier vendors run three-plus update
-  planes with no unified ledger; Factory ships desktop and CLI on divergent
+  planes with no unified ledger. Factory ships desktop and CLI on divergent
   release trains with no compatibility record. This is an open lane.
 - **Coordinated update transactions:** the Grok Build leader's
   relaunch protocol (stop admitting turns → bounded drain → flush → typed
@@ -492,16 +492,16 @@ Activities, remote control of desktop agents) confirms the demand.
 **Incorporate:**
 
 - **The controller thesis:** the phone issues the same typed commands as
-  desktop and web against server-owned sessions; execution never runs
+  desktop and web against server-owned sessions. Execution never runs
   on-device. Every remote action carries a revocable capability grant and a
-  durable outcome; notification status is never completion authority.
+  durable outcome. Notification status is never completion authority.
 - **Any-host environment directory as the first product layer:** discovery,
   QR/manual pairing (bootstrap credential exchanged for a session
   credential), cached-offline environment truth, and reachability presented
   as classed hints, never proof. Access and launch are separate concerns
   (T3's remote model). Relay infrastructure is owned (GCP), end-to-end
   encrypted, and grants **reachability without authorization** — the
-  OpenChamber relay trust model: an opaque courier; the client still
+  OpenChamber relay trust model: an opaque courier. The client still
   presents its normal credential.
 - **DPoP-bound, scope-limited capability tokens** for every
   environment-facing socket and grant (T3's environment-auth is the
@@ -515,15 +515,15 @@ Activities, remote control of desktop agents) confirms the demand.
   destination, and source cleanup receipts. Build the movement substrate
   before widening workbench surfaces.
 - **Workbench mode graph:** Attention / Recent / Repositories / Hosts entry
-  points; per-session Thread / Files / Changes / Terminal / Preview /
-  Artifacts modes; routes and sheets on phone, list+detail+inspector on
+  points. Per-session Thread / Files / Changes / Terminal / Preview /
+  Artifacts modes. Routes and sheets on phone, list+detail+inspector on
   tablet. Changes-writeback is safe by construction: no force push, exact
   post-image receipts.
 - **Durable offline outbox** per environment, built on the durable-admission
   contract: commands queued offline with client-chosen idempotent IDs,
   admission ACK shown before "accepted," explicit steer/queue choice
   surfaced to the user, worker epochs and ordered replay on reconnect.
-- **Attention as a product:** an attention inbox (needs-you pinning;
+- **Attention as a product:** an attention inbox (needs-you pinning,
   actionable items never collapse), privacy-generic push payloads with
   revalidation-at-open and deep links to the exact session, presence
   suppression, Live Activities/widgets for lock-screen run state, share
@@ -560,13 +560,13 @@ the named refusal).
   semantics: local-first truth, sync as replication of durable typed facts,
   owner-controlled visibility with explicit disclosure states (Amp's
   silent workspace-join visibility change and "unlisted = internet-readable"
-  ambiguity are the anti-patterns; visibility transitions get receipts).
+  ambiguity are the anti-patterns. Visibility transitions get receipts).
 - **Remote supervision parity:** the same typed projections and command
   vocabulary as mobile — attention inbox, fleet visibility, approvals,
   steer/queue, continuation links that hand a session to desktop or mobile
   without forking identity.
 - **Usage and model truth as a public product surface.** Every competitor
-  failed here; OpenAgents publishes: exact model/provider routing receipts
+  failed here. OpenAgents publishes: exact model/provider routing receipts
   per call (base model, serving path, no silent substitution), pre-spend
   budget visibility and post-spend reconciliation against exact usage rows,
   and Amp-style transparent pass-through pricing framing. Model identity is
@@ -580,7 +580,7 @@ the named refusal).
 - **Onboarding gradient:** T3's `npx` zero-install front door (running
   server, migrations, pairing URL with the token in the URL fragment so it
   never reaches the hosted origin, in seconds) is the bar for
-  developer-facing onboarding; Cursor's compiled-in Claude-Code-import lane
+  developer-facing onboarding. Cursor's compiled-in Claude-Code-import lane
   shows the value of meeting users inside their existing tool history.
   Web-side: pairing, device linking, and fleet-account connection flows that
   name screens and buttons, not shell commands.
@@ -601,19 +601,19 @@ Four systems span all three surfaces and deserve their own contracts.
 
 ### 7.1 Extensions and authored capabilities
 
-- **Ingest open formats; add provenance.** MCP, MCPB bundles, and skills are
+- **Ingest open formats. Add provenance.** MCP, MCPB bundles, and skills are
   input formats — wrapped with publisher signatures, content hashes, declared
   capability manifests, org policy, staged download/promote/rollback
   (OpenCode's atomic skill staging), and install/update/run receipts. No
-  parallel package format; no moving marketplace branches or silent
+  parallel package format. No moving marketplace branches or silent
   first-run catalog clones (Factory), no plugins executing in the trusted
   server process with dynamic npm install (OpenCode, Amp's plugin privilege
   bundles).
 - **Executor's authored-capability loop is the model for user-manufactured
   tools:** authenticated operations become connection-parametric typed
   handles (account identity is invocation data, not ambient state) inside an
-  isolated authored function; nested calls re-enter the one dispatcher so
-  catalog, policy, approval, and credential resolution apply at every depth;
+  isolated authored function. Nested calls re-enter the one dispatcher so
+  catalog, policy, approval, and credential resolution apply at every depth.
   published tools re-enter the same catalog as content-addressed, versioned,
   tombstone-managed artifacts. OpenAgents wraps this in a capability broker
   enforcing strict intersection (parent grant ∩ artifact requirement ∩
@@ -621,7 +621,7 @@ Four systems span all three surfaces and deserve their own contracts.
   isolate profile (default-deny network, no fs/shell/secrets, only the
   capability bridge, receipted), and semantic catalog selection.
 - **Code mode, bounded:** both OpenAI (V8 isolate orchestrating MCP calls)
-  and OpenCode (confined interpreter over deferred tools) ship it; the win
+  and OpenCode (confined interpreter over deferred tools) ship it. The win
   is real (context efficiency, computational composition). Adopt only with
   mandatory timeout/tool-count/output/spend budgets, host-side credentials,
   and one receipt per nested call.
@@ -634,7 +634,7 @@ Four systems span all three surfaces and deserve their own contracts.
 Command Code's Taste is the only preference compiler in the catalog and the
 blueprint — corrections, foreign sessions, and Git history compiled into
 confidence-scored portable preference packages behind a **separate restricted
-writer** (normal file tools reject preference paths; only the narrowed
+writer** (normal file tools reject preference paths, only the narrowed
 learning agent writes them). Incorporate as a **governed preference plane**:
 observation → typed candidate with evidence, scope, confidence, freshness →
 owner review or bounded auto-activation → active generation → application
@@ -642,14 +642,14 @@ with a visible "why this choice" → outcome → reinforce/narrow/suspend/
 supersede/delete. Keep four memory planes distinct and visible: explicit
 instructions, learned preferences, retrieved history, presentation state.
 Git-history correction mining is the onboarding gesture worth copying.
-Invariants: learning is never default-on over private history; a learned
+Invariants: learning is never default-on over private history. A learned
 preference can never widen authority (tools, spend, publication,
-acceptance); evidence accompanies every confidence number.
+acceptance). Evidence accompanies every confidence number.
 
 ### 7.3 Evidence, work history, and acceptance
 
-- **Amp's `read_thread` law:** compaction summaries orient; original events
-  are evidence; later events may supersede. A bounded history-reader role
+- **Amp's `read_thread` law:** compaction summaries orient. Original events
+  are evidence. Later events may supersede. A bounded history-reader role
   returns source-event references with supersession/revert/acceptance state
   and never widens authority.
 - **Crabbox's evidence verbs** — `attach / events / logs / results /
@@ -668,7 +668,7 @@ acceptance); evidence accompanies every confidence number.
   countersigned by the observing authority.
 - **Acceptance is deterministic evidence, never model prose.** OpenChamber's
   small-model goal auditor and Command Code's fail-open verifier are the
-  cautionary pair; post-image state, tests, PR state, and receipts decide.
+  cautionary pair. Post-image state, tests, PR state, and receipts decide.
 - **Blind-consensus QA** (the Codex `hatch-pet` skill): context-isolated
   judges, hidden answer keys, strict majority, audited overrides, and an
   explicit ban on the parent agent approving its own work — the shape for
@@ -680,8 +680,8 @@ OpenChamber's Session Goals and scheduled tasks prove the product demand and
 the engineering trap: event-driven loops with memory-only timers mean an idle
 goal may never re-arm after restart — **persisted metadata is not a durable
 continuation lease**. Incorporate autonomy as three separate concerns:
-interrupted-turn recovery; a durable session objective (requirements ledger
-with evidence predicates); and durable continuation dispatch (startup scans,
+interrupted-turn recovery. A durable session objective (requirements ledger
+with evidence predicates). And durable continuation dispatch (startup scans,
 leases, idempotent outbox, write-fencing on stale goal generations,
 accounting before side effects, user-abort dominance). Factory's autonomy
 model adds the policy shape: autonomy level distinct from interaction mode,
@@ -692,10 +692,10 @@ blocklist that survives every unsafe flag.
 
 Grok Build's **exporter-side fail-closed telemetry firewall** — a closed
 attribute vocabulary with an exporter-side validator that drops unknown keys
-and secret-shaped values — is the pattern; Command Code's undisclosed
+and secret-shaped values — is the pattern. Command Code's undisclosed
 fingerprinting is the anti-pattern. Privacy filtering lives server/exporter
 side, never only in a bypassable client (Command Code's IDE bridge filters in
-the client; any same-user process bypasses it). One user-facing data-flow
+the client. Any same-user process bypasses it). One user-facing data-flow
 matrix, kept consistent across docs, marketing, and behavior.
 
 ---
@@ -707,15 +707,15 @@ The catalog is as much a record of what not to build. Consolidated:
 1. Default-open execution: `danger-full-access` defaults, approvals-off,
    sandbox-off, computer-use-on-by-default in unattended paths.
 2. Fail-open anything: verifiers, hooks, deny rules, signing, git-ignore.
-3. Permission UI presented as containment; provider attributes presented as
-   isolation; a JSON env var described as a sandbox.
-4. Cloud-canonical transcript custody; live streams or notifications as
-   completion authority; compaction as history.
+3. Permission UI presented as containment. Provider attributes presented as
+   isolation. A JSON env var described as a sandbox.
+4. Cloud-canonical transcript custody. Live streams or notifications as
+   completion authority. Compaction as history.
 5. Coordinator-held raw provider credentials on the execution path.
 6. Renderer-held secrets, generic `invoke(command, args)` IPC bridges,
    live-site-as-trusted-renderer.
-7. Unsigned or same-origin release authority; downgrade-permissive updaters;
-   signing-optional release lanes; declared build-matrix cells without
+7. Unsigned or same-origin release authority. Downgrade-permissive updaters.
+   signing-optional release lanes. Declared build-matrix cells without
    native-dependency evidence.
 8. Duplicated application topologies: two UI trees, two design systems, two
    query owners, two protocol generations without deletion gates, giant
@@ -731,8 +731,8 @@ The catalog is as much a record of what not to build. Consolidated:
 12. Defaults that evangelize (force-opening flagship surfaces, opt-outs that
     do not hold) and feature deletion without migration/export/deletion
     gates for durable user state.
-13. Learned memory default-on over private history; preferences that widen
-    authority; confidence without evidence.
+13. Learned memory default-on over private history. Preferences that widen
+    authority. Confidence without evidence.
 14. Compatibility accretion without expiry — every bridge gets an owner,
     telemetry, and a removal date.
 15. Harness identity theater: duplicated catalogs, arbitrary-string admission,
@@ -753,35 +753,35 @@ The gap analyses agree on dependency order, and it is worth restating as the
 essay's operational conclusion:
 
 - **Desktop:** freeze the engine protocol and long-lived supervisor with a
-  lossless native event plane first; then the chat column (hierarchy,
-  virtualization, composer admission states, inline decisions); then establish
+  lossless native event plane first. Then the chat column (hierarchy,
+  virtualization, composer admission states, inline decisions). Then establish
   the main-owned Workspace capability graph and primary Editor mode (Pierre
   multi-root tree, one revisioned Monaco document, save/recovery, language
   lifecycle, versioned diagnostics/navigation, and read-only Pierre diff
-  against exact Git evidence); then add workspace search, Problems, symbols,
-  excerpt projections, and the ancillary review/diff panel; terminal follows
-  PTY proof and preview remains last; then add worktree/checkpoint/delivery
-  depth and separately admitted writable tree/Git mutations; then remote
-  portability; then platform breadth (macOS x64 → Windows/Linux x64 →
-  arm64, channels last); then split real runtime-adapter conformance from
+  against exact Git evidence). Then add workspace search, Problems, symbols,
+  excerpt projections, and the ancillary review/diff panel. Terminal follows
+  PTY proof and preview remains last. Then add worktree/checkpoint/delivery
+  depth and separately admitted writable tree/Git mutations. Then remote
+  portability. Then platform breadth (macOS x64 → Windows/Linux x64 →
+  arm64, channels last). Then split real runtime-adapter conformance from
   in-process emulation-policy conformance and evaluate a pinned Open
-  Interpreter peer before owning any branded emulation; then add collaboration
+  Interpreter peer before owning any branded emulation. Then add collaboration
   projection and proposal semantics over the canonical thread before any
   remote effect rights, prove generation-fenced attachment handoff and fresh
   authorization before group encryption, and treat private group messaging as
-  a separately admitted security lane; additional providers
+  a separately admitted security lane. Additional providers
   or policies only after one exact runtime × policy × model × provider × wire
   tuple is
   complete by the eleven-predicate closure definition (Known, Decoded,
   Owned, Retained, Projected, Presented, Authorized, Recovered, Fast,
   Receipted, Shipped).
-- **Mobile:** parity contract and capability matrix first; any-host
-  directory and adaptive shell; **portable session movement as substrate
-  before workbench breadth**; thread-control completion and push attention;
-  Files; Changes with safe writeback; Terminal/Preview/Artifacts; fleet
-  operations; voice and ambient last, with signed cross-host dogfood as the
+- **Mobile:** parity contract and capability matrix first. Any-host
+  directory and adaptive shell. **Portable session movement as substrate
+  before workbench breadth**. Thread-control completion and push attention.
+  Files. Changes with safe writeback. Terminal/Preview/Artifacts. Fleet
+  operations. Voice and ambient last, with signed cross-host dogfood as the
   exit proof.
-- **Web:** projection and trust surfaces track the same typed contracts;
+- **Web:** projection and trust surfaces track the same typed contracts.
   the thread-object, usage-truth, and public-ledger surfaces can advance in
   parallel because they consume receipts rather than produce execution.
 

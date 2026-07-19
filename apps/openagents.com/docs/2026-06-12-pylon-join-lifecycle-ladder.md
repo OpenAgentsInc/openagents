@@ -16,7 +16,7 @@ Phase 2 → active, with `sync_phase` published as a routable record and
 `max_allowed_stale` triggering re-entry through the same ramp).
 
 Claim discipline: this is contract and projection work only. The ladder
-describes what a device's funnel evidence supports; it makes no live
+describes what a device's funnel evidence supports. It makes no live
 device, payment, or settlement claims. The funnel currently reports the
 fleet largely dark and this ladder does not pretend otherwise.
 
@@ -53,7 +53,7 @@ sync_reentry ──reentry_seal_digest_synced► state_synced   (re-ramp)
 ```
 
 Every legal transition carries exactly one reason code from the closed
-set (prefix `join_lifecycle.public.`); a transition with a mismatched
+set (prefix `join_lifecycle.public.`). A transition with a mismatched
 reason code is rejected with a typed `reason_code_mismatch` error and
 an edge outside the table is rejected with `illegal_transition`. Each
 applied transition emits a receipt-compatible event
@@ -73,16 +73,16 @@ state transitions, not on registration events.
 
 | State | Meaning |
 |---|---|
-| `registered` | Present in the registry; nothing proven beyond registration. |
+| `registered` | Present in the registry. Nothing proven beyond registration. |
 | `qualified` | Passed the device qualification gates (heartbeat fresh, client version, capability, wallet readiness, benchmark evidence). |
 | `state_synced` | Holds the last durable seal digest / assigned state (P1.2 bootstrap-from-durable-seal rail). |
 | `warmup` | Doing shadow/unmerged work that is verified but not yet merged or paid (P1.1 shadow-window ramp rail). |
-| `active` | Merged, paid work classes; full participant. |
-| `lagged` | Fell beyond `max_allowed_stale` (P0.2 contract field); off the ladder. |
-| `sync_reentry` | Re-ramping; one re-sync away from rejoining at `state_synced`. |
+| `active` | Merged, paid work classes. Full participant. |
+| `lagged` | Fell beyond `max_allowed_stale` (P0.2 contract field). Off the ladder. |
+| `sync_reentry` | Re-ramping. One re-sync away from rejoining at `state_synced`. |
 
 Ladder ranks: `registered` 0, `qualified` 1, `state_synced` 2,
-`warmup` 3, `active` 4; back-edge states are negative (`lagged` -2,
+`warmup` 3, `active` 4. Back-edge states are negative (`lagged` -2,
 `sync_reentry` -1).
 
 ## Funnel mapping table
@@ -129,7 +129,7 @@ The ladder block on the live funnel route is derived from the funnel's
 own audience-redacted projections, so the ladder never sees more than
 the funnel already shows that audience. Entries carry only the
 synthetic public capacity ref, the state, its label, and the ladder
-rank; refs are screened against the join-lifecycle privacy guard (no
+rank. Refs are screened against the join-lifecycle privacy guard (no
 device identifiers, wallet/payment material, or raw timestamps), with
 the module's own closed `join_lifecycle.public.*` taxonomy allowlisted
 before the substring scan (the `wallet_not_ready` lesson from the live

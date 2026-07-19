@@ -1,7 +1,7 @@
 # Khala Ecosystem Tool Recipes
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Authoritative issue #6240 recipe set. Researched against current upstream docs
@@ -11,8 +11,8 @@ date). Not current direction; consult MASTER_ROADMAP.**
 > and **Hermes** (top priority), then **Vercel AI SDK**, then **LangChain**. All
 > four were end-to-end smoked against the live gateway on 2026-06-26 — auth,
 > streaming, and real agentic tool-calling loops (OpenCode read a file via its
-> Read tool; Hermes ran its tool loop to extract a file marker). Aider, Cline,
-> Continue, and LiteLLM were **descoped from #6306** by owner direction; their
+> Read tool. Hermes ran its tool loop to extract a file marker). Aider, Cline,
+> Continue, and LiteLLM were **descoped from #6306** by owner direction. Their
 > recipe sections below remain as #6240 reference material but are not part of
 > the #6306 verified set. Full evidence:
 > [`khala-ecosystem-tool-verification.md`](./khala-ecosystem-tool-verification.md).
@@ -52,7 +52,7 @@ x-openagents-client: <tool-id>
 ```
 
 Use lower-case tool ids such as `ai-sdk`, `langchain-js`, or `litellm-proxy`.
-These tags are not public counter dimensions yet; owner-gated rollups are tracked
+These tags are not public counter dimensions yet. Owner-gated rollups are tracked
 by F1 (#6252). Until those rollups ship, tools that cannot set custom headers
 should use a fresh key per tool plus the public counter before/after delta.
 
@@ -75,7 +75,7 @@ echo "tokens delta: $((after - before))"
 ```
 
 Do not claim per-tool public adoption from the aggregate counter alone. The
-counter proves traffic was served; per-tool claims require either a fresh-key
+counter proves traffic was served. Per-tool claims require either a fresh-key
 test window or the owner-gated F1 analytics split.
 
 ## Hermes (Nous Research hermes-agent) — #6306 verified
@@ -135,7 +135,7 @@ Checklist:
 ## Aider
 
 > Descoped from #6306 by owner direction (Aider treated as legacy). Section kept
-> as #6240 reference; not part of the #6306 verified set.
+> as #6240 reference. Not part of the #6306 verified set.
 
 Source finding: Aider's OpenAI-compatible docs use `OPENAI_API_BASE`,
 `OPENAI_API_KEY`, and require the model name to be prefixed with `openai/`.
@@ -171,7 +171,7 @@ Checklist:
 
 ## Cline
 
-> Descoped from #6306 by owner direction. Section kept as #6240 reference; not
+> Descoped from #6306 by owner direction. Section kept as #6240 reference. Not
 > part of the #6306 verified set.
 
 Source finding: Cline's OpenAI Compatible provider expects three settings: base
@@ -200,7 +200,7 @@ Checklist:
 
 ## Continue
 
-> Descoped from #6306 by owner direction. Section kept as #6240 reference; not
+> Descoped from #6306 by owner direction. Section kept as #6240 reference. Not
 > part of the #6306 verified set.
 
 Source finding: Continue's OpenAI-compatible provider uses `provider: openai`
@@ -236,7 +236,7 @@ Checklist:
 ## Vercel AI SDK — #6306 verified
 
 Source finding: AI SDK's OpenAI-compatible provider uses
-`createOpenAICompatible`; it accepts `baseURL`, `apiKey`, `headers`, and
+`createOpenAICompatible`. It accepts `baseURL`, `apiKey`, `headers`, and
 `includeUsage`.
 
 ```ts
@@ -298,7 +298,7 @@ Checklist:
 
 ## LiteLLM
 
-> Descoped from #6306 by owner direction. Section kept as #6240 reference; the
+> Descoped from #6306 by owner direction. Section kept as #6240 reference. The
 > direct-SDK path was smoked live on 2026-06-26 but LiteLLM is not part of the
 > #6306 verified set.
 
@@ -354,7 +354,7 @@ Checklist:
 ## LangChain — #6306 verified
 
 Source finding: LangChain Python `ChatOpenAI` accepts `base_url` or
-`OPENAI_API_BASE`; LangChain JS accepts `configuration.baseURL` and
+`OPENAI_API_BASE`. LangChain JS accepts `configuration.baseURL` and
 `configuration.defaultHeaders`.
 
 Python:

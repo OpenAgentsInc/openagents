@@ -39,11 +39,11 @@ or other private/operator-only state.
 
 The tests in `workers/api/src/episode-228-launch-claim-ledger.test.ts` assert:
 
-- the Episode 228 seeded ledger decodes through the Schema;
+- the Episode 228 seeded ledger decodes through the Schema.
 - verified, measured, modeled, planned, and prohibited claims project with the
-  intended copy rules;
-- public projections do not expose customer, team, or operator refs;
-- unsupported verified claims are lowered to planned;
+  intended copy rules.
+- public projections do not expose customer, team, or operator refs.
+- unsupported verified claims are lowered to planned.
 - private/source/payment/wallet/provider/customer refs fail closed.
 
 ## Future Use

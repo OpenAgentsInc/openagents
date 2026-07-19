@@ -36,7 +36,7 @@ OpenAgents is building the product and market surfaces for a machine-work
 economy: an OpenAI-compatible inference endpoint (**Khala**) backed by a
 network of agents, models, and validators, with verified work and public,
 dereferenceable receipts. Khala behaves like one model but is an agent network
-underneath; every response discloses its route and carries a metered receipt,
+underneath. Every response discloses its route and carries a metered receipt,
 so spend and verification are auditable rather than opaque.
 
 Success for a public explainer page: a developer or agent understands what
@@ -47,11 +47,11 @@ makes a first call — convinced by precision and evidence, not hype.
 
 Three words: **precise, confident, cinematic.**
 
-- **Precise** — technical claims are exact and never over-stated; copy says
+- **Precise** — technical claims are exact and never over-stated. Copy says
   plainly what ships now versus what's on the roadmap. The craft of the
   interface mirrors the craft of the engineering.
 - **Confident** — first-person plural ("We are Khala"). Calm authority, not
-  loud salesmanship. The endpoint is one thing; the complexity is hidden
+  loud salesmanship. The endpoint is one thing. The complexity is hidden
   behind a clean contract.
 - **Cinematic** — luminous, high-craft, a little StarCraft-Protoss: a dark
   void with glowing blue energy. The interface should feel engineered and
@@ -74,32 +74,32 @@ Emotional goal: the visitor should think *"how was this built?"* — not
 
 ## Design Principles
 
-1. **Practice what you preach.** The page is a precision-engineering pitch; the
+1. **Practice what you preach.** The page is a precision-engineering pitch. The
    interface must itself be precision-engineered. Pixel rhythm, contrast, and
    motion are part of the argument.
-2. **Show the route, don't hide it.** Like the product (every response
+2. **Show the route, do not hide it.** Like the product (every response
    discloses its lane + receipt), the design favors clarity and disclosure over
    mystique. Code samples are first-class, not buried.
 3. **Energy is the brand, not the bg.** The luminous blue is carried by
    accents, dividers, eyebrows, and glow — over a near-black tinted void. Never
    drench, never gradient-wash. Restraint with one committed accent.
-4. **Honest hierarchy.** What ships now is stated plainly; roadmap is labeled
+4. **Honest hierarchy.** What ships now is stated plainly. Roadmap is labeled
    as roadmap. Visual emphasis tracks truth, never inflates a claim.
 5. **One house style, every surface.** The Protoss energy language (dark void,
    glowing `#3a7bff`/`#4fd0ff` energy, crisp white + cool blue-gray text,
    technical mono headings) is the BASE design language for all OpenAgents
-   surfaces. New surfaces inherit it; they do not reinvent a palette.
+   surfaces. New surfaces inherit it. They do not reinvent a palette.
 
 ## Accessibility & Inclusion
 
-- WCAG AA for text contrast. Body copy ≥ 4.5:1 against its surface; large/bold
+- WCAG AA for text contrast. Body copy ≥ 4.5:1 against its surface. Large/bold
   headings ≥ 3:1. On the near-black Khala panel, body text is cool-white
   (`#c9d2dd`-class or lighter), not muted gray.
-- Glow/bloom is decorative; never the sole carrier of meaning. Section
+- Glow/bloom is decorative. Never the sole carrier of meaning. Section
   structure is conveyed by headings and dividers, not color alone, so it works
   for color-blind readers.
 - `prefers-reduced-motion`: every pulse/transition has a static or crossfade
-  fallback. The 3D scene already lives behind a 75%-black scrim; page motion
+  fallback. The 3D scene already lives behind a 75%-black scrim. Page motion
   must degrade to instant.
 - Focus states are visible (glowing-blue ring on the dark surface), keyboard
   reachable, and the back-to-home control is always reachable (fixed top-left).

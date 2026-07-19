@@ -138,15 +138,15 @@ Autopilot4 and Vortex material are source material, not implementation homes.
 
 OpenAgents product surface now has the concrete Artanis surface:
 
-- public routes at `/artanis` and `/agents/artanis`;
+- public routes at `/artanis` and `/agents/artanis`.
 - authenticated project identity `project_artanis` under the OpenAgents Core
-  Team;
+  Team.
 - a compact project-agent projection with runtime `Autopilot`, backend `SHC`,
-  repo `openagents`, and focus `Pylon`;
-- public current-goal and public Pylon stats loading;
+  repo `openagents`, and focus `Pylon`.
+- public current-goal and public Pylon stats loading.
 - Artanis runtime, loop, health, public report, Forum, approval-gate,
   work-routing, continual-learning-template, Nexus/Pylon adapter, and
-  production-launch-gate contracts;
+  production-launch-gate contracts.
 - public claim-state caveats that block overclaiming.
 
 The Artanis runtime and loop contracts are intentionally read-only by default.
@@ -222,8 +222,8 @@ What is not proven:
 
 On 2026-06-08 I read the public OpenAgents Forum paths for Artanis through:
 
-- `GET https://openagents.com/api/forum/search?q=Artanis`;
-- exact topic reads for the Artanis status and Pylon release work-log topics;
+- `GET https://openagents.com/api/forum/search?q=Artanis`.
+- exact topic reads for the Artanis status and Pylon release work-log topics.
 - paginated public post reads with `GET /api/forum/posts?limit=100` until the
   cursor ended.
 
@@ -390,29 +390,29 @@ runtime evidence, Psionic optimizer lineage, and OpenAgents product surface publ
 
 Artanis should own these campaign responsibilities:
 
-- maintain the public campaign objective and stage;
-- verify that the public Benchmark Cloud split manifest exists;
+- maintain the public campaign objective and stage.
+- verify that the public Benchmark Cloud split manifest exists.
 - select the relevant Probe, Blueprint, Program Signature, benchmark, and
-  failure-family context packs;
-- propose Pylon rollout batches for GEPA metric calls;
-- require capability-matched Pylon workers and signed receipts;
-- ingest Probe closeout artifacts and Benchmark Cloud score imports;
-- classify candidate readiness with Program/Blueprint signatures;
-- identify blockers before public claims upgrade;
-- summarize progress through `/artanis`, Forum, and operator surfaces;
+  failure-family context packs.
+- propose Pylon rollout batches for GEPA metric calls.
+- require capability-matched Pylon workers and signed receipts.
+- ingest Probe closeout artifacts and Benchmark Cloud score imports.
+- classify candidate readiness with Program/Blueprint signatures.
+- identify blockers before public claims upgrade.
+- summarize progress through `/artanis`, Forum, and operator surfaces.
 - preserve the line between proposed, running, measured, verified, promoted,
   and settled states.
 
 Artanis should not own these authorities:
 
-- raw benchmark execution;
-- benchmark scoring authority;
-- GEPA optimizer authority;
-- Probe runtime promotion;
-- Qwen/LoRA training launch;
-- wallet spend;
-- settlement mutation;
-- provider account mutation;
+- raw benchmark execution.
+- benchmark scoring authority.
+- GEPA optimizer authority.
+- Probe runtime promotion.
+- Qwen/LoRA training launch.
+- wallet spend.
+- settlement mutation.
+- provider account mutation.
 - public claim upgrade without retained evidence.
 
 ## Campaign Data Flow
@@ -482,7 +482,7 @@ Recommended signatures:
 These signatures should be implemented in the active OpenAgents product surface/Blueprint-shaped
 surface, with source/spec synchronization in public `openagents` where
 Benchmark Cloud owns public benchmark contracts. Probe should consume the
-resulting policy and emit evidence; Probe should not own Artanis policy.
+resulting policy and emit evidence. Probe should not own Artanis policy.
 
 ## Work Order Shape
 
@@ -513,17 +513,17 @@ Initial Work Order templates:
 
 Each Work Order should include:
 
-- campaign id;
-- benchmark suite and split refs;
-- Probe commit;
-- candidate hash when applicable;
-- OpenAgents product surface Pylon assignment lease ref when routed through Pylon;
-- Pylon assignment refs when applicable;
-- accepted or rejected closeout refs;
-- expected artifacts;
-- verifier/scorer refs;
-- closeout requirements;
-- public projection summary shape;
+- campaign id.
+- benchmark suite and split refs.
+- Probe commit.
+- candidate hash when applicable.
+- OpenAgents product surface Pylon assignment lease ref when routed through Pylon.
+- Pylon assignment refs when applicable.
+- accepted or rejected closeout refs.
+- expected artifacts.
+- verifier/scorer refs.
+- closeout requirements.
+- public projection summary shape.
 - rollback or rejection path.
 
 ## Public Projection Fields
@@ -531,34 +531,34 @@ Each Work Order should include:
 Artanis needs benchmark-campaign fields in the public report. The public
 projection should include only safe refs and aggregates:
 
-- `campaignRef`;
-- `objectiveRef`;
-- `stage`;
-- `claimState`;
-- `benchmarkSuiteRefs`;
-- `splitManifestRefs`;
-- `probeCommitRefs`;
-- `baselineCandidateRef`;
-- `activeCandidateRefs`;
-- `candidateHashRefs`;
-- `pylonBatchRefs`;
-- `forumTopicRefs`;
-- `forumPostRefs`;
-- `forumPublicationIntentRefs`;
-- `plannedMetricCalls`;
-- `completedMetricCalls`;
-- `validMetricCalls`;
-- `invalidMetricCalls`;
-- `retainedResultRefs`;
-- `validationResultRefs`;
-- `holdoutResultRefs`;
-- `artifactManifestRefs`;
-- `receiptRefs`;
-- `costSummaryRefs`;
-- `resourceReceiptRefs`;
-- `policyFindingRefs`;
-- `blockerRefs`;
-- `promotionDecisionRefs`;
+- `campaignRef`.
+- `objectiveRef`.
+- `stage`.
+- `claimState`.
+- `benchmarkSuiteRefs`.
+- `splitManifestRefs`.
+- `probeCommitRefs`.
+- `baselineCandidateRef`.
+- `activeCandidateRefs`.
+- `candidateHashRefs`.
+- `pylonBatchRefs`.
+- `forumTopicRefs`.
+- `forumPostRefs`.
+- `forumPublicationIntentRefs`.
+- `plannedMetricCalls`.
+- `completedMetricCalls`.
+- `validMetricCalls`.
+- `invalidMetricCalls`.
+- `retainedResultRefs`.
+- `validationResultRefs`.
+- `holdoutResultRefs`.
+- `artifactManifestRefs`.
+- `receiptRefs`.
+- `costSummaryRefs`.
+- `resourceReceiptRefs`.
+- `policyFindingRefs`.
+- `blockerRefs`.
+- `promotionDecisionRefs`.
 - `nextActionRefs`.
 
 Public projection must not include raw prompts, raw traces, raw benchmark
@@ -588,7 +588,7 @@ Blocked claims until further proof:
 - Pylon paid work is fully settled from Artanis assignment id unless the
   deployed production bridge proves it.
 - Pylon is generally ready for download or bitcoin earning from #502 alone.
-- GEPA on Pylons is distributed model training; it is distributed rollout
+- GEPA on Pylons is distributed model training. It is distributed rollout
   optimization unless a later Psionic/model-training lane opens.
 - A GEPA candidate is active production runtime before OpenAgents product surface release approval.
 - A Qwen/LoRA adapter improved Probe before model-training evidence and
@@ -631,7 +631,7 @@ Blocked claims until further proof:
    Add a campaign publication path that prepares public-safe status summaries
    for the existing Artanis Forum threads, uses stable idempotency keys, and
    requires the existing Artanis/operator publication authority before posting.
-   Normal Probe agents may reply under their own identity; they must not post
+   Normal Probe agents may reply under their own identity. They must not post
    as Artanis.
 
 8. Stage 0 smoke

@@ -18,7 +18,7 @@ OWN type-specific store with its own shape:
 - NIP-90 provider earnings — `ProviderEarningRecord` (`src/provider-nip90.ts`)
 - assignment closeouts — `AssignmentCloseout.receiptRefs` (`src/assignment.ts`)
 - training worker receipts — `TrainingWorkerReceipt` (`src/assignment.ts`)
-- forum tips — `src/tips.ts`; Tassadar executor; data; labor; referral
+- forum tips — `src/tips.ts`. Tassadar executor. Data. Labor. Referral
 
 There was no unified, dereferenceable interface that reads those per-mode records,
 distinguishes amount classes, and HONESTLY counts how many distinct modes carry a
@@ -39,13 +39,13 @@ workers/api-side deliverable owned by another lane and is untouched here.)
   counts toward the `>=2` bar. INERT by default (`PYLON_MULTI_EARNING_LEDGER_ENABLED`
   off → empty projection, zero settled modes, promise red).
 - `captureMultiEarningReceipt(...)` — fail-closed: emits a self-verifying,
-  round-trip-clean `MultiEarningReceipt` ONLY when the `>=2` bar is honestly met;
+  round-trip-clean `MultiEarningReceipt` ONLY when the `>=2` bar is honestly met.
   otherwise returns `captured: false` with reasons and emits nothing.
 - `verifyMultiEarningEntry` / `verifyMultiEarningReceipt` — deterministic auditor
   gates a reviewer runs over untrusted captured artifacts.
 
 CLI: `pylon multi-earning ledger --json` — read-only, no-network. Emits the honest
-projection (INERT by default). It ingests no live earning records yet (fail-safe);
+projection (INERT by default). It ingests no live earning records yet (fail-safe).
 the live earning paths feed `summarizeMultiEarning` only when an operator wires
 real settled receipts.
 
@@ -77,7 +77,7 @@ the owner (one arm/flip):
    (e.g. a settled Tassadar/compute receipt + a settled forum-tip receipt). This
    requires real compute / a real earning event + operator spend/settlement
    approval — owner-gated.
-3. Run `captureMultiEarningReceipt(...)`; confirm `captured: true` and that the
+3. Run `captureMultiEarningReceipt(...)`. Confirm `captured: true` and that the
    serialized artifact re-audits clean via `verifyMultiEarningReceipt`.
 4. Owner-sign the green flip per `proof.claim_upgrade_receipts.v1`, citing the
    captured `receipt.pylon.multi_earning_node.modes_N.v0.1` ref.

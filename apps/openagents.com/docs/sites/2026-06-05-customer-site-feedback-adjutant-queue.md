@@ -9,9 +9,9 @@ actionable Autopilot queue item when the order already has a Site.
 
 The customer API writes:
 
-- a `site_revision_feedback` record;
-- a public `adjutant_adjustment_requests` record;
-- `adjutant_assignment_events` and `site_events` trace records;
+- a `site_revision_feedback` record.
+- a public `adjutant_adjustment_requests` record.
+- `adjutant_assignment_events` and `site_events` trace records.
 - an `agent_queued` software order status so customer-safe projections show
   that the adjustment is back in the queue.
 
@@ -47,5 +47,5 @@ semantics across edited comments or network retries.
 If an order has no Site yet, feedback is saved but not queued into an Adjutant
 adjustment because adjustment requests require a Site ID. This is acceptable
 for the first batch because pre-Site feedback still appears in the order
-timeline; the fulfillment queue should consume it when creating the first Site
+timeline. The fulfillment queue should consume it when creating the first Site
 assignment.

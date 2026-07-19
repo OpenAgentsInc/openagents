@@ -2,12 +2,12 @@
 
 Date: 2026-07-13
 
-Status: adopted architecture boundary and implementation plan; current
+Status: adopted architecture boundary and implementation plan. Current
 OpenAgents ProductSpec code has not yet caught up to the upstream features
 described here
 
 Upstream audited: `gokulrajaram/ProductSpec` at `9ef2654` (`0.19.0`, document
-format `0.1`); Agent Run addendum (below) audited at `c7250a8` (parser
+format `0.1`). Agent Run addendum (below) audited at `c7250a8` (parser
 `0.22.0` on main, npm still `0.19.0`) on 2026-07-13
 
 ## Decision
@@ -40,7 +40,7 @@ OpenAgents Desktop ProductSpec workroom loop
 
 The upstream ProductSpec Evidence Loop is a portable index in the authored
 document. The Desktop workroom loop is a runtime workflow. AssuranceSpec is the
-pre-build verification design. They compose; none replaces the others.
+pre-build verification design. They compose. None replaces the others.
 
 ## What upstream now guarantees
 
@@ -51,14 +51,14 @@ an exact `AC-<number>`, `EVAL-<number>`, or `SM-<number>` item.
 
 The validator:
 
-- rejects malformed blocks and unsupported artifact types;
-- rejects an `item_id` that does not exist in the same Product Spec;
-- rejects duplicate durable AC, EVAL, and SM IDs;
+- rejects malformed blocks and unsupported artifact types.
+- rejects an `item_id` that does not exist in the same ProductSpec.
+- rejects duplicate durable AC, EVAL, and SM IDs.
 - warns when an artifact kind usually belongs to another item family, such as
   an `eval_run` attached to an `SM-*` item.
 
 The separate ProductSpec graph resolver warns when a `product_spec` dependency
-revision pin differs from the target Product Spec.
+revision pin differs from the target ProductSpec.
 
 The MCP evidence checklist groups expected links by AC, EVAL, and SM. It marks
 AC/EVAL work as release-blocking and SM outcomes as post-launch, but remains a
@@ -67,13 +67,13 @@ verification and evals as not run by ProductSpec.
 
 It does **not**:
 
-- fetch or authenticate an artifact URL;
-- prove that an artifact contains what its title claims;
-- run a test or eval, collect a trace, or read a dashboard;
-- establish source, command, target, environment, seed, or toolchain identity;
+- fetch or authenticate an artifact URL.
+- prove that an artifact contains what its title claims.
+- run a test or eval, collect a trace, or read a dashboard.
+- establish source, command, target, environment, seed, or toolchain identity.
 - judge oracle sensitivity, evidence sufficiency, independence, freshness, or
-  release fitness;
-- turn a link, a passing suite, or a dashboard movement into acceptance;
+  release fitness.
+- turn a link, a passing suite, or a dashboard movement into acceptance.
 - replace GitHub, Linear, Braintrust, Langfuse, Datadog, native test systems,
   analytics, or the OpenAgents promise registry.
 
@@ -102,8 +102,8 @@ claim*.
 - A ProductSpec **commits** intent.
 - A ProductSpec plan is **accepted**.
 - A work packet is **admitted** and later receives an owner **disposition**.
-- An Assurance Spec is **reviewed** and **admitted for verification**.
-- A native tool **observes**; an Assurance Receipt reports `CONFIRMED`,
+- An AssuranceSpec is **reviewed** and **admitted for verification**.
+- A native tool **observes**. An Assurance Receipt reports `CONFIRMED`,
   `REFUTED`, or `INCONCLUSIVE`.
 - A verifier **reviews evidence** under a named policy.
 - Release policy **permits or blocks release**.
@@ -112,7 +112,7 @@ claim*.
 `verified` in the current Desktop workroom means that every evidence receipt
 ref supplied to that verification resolved and a `verifierRef` different from
 the host's `evidenceProducerRef` recorded a `passed` receipt. The host currently
-sets that producer ref to the active lease executor; it does not authenticate
+sets that producer ref to the active lease executor. It does not authenticate
 human identity or inspect an Assurance Receipt's actual producer. It does not
 mean that the full ProductSpec item is assured, that an Assurance gate is
 satisfied, or that release or a public promise is authorized.
@@ -123,10 +123,10 @@ Use the upstream vocabulary without inventing local meaning:
 
 | ProductSpec target | Normal upstream types | OpenAgents rule |
 | --- | --- | --- |
-| `AC-*` | `github_pr`, `code`, `release`, `engineering_spec` | Link implementation and approved test/receipt artifacts; a link is not an acceptance verdict |
-| `EVAL-*` | `eval_run` | Link the durable run or human-review record; Assurance Receipt retains exact execution provenance |
-| `SM-*` | `dashboard`, `analytics_snapshot`, `experiment` | Link post-launch outcome evidence; these normally do not block implementation completion |
-| Any valid item | `other` when no precise type exists | Use a precise title and durable path; do not misuse `eval_run` merely to avoid `other` |
+| `AC-*` | `github_pr`, `code`, `release`, `engineering_spec` | Link implementation and approved test/receipt artifacts. A link is not an acceptance verdict |
+| `EVAL-*` | `eval_run` | Link the durable run or human-review record. Assurance Receipt retains exact execution provenance |
+| `SM-*` | `dashboard`, `analytics_snapshot`, `experiment` | Link post-launch outcome evidence. These normally do not block implementation completion |
+| Any valid item | `other` when no precise type exists | Use a precise title and durable path. Do not misuse `eval_run` merely to avoid `other` |
 
 The current upstream vocabulary has no `assurance_spec`, `test_report`, or
 `assurance_receipt` type. The first dogfood should use `engineering_spec`,
@@ -138,8 +138,8 @@ shows that `other` loses material interoperability.
 Upstream added a second companion artifact: **Agent Run**
 (`.agent-run.json`, `agent_run_format_version: "0.1"`,
 `schema/agent-run.schema.json`) — a self-reported receipt for one agent
-execution against a pinned Product Spec. `productspec init-run` drafts it with
-every `AC-`/`EVAL-`/`SM-` ID at `not_checked`; the executing agent then fills
+execution against a pinned ProductSpec. `productspec init-run` drafts it with
+every `AC-`/`EVAL-`/`SM-` ID at `not_checked`. The executing agent then fills
 in per-item `passed`/`failed`/`not_checked`/`blocked`, evidence links, a
 `drift` block, and a free-text `completion_claim`. `productspec validate-run`
 and the MCP `draft_agent_run` tool shipped with it. Distribution honesty: all
@@ -150,7 +150,7 @@ How it relates to this boundary:
 
 - **Attachment is directional and second-class.** The run pins the spec
   (`product_spec.path` + `spec_revision` + *optional* `content_hash`), but
-  there is no `agent_run` Related Artifact type, so a Product Spec that wants
+  there is no `agent_run` Related Artifact type, so a ProductSpec that wants
   to index its runs must use `other` with a repo-relative path. Upstream's own
   starter kit stores runs beside the spec tree (`docs/agent-runs/`) and
   validates them in CI rather than linking them from the spec.
@@ -171,7 +171,7 @@ How it relates to this boundary:
   of *what the agent believes it did*, drafted from the spec's own durable
   IDs. That is a better claim substrate than prose "done" messages, and our
   `claim` CLI / `check_completion_claim` tooling can meet it: their artifact
-  records the claim; our tools report what remains unverified about it.
+  records the claim. Our tools report what remains unverified about it.
 
 ## Two digests, not one
 
@@ -194,15 +194,15 @@ Assurance binding therefore needs two identities:
 
 The rules are:
 
-- changed `spec_revision` or intent digest makes the Assurance Spec subject
-  stale and requires explicit reconciliation;
-- changed targeted item text or ID makes obligations against that item stale;
+- changed `spec_revision` or intent digest makes the AssuranceSpec subject
+  stale and requires explicit reconciliation.
+- changed targeted item text or ID makes obligations against that item stale.
 - changed document digest with the same revision and intent digest does not by
   itself invalidate proof design. It reports `evidence_index_changed` only
   after a typed semantic diff proves that the change is limited to classified
-  evidence attachments and permitted provenance fields;
+  evidence attachments and permitted provenance fields.
 - a missing, superseded, unreachable, or content-changed evidence artifact can
-  stale the evidence projection without changing product intent;
+  stale the evidence projection without changing product intent.
 - adding evidence that changes scope, criteria, UX, metrics, or the underlying
   bet requires a ProductSpec revision and usually a ProductSpec Decision Trace.
 
@@ -211,14 +211,14 @@ cannot be an ad hoc Markdown deletion pass.
 
 These are proposed Assurance-layer binding fields, not new ProductSpec
 frontmatter and not current Desktop identity semantics. The current Desktop
-`ProductSpecIdentity` pins the exact document digest; any byte edit, including
+`ProductSpecIdentity` pins the exact document digest. Any byte edit, including
 an evidence-only edit, makes the existing run `revision_mismatch`. Its prior
 receipts remain historical under the old exact identity. Intent digest does
 not relax that runtime contract.
 
 Until the projection has two independent implementations and golden fixtures,
 the conservative bootstrap is to add one stable Related Artifact URL for a
-public-safe Assurance Evidence Index *before* admitting the Assurance Spec.
+public-safe Assurance Evidence Index *before* admitting the AssuranceSpec.
 Runs update the index and immutable receipt targets, not the ProductSpec URL.
 That avoids recursively invalidating an exact-byte subject after every run.
 Once dual-digest semantics are real, individual reviewed artifact links may be
@@ -234,11 +234,11 @@ portable migration and rerun.
 `@openagentsinc/product-spec` now implements the pinned upstream `0.19.0`
 ProductSpec constructs that this plan originally listed as gaps:
 
-- structured AC/EVAL/SM items and portable identities;
+- structured AC/EVAL/SM items and portable identities.
 - `applies_to` and Related Artifacts, including dangling-ID errors and
-  unusual-target warnings;
+  unusual-target warnings.
 - exact document and canonical intent digests plus the typed evidence-only
-  attachment edit path;
+  attachment edit path.
 - portable Decision Trace v0.1 validation and `validate-trace` CLI support.
 
 The dependency-graph resolver and upstream MCP evidence-checklist/session
@@ -250,47 +250,47 @@ upstream `0.19.0`: it uses Markdown `CW-AC-*` criteria and semantic success
 metric IDs with OpenAgents-only fields. We must not call its Related Artifact
 links portable. The separately proposed revision 7, ID map, and portable
 Decision Trace companion perform that reconciliation without rewriting the
-admitted revision-6 artifact or its historical evidence; adoption remains a
+admitted revision-6 artifact or its historical evidence. Adoption remains a
 separate owner-gated act.
 
 ## Adoption sequence
 
 ### PSEL-0 — freeze current behavior
 
-- preserve the revision-6 MVP ProductSpec and its current digest as a baseline;
-- retain the existing Desktop workroom loop and `CW-AC-*` packet history;
-- add upstream `0.19.0` valid/invalid fixtures without weakening local tests;
+- preserve the revision-6 MVP ProductSpec and its current digest as a baseline.
+- retain the existing Desktop workroom loop and `CW-AC-*` packet history.
+- add upstream `0.19.0` valid/invalid fixtures without weakening local tests.
 - record the exact current incompatibilities as tests, not folklore.
 
 ### PSEL-1 — catch up the local ProductSpec package
 
 - implement current `applies_to` plus structured AC, EVAL, SM, and Related
-  Artifact blocks;
+  Artifact blocks.
 - match upstream error/warning semantics for dangling IDs, duplicate IDs, and
-  unusual artifact targets;
-- preserve round trips and custom sections;
-- add document- and intent-digest APIs with golden projections;
+  unusual artifact targets.
+- preserve round trips and custom sections.
+- add document- and intent-digest APIs with golden projections.
 - add a typed, owner-confirmed evidence-attachment edit path that proves the
   intent projection is unchanged and atomically rechecks the exact bytes
-  before write; do not relax the existing generic edit/revision rule;
+  before write. Do not relax the existing generic edit/revision rule.
 - keep the upstream parser as a conformance reference, not a runtime
   dependency.
 
 ### PSEL-2 — reconcile the MVP ProductSpec
 
 - propose a ProductSpec revision that converts `CW-AC-01…18` to portable
-  `AC-1…18` structured items and the seven current metrics to `SM-1…7`;
+  `AC-1…18` structured items and the seven current metrics to `SM-1…7`.
 - preserve criterion/metric semantics with reviewed single-line criterion
   normalization fixtures, because the upstream handwritten parser does not
-  accept YAML block scalars;
+  accept YAML block scalars.
 - preserve each current metric's `segment` and `source` in a keyed
   `custom-success-metric-context` section because those fields are not in the
-  upstream Success Metric schema;
-- create a machine-readable old-to-new ID mapping artifact; use ProductSpec
-  Decision Trace prose plus a link to explain and approve the migration;
+  upstream Success Metric schema.
+- create a machine-readable old-to-new ID mapping artifact. Use ProductSpec
+  Decision Trace prose plus a link to explain and approve the migration.
 - retain or supersede old-identity Desktop runs/packets, create a new accepted
   plan/run for the `AC-*` identity, and reconcile tests, issues, and Assurance
-  bindings without rewriting history;
+  bindings without rewriting history.
 - do not silently relabel existing evidence.
 
 This is an intent-identity migration and therefore receives a revision bump
@@ -300,28 +300,28 @@ Status (2026-07-13, #8758): the migration revision exists as a proposal.
 `docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md`
 (revision 7) validates under both profiles with structured `AC-1…18`/`SM-1…7`
 items, a keyed `custom-success-metric-context` section, and a Decision Trace
-section; `docs/mvp/openagents-codex-workroom-mvp.id-map.json` is the
+section. `docs/mvp/openagents-codex-workroom-mvp.id-map.json` is the
 machine-readable ID map, and `packages/product-spec` tests pin map/rev-6/rev-7
 agreement (pure whitespace-collapse normalization). The live subject, the
 checked-in AssuranceSpec, and the MVP-01 dogfood deliberately remain bound to
-revision 6; owner-gated adoption, identity freeze, rebinding, and the new
+revision 6. Owner-gated adoption, identity freeze, rebinding, and the new
 accepted `AC-*` plan/run are PSEL-3.
 
 ### PSEL-3 — close the first Assurance loop
 
 - seed the stable public-safe Assurance Evidence Index in `no_evidence` state
-  and add its approved Related Artifact link to the migrated `AC-*` target;
+  and add its approved Related Artifact link to the migrated `AC-*` target.
 - freeze the migrated ProductSpec document/intent identities, then rebind and
-  re-admit AssuranceSpec and create the new exact-identity Desktop plan/run;
+  re-admit AssuranceSpec and create the new exact-identity Desktop plan/run.
 - execute the first admitted Assurance obligation and retain native plus
-  normalized receipts;
+  normalized receipts.
 - resolve and validate the receipt through a typed bridge, register its opaque
   immutable ref in the Desktop workroom, use a distinct verifier reference,
-  and leave owner disposition separate;
-- validate that a nonexistent item ID fails and an unusual type only warns;
+  and leave owner disposition separate.
+- validate that a nonexistent item ID fails and an unusual type only warns.
 - prove that a typed evidence-attachment-only edit can change the document
-  digest without changing the intent digest or `spec_revision`; the current
-  Desktop run still becomes exact-identity mismatch and a new run is required;
+  digest without changing the intent digest or `spec_revision`. The current
+  Desktop run still becomes exact-identity mismatch and a new run is required.
 - do not send `REFUTED`, `INCONCLUSIVE`, stale, or infrastructure-failed
   observations through the Desktop loop's current pass-only verification path.
 
@@ -331,30 +331,30 @@ confirmation invokes the package planner/apply primitives, rechecks the exact
 reviewed bytes immediately before write, and retains an accepted historical
 run (including its receipts) as `revision_mismatch`. Generic edits still
 require a revision bump and their existing packet-supersession review. The
-path does not discover or auto-publish Assurance receipts; the owner reviews
+path does not discover or auto-publish Assurance receipts. The owner reviews
 the exact attachment diff before any bytes change.
 
 ### PSEL-4 — reconcile learning
 
 - when a typed diff only changes classified evidence attachments, maintain
-  Related Artifacts without revising intent;
+  Related Artifacts without revising intent.
 - when evidence changes the bet, UX, scope, criterion, eval, or metric, append
-  ProductSpec Decision Trace and revise the ProductSpec;
+  ProductSpec Decision Trace and revise the ProductSpec.
 - when evidence changes proof policy but not product intent, revise
-  AssuranceSpec and its assurance decision history instead;
+  AssuranceSpec and its assurance decision history instead.
 - when a public claim changes, use the promise registry's own authority and
   receipts.
 
 ## Non-goals
 
 - storing raw traces, customer data, credentials, or private run payloads in a
-  Product Spec;
-- mirroring every receipt into Markdown;
-- auto-writing evidence links before redaction and policy review;
-- treating link count as coverage, progress, quality, or confidence;
-- using Related Artifacts as the live mutable status database;
+  ProductSpec.
+- mirroring every receipt into Markdown.
+- auto-writing evidence links before redaction and policy review.
+- treating link count as coverage, progress, quality, or confidence.
+- using Related Artifacts as the live mutable status database.
 - making AssuranceSpec a second ProductSpec, work planner, issue tracker, or
-  evidence store;
+  evidence store.
 - making the Desktop workroom loop portable AssuranceSpec semantics.
 
 ## Primary upstream references

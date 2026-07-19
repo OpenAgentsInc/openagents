@@ -22,7 +22,7 @@ docs/                  architecture audits and migration plans
 ```
 
 Foldkit reference source must stay outside this repo. Use
-`../projects/repos/foldkit/` or the installed `foldkit` package; do not commit
+`../projects/repos/foldkit/` or the installed `foldkit` package. Do not commit
 `repos/foldkit`.
 
 ## Getting Started

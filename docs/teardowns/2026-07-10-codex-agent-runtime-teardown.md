@@ -24,9 +24,9 @@ Every claim is tagged:
 - **[limitation]** — a boundary on what this audit can establish
 
 The repository checkout contained one unrelated untracked local artifact named
-`codex`; it was not read, modified, or used as evidence.
+`codex`. It was not read, modified, or used as evidence.
 
-## TL;DR
+## TL.DR
 
 Codex is an open, local-first Rust agent runtime whose most important
 architectural boundary is `codex app-server`. The app server exposes a typed,
@@ -61,34 +61,34 @@ separate consumers from the local representation. This directly improves on
 the implicit sidechain topology seen in Claude Code.
 
 Security is a major subsystem, not a prompt convention. Typed permission
-profiles describe filesystem and network access; managed requirements constrain
-what users can select; approval policy is distinct from sandbox enforcement;
+profiles describe filesystem and network access. Managed requirements constrain
+what users can select. Approval policy is distinct from sandbox enforcement.
 execpolicy evaluates token-prefix rules with explicit allow/prompt/forbidden
-outcomes; macOS uses Seatbelt, Linux defaults to bubblewrap plus namespaces and
+outcomes. MacOS uses Seatbelt, Linux defaults to bubblewrap plus namespaces and
 seccomp, and Windows has restricted-token/elevated sandbox paths. A managed
 network proxy adds domain, method, local-network, Unix-socket, and optional TLS
 inspection policy with structured audit events.
 
 Remote control is also a real distributed protocol. A Unix app-server daemon
-owns lifecycle and update behavior; ChatGPT-authenticated enrollment creates a
-remote environment; short-lived pairing grants controller access; WebSocket
-envelopes carry client, stream, and sequence identity; acknowledgements and
-cursors support replay; large JSON-RPC messages are bounded and segmented; and
+owns lifecycle and update behavior. ChatGPT-authenticated enrollment creates a
+remote environment. Short-lived pairing grants controller access. WebSocket
+envelopes carry client, stream, and sequence identity. Acknowledgements and
+cursors support replay. Large JSON-RPC messages are bounded and segmented. And
 controller grants can be listed and revoked. This is a closer architectural
 match for Khala Sync than pixel streaming.
 
 The strongest Codex lessons for OpenAgents are:
 
 1. make the same typed engine protocol serve the local TUI, desktop, SDK, and
-   remote clients;
+   remote clients.
 2. pair append-only human-readable history with an indexed canonical state and
-   explicit agent graph;
+   explicit agent graph.
 3. compile named permission profiles into OS-enforced filesystem/network
-   policy and keep approval separate;
-4. generate clients and compatibility fixtures from the protocol source;
-5. use bounded queues, overload errors, replay identity, and monotonic states;
-6. make every context fragment typed, attributed, and capped;
-7. treat remote-control daemon lifecycle and updates as explicit product state;
+   policy and keep approval separate.
+4. generate clients and compatibility fixtures from the protocol source.
+5. use bounded queues, overload errors, replay identity, and monotonic states.
+6. make every context fragment typed, attributed, and capped.
+7. treat remote-control daemon lifecycle and updates as explicit product state.
    and
 8. test user-visible terminal projections with snapshots and engine behavior
    through the public protocol.
@@ -129,12 +129,12 @@ Architectural confidence is therefore materially higher. [source]
 
 The audit still has limits:
 
-- it did not execute the full million-line test suite;
+- it did not execute the full million-line test suite.
 - hosted ChatGPT/Codex backend behavior is visible only through client
-  contracts and mocks;
+  contracts and mocks.
 - experimental and under-development features may not ship to every account or
-  binary;
-- public docs can lag or lead the exact commit; and
+  binary.
+- public docs can lag or lead the exact commit. And
 - private deployment, policy, model, and entitlement configuration is outside
   this repository. [limitation]
 
@@ -225,7 +225,7 @@ JSON-RPC surface, and TUI snapshots for user-visible changes.
 
 [inferred] Dual build systems add maintenance cost but provide release
 reproducibility and platform coverage a fast-moving agent runtime needs.
-OpenAgents should not copy Bazel by default; it should copy the principle that
+OpenAgents should not copy Bazel by default. It should copy the principle that
 release artifacts and source-local tests exercise the same boundaries.
 
 ### 3.3 Native binary plus package wrappers
@@ -236,7 +236,7 @@ scripts, GitHub release archives, Homebrew, npm, and a DotSlash artifact cover
 different distribution workflows. Python runtime packaging and SDK packages
 have separate release lanes.
 
-[inferred] The native engine is the stable product artifact; JavaScript and
+[inferred] The native engine is the stable product artifact. JavaScript and
 Python packages adapt it rather than reimplement it. This is exactly the right
 shape for an engine intended to serve several UI stacks.
 
@@ -336,7 +336,7 @@ remote desktop call reach the same request processor and state machine.
 ### 5.3 UI still has substantial state
 
 [source] The TUI remains a large application. Ratatui and Crossterm handle
-terminal drawing and input; app-level modules coordinate redraw, paste bursts,
+terminal drawing and input. App-level modules coordinate redraw, paste bursts,
 focus, scrollback/reflow, composer state, approvals, background terminals,
 agent navigation, goals, notifications, settings, and remote events.
 
@@ -377,8 +377,8 @@ configuration, model/provider state, tools, MCP clients, and cancellation.
 
 [schema] App-server formalizes:
 
-- **Thread:** the durable conversation and runtime settings;
-- **Turn:** one user-driven execution interval with explicit status; and
+- **Thread:** the durable conversation and runtime settings.
+- **Turn:** one user-driven execution interval with explicit status. And
 - **Item:** a typed unit within the turn.
 
 Item types include user and agent messages, hook prompts, reasoning, plans,
@@ -393,7 +393,7 @@ response events as an explicitly experimental seam.
 ### 6.3 Steering and interruption
 
 [schema] A client can add input to an already-running ordinary turn through
-`turn/steer`; review and compaction turns are explicitly non-steerable.
+`turn/steer`. Review and compaction turns are explicitly non-steerable.
 `turn/interrupt` identifies both thread and turn, and the terminal state becomes
 `interrupted`.
 
@@ -418,9 +418,9 @@ the runtime rather than an external polling script.
 [source] App-server uses JSON-RPC 2.0 semantics while omitting the usual
 `jsonrpc: "2.0"` field. Supported transports are:
 
-- newline-delimited JSON over stdio;
-- experimental WebSocket, one message per text frame;
-- WebSocket framing over a private Unix socket; and
+- newline-delimited JSON over stdio.
+- experimental WebSocket, one message per text frame.
+- WebSocket framing over a private Unix socket. And
 - typed in-process channels.
 
 [source] Each connection must initialize once with client metadata and
@@ -431,7 +431,7 @@ notification methods and opt into experimental APIs and extended MCP forms.
 ### 7.2 Bounded queues and overload
 
 [source] Transport ingress, request processing, and outbound writes use bounded
-queues. Saturated ingress returns a specific retryable server-overloaded error;
+queues. Saturated ingress returns a specific retryable server-overloaded error.
 clients are told to use exponential backoff with jitter.
 
 [inferred] Backpressure is part of the protocol contract, not merely a Tokio
@@ -458,13 +458,13 @@ experimental filtering, request/response shapes, and app-server behavior.
 [schema] The surface includes:
 
 - start, resume, fork, read, list, loaded-list, archive, unarchive, delete, and
-  unsubscribe;
-- paginated turns and items;
-- names, metadata, goals, memory eligibility, and settings;
-- compact, rollback compatibility, shell commands, and background terminals;
-- start, steer, and interrupt turn;
+  unsubscribe.
+- paginated turns and items.
+- names, metadata, goals, memory eligibility, and settings.
+- compact, rollback compatibility, shell commands, and background terminals.
+- start, steer, and interrupt turn.
 - review, auth, models, skills, plugins, apps, MCP, config, filesystem, and
-  remote-control resources; and
+  remote-control resources. And
 - streamed thread, turn, item, hook, usage, settings, goal, and status
   notifications.
 
@@ -475,7 +475,7 @@ unmarked partial suffix by writing an interruption boundary.
 ### 7.5 Subscription lifecycle
 
 [source] Starting, resuming, or forking auto-subscribes the connection to that
-thread. Unsubscribing does not immediately destroy active state; a loaded thread
+thread. Unsubscribing does not immediately destroy active state. A loaded thread
 with no subscribers and no activity is eventually unloaded and emits a closed
 notification.
 
@@ -591,18 +591,18 @@ only on one flat string.
 
 [source] Visible built-ins include:
 
-- shell and a unified PTY-backed exec/write pair;
-- apply-patch with a dedicated parser;
-- plan and user-input requests;
-- permission requests;
-- image viewing and generation extensions;
-- web search;
-- MCP calls and MCP resource access;
-- dynamic client-provided tools;
-- tool search and deferred loading;
-- current time, context remaining, sleep, and environment wait;
-- plugins and installation requests;
-- multi-agent, agent jobs, and goals; and
+- shell and a unified PTY-backed exec/write pair.
+- apply-patch with a dedicated parser.
+- plan and user-input requests.
+- permission requests.
+- image viewing and generation extensions.
+- web search.
+- MCP calls and MCP resource access.
+- dynamic client-provided tools.
+- tool search and deferred loading.
+- current time, context remaining, sleep, and environment wait.
+- plugins and installation requests.
+- multi-agent, agent jobs, and goals. And
 - experimental JavaScript code mode.
 
 ### 10.3 Lifecycle and projection
@@ -618,7 +618,7 @@ dynamic result cancellation, and event projection.
 
 ### 10.4 Parallel execution
 
-[source] The router asks each handler whether it supports parallel calls;
+[source] The router asks each handler whether it supports parallel calls.
 parallel scheduling is explicit. Namespaced tools do not accidentally inherit
 parallel behavior from a same-named local tool. MCP parallel capability comes
 from server metadata.
@@ -668,7 +668,7 @@ both approval and sandboxing.
 [source] `requirements.toml`, MDM, and cloud-managed requirements can constrain
 allowed approval policies, sandbox modes, web-search modes, permission
 profiles, models, hooks, remote control, computer use, features, and network
-policy. Requirements are non-bypassable constraints; managed defaults remain
+policy. Requirements are non-bypassable constraints. Managed defaults remain
 user-changeable startup values. [public]
 
 [inferred] This is a strong model for OpenAgents organizations: preference and
@@ -693,7 +693,7 @@ transitions rather than adopt Starlark itself.
 [schema] Codex implements Claude-style lifecycle hooks for pre/post tool use,
 permission request, compaction, session start, subagent start/stop, user prompt,
 and stop events. Hook schemas are generated. Command handlers are the current
-executed type; parsed prompt/agent handlers are not all active. Managed policy
+executed type. Parsed prompt/agent handlers are not all active. Managed policy
 can allow only managed hooks.
 
 [source] Hook trust, source, scope, execution mode, run status, output entries,
@@ -724,7 +724,7 @@ rejects unsafe symlink/missing protected paths, unshares user and PID
 namespaces, optionally unshares network, applies `no_new_privs`, and adds
 seccomp restrictions.
 
-[source] System bubblewrap is preferred when safe and sufficiently capable; a
+[source] System bubblewrap is preferred when safe and sufficiently capable. A
 bundled helper is the fallback. WSL2 follows the Linux path, while WSL1 is
 rejected for sandboxed commands. Legacy Landlock remains an explicit fallback
 only for policies it can represent without losing semantics.
@@ -757,7 +757,7 @@ while intentionally omitting full URL/query data.
 ### 12.5 Approval is not containment
 
 [source] Codex makes this distinction structurally: execpolicy/approval decides
-whether a request proceeds; the permission profile and OS backend decide what
+whether a request proceeds. The permission profile and OS backend decide what
 the process can reach. App-server exposes both approval and effective sandbox
 settings.
 
@@ -770,10 +770,10 @@ manifest plus one effective-containment receipt for every high-authority run.
 
 [source] The repository contract states strong model-context invariants:
 
-- build history incrementally rather than rewrite it;
-- avoid changes that destroy prompt-cache prefixes;
-- hard-cap every injected item;
-- reject individual items beyond a large fixed token ceiling; and
+- build history incrementally rather than rewrite it.
+- avoid changes that destroy prompt-cache prefixes.
+- hard-cap every injected item.
+- reject individual items beyond a large fixed token ceiling. And
 - represent injected fragments as typed context structures.
 
 [source] Context fragment types cover user/project instructions, permission
@@ -809,7 +809,7 @@ version of every projection used for a turn.
 
 [source] Local and remote compaction paths preserve a compact boundary and
 reconstruct the model-visible context without rewriting the durable rollout.
-Manual compaction is a distinct turn operation; hooks can run before and after;
+Manual compaction is a distinct turn operation. Hooks can run before and after.
 clients receive a compaction item/notification.
 
 [test] Core tests exercise compaction, resume, and history behavior.
@@ -832,7 +832,7 @@ injection should link to source events and a user-visible retention decision.
 [source] Threads persist append-only rollout JSONL under date-partitioned
 `~/.codex/sessions` paths. Records include session metadata, response items,
 turn context, events, compaction, world state, and inter-agent communication.
-Archive moves rollouts into a separate collection; delete removes them.
+Archive moves rollouts into a separate collection. Delete removes them.
 
 [source] Ephemeral threads intentionally have no rollout path. Fork copies
 history into a new thread and records the source. Resume rehydrates the model
@@ -865,11 +865,11 @@ queryable authority interface.
 ### 14.4 Thread history modes
 
 [source] Legacy and paginated history modes coexist. The newer mode persists
-typed item completion appropriate for paginated app-server reads; metrics
+typed item completion appropriate for paginated app-server reads. Metrics
 measure pre/post-filter item and byte counts and validate turn boundaries.
 
 [inferred] This is evidence of storage evolution under a live protocol. The
-compatibility cost is real; OpenAgents should choose pagination and item IDs at
+compatibility cost is real. OpenAgents should choose pagination and item IDs at
 the first durable release.
 
 ### 14.5 No file checkpoint system equivalent to Claude's was found
@@ -915,7 +915,7 @@ installed from Git or local sources, upgraded, removed, and governed by
 configuration/requirements. Path resolution prevents manifest resources from
 escaping the plugin root.
 
-[source] The CLI and TUI can browse/install plugins; current official docs
+[source] The CLI and TUI can browse/install plugins. Current official docs
 describe plugins as bundles of skills, apps/MCP, browser capabilities, hooks,
 and scheduled templates. [public]
 
@@ -937,7 +937,7 @@ authority envelope local and public-safe.
 [source] Experimental code mode exposes a small `exec`/`wait` interface to the
 model. Model-generated JavaScript runs in V8 and can orchestrate nested typed
 tools, parallel promises, output, images, and delayed work. A separate stdio
-host process has version/capability negotiation and bounded frames; a missing
+host process has version/capability negotiation and bounded frames. A missing
 host currently falls back to in-process V8.
 
 [test] Tests cover cancellation, pending tool calls, delayed work, host
@@ -1000,7 +1000,7 @@ canonical internal format.
 ### 16.5 Goals and automatic continuation
 
 [source] A single persisted goal can be active for a materialized thread. Goal
-state includes budget/accounting and stopped outcomes; automatic continuation
+state includes budget/accounting and stopped outcomes. Automatic continuation
 uses dedicated prompts and can be steered, paused, blocked, completed, or
 budget-limited.
 
@@ -1065,8 +1065,8 @@ are different facts.
 
 [source] The experimental Unix-only daemon manages a standalone-installed app
 server through pidfiles, a private Unix socket, settings, a lifecycle lock, and
-graceful-then-forced termination. Start is idempotent; mutations serialize per
-`CODEX_HOME`; version probes verify readiness.
+graceful-then-forced termination. Start is idempotent. Mutations serialize per
+`CODEX_HOME`. Version probes verify readiness.
 
 [source] Bootstrap can install a detached updater loop. It runs the standalone
 installer on an hourly cadence, restarts app-server on a changed binary, then
@@ -1082,7 +1082,7 @@ hide them behind “online.”
 [source] Remote control requires ChatGPT auth. Enrollment registers machine
 name, OS, architecture, app-server version, and installation ID, then receives
 server/environment identity and an expiring token. Pairing produces short-lived
-artifacts; controller grants can be listed and revoked.
+artifacts. Controller grants can be listed and revoked.
 
 [schema] App-server exposes enable, disable, status, pairing start/status,
 client list/revoke, and status-change notification. Managed requirements can
@@ -1092,12 +1092,12 @@ force-disable remote control.
 
 [schema] Remote-control envelopes carry:
 
-- controller client ID;
-- per-connection stream ID;
-- monotonically addressed sequence ID;
-- cursor;
-- JSON-RPC message or bounded chunk;
-- acknowledgement; and
+- controller client ID.
+- per-connection stream ID.
+- monotonically addressed sequence ID.
+- cursor.
+- JSON-RPC message or bounded chunk.
+- acknowledgement. And
 - ping/pong and close state.
 
 [source] Acknowledgements are cumulative per stream. Chunk acknowledgements can
@@ -1119,11 +1119,11 @@ and server API paths have dedicated tests.
 
 [inferred] This protocol supplies concrete patterns for Khala Sync:
 
-- separate device/controller identity from stream incarnation;
-- sequence and acknowledge every authority-bearing message;
-- resume from a durable cursor;
-- cap frames, total messages, and partial assemblies;
-- make pairing short-lived and grants revocable; and
+- separate device/controller identity from stream incarnation.
+- sequence and acknowledge every authority-bearing message.
+- resume from a durable cursor.
+- cap frames, total messages, and partial assemblies.
+- make pairing short-lived and grants revocable. And
 - keep the local app-server/Pylon as execution authority.
 
 ## 19. Configuration and enterprise policy
@@ -1136,7 +1136,7 @@ requirements through an explicit layer stack. Project config cannot override
 machine-owned provider, authentication, telemetry, or host metadata fields.
 [public]
 
-[source] Config has a generated JSON Schema. Strict mode rejects unknown fields;
+[source] Config has a generated JSON Schema. Strict mode rejects unknown fields.
 normal mode can preserve compatibility. Edits use structured TOML mutation to
 avoid destroying unrelated user formatting and sections.
 
@@ -1163,7 +1163,7 @@ visible.
 
 [source] The central feature registry contains 92 entries across stable,
 experimental, under-development, deprecated, and removed stages. Removed flags
-continue to parse old configs; tests ensure default-enabled features are stable
+continue to parse old configs. Tests ensure default-enabled features are stable
 or removed and dependency relationships remain consistent.
 
 [inferred] This is more disciplined than scattered Boolean gates, but 92 flags
@@ -1175,8 +1175,8 @@ maturity metadata and compatibility parsing, not the count.
 ### 20.1 Release artifacts
 
 [source] Releases produce native archives for multiple macOS, Linux, and
-Windows targets; npm wrappers and platform packages; shell and PowerShell
-installers; Python packages; a DotSlash launcher; and auxiliary binaries such
+Windows targets. Npm wrappers and platform packages. Shell and PowerShell
+installers. Python packages. A DotSlash launcher. And auxiliary binaries such
 as sandbox, code-mode, response-proxy, and shell helpers.
 
 [source] Build scripts verify expected layout and required components before
@@ -1203,9 +1203,9 @@ still depend on the authority and integrity of that release channel.
 
 ### 20.4 Component compatibility
 
-[source] App-server schema is generated per binary version; daemon outputs both
-CLI and running app-server versions; remote clients can detect unsupported
-methods; code-mode host negotiates protocol versions/capabilities; installers
+[source] App-server schema is generated per binary version. Daemon outputs both
+CLI and running app-server versions. Remote clients can detect unsupported
+methods. Code-mode host negotiates protocol versions/capabilities. Installers
 bundle known component layouts.
 
 [inferred] Codex has compatibility mechanisms, but not one obvious signed
@@ -1219,7 +1219,7 @@ should preserve its planned component manifest.
 [source] The runtime supports tracing, metrics, OpenTelemetry export, analytics,
 performance spans, rollout-size metrics, network policy audit, tool dispatch
 traces, and client identity on app-server requests. OTel export is off by
-default in current public guidance; prompts are redacted by default when
+default in current public guidance. Prompts are redacted by default when
 enabled. [public]
 
 ### 21.2 Bounded local diagnostics
@@ -1231,7 +1231,7 @@ diagnostics without dumping credentials.
 
 ### 21.3 Compliance identity
 
-[source] App-server initialization requires clients to identify themselves;
+[source] App-server initialization requires clients to identify themselves.
 the client name can feed enterprise compliance logging. Unknown third-party
 clients may need registration for supported enterprise use.
 
@@ -1409,11 +1409,11 @@ state.
 Codex's semantic hierarchy is the right base. OpenAgents should add:
 
 - **Work Unit:** task/subagent/job identity with causal parent and delivery
-  lifecycle;
+  lifecycle.
 - **Authority Manifest:** compiled policy, approvals, capabilities, credentials
-  classes, and workspace identity;
+  classes, and workspace identity.
 - **Execution Receipt:** effective sandbox, mounts, egress, process/provider,
-  usage, and terminal reason; and
+  usage, and terminal reason. And
 - **Delivery Receipt:** changed artifacts, checkpoint/worktree, commit, push,
   PR, merge, acceptance, and public-safe evidence refs.
 
@@ -1452,11 +1452,11 @@ supported compatibility window.
 Use named read-only, workspace, networked-build, isolated-guest, and full-host
 profiles. Profiles should compile to:
 
-- filesystem read/write/deny maps with protected metadata carveouts;
-- network domain/method/socket policy;
-- process and executable policy;
-- secret/provider capability refs;
-- browser/computer-use scope; and
+- filesystem read/write/deny maps with protected metadata carveouts.
+- network domain/method/socket policy.
+- process and executable policy.
+- secret/provider capability refs.
+- browser/computer-use scope. And
 - an OS-specific enforcement plan.
 
 If the OS cannot represent the requested policy, fail closed.
@@ -1465,10 +1465,10 @@ If the OS cannot represent the requested policy, fail closed.
 
 Borrow Codex's structural separation and make it legible in UI:
 
-- organization requirements constrain choices;
-- user/session policy determines ask/allow/deny;
-- a reviewer decides eligible prompts;
-- the authority manifest records admission; and
+- organization requirements constrain choices.
+- user/session policy determines ask/allow/deny.
+- a reviewer decides eligible prompts.
+- the authority manifest records admission. And
 - the sandbox receipt records what was actually enforced.
 
 ### 25.8 Build a managed egress service
@@ -1484,9 +1484,9 @@ behind explicit enterprise policy.
 The ideal OpenAgents local runtime combines:
 
 - Codex's semantic protocol, SQLite index, graph store, bounded queues, and
-  remote envelope;
+  remote envelope.
 - Claude Code's per-tool file checkpoints, explicit rewind, and outcome-aware
-  worktree cleanup; and
+  worktree cleanup. And
 - OpenAgents' typed Blueprint governance, public-safe projections, and formal
   invariants.
 
@@ -1494,7 +1494,7 @@ The ideal OpenAgents local runtime combines:
 
 Use controller ID, device/executor ID, stream epoch, sequence, ACK, replay
 cursor, idempotency key, expiry, and bounded segmentation. A local Pylon or
-desktop engine remains execution authority. Khala Sync carries state/control;
+desktop engine remains execution authority. Khala Sync carries state/control.
 it never turns the phone into a holder of raw local credentials or paths.
 
 ### 25.11 Treat daemon lifecycle as product state
@@ -1512,7 +1512,7 @@ submission.
 
 ### 25.13 Keep a truly hermetic mode
 
-Codex provides useful partial controls; Claude Code provides the clearer
+Codex provides useful partial controls. Claude Code provides the clearer
 product concept. OpenAgents should offer a single profile that excludes all
 ambient config, instructions, memory, hooks, plugins, skills, MCP, keychain,
 network, and experiments unless explicitly admitted, and emits the manifest.
@@ -1521,11 +1521,11 @@ network, and experiments unless explicitly admitted, and emits the manifest.
 
 Follow Codex's testing discipline:
 
-- agent logic through streamed provider mocks and public engine commands;
-- app-server/Runtime Gateway through generated client fixtures;
-- every schema change through drift generation;
-- every user-visible state through snapshots;
-- every sandbox profile through OS-policy tests; and
+- agent logic through streamed provider mocks and public engine commands.
+- app-server/Runtime Gateway through generated client fixtures.
+- every schema change through drift generation.
+- every user-visible state through snapshots.
+- every sandbox profile through OS-policy tests. And
 - every replay/agent/goal transition through model-based invariant tests.
 
 ### 25.15 Keep worktrees and delivery first-class
@@ -1574,8 +1574,8 @@ and removal issue.
 ## Final assessment
 
 Codex is the strongest direct architectural reference in this teardown set for
-OpenAgents' engine layer. OpenCode shows a server-first desktop topology;
-Claude Code shows deep local recovery and worktree/task ergonomics; Codex shows
+OpenAgents' engine layer. OpenCode shows a server-first desktop topology.
+Claude Code shows deep local recovery and worktree/task ergonomics. Codex shows
 how an open Rust agent engine can unify its own TUI and external rich clients
 behind a typed protocol while preserving real local sandboxing and durable
 state.

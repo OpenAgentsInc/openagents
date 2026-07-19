@@ -1,7 +1,7 @@
 # Forge Autopilot Coder Terminal-Agent Systems Roadmap
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-16
@@ -137,7 +137,7 @@ Candidate child issues:
 
 Implementation status, 2026-06-16: #5125 adds the first
 `ForgeRunProgressView` projection over Run state, lifecycle events,
-next-action refs, and closeout evidence. It is intentionally view-model only;
+next-action refs, and closeout evidence. It is intentionally view-model only.
 G2.2 should render this projection rather than re-deriving progress status in
 the page layer.
 
@@ -190,11 +190,11 @@ regressions.
 Implementation status, 2026-06-16: #5147 adds the first authority-gated
 session control contract. Session summaries can now advertise supported
 resume/fork/rewind/cancel verbs, public-safe authority refs, policy refs,
-freshness, and blockers; `/autopilot` renders enabled POST controls only when
+freshness, and blockers. `/autopilot` renders enabled POST controls only when
 that advertised contract is fresh and unblocked. Unsupported, stale, missing-
 authority, and missing-policy controls remain disabled with explicit blocker
 refs. Public-safe control receipts render alongside the session summaries. The
-web surface still does not execute or fabricate runtime state; the authoritative
+web surface still does not execute or fabricate runtime state. The authoritative
 bridge/runtime owns the actual control effect.
 
 ### G4 - Context Assembly, Repository Memory, And Onboarding
@@ -311,9 +311,9 @@ Candidate child issues:
 
 - G6.1 - MCP client capability catalog projection only: configured/pending/
   disabled/failed/needs-auth states, no tool calls yet.
-- G6.2 - Skill descriptor catalog with progressive disclosure; no full skill
+- G6.2 - Skill descriptor catalog with progressive disclosure. No full skill
   body in default context.
-- G6.3 - Hook catalog and doctor surface; hooks disabled until workspace trust
+- G6.3 - Hook catalog and doctor surface. Hooks disabled until workspace trust
   and policy refs allow them.
 - G6.4 - Unified settings/effective-config projection for MCP, skills, hooks,
   and plugins.
@@ -356,7 +356,7 @@ requests, skill-body disclosure requests, hook enablement, plugin activation,
 and settings activation now project callable/disabled/needs-auth/needs-trust/
 blocked/failed/pending receipts with config/catalog/policy/source/auth/provider/
 workspace-trust/failure refs. Skill disclosure remains explicit and body-free by
-default; hooks/plugins/settings stay blocked without workspace-trust refs; MCP
+default. Hooks/plugins/settings stay blocked without workspace-trust refs. MCP
 tool calls stay blocked without provider-account refs. The browser still does
 not execute MCP calls, hooks, plugin code, settings writes, or skill-body loads.
 
@@ -393,7 +393,7 @@ provider payloads, tokens, and private material markers are omitted.
 Implementation status, 2026-06-16: #5144 adds the first refs-only
 product-promise evidence gate for exact #5107 claims. The gate reports ready
 only when claim, product-promise, signed deploy, live-smoke, signature, and
-public-safety refs are present; otherwise it emits missing-evidence blockers.
+public-safety refs are present. Otherwise it emits missing-evidence blockers.
 It is explicitly non-authoritative and does not write product promises, change
 public copy, run deploys or smokes, mutate deployment gates, or change runtime
 authority.
@@ -435,14 +435,14 @@ and provider payloads out of the Run projection.
 Implementation status, 2026-06-16: #5146 adds typed plan/todo mutation request
 and receipt projection for the Run progress lane. The projection renders
 requested, applied, blocked, and stale mutations with actor, generatedAt,
-provenance, request, receipt, and blocker refs; carries explicit non-authority
-flags; blocks plan-complete receipts from implying Run completion without
-closeout evidence; and omits raw/private plan material before rendering.
+provenance, request, receipt, and blocker refs. Carries explicit non-authority
+flags. Blocks plan-complete receipts from implying Run completion without
+closeout evidence. And omits raw/private plan material before rendering.
 
 Implementation status, 2026-06-16: #5147 adds the session control request and
 receipt surface for the Session navigation lane. Resume/fork/rewind/cancel
 controls become submit-capable only when the session advertises support plus
-fresh public-safe authority and policy refs; otherwise the UI preserves the
+fresh public-safe authority and policy refs. Otherwise the UI preserves the
 blocked/stale/unavailable state. Receipts expose only refs, actor/provenance
 refs, outcome, generatedAt, and blockers, with private material omitted before
 rendering.
@@ -1280,7 +1280,7 @@ permission policy refs, provider/adapter preference refs, notification policy
 refs, retention policy refs, continuation policy refs, fire/skip/failure/
 cancel/no-double-fire receipt refs, status, freshness, blockers, and unsafe
 material omission warnings. It must not create, edit, pause, resume, delete, or
-fire schedules; enqueue scheduler work; approve continuations; mutate budget,
+fire schedules. Enqueue scheduler work. Approve continuations. Mutate budget,
 spend, provider, credential, workspace, notification, deployment, public-claim,
 accepted-outcome, payout, or settlement state.
 
@@ -2093,7 +2093,7 @@ remained at the final audit.
 4. G3 session navigation, once the read-only evidence is clear and destructive
    resume/rewind actions can be gated.
 5. G5 retrieval planner, before any broad semantic routing claims.
-6. G6 extensibility catalog, only as catalog/readiness first; tool invocation
+6. G6 extensibility catalog, only as catalog/readiness first. Tool invocation
    comes later behind approvals.
 7. G7 verification/readiness projection, then product-promise changes only if
    the deployed product has live evidence.

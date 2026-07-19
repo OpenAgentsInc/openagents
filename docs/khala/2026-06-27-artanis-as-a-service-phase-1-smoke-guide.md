@@ -26,7 +26,7 @@ and the own-capacity burn runbook in
 ## Tester Prerequisites
 
 - Node 20+ or Bun.
-- The `codex` CLI on `PATH`; if missing, `khala fleet connect` prints the install
+- The `codex` CLI on `PATH`. If missing, `khala fleet connect` prints the install
   hint.
 - A logged-in OpenAgents/Khala token for the invited tester.
 - A public GitHub checkout or fork containing this repository and the fixture
@@ -78,7 +78,7 @@ bun test
 
 When this fixture is dispatched through Pylon, pass the public repository,
 pinned branch/commit, and the fixture-relative verification command. Keep the
-prompt public and bounded; do not include private local paths, raw prompts,
+prompt public and bounded. Do not include private local paths, raw prompts,
 secrets, provider payloads, or wallet material.
 
 ## 3. Run Through Caller-Owned Pylon Capacity

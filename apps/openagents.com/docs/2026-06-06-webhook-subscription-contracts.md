@@ -19,78 +19,78 @@ dispatcher or delivery queue worker.
 
 The v1 contract has three record types:
 
-- `WebhookSubscriptionRecord`;
-- `WebhookEventRecord`; and
+- `WebhookSubscriptionRecord`.
+- `WebhookEventRecord`. And
 - `WebhookDeliveryRecord`.
 
 Subscription records capture:
 
-- auth mode;
-- owner ref;
-- endpoint ref;
-- secret binding ref only;
-- event families;
-- event source refs;
-- scope refs;
-- redaction audience;
-- retry policy;
-- max attempts;
-- status; and
+- auth mode.
+- owner ref.
+- endpoint ref.
+- secret binding ref only.
+- event families.
+- event source refs.
+- scope refs.
+- redaction audience.
+- retry policy.
+- max attempts.
+- status. And
 - caveat/evidence refs.
 
 Event records capture:
 
-- event family;
-- source ref;
-- subject ref;
-- payload digest ref;
-- payload schema ref;
-- source-authority refs;
-- receipt refs;
-- replay key;
-- idempotency key; and
+- event family.
+- source ref.
+- subject ref.
+- payload digest ref.
+- payload schema ref.
+- source-authority refs.
+- receipt refs.
+- replay key.
+- idempotency key. And
 - redaction audience.
 
 Delivery records capture:
 
-- subscription ref;
-- event ref;
-- endpoint ref;
-- state;
-- attempt;
-- max attempts;
-- retry policy;
-- next-attempt display;
-- delivered display;
-- failure class;
-- failure summary ref;
-- replay key;
-- idempotency key;
-- payload digest ref; and
+- subscription ref.
+- event ref.
+- endpoint ref.
+- state.
+- attempt.
+- max attempts.
+- retry policy.
+- next-attempt display.
+- delivered display.
+- failure class.
+- failure summary ref.
+- replay key.
+- idempotency key.
+- payload digest ref. And
 - delivery receipt refs.
 
 ## Event Families
 
 The current event families are:
 
-- `workroom`;
-- `site_revision`;
-- `site_version`;
-- `program_run`;
-- `public_claim`;
-- `receipt`;
-- `forum_payment_receipt`;
-- `payment_reconciliation`; and
+- `workroom`.
+- `site_revision`.
+- `site_version`.
+- `program_run`.
+- `public_claim`.
+- `receipt`.
+- `forum_payment_receipt`.
+- `payment_reconciliation`. And
 - `package_review`.
 
 ## Authority And Scope
 
 Webhook subscriptions can be scoped by:
 
-- `operator_admin`;
-- `owner_grant`;
-- `registered_agent_grant`;
-- `team_scope`; or
+- `operator_admin`.
+- `owner_grant`.
+- `registered_agent_grant`.
+- `team_scope`. Or
 - `system`.
 
 The auth mode describes required authority. It does not create that authority
@@ -107,9 +107,9 @@ attempt-bound delivery idempotency key.
 
 `webhookDeliveryCanRetry` returns true only when:
 
-- state is `failed` or `retry_scheduled`;
-- retry policy is not `none`;
-- attempt is below max attempts; and
+- state is `failed` or `retry_scheduled`.
+- retry policy is not `none`.
+- attempt is below max attempts. And
 - failure class is retriable.
 
 Policy denial, redaction failure, and missing secret binding are non-retriable
@@ -129,10 +129,10 @@ raw secret values.
 
 `workers/api/src/webhook-subscriptions.test.ts` covers:
 
-- subscription projection and operator-only secret binding refs;
-- event and delivery projection;
-- replay key and delivery idempotency key generation;
-- retry and non-retry behavior;
-- required event families and non-negative attempts; and
+- subscription projection and operator-only secret binding refs.
+- event and delivery projection.
+- replay key and delivery idempotency key generation.
+- retry and non-retry behavior.
+- required event families and non-negative attempts. And
 - redaction of raw webhook, provider, customer, wallet, payment, and runner
   material.

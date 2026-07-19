@@ -16,9 +16,9 @@ Owner directive (verbatim): "edit our chat input composer to look exactly like
 the opencode desktop, and put our codex/claude toggle in that bar underneath
 it. find their css and adapt it to ours."
 
-Source (read-only; nothing vendored):
+Source (read-only, nothing vendored):
 `projects/repos/opencode/packages/app/src/components/prompt-input.tsx`, the
-`newLayoutDesigns` branch (OpenCode's modern prompt-input; it is Tailwind +
+`newLayoutDesigns` branch (OpenCode's modern prompt-input, it is Tailwind +
 `--v2-*` custom properties, not a standalone `.css` file). Extracted spec,
 Tailwind/CSS-var values translated to concrete numbers:
 
@@ -29,10 +29,10 @@ Tailwind/CSS-var values translated to concrete numbers:
 | bottom action bar | `flex h-11 items-center px-2` (height 44px, px 8px), left group `gap-1` (4px) | `Stack` row `shell-composer-bar`, `gap "1"`, min-height `--en-control-xl-height` (40) |
 | attach `+` | `IconButton` `size-7` (28px), `rounded-md` (6px), ghost, `text-v2-icon-icon-muted`, `icon="plus"` | `shell-attach-image` `IconButton` (fixed 44px), `Plus` glyph, `surfaceRaised`/`textMuted`, radius `md` |
 | harness/model controls | live in the left area of the bar, after `+` | Fable\|Codex recessed segmented `shell-harness-row`, relocated into the bar after `+` (owner directive) |
-| send | `IconButton` `size-7` `rounded-md`, `variant="primary"`, gradient `bg-contrast` fill, `disabled:opacity-50`, `icon="arrow-up"` (or `stop`) | circular `shell-note` (radius `full` on the 44px `IconButton` square), `accent`/`textInverse` when the input has text/images, `surfaceRaised`/`textMuted` ghost when blank; `Stop` shares the circle while streaming |
+| send | `IconButton` `size-7` `rounded-md`, `variant="primary"`, gradient `bg-contrast` fill, `disabled:opacity-50`, `icon="arrow-up"` (or `stop`) | circular `shell-note` (radius `full` on the 44px `IconButton` square), `accent`/`textInverse` when the input has text/images, `surfaceRaised`/`textMuted` ghost when blank. `Stop` shares the circle while streaming |
 
 Layout change: OpenCode already stacks the editor above a bottom action bar
-inside one container; the owner target is that exact shape plus the
+inside one container. The owner target is that exact shape plus the
 codex/claude toggle moved into the bar. We flipped our previous
 toggle-on-top / inline `[+ input send]` row into `[image thumbnails]` →
 `[multiline input]` → `[+  Fable|Codex  ⇢spacer⇢  ●send]`. Every prior feature
@@ -41,11 +41,11 @@ image thumbnails, Stop-while-streaming, queue-until-idle, disabled-reason
 popovers, `DesktopInputChanged`/`DesktopNoteSubmitted` wiring) is preserved,
 re-homed into the bar.
 
-Colors adapted to Protoss-blue tokens (no OpenCode `--v2-*` values used);
+Colors adapted to Protoss-blue tokens (no OpenCode `--v2-*` values used).
 styling stays typed token style objects — the only new numeric dimension (the
 input `minHeight: 64`) rides the documented `design-conformance.test.ts`
 allowlist. Glyph gap: the catalog `IconName` set has no `ArrowUp` (or
-paperclip); interim uses `Plane` (send) / `Plus` (attach), recorded as
+paperclip). Interim uses `Plane` (send) / `Plus` (attach), recorded as
 `D-DESK-09` in `docs/effect-native/DEMAND_REGISTER.md`. Behavior contract:
 `openagents_desktop.chat.opencode_composer_shape.v1` in
 `apps/openagents-desktop/src/contracts/ux-contracts.ts`.
@@ -62,7 +62,7 @@ Behavior contract: `openagents_desktop.chat.opencode_card_design_language.v1`
 (`src/contracts/ux-contracts.ts`).
 
 Source receipts (read directly from the local reference clone at
-`~/work/projects/repos/opencode`; the coordinated extraction spec
+`~/work/projects/repos/opencode`. The coordinated extraction spec
 `opencode-card-design-spec.md` had not landed when this pass shipped, so the
 receipts below are first-hand):
 
@@ -75,12 +75,12 @@ receipts below are first-hand):
     row — `padding: 8px 12px`, `border-radius: 6px` (8px in the new layout),
     thin (0.5–1px) weak border, subtle translucent raised background.
   - `BasicTool` (`basic-tool.tsx`): details are a collapsible body,
-    **closed by default**; pending status shows an inline indicator in the
+    **closed by default**. Pending status shows an inline indicator in the
     16px slot.
 - `packages/session-ui/src/components/message-part.css`
-  - assistant column gap 12px; user rows end-aligned `max-width
+  - assistant column gap 12px. User rows end-aligned `max-width
     min(82%, 64ch)`; `[data-component="diagnostics"]` failure text uses the
-    danger foreground as content (not raw payloads); tool output sections
+    danger foreground as content (not raw payloads). Tool output sections
     are separate, selectable, below the trigger.
 
 Translation to Effect Native (this repo, `src/renderer/shell.ts`
@@ -100,10 +100,10 @@ Translation to Effect Native (this repo, `src/renderer/shell.ts`
 
 Deliberate deviations:
 
-- opencode shows no explicit "OK" chip on completed tools; our cards keep
+- opencode shows no explicit "OK" chip on completed tools. Our cards keep
   the toned status chip because the EP250 tool-card behavior contract
   requires the started → ok/failed chip on the same updating card.
-- opencode's whole trigger row toggles its collapsible; our expand
+- opencode's whole trigger row toggles its collapsible. Our expand
   affordance is a dedicated compact keyboard-focusable button (the same
   compact details pattern the message rows use).
 - The question card (no opencode equivalent) reuses the same family:
@@ -125,7 +125,7 @@ Behavior contracts:
 `src/renderer/design-conformance.test.ts`.
 
 Source receipts (read directly from the local reference clone at
-`~/work/projects/repos/apps-sdk-ui`; extraction spec
+`~/work/projects/repos/apps-sdk-ui`. Extraction spec
 `apps-sdk-chrome-design-spec.md` in the EP250 scratchpad):
 
 - `src/styles/variables-primitive.css` — the alpha ramp (`--alpha-*`: one
@@ -134,7 +134,7 @@ Source receipts (read directly from the local reference clone at
   new hues), the symmetric 25-step gray ramp, hairline + shadow geometry
   (dark alphas .2/.2/.36/.3).
 - `src/styles/variables-semantic.css` — surfaces (elevation = LIGHTER
-  surface; elevated surfaces drop their hairline), text ladder
+  surface. Elevated surfaces drop their hairline), text ladder
   (text/secondary/tertiary/inverse), translucent borders
   (subtle alpha-06 / border alpha-12 / strong alpha-20), the control metric
   lattice (`--control-size/gutter/font/radius-*`), motion
@@ -150,7 +150,7 @@ Source receipts (read directly from the local reference clone at
 Harmonization rule (chrome × message cards): chrome follows apps-sdk-ui
 geometry, cards follow OpenCode geometry, and BOTH are quantized onto the
 single `@effect-native/tokens` scale — any off-scale value snaps to the
-nearest step; the scale is never widened for one component. One shared
+nearest step. The scale is never widened for one component. One shared
 state-fill engine (`stateHover`/`stateActive`/`stateSelected`), one motion
 set (150/350/200ms), one focus ring, one dim ladder
 (`textPrimary > textMuted > textFaint > textDisabled`).
@@ -161,31 +161,31 @@ Translation to Effect Native (this repo):
 | --- | --- |
 | alpha-overlay state engine (`--alpha-*` fills) | `stateHover`/`stateActive`/`stateSelected` color tokens (upstream `@effect-native/tokens`), applied by the vendored DOM renderer's chrome base ruleset to buttons + nav items |
 | gray-scale "primary" solids (neutral brand) | **Protoss substitution**: solid primaries are `accent` blue with `accentHover`/`accentActive` steps — the one deliberate hue departure |
-| surfaces ladder + elevated overlays | `background`/`surface`/`surfaceRaised`/`surfaceOverlay`; overlays carry `--en-elevation-overlay-shadow` + hairline ring; in-flow panels stay border-only (`borderSubtle`) |
+| surfaces ladder + elevated overlays | `background`/`surface`/`surfaceRaised`/`surfaceOverlay`. Overlays carry `--en-elevation-overlay-shadow` + hairline ring. In-flow panels stay border-only (`borderSubtle`) |
 | text-tertiary / inverse / disabled | `textFaint` / `textInverse` / `textDisabled` (new roles) |
 | translucent borders subtle/base/strong | `borderSubtle` / `border` / `borderStrong` |
-| motion (150ms ease, 350ms cubic-enter, 200ms cubic-exit) | theme `motion` group -> `--en-motion-*`/`--en-ease-*`; palette + tooltip enter animations in app.css |
+| motion (150ms ease, 350ms cubic-enter, 200ms cubic-exit) | theme `motion` group -> `--en-motion-*`/`--en-ease-*`. Palette + tooltip enter animations in app.css |
 | 9-step control lattice | trimmed 4-step theme `control` group (sm 24/8/14, md 28/10/16, lg 32/12/18, xl 40/14/20) -> `--en-control-*` |
-| menu/popover panel recipe (6px gutter, radius 12, item 6×8, nested radius) | command palette Card: `surfaceOverlay` + `borderSubtle` + radius `xl` (8, quantized down from their 12) + padding "1.5"; ghost rows at nested radius `sm` |
-| segmented control (recessed track + elevated thumb) | composer harness chips: track `background` + padding "0.5" + radius `lg`; selected chip `surfaceRaised` at nested radius `md` |
+| menu/popover panel recipe (6px gutter, radius 12, item 6×8, nested radius) | command palette Card: `surfaceOverlay` + `borderSubtle` + radius `xl` (8, quantized down from their 12) + padding "1.5". Ghost rows at nested radius `sm` |
+| segmented control (recessed track + elevated thumb) | composer harness chips: track `background` + padding "0.5" + radius `lg`. Selected chip `surfaceRaised` at nested radius `md` |
 | compact chrome tooltip | catalog Tooltip on the overlay recipe (disabled-control reason popover) |
 | focus ring 2px, offset 2 | renderer chrome: `outline: 2px solid focus; outline-offset: 2px` on :focus-visible |
 | press-scale (width-bucketed 0.96–0.995) | single-bucket `scale(0.98)` on :active (deviation — CSS cannot width-bucket without JS measurement) |
-| radius roles | quantized onto khala 2/4/6/8: controls `lg`/`xl`, overlays `xl`, badges `md`, nested `sm`; theme.ts radius drift (8/12) corrected by consuming `khalaTheme` directly |
+| radius roles | quantized onto khala 2/4/6/8: controls `lg`/`xl`, overlays `xl`, badges `md`, nested `sm`. Theme.ts radius drift (8/12) corrected by consuming `khalaTheme` directly |
 
 Deliberately NOT ported (per the spec's exclusion list): the light theme and
-`light-dark()` machinery; the `caution` (yellow) intent (collapsed into
-`warning`); the `discovery` (purple) intent; the `pink` primitive family;
-the 24px composer radius and 16-24px radius steps (cap is `xl` 8);
+`light-dark()` machinery. The `caution` (yellow) intent (collapsed into
+`warning`). The `discovery` (purple) intent. The `pink` primitive family.
+the 24px composer radius and 16-24px radius steps (cap is `xl` 8).
 neutral-inverted white primary solids (Protoss `accent` instead — and solid
 accent keeps light text rather than `textInverse`, matching their BLUE
-family's white-on-blue treatment; `textInverse` stays reserved);
-the translucent backdrop-blur popover variant; the 9-step control lattice;
-their icon set (ours stays); per-character shimmer (RN-safe 1200ms opacity
+family's white-on-blue treatment. `textInverse` stays reserved).
+the translucent backdrop-blur popover variant. The 9-step control lattice.
+their icon set (ours stays). Per-character shimmer (RN-safe 1200ms opacity
 wave instead, timing kept).
 
 Upstream receipts: `OpenAgentsInc/effect-native` — 12 new color roles +
 `motion`/`elevation`/`control` ThemeSchema groups + render-dom chrome base
 ruleset and `--en-motion/elevation/control-*` lowering (GAPS register row
-2026-07-11); vendored snapshot re-pinned in
+2026-07-11). Vendored snapshot re-pinned in
 `apps/openagents.com/packages/effect-native-vendor.json`.

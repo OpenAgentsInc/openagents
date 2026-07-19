@@ -47,14 +47,14 @@ The pack also includes a `sourcePackRef`, `requiredDisclosures`, and
 
 Remake briefs require:
 
-- at least one audit finding ref;
-- at least one original screenshot ref;
-- at least one source authority card;
-- no blocked quality audit;
-- safe refs only;
+- at least one audit finding ref.
+- at least one original screenshot ref.
+- at least one source authority card.
+- no blocked quality audit.
+- safe refs only.
 - no raw provider payloads, browser logs, contacts, secrets, payment/wallet
-  material, or bypass instructions;
-- concept-only generation constraints;
+  material, or bypass instructions.
+- concept-only generation constraints.
 - law-firm safety controls for fake reviews, fake credentials, fake case
   results, legal advice, misleading endorsements, and unverifiable guarantees.
 

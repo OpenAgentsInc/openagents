@@ -1,7 +1,7 @@
 # Debt Receipt Hygiene Lane
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -40,11 +40,11 @@ understand and budget for.
 
 OpenAgents can sell this as **AI Churn Cleanup**:
 
-- intake: churn probe or buyer report identifies the worst debt;
-- receipt design: owner/allocator turns the finding into a funded receipt;
-- execution: Pylon/local agents or contributors do the bounded work;
-- verification: tests, benchmark replay, regenerate-and-diff, or perf checks;
-- settlement: accepted work releases escrow and records a public-safe receipt;
+- intake: churn probe or buyer report identifies the worst debt.
+- receipt design: owner/allocator turns the finding into a funded receipt.
+- execution: Pylon/local agents or contributors do the bounded work.
+- verification: tests, benchmark replay, regenerate-and-diff, or perf checks.
+- settlement: accepted work releases escrow and records a public-safe receipt.
 - reporting: buyer receives before/after metrics and the retired receipt ref.
 
 The first buyer can be OpenAgents itself. The first canonical receipt is #5334:
@@ -54,10 +54,10 @@ Tassadar generated fixtures committed in duplicate `.ts` and `.json` formats.
 
 Start with simple pricing before inventing a marketplace curve:
 
-- audit/setup fee for a repo churn report;
-- per-receipt budget cap for each accepted finding;
-- platform take rate on settled receipt budgets;
-- optional lane-lead share for curating receipts and reviewer packets;
+- audit/setup fee for a repo churn report.
+- per-receipt budget cap for each accepted finding.
+- platform take rate on settled receipt budgets.
+- optional lane-lead share for curating receipts and reviewer packets.
 - optional reviewer fee for acceptance and settlement authorization.
 
 No public copy should promise passive revenue share until the split terms,
@@ -70,19 +70,19 @@ share.
 
 Every payable receipt needs these public-safe refs:
 
-- source: issue, churn-probe finding, or buyer request;
-- baseline metric: current debt measurement;
-- target metric: what must improve;
-- scope: files, package, subsystem, or artifact class;
+- source: issue, churn-probe finding, or buyer request.
+- baseline metric: current debt measurement.
+- target metric: what must improve.
+- scope: files, package, subsystem, or artifact class.
 - work class: code hygiene by default, or `documentation_or_journal` when the
-  work is process notes, journals, docs, receipts, or discussion cleanup;
-- budget cap: maximum payable sats or buyer credit;
-- stop condition: when the receipt is retired;
-- verifier: command or benchmark that proves behavior did not regress;
-- accepted-work evidence: review or validator result;
-- hygiene delta: measured improvement;
-- no-new-debt check: no equal-or-worse debt introduced elsewhere;
-- settlement approval: separate from the worker;
+  work is process notes, journals, docs, receipts, or discussion cleanup.
+- budget cap: maximum payable sats or buyer credit.
+- stop condition: when the receipt is retired.
+- verifier: command or benchmark that proves behavior did not regress.
+- accepted-work evidence: review or validator result.
+- hygiene delta: measured improvement.
+- no-new-debt check: no equal-or-worse debt introduced elsewhere.
+- settlement approval: separate from the worker.
 - settlement receipt: required before calling it paid or settled.
 
 ## Acceptance And Settlement States
@@ -129,11 +129,11 @@ DebtReceiptKey  = sha256(debtReceiptRef | repoBaselineRef | scopeDigest | object
 PatchNoveltyKey = sha256(DebtReceiptKey | normalizedPatchDigest | behaviorReceiptDigest)
 ```
 
-- `debtReceiptRef` — the issue / EPIC / funded work-request receipt;
-- `repoBaselineRef` — the commit/tree the debt was measured against;
-- `scopeDigest` — sorted normalized path prefixes (+ optional symbol/contract refs);
-- `objectiveDigest` — baseline metric + target metric + stop condition + verifier refs;
-- `normalizedPatchDigest` — git patch-id (+ optional AST/semantic digest);
+- `debtReceiptRef` — the issue / EPIC / funded work-request receipt.
+- `repoBaselineRef` — the commit/tree the debt was measured against.
+- `scopeDigest` — sorted normalized path prefixes (+ optional symbol/contract refs).
+- `objectiveDigest` — baseline metric + target metric + stop condition + verifier refs.
+- `normalizedPatchDigest` — git patch-id (+ optional AST/semantic digest).
 - `behaviorReceiptDigest` — the dereferenceable proof set (tests, benchmark
   replay, regenerate-and-diff, output parity).
 
@@ -156,10 +156,10 @@ supplementary evidence, but the typed key is the authority.
 For receipts that require studied-codebase evidence, the receipt carries a
 studied-knowledge source:
 
-- study packet ref;
-- studied-knowledge graph ref;
-- studied-knowledge verification ref;
-- `sourceBoundary: public_refs_only`;
+- study packet ref.
+- studied-knowledge graph ref.
+- studied-knowledge verification ref.
+- `sourceBoundary: public_refs_only`.
 - correctness gate state, rejected-claim count, and validator-review refs.
 
 A hygiene pass starts from the SA-1 study graph + verification
@@ -217,11 +217,11 @@ duplicateFingerprintRef: fingerprint.public.debt.5334.scope_patch_digest_v1
 Acceptance should require:
 
 - the `.json` fixture remains the canonical committed data if generation from
-  Psionic is out of scope;
-- any `.ts` twin derives from the canonical data instead of duplicating it;
-- exported object digests remain identical;
-- targeted Tassadar fixture tests pass;
-- large generated-fixture churn no longer appears in routine commits;
+  Psionic is out of scope.
+- any `.ts` twin derives from the canonical data instead of duplicating it.
+- exported object digests remain identical.
+- targeted Tassadar fixture tests pass.
+- large generated-fixture churn no longer appears in routine commits.
 - the receipt is retired after settlement.
 
 If this checkout does not contain the generated fixture twins, the worker must
@@ -237,9 +237,9 @@ the receipt payable when the implementation diff exists.
 - Settlement happens once, then the receipt is retired.
 - Replays against a retired `DebtReceiptKey` (or loose retired fingerprint) are
   duplicate work, not payable work.
-- Bad optional studied-knowledge evidence fails closed; it cannot leave a
+- Bad optional studied-knowledge evidence fails closed. It cannot leave a
   contribution payable.
-- Documentation, journal, and process-discussion work is credit-class by default;
+- Documentation, journal, and process-discussion work is credit-class by default.
   it does not enter the code hygiene size/depth payout formula.
 - After repeated rejected or revision-required attempts, the receipt/scope goes
   human-review-only until the benchmark, budget, or scope changes.

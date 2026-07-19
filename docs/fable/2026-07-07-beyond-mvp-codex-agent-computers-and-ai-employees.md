@@ -5,7 +5,7 @@ Status: owner-directed post-MVP direction doc. The mobile-only MVP
 (epic #8467, `docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md`)
 and the Agent Computers strategy
 (`docs/khala-code/2026-07-06-agent-computers-strategy.md`) are the base layer
-this document builds on top of; nothing here changes MVP scope or blocks the
+this document builds on top of. Nothing here changes MVP scope or blocks the
 remaining MVP proof (#8503, #8477). This doc records the owner's stated next
 directions — (1) connect one or more ChatGPT/Codex accounts and delegate
 cloud turns to them inside Agent Computers, (2) manage multiple cloud agents
@@ -19,7 +19,7 @@ Agent Computer runtime seams, business/background-agent strategy corpus).
 > is reconciled with the Agentic Society integration roadmap's AE/CB phases
 > and the blitz program in the overarching strategic roadmap:
 > `docs/fable/2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md`.
-> That doc supersedes both numbering schemes for new issue filing; the
+> That doc supersedes both numbering schemes for new issue filing. The
 > content of this doc's lanes stands unchanged. Execution sequencing now
 > lives in `docs/fable/MASTER_ROADMAP.md` (rev 2: CX-1..5 = Phase P2,
 > after the store-submitted MVP (P0) and Sarah (P1)).
@@ -39,12 +39,12 @@ integrations) — **real AI Employees**.
 
 This is less new architecture than it looks, for the same reason the mobile
 pivot was: the seams were built general. The placement contract is literally
-named `openagents.codex_placement_assignment.v1`; the public cloud-coding
-adapter enum already carries `codex` as its **default**; the runtime
+named `openagents.codex_placement_assignment.v1`. The public cloud-coding
+adapter enum already carries `codex` as its **default**. The runtime
 enforcement layer already dispatches real Codex turns for the
-`codex_app_server` lane; server-side encrypted custody of ChatGPT/Codex auth
+`codex_app_server` lane. Server-side encrypted custody of ChatGPT/Codex auth
 material already exists (`provider_account_token_custody`, migration 0283,
-with device-login and auth-material re-prime routes); and the "AI employee"
+with device-login and auth-material re-prime routes). And the "AI employee"
 record — `openagents.agent_definition.v1` with harness choice, typed
 toolsets, cron/webhook/inbox triggers, budgets, and escalation — is fully
 landed with a production consumer (the lead-gen definition). The three real
@@ -52,10 +52,10 @@ gaps are: (1) a **provider-credential broker seam into the microVM** (the
 isolation posture currently forbids raw OAuth on the agent computer
 outright — correctly — so Codex-in-the-VM needs a scoped, short-lived,
 owner-only credential injection path analogous to the #8475 SCM broker, plus
-the invariant rewrite that legalizes exactly that and nothing more); (2)
+the invariant rewrite that legalizes exactly that and nothing more). (2)
 **unifying the two cloud lanes** (background-agent definitions'
 `cloud_workroom` lane was parked while Agent Computers built the Firecracker
-lane for mobile — they must become the same thing); and (3) the **mobile
+lane for mobile — they must become the same thing). And (3) the **mobile
 Agents panel** (the cockpit UI that turns "a thread with a repo" into "a
 staff roster"). Everything else — billing, receipts, isolation, admission,
 push — carries over unchanged.
@@ -66,7 +66,7 @@ push — carries over unchanged.
 
 From the phone: **Settings → Agents → Connect Codex account**. The app runs
 the standard `codex` device-auth flow (short code + browser — inherently
-phone-friendly; no long-string pasting, same UX contract as
+phone-friendly. No long-string pasting, same UX contract as
 `khala fleet connect` in `clients/khala-cli/src/fleet.ts`). Once connected,
 the account appears in the user's harness roster with live readiness/quota
 state, and any thread (or any agent definition, §3) can target it: the model
@@ -78,7 +78,7 @@ from the user's own ChatGPT subscription instead of our metered inference.
 
 Why users want this: they already pay for Codex. Subscription capacity is
 prepaid and largely stranded (the wedge analysis in
-`docs/fable/2026-07-02-khala-code-business-opportunity-and-openagents-analysis.md`;
+`docs/fable/2026-07-02-khala-code-business-opportunity-and-openagents-analysis.md`.
 ~90% of the public served-token counter is already Pylon-Codex own-capacity).
 Letting them point that capacity at their phone-dispatched work makes the
 marginal Khala Code turn nearly free for them and nearly costless for us.
@@ -113,7 +113,7 @@ dispatches real Codex turns when a `khala_runtime_control_intent.v1` targets
 `lane: codex_app_server` — Codex SDK `startThread`/`resumeThread`, streamed
 events back into the thread scope, per-thread account pinning for session
 resume, fallback rotation on unhealthy accounts. The mobile wire contract
-already carries the lane field; **the phone can already ask for Codex** — the
+already carries the lane field. **The phone can already ask for Codex** — the
 question is only who consumes it and where the credential lives.
 
 **Cloud receipts (already defined).** `usageReceiptProviderForLane` maps
@@ -153,7 +153,7 @@ does not exist is the delivery of that material into a Firecracker microVM.
    forbidden.** The isolation posture
    (`docs/khala-code/2026-07-06-agent-computer-isolation-posture.md`,
    `openagents.agent_computer_isolation_policy.v1`) says: SCM-broker repo
-   tokens only; *no raw user OAuth tokens, no provider master keys, ever*.
+   tokens only. *No raw user OAuth tokens, no provider master keys, ever*.
    That rule was written when the only provider credential in scope was
    ours. Running the user's Codex inside their own agent computer requires a
    deliberate, narrow amendment (§2.4). This is an INVARIANTS change and
@@ -161,20 +161,20 @@ does not exist is the delivery of that material into a Firecracker microVM.
    the credential scanner updated in the same change.
 2. **`SUPPORTED_DISPATCH_LANES` in the org-cloud supervisor path defaults to
    `hosted_khala`.** The Codex lane is implemented but the org-cloud
-   supervisor only wires Gemini for model inference today; arming
+   supervisor only wires Gemini for model inference today. Arming
    `codex_app_server` in the cloud means the image carries the `codex`
    binary and the account home materializes inside the VM.
 3. **Session-resume continuity vs ephemeral microVMs.** Codex threads resume
-   against a `CODEX_HOME`; the per-thread account pin is in-memory and the
+   against a `CODEX_HOME`. The per-thread account pin is in-memory and the
    microVM is destroyed on reclaim. Continuity needs either (a) re-priming
-   auth + accepting fresh Codex threads per provision (simplest; thread
+   auth + accepting fresh Codex threads per provision (simplest, thread
    context is re-established from Khala Sync history), or (b) the strategy
    doc's §7 per-user persistent volume as the "your agent computer
    remembers" paid tier. Start with (a).
 4. **Policy invariant not yet written for this exact shape.** The resale
    law is favorable and unambiguous
    (`apps/openagents.com/INVARIANTS.md` Provider Capacity Marketplace Gate:
-   `subscription_capacity_resale` blocked unconditionally; own-capacity
+   `subscription_capacity_resale` blocked unconditionally. Own-capacity
    `agentic_work` explicitly allowed — see also
    `docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md`
    §365–411). A user's own subscription doing the user's own work on an
@@ -193,7 +193,7 @@ authenticates, the Worker derives the user's stored credential from the
 authenticated owner, verifies scope, and returns a short-lived, bounded
 credential. Do the same for provider accounts:
 
-- **Connect (phone):** mobile drives the Codex device-auth flow; the
+- **Connect (phone):** mobile drives the Codex device-auth flow. The
   resulting auth material lands in `provider_account_token_custody`
   (existing rail), keyed to the OpenAuth user, with the audit trail the
   table already carries. The mobile UI reuses the readiness/quota projection
@@ -222,7 +222,7 @@ credential. Do the same for provider accounts:
 - **Billing:** the turn's usage receipt posts with provider
   `pylon-codex-org-capacity` (already defined) and
   `tokenChargeMetered: false` semantics — the user is not charged model
-  tokens for their own subscription's work; the compute-time meter (§3 of
+  tokens for their own subscription's work. The compute-time meter (§3 of
   the strategy doc) is the charge. The single-charge invariant from #8503's
   money gates carries over unchanged.
 
@@ -230,7 +230,7 @@ credential. Do the same for provider accounts:
 `claude_agent` as the second provider, the runtime lane `claude_pylon` is
 implemented, and custody generalizes (`CLAUDE_CODE_OAUTH_TOKEN` env
 delivery is even simpler than a Codex home). Design the broker
-provider-generic from day one; ship Codex first because the fleet machinery
+provider-generic from day one. Ship Codex first because the fleet machinery
 and product positioning (`docs/khala-code/2026-07-01-codex-required-product-positioning.md`)
 are Codex-first.
 
@@ -243,8 +243,8 @@ from "model id" to "execution target": `gemini` (default) | `khala` hosted
 lanes | `codex:<accountRefHash>` | later `claude:<accountRefHash>`. The
 episode-245 two-axis model
 (`docs/fable/2026-07-01-episode-245-completion-and-multi-harness-orchestration.md`)
-applies directly: Axis A = what harness backs this thread's turns; Axis B =
-what workers a delegation fans out to; `auto` remains a routing *parameter*
+applies directly: Axis A = what harness backs this thread's turns. Axis B =
+what workers a delegation fans out to. `auto` remains a routing *parameter*
 (quota-aware: prefer the user's connected accounts while healthy, fall back
 to metered Gemini with an honest event when exhausted — never a silent
 substitution). Quota-aware auto-routing across a user's own accounts is a
@@ -265,7 +265,7 @@ issues #8188–#8214 closed): schema authority in
 (`/v1/agent-definitions/:id/runs`, `run-now`), harness adapter contract
 (`openagents.agent_harness_adapter.v1`,
 `apps/pylon/src/agent-harness-adapter.ts` — Codex and Claude adapters both
-exist; one unchanged definition proven on both), compiled deny-precedence
+exist. One unchanged definition proven on both), compiled deny-precedence
 toolsets, cron/webhook (GitHub, Slack) triggers with a scheduler DO,
 budgets with auto-pause, and the owner-scoped event ledger / unified inbox
 (`event_ledger.v1`). There is a production consumer: the standing lead-gen
@@ -294,7 +294,7 @@ and executes inside a Firecracker microVM through the same
 `cloud-coding-session-routes.ts` → `oa-codex-control` seam as a mobile
 thread turn — same admission gate (positive balance, typed refusals), same
 isolation policy, same two-meter billing, same Aiur ops view. One cloud
-execution substrate; the definition record is just a second *dispatch
+execution substrate. The definition record is just a second *dispatch
 source* alongside the mobile composer. This retires the parked-lane
 ambiguity (flagged as contradiction #4 in the strategy-corpus review) and
 means every hour invested in #8503 pays into the AI-employee product
@@ -305,17 +305,17 @@ Concretely this needs: a work-context kind for definition runs
 contract's `work_context_ref` is already opaque enough), the definition
 dispatcher calling the admission gate instead of the own-Pylon assignment
 gate when `lane: cloud`, and the compiled toolset policy enforced inside the
-microVM runtime (the ADR-0012 compilation already exists; the runtime just
+microVM runtime (the ADR-0012 compilation already exists, the runtime just
 receives it in the placement payload like the isolation policy does).
 
 ### 3.3 The phone cockpit
 
-The design already exists as BA-G4 (#8211, unshipped; behavior contract
+The design already exists as BA-G4 (#8211, unshipped, behavior contract
 `background_agents.agents_panel.run_status_indicators_truthful.v1` is
 PENDING and must land with it): an **Agents panel** — name, goal, harness
 badge, lane, last run, next trigger, per-agent run history — plus the
 **inbox** view over the event ledger where `ask`-policy escalations land.
-Build it mobile-first now (the MVP made mobile the primary surface; desktop
+Build it mobile-first now (the MVP made mobile the primary surface, desktop
 inherits via ONE-UI later):
 
 - **Roster screen:** the user's agent definitions with live state (idle /
@@ -325,10 +325,10 @@ inherits via ONE-UI later):
   idle / reclaimed) surfaces from the lifecycle receipts Aiur (#8501)
   already projects.
 - **One-tap approvals:** escalations arrive as push (the #8485/#8486 rail)
-  deep-linking into the inbox; approve/deny writes back as a typed mutation.
+  deep-linking into the inbox. Approve/deny writes back as a typed mutation.
   The harness-agnostic audit's warning stands: *approvals must be one
   keystroke or people will widen allowlists.* This is the single most
-  important interaction in the product — an employee you can't cheaply
+  important interaction in the product — an employee you cannot cheaply
   supervise from a phone is an employee you'll either over-trust or turn
   off.
 - **Hiring flow:** "New agent" = pick a template (definition templates are
@@ -350,7 +350,7 @@ shared org fleet vs a customer administering their own isolated roster — and
 recommended a first-class authority scope
 (`owner_self | shared_fleet | owner_operator`). Adopt that before the
 cockpit ships: every definition, work context, and credential grant carries
-the owner scope; the org-cloud lane's existing invariant (never route
+the owner scope. The org-cloud lane's existing invariant (never route
 through another user's machine or capacity) extends naturally to *never
 inject another owner's credential and never let one owner's definition see
 another's event ledger*. One codebase, N isolated per-user fleets, one
@@ -370,8 +370,8 @@ rubric — never a fork*), and the connector lane is specified as BF-6 in
 
 - **BF-6.1** connector sidecar with source-verified events (GitHub first —
   signed webhooks, dedupe, bounded issue/PR-scoped agents, bound writeback
-  tools); the sidecar never owns membership/payment/email authority.
-- **BF-6.2** shared-channel (Slack Connect) connector; **BF-6.3** social
+  tools). The sidecar never owns membership/payment/email authority.
+- **BF-6.2** shared-channel (Slack Connect) connector. **BF-6.3** social
   publishing (X first), approval-gated.
 - **BF-6.4** client-owned payment accounts (Stripe-Connect-style seam,
   explicitly "we do not have" yet).
@@ -380,7 +380,7 @@ rubric — never a fork*), and the connector lane is specified as BF-6 in
   per-connector toolsets, short-TTL brokered tokens only (same law as
   BA-D2/D3).
 - **BF-3.1** scoped read-only ingestion connectors (drive/docs, then
-  mail/calendar) into a per-workspace grounding corpus with provenance;
+  mail/calendar) into a per-workspace grounding corpus with provenance.
   redaction-before-inference (BF-3.2) as the trust gate.
 
 The precedent integration is live: **Apollo.io via MCP** (OAuth,
@@ -388,20 +388,20 @@ owner-connected 2026-07-03) — prospecting, enrichment, sequences, tasks,
 with CRM state treated as a *mirror* of our own pipeline queue, and all
 send/activation tools **denied** in the lead-gen definition's toolset. That
 is the pattern to generalize, not a one-off: the CRM is the customer's
-system of record; the employee reads it through a bounded toolset, drafts
+system of record. The employee reads it through a bounded toolset, drafts
 into it, and *never* holds send/spend authority without an approval receipt
 (`lead_gen_agent.no_send_without_approval_receipt.v1` is already an enforced
 contract).
 
 ### 4.2 MCP as the integration substrate
 
-Don't build N bespoke connector clients. The agent-definition toolset schema
-already models tool allow/deny/ask lists; extend `toolset` to reference
+Do not build N bespoke connector clients. The agent-definition toolset schema
+already models tool allow/deny/ask lists. Extend `toolset` to reference
 **per-owner MCP connector grants**: a connector = an MCP server (first-party
 sidecar like BF-6.1's GitHub, or third-party like Apollo) + an owner-scoped
 credential in the same custody rail as §2.4 + a typed toolset filter
 compiled the same way ADR-0012 policies already are. The agent-computer
-image hosts the MCP client; the broker injects the connector grant at turn
+image hosts the MCP client. The broker injects the connector grant at turn
 start with the same lifecycle (short-TTL, dies with the VM). We already run
 MCP in anger in three places (the `khala_fleet` local MCP server for
 delegation, Apollo, and the public discovery endpoint `/.well-known/mcp.json`)
@@ -448,12 +448,12 @@ Everything in §2–§3 compounds here, and it is the honest differentiator:
   with the blast-radius sentence already enforced by contract
   (`openagents.agent_computer_isolation_policy.v1`).
 - **Receipts:** every run, token, compute-minute, connector action, and
-  approval is an exact receipt; behavior contracts make stated expectations
+  approval is an exact receipt. Behavior contracts make stated expectations
   executable (`packages/behavior-contracts` — the Ep 246 insight that
   business intake converts customer vibes into behavior contracts is the
   qualifying artifact for an employee's job description).
 - **Bounded authority:** deny-precedence toolsets compiled and enforced,
-  never prompted; send/spend behind approval receipts; credentials brokered
+  never prompted. Send/spend behind approval receipts. Credentials brokered
   and short-lived, never in model context.
 - **Verifiability:** promise records and verification rubrics per vertical
   (BF-4.2 per-customer service promises) — an employee whose work is
@@ -474,15 +474,15 @@ No incumbent coding-agent vendor is positioned to say those four sentences.
 - **Exact-only accounting, receipt-first billing, fail-closed arming,
   owner-gated green flips, public-safe projections.** All invariants from
   the MVP epic carry forward verbatim.
-- **The org-cloud boundary.** Agent Computers are OpenAgents-owned capacity;
+- **The org-cloud boundary.** Agent Computers are OpenAgents-owned capacity.
   nothing here widens access to any user-owned machine. The desktop
   Pylon/fleet lane remains postponed per the reopen ledger (launch audit
-  §8) — §2 deliberately does *not* resurrect desktop pairing; it moves the
+  §8) — §2 deliberately does *not* resurrect desktop pairing. It moves the
   *account*, not the machine, to the cloud.
 
 ## 6. Proposed build sequence (post-MVP lanes)
 
-Dependency spine: CX-1/CX-2 unblock CX-3..5; AE-1 unblocks AE-2..4; BI-*
+Dependency spine: CX-1/CX-2 unblock CX-3..5. AE-1 unblocks AE-2..4. BI-*
 parallelizes after AE-1. Nothing starts before #8503's proof bundle exists
 (the microVM path everything below rides on).
 
@@ -493,32 +493,32 @@ parallelizes after AE-1. Nothing starts before #8503's proof bundle exists
   credential injection (`provider_credential_policy: broker_only`), the
   never-pooled/never-cross-owner rule, scanner coverage, fail-closed tests.
 - **CX-2 Mobile Codex connect.** Device-auth flow from the phone into the
-  existing `provider_account_token_custody` rail; accounts list UI with
-  readiness/quota projections; disconnect + revocation.
+  existing `provider_account_token_custody` rail. Accounts list UI with
+  readiness/quota projections. Disconnect + revocation.
 - **CX-3 Injection + cloud Codex turn.** Broker redemption inside the
   microVM, isolated `CODEX_HOME` on scratch, `codex_app_server` armed in the
-  org-cloud supervisor's lane set, image layer carrying the codex binary;
+  org-cloud supervisor's lane set, image layer carrying the codex binary.
   DoD mirrors #8503: one real mobile-dispatched turn on the user's own
   Codex inside Firecracker, receipt bundle with `tokenChargeMetered: false`
   model rows + compute-time receipts, reclaim wipes the credential.
 - **CX-4 Harness/target selection UX.** Model-preference store → execution
-  targets; per-thread harness pill; quota-aware `auto` with typed fallback
-  events; multi-account rotation surfaced honestly.
+  targets. Per-thread harness pill. Quota-aware `auto` with typed fallback
+  events. Multi-account rotation surfaced honestly.
 - **CX-5 Claude account parity.** Same broker, `claude_pylon` lane,
   `CLAUDE_CODE_OAUTH_TOKEN` delivery.
 
 **AE — Agents (AI Employees) on the phone**
 
 - **AE-1 Lane unification.** `agent_definition.v1` cloud dispatch resolves
-  to Agent Computer admission/placement; definition-run work-context kind;
-  compiled toolset policy delivered in the placement payload; retire the
+  to Agent Computer admission/placement. Definition-run work-context kind.
+  compiled toolset policy delivered in the placement payload. Retire the
   parked `cloud_workroom` framing.
 - **AE-2 Mobile Agents panel + inbox.** Roster, run history, live state from
-  sync scopes, event-ledger inbox, one-tap approvals via push deep links;
+  sync scopes, event-ledger inbox, one-tap approvals via push deep links.
   land the pending `agents_panel.run_status_indicators_truthful.v1` and
   `definitions.harness_swap.v1` contracts with it.
-- **AE-3 Templates + hiring flow.** Definition templates as configs;
-  create/edit from mobile; per-agent budgets and spend rollups in the
+- **AE-3 Templates + hiring flow.** Definition templates as configs.
+  create/edit from mobile. Per-agent budgets and spend rollups in the
   balance UI.
 - **AE-4 Authority scopes.** `owner_self | shared_fleet | owner_operator` as
   typed, tested scope on definitions/contexts/grants (the Artanis
@@ -527,39 +527,39 @@ parallelizes after AE-1. Nothing starts before #8503's proof bundle exists
 **BI — Business integrations**
 
 - **BI-1 Connector grants on the custody rail.** Owner-scoped MCP connector
-  credentials, brokered into the microVM like CX-3; BF-6.5 authority
+  credentials, brokered into the microVM like CX-3. BF-6.5 authority
   invariant enforced (no raw creds/webhook bodies in model context).
 - **BI-2 First-party GitHub connector sidecar** (BF-6.1) as the reference
-  connector; Slack (BF-6.2) second.
+  connector. Slack (BF-6.2) second.
 - **BI-3 CRM lane.** Generalize the Apollo pattern: CRM-as-mirror toolsets,
-  drafting-only defaults, approval-receipt send gates; first non-coding
+  drafting-only defaults, approval-receipt send gates. First non-coding
   employee template (lead-gen is the shipped precedent — productize its
   config surface for outside owners).
 - **BI-4 Ingestion + grounding** (BF-3.1/3.2): scoped read-only corpus
   connectors with redaction-before-inference, per-employee grounding.
 - **BI-5 Employee pricing rail.** Owner-priced connector/orchestration
-  margin as a third labeled receipt kind on the same Pool B ledger; itemized
+  margin as a third labeled receipt kind on the same Pool B ledger. Itemized
   per-agent in mobile + Aiur.
 
 **Later (not committed):** standing/persistent agent computers as the
-premium "your employee's desk" tier (strategy doc §7's persistent volumes);
-warm pools for instant trigger response; agent computers as a directly
-rentable primitive; post-to-earn (#8494) as employee-referral growth;
-BF-6.4 client-owned payment accounts; the overflow/peer marketplace once
+premium "your employee's desk" tier (strategy doc §7's persistent volumes).
+warm pools for instant trigger response. Agent computers as a directly
+rentable primitive. Post-to-earn (#8494) as employee-referral growth.
+BF-6.4 client-owned payment accounts. The overflow/peer marketplace once
 authority scopes and settlement primitives mature.
 
 ## 7. Open questions (flagged, not resolved here)
 
-1. **Codex ToS posture for custodied credentials.** Our resale law is clean;
+1. **Codex ToS posture for custodied credentials.** Our resale law is clean.
    the remaining diligence is OpenAI-side terms on where a user's Codex
    session may execute. The device-auth flow the user performs is identical
-   to authorizing any machine they control; document the position explicitly
+   to authorizing any machine they control. Document the position explicitly
    in CX-1 rather than assuming silently.
 2. **Concurrency semantics per connected account.** Locally, one account =
    one supervisor slot with rotation. In the cloud, does a user's single
    Codex account serve multiple simultaneous employees' turns (queue) or
    does the roster need per-account serialization? Propose: serialize per
-   account with typed queueing events; more accounts = more concurrency
+   account with typed queueing events. More accounts = more concurrency
    (same law as the fleet).
 3. **Definition-run threads.** Employee runs need a place to render on
    mobile — a thread per run, or a per-agent activity feed backed by the
@@ -567,7 +567,7 @@ authority scopes and settlement primitives mature.
    human-initiated), but the sync-scope shape should be decided with AE-2's
    design.
 4. **Where the cockpit's desktop twin lands** — ONE-UI (#8339) makes the
-   React panel portable, but desktop remains postponed; do not let desktop
+   React panel portable, but desktop remains postponed. Do not let desktop
    parity gate any AE lane.
 5. **Naming.** "Agents" (panel), "AI Employees" (marketing), "agent
    definitions" (schema), "agent computers" (substrate) — one glossary entry

@@ -47,7 +47,7 @@ no-auto-send authority invariant baked in. The receipt instance is dereferenceab
 at a public route.
 
 `blocker.product_promises.marketing_agency_pack_self_serve_missing` — untouched
-(out of scope for this run; the pack remains operator-assisted).
+(out of scope for this run, the pack remains operator-assisted).
 
 ## What remains for green
 

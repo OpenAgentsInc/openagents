@@ -18,4 +18,4 @@ Advanced this blocker by building the missing RL-2/RL-3 settlement wiring for th
 
 - A real Psionic shard-WAN run emitting a hardware-backed `psionic.serve.pipeline_sharded_run_receipt.v1` (Psionic-planned / hardware-blocked).
 - A Pylon serving an actual gateway inference request (whole-small-model lane and the fabric supply adapter are also still unbuilt).
-- The open product decision on the weighting rule (this ships the documented per_layer_block default; FLOP-aware / latency-contribution remain open).
+- The open product decision on the weighting rule (this ships the documented per_layer_block default, FLOP-aware / latency-contribution remain open).

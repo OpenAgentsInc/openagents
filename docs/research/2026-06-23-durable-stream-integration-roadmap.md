@@ -1,7 +1,7 @@
 # Durable Stream integration roadmap — owned `@openagentsinc/durable-stream` on Cloudflare DO
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 **Date:** 2026-06-23
@@ -11,7 +11,7 @@ date). Not current direction; consult MASTER_ROADMAP.**
 (commit `34c9204c34`)
 **Owner directive:** "build one small owned `@openagentsinc/durable-stream`
 Effect primitive (DO SQLite log, conformance suite as the test oracle), Rank-1
-(resumable inference) first; port ideas, don't vendor."
+(resumable inference) first. Port ideas, do not vendor."
 
 ---
 
@@ -36,7 +36,7 @@ ranked order:
 
 **Port ideas, do not vendor.** `projects/repos/durable-streams/*` is read-only
 reference (workspace rule). We re-implement the ~4 guarantees we want in owned
-Effect/Schema code; we do not pull the npm packages into the build.
+Effect/Schema code. We do not pull the npm packages into the build.
 
 ---
 
@@ -55,7 +55,7 @@ guarantees. These are the acceptance contract for Phase A.
    disconnect. `Stream-Up-To-Date: true` ≠ EOF — only `Stream-Closed: true`
    (durable, monotonic, idempotent) means "no more data ever" (`PROTOCOL.md`
    §4.1, §5.6). EOF is signalled three ways by mode: catch-up `200` empty body +
-   `Stream-Closed`; long-poll `204` + `Stream-Closed`; SSE `control` event with
+   `Stream-Closed`. Long-poll `204` + `Stream-Closed`. SSE `control` event with
    `streamClosed: true` then connection close.
 3. **Exactly-once writes.** `(producerId, epoch, seq)` dedups retries, fences
    zombies (stale epoch → `403` + current `Producer-Epoch`), detects gaps
@@ -65,7 +65,7 @@ guarantees. These are the acceptance contract for Phase A.
    give us serialization and atomicity *for free* — the audit's key reason DO is
    a good substrate.
 4. **CDN-friendly fan-out.** Catch-up reads are cacheable (`ETag` that varies
-   with closure status, `Cache-Control`, `Stream-Cursor` collapsing); live modes
+   with closure status, `Cache-Control`, `Stream-Cursor` collapsing). Live modes
    recycle the connection (~60s) for collapse (`PROTOCOL.md` §10). At scale,
    fan-out belongs on the CDN cache path, **not** the DO hot loop.
 
@@ -110,25 +110,25 @@ offset-log on a DO with SQLite storage. Reusable substrate for Phases B and C.
 ### A.2 Storage model (DO SQLite)
 
 - `stream_meta(stream_id PK, content_type, ttl_seconds, expires_at, closed,
-  created_at, ...)` — one row; closure is monotonic.
+  created_at, ...)` — one row. Closure is monotonic.
 - `stream_log(offset PK, seq, byte_len, body BLOB, content_kind, created_at)` —
-  append-only; offset is a zero-padded lexicographically sortable token
+  append-only. Offset is a zero-padded lexicographically sortable token
   (`<padded_global_seq>_<padded_byte_pos>`), never `-1`/`now`.
 - `producer_state(producer_id PK, epoch, last_seq, last_offset, updated_at)` —
-  idempotent-producer fencing; committed atomically with the log row in one
+  idempotent-producer fencing. Committed atomically with the log row in one
   `transactionSync`.
-- One DO per stream (`idFromName(streamPath)`) — idiomatic sharding; fan-out at
+- One DO per stream (`idFromName(streamPath)`) — idiomatic sharding. Fan-out at
   scale leans on the CDN cache path, not one DO serving all readers.
 
 ### A.3 Conformance scope for Phase A (in vs out)
 
 **In (the four-part contract):**
 
-- Create (`PUT`): idempotent 200/201/409 incl. closure-status matching;
+- Create (`PUT`): idempotent 200/201/409 incl. closure-status matching.
   `Content-Type`, `Stream-TTL`/`Stream-Expires-At` (reject both → 400),
   create-and-close.
-- Append (`POST`): full-body; `Stream-Seq` monotonic (lexicographic, 409 on
-  regression); `Stream-Closed: true` atomic append-and-close; empty-body rules.
+- Append (`POST`): full-body. `Stream-Seq` monotonic (lexicographic, 409 on
+  regression). `Stream-Closed: true` atomic append-and-close. Empty-body rules.
 - Idempotent producers: epoch validation, seq dedup/gap, zombie fencing,
   per-`(stream,producerId)` serialization + atomic commit, close-with-producer.
 - Close (`POST Stream-Closed: true`): durable, monotonic, idempotent EOF.
@@ -146,18 +146,18 @@ offset-log on a DO with SQLite storage. Reusable substrate for Phases B and C.
 **Out (explicit Phase-A non-goals — track separately if ever needed):**
 
 - **Forking** (`Stream-Forked-From`, sub-offsets, soft-delete/refcount GC) —
-  audit lists it as "could branch history"; not required for Ranks 1–3.
+  audit lists it as "could branch history". Not required for Ranks 1–3.
 - **Subscriptions** (`__ds/subscriptions`, webhooks, pull-wake, leases) — the
-  audit's Rank-3 "wake a worker" primitive; Queues already cover our batch path.
+  audit's Rank-3 "wake a worker" primitive. Queues already cover our batch path.
 - **Retention/compaction** (`410 Gone` before earliest retained) — TTL/expiry
   only for v1.
-- **JSON-mode array flattening** — port only if Phase B/C wire format needs it;
+- **JSON-mode array flattening** — port only if Phase B/C wire format needs it.
   default content types are byte/`text/*`/SSE.
 
 ### A.4 Test oracle wiring
 
 1. Stand up the DO server locally (`wrangler dev` / Miniflare / `workerd`) on a
-   port; export `CONFORMANCE_TEST_URL`.
+   port. Export `CONFORMANCE_TEST_URL`.
 2. Where the upstream `server-conformance-tests --run` harness runs without
    vendoring, use it as the external oracle and record pass/fail.
 3. Replicate the YAML cases (the four-part contract buckets) as owned Bun/Effect
@@ -168,11 +168,11 @@ offset-log on a DO with SQLite storage. Reusable substrate for Phases B and C.
    partial.
 
 **Effort:** M (largest single phase). **Risk:** Medium — offset monotonicity,
-SSE framing, and idempotent-producer fencing are the fiddly parts; DO
+SSE framing, and idempotent-producer fencing are the fiddly parts. DO
 serialization de-risks the concurrency requirements.
 
-**Exit criteria:** package builds + typechecks; the owned conformance subset runs
-green; honest pass/fail report for the four-part contract; **not wired into any
+**Exit criteria:** package builds + typechecks. The owned conformance subset runs
+green. Honest pass/fail report for the four-part contract. **Not wired into any
 app** (disjoint from `workers/api`).
 
 ---
@@ -185,15 +185,15 @@ resumable read URL, resume by offset on reconnect.
 
 **Target:**
 `apps/openagents.com/workers/api/src/inference/chat-completions-routes.ts`
-(`buildIncrementalSseResponse`, the SSE pass-through; EPIC #6017 / closed #6027
+(`buildIncrementalSseResponse`, the SSE pass-through, EPIC #6017 / closed #6027
 lineage).
 
 **Approach (port the durable-proxy idea, build small):**
 
 - Key a `@openagentsinc/durable-stream` by a stable `requestId`.
 - Tee the upstream provider SSE into the durable stream (idempotent producer =
-  retry-safe upstream→stream write); frame as today's `chat.completion.chunk`.
-- Return a durable read URL; client reconnects `?offset=<last>` (or an
+  retry-safe upstream→stream write). Frame as today's `chat.completion.chunk`.
+- Return a durable read URL. Client reconnects `?offset=<last>` (or an
   `autoResume` fetch wrapper) and resumes exactly. `Stream-Closed` = the
   completion's clean EOF.
 
@@ -237,9 +237,9 @@ snapshots/sequences), `packages/world-client/src/index.ts` (delta application).
   Streams offset-resumption / streaming-equivalence cases are an **oracle** to
   test the buffer against, not a mandate to conform the wire format.
 
-**Effort:** M (low-medium as a scoped port; high if mistakenly done as a
+**Effort:** M (low-medium as a scoped port, high if mistakenly done as a
 re-platforming — do not). **Risk:** Low-medium. **Depends on:** Phase A (offset-log
-idea); independent of Phase B.
+idea). Independent of Phase B.
 
 ---
 
@@ -266,7 +266,7 @@ idea); independent of Phase B.
 | — | Skips: batch streams (opportunistic), nostr (none) | A | S | Low | — |
 
 **Critical path:** A → (B and C in parallel once A lands and the M4 lane is clear
-for B). **This roadmap's build deliverable is Phase A only**; B and C are tracked
+for B). **This roadmap's build deliverable is Phase A only**. B and C are tracked
 as sub-issues and built later.
 
 ---

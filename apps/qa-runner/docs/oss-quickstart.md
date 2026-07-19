@@ -32,7 +32,7 @@ pnpm --dir apps/qa-runner run demo:byo
 deterministic decision-maker. It still produces a real `result.json`, a video
 artifact, and a committed e2e test — proving the whole pipeline (drive → record →
 distill) works with **zero credentials and zero hosted dependency**. This is the
-exact code path a real run takes; only the model/browser are swapped for fakes.
+exact code path a real run takes. Only the model/browser are swapped for fakes.
 
 ---
 
@@ -165,7 +165,7 @@ TARGET_URL=http://localhost:3000 pnpm exec vitest run ./generated/<slug>.e2e.tes
 ```
 
 The `qa` exit code is honest: `0` only on a clean pass **and** an admissible
-distilled test; a failed assertion / unreachable verdict / config error is a
+distilled test. A failed assertion / unreachable verdict / config error is a
 non-zero exit (never a fake green). So the CI check goes red on a real failure.
 
 ---
@@ -226,6 +226,6 @@ cd apps/qa-runner && pnpm pack
 npm publish ./openagentsinc-qa-runner-0.1.0.tgz --access public
 ```
 
-CDN propagation can make a fresh publish look 404 to bun for minutes; the runbook
+CDN propagation can make a fresh publish look 404 to bun for minutes. The runbook
 covers that. Until then the local-tarball path in §1 is the genuine, runnable
 standalone OSS install.

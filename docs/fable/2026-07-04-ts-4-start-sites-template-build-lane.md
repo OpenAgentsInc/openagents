@@ -2,7 +2,7 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 
@@ -51,7 +51,7 @@ WfP module" without activating a live customer deployment.
 
 This change does not deploy a live Site, create Cloudflare resources, mutate
 promise state, or bypass owner/operator gates. Per-site secrets remain Worker
-bindings recorded at deploy; generated source and build receipts only carry
+bindings recorded at deploy. Generated source and build receipts only carry
 public-safe refs and redacted metadata. `omega_static_r2` remains available for
 prerender/static-only output.
 

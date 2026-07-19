@@ -68,7 +68,7 @@ bun run scan:effect-authority-boundaries
 ```
 
 The scanner inventories suspicious raw boundary operations in declared authority
-directories. It does not fail the build yet; existing findings are migration
+directories. It does not fail the build yet. Existing findings are migration
 inventory for follow-up issues. Intentional raw edges must be listed in
 `scripts/effect-authority-boundary-allowlist.ts` with a reason explaining the
 boundary and why a typed Effect adapter is not the right shape there yet.

@@ -21,14 +21,14 @@ records, or mutate accepted outcomes.
 
 `OmniInvestorOpsTemplate` records:
 
-- template ref;
-- version ref;
-- approval policy refs;
-- data-room policy refs;
-- closeout requirement refs;
-- evidence requirement refs;
-- proof policy refs;
-- required artifact refs; and
+- template ref.
+- version ref.
+- approval policy refs.
+- data-room policy refs.
+- closeout requirement refs.
+- evidence requirement refs.
+- proof policy refs.
+- required artifact refs. And
 - caveat refs.
 
 The default fixture is `OMNI_INVESTOR_OPS_TEMPLATE_FIXTURE`.
@@ -37,32 +37,32 @@ The default fixture is `OMNI_INVESTOR_OPS_TEMPLATE_FIXTURE`.
 
 `OmniInvestorOpsWorkroomRecord` records:
 
-- investor refs;
-- contact refs;
-- source refs;
-- prep packet refs;
-- data-room task refs;
-- deck work-order refs;
-- video work-order refs;
-- follow-up refs;
-- decision receipt refs;
-- acceptance refs;
-- closeout refs;
-- evidence refs;
-- blocker refs;
-- caveat refs; and
+- investor refs.
+- contact refs.
+- source refs.
+- prep packet refs.
+- data-room task refs.
+- deck work-order refs.
+- video work-order refs.
+- follow-up refs.
+- decision receipt refs.
+- acceptance refs.
+- closeout refs.
+- evidence refs.
+- blocker refs.
+- caveat refs. And
 - operator diagnostic refs.
 
 The state model keeps these steps separate:
 
-- intake;
-- prep packet ready;
-- data-room task ready;
-- creative work order ready;
-- follow-up queued;
-- decision receipt recorded;
-- accepted outcome recorded;
-- closed; and
+- intake.
+- prep packet ready.
+- data-room task ready.
+- creative work order ready.
+- follow-up queued.
+- decision receipt recorded.
+- accepted outcome recorded.
+- closed. And
 - blocked.
 
 That separation matters because prep is not a data-room update, a deck/video
@@ -76,10 +76,10 @@ The default authority block is
 
 It explicitly denies:
 
-- outreach send;
-- deck or video publish;
-- data-room upload;
-- investor-record mutation; and
+- outreach send.
+- deck or video publish.
+- data-room upload.
+- investor-record mutation. And
 - accepted-outcome mutation.
 
 `omniInvestorOpsAuthorityIsContractOnly` returns true only for records using
@@ -96,15 +96,15 @@ audience. Operator/private projections can show safe internal diagnostics.
 The contract rejects refs containing:
 
 - investor emails, investor names, contact emails, contact names, and phone
-  values;
-- raw or private data-room material;
-- raw deck or video assets;
-- provider accounts, grants, payloads, or tokens;
-- private repo refs;
-- raw source payloads;
-- raw runner logs;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material; and
+  values.
+- raw or private data-room material.
+- raw deck or video assets.
+- provider accounts, grants, payloads, or tokens.
+- private repo refs.
+- raw source payloads.
+- raw runner logs.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -113,14 +113,14 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/omni-investor-ops-workrooms.test.ts` covers:
 
-- schema/projection decoding;
-- friendly time projection;
-- contract-only authority;
+- schema/projection decoding.
+- friendly time projection.
+- contract-only authority.
 - no outreach, creative publish, data-room mutation, investor mutation, or
-  accepted-outcome mutation authority;
+  accepted-outcome mutation authority.
 - public redaction of investor/contact/data-room/deck/video/follow-up/decision
-  refs;
+  refs.
 - prep, data-room, creative, follow-up, decision, accepted outcome, and
-  closeout separation; and
+  closeout separation. And
 - unsafe investor, contact, data-room, deck/video, provider, private repo,
   wallet/payment, raw log, and timestamp rejection.

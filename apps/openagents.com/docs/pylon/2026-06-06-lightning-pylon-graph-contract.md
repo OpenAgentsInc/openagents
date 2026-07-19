@@ -15,13 +15,13 @@ The implementation status is represented explicitly as `contract_only`,
 
 The graph can represent:
 
-- providers;
-- rails;
-- peers;
-- channels;
-- liquidity movement;
-- payout events;
-- failed routes; and
+- providers.
+- rails.
+- peers.
+- channels.
+- liquidity movement.
+- payout events.
+- failed routes. And
 - settlement receipt refs.
 
 Edges can represent provider-to-rail, provider-to-peer, peer-to-channel,
@@ -32,13 +32,13 @@ relationships.
 
 The projection includes:
 
-- graph nodes and edges;
-- node and edge counts;
-- implementation status;
+- graph nodes and edges.
+- node and edge counts.
+- implementation status.
 - filters for node kind, edge kind, freshness, status, provider refs, and rail
-  refs;
-- bounded pagination with safe cursor refs;
-- freshness, blocker, caveat, evidence, link, and source refs; and
+  refs.
+- bounded pagination with safe cursor refs.
+- freshness, blocker, caveat, evidence, link, and source refs. And
 - friendly `createdAtDisplay`, `updatedAtDisplay`, and per-node/per-edge
   `updatedAtDisplay` values.
 
@@ -49,13 +49,13 @@ not raw auth tokens or database cursors.
 
 `PYLON_LIGHTNING_GRAPH_READ_ONLY_AUTHORITY` denies:
 
-- graph mutation;
-- channel mutation;
-- peer mutation;
-- liquidity mutation;
-- wallet mutation;
-- live wallet spend;
-- payout dispatch; and
+- graph mutation.
+- channel mutation.
+- peer mutation.
+- liquidity mutation.
+- wallet mutation.
+- live wallet spend.
+- payout dispatch. And
 - settlement mutation.
 
 The contract can describe graph evidence. It cannot open channels, change
@@ -81,13 +81,13 @@ material, raw payment material, raw channel monitor state, or credentials.
 
 `workers/api/src/pylon-lightning-graph-contract.test.ts` covers:
 
-- schema decoding;
-- read-only authority;
-- explicit `contract_only` implementation status;
+- schema decoding.
+- read-only authority.
+- explicit `contract_only` implementation status.
 - public redaction of private nodes, private edges, private refs, and linked
-  edges;
-- bounded pagination and redacted filters;
-- unique graph IDs and known edge endpoint validation;
-- failed, blocked, stale, and attention evidence requirements; and
+  edges.
+- bounded pagination and redacted filters.
+- unique graph IDs and known edge endpoint validation.
+- failed, blocked, stale, and attention evidence requirements. And
 - rejection of unsafe Lightning, peer, wallet, payment, payout target,
   provider, customer, credential, and timestamp material.

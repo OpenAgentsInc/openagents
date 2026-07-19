@@ -17,43 +17,43 @@ The implementation lives in
 
 `OmniOutcomePowerProductivityRecord` records:
 
-- accepted outcome count;
-- accepted revenue;
-- accepted gross profit;
-- provider payable value;
-- provider settled value;
-- energy in watt-hours;
-- dark-capacity energy in watt-hours;
-- modeled, measured, mixed, or unknown power-data state;
-- payable, verified, settled, mixed, or not-settled provider state;
-- accepted outcome refs;
-- energy evidence refs;
-- model refs;
-- measured meter refs;
-- dark-capacity reason refs;
-- settlement refs;
-- source, caveat, and workroom refs;
+- accepted outcome count.
+- accepted revenue.
+- accepted gross profit.
+- provider payable value.
+- provider settled value.
+- energy in watt-hours.
+- dark-capacity energy in watt-hours.
+- modeled, measured, mixed, or unknown power-data state.
+- payable, verified, settled, mixed, or not-settled provider state.
+- accepted outcome refs.
+- energy evidence refs.
+- model refs.
+- measured meter refs.
+- dark-capacity reason refs.
+- settlement refs.
+- source, caveat, and workroom refs.
 - read-only authority flags.
 
 `projectOmniOutcomePowerProductivity` groups records by work kind and returns a
 total projection. It derives:
 
-- energy kWh and MWh;
-- dark-capacity MWh;
-- accepted outcomes per kWh;
-- accepted outcomes per MWh;
-- accepted revenue per kWh;
-- accepted gross profit per kWh;
-- provider payable per kWh;
-- measured and modeled energy claim flags;
+- energy kWh and MWh.
+- dark-capacity MWh.
+- accepted outcomes per kWh.
+- accepted outcomes per MWh.
+- accepted revenue per kWh.
+- accepted gross profit per kWh.
+- provider payable per kWh.
+- measured and modeled energy claim flags.
 - settlement claim flags for the current audience.
 
 ## Unit Rules
 
 Records store energy as integer watt-hours. Projections display:
 
-- kWh as watt-hours divided by 1,000;
-- MWh as watt-hours divided by 1,000,000;
+- kWh as watt-hours divided by 1,000.
+- MWh as watt-hours divided by 1,000,000.
 - per-kWh values only when the energy denominator is known and greater than
   zero.
 
@@ -64,11 +64,11 @@ outcome from appearing energy-efficient when no meter or model evidence exists.
 
 The model separates:
 
-- modeled energy;
-- measured energy;
-- accepted outcomes;
-- provider payable value;
-- provider settled value;
+- modeled energy.
+- measured energy.
+- accepted outcomes.
+- provider payable value.
+- provider settled value.
 - settlement receipts.
 
 Measured energy claims require visible measured-energy refs. Modeled energy
@@ -84,23 +84,23 @@ with caveats when meter evidence is incomplete.
 
 The projection cannot:
 
-- mutate energy meters;
-- spend from a wallet;
-- dispatch a payout;
-- upgrade power-market claims;
-- mutate provider settlement;
+- mutate energy meters.
+- spend from a wallet.
+- dispatch a payout.
+- upgrade power-market claims.
+- mutate provider settlement.
 - upgrade public claims.
 
 ## Tests
 
 `workers/api/src/omni-outcome-power-productivity.test.ts` covers:
 
-- unit calculations for kWh and MWh;
-- accepted outcomes per kWh and per MWh;
-- accepted revenue, accepted gross profit, and provider payable per kWh;
-- dark-capacity MWh;
-- zero and unknown energy handling;
-- public redaction of private meter, settlement, and workroom refs;
-- modeled, measured, mixed, and not-settled claim labels;
+- unit calculations for kWh and MWh.
+- accepted outcomes per kWh and per MWh.
+- accepted revenue, accepted gross profit, and provider payable per kWh.
+- dark-capacity MWh.
+- zero and unknown energy handling.
+- public redaction of private meter, settlement, and workroom refs.
+- modeled, measured, mixed, and not-settled claim labels.
 - false authority, missing evidence, false settlement, dark-capacity overclaim,
   raw telemetry, wallet/payment, provider, and raw timestamp rejection.

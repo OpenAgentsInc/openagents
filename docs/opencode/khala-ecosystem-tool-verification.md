@@ -1,7 +1,7 @@
 # Khala Ecosystem Tool Verification
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Per-tool verification record for issue #6306. The recipes live in
@@ -32,7 +32,7 @@ demand corpus (per #6298).
 The default `openagents/khala` open lane served `openagents/glm-5.2-reap-504b`
 on the `hydralisk` supply lane during these runs (visible in the
 `openagents.served_model` field of each direct response). `claude`/premium lanes
-are out of scope here; they still route to the balance + premium gate and never
+are out of scope here. They still route to the balance + premium gate and never
 the free lane.
 
 The public counter (`GET /api/public/khala-tokens-served`) moved across the
@@ -56,10 +56,10 @@ in-scope tool sits on exactly these behaviors.
 | Bad-key error legibility | PASS | Invalid bearer → HTTP 401 `{"error":"unauthorized"}`. |
 
 The 402/quota path is documented in
-[`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md);
+[`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md).
 it returns an HTTP 402 OpenAI-style error body once a key exhausts the daily
 request or token quota. It was not re-exhausted here (that would burn a key's
-daily quota for no new information beyond the playbook); the recipe checklists
+daily quota for no new information beyond the playbook). The recipe checklists
 keep the 402 legibility check as a per-session acceptance item.
 
 ## Per-Tool Results
@@ -89,14 +89,14 @@ OpenCode 1.17.9.
   by actually executing the tool. Full tool-calling round-trip.
 
 No tool-call malformation or stall surfaced in this run. (The open #6310/#6319
-serving issues, owned by another agent, did not block this smoke; if a tool loop
+serving issues, owned by another agent, did not block this smoke. If a tool loop
 ever stalls, that is the lane to check, and a stall must be reported honestly,
 not papered over.) This also covers the spirit of #6305 — OpenCode → Khala is
 verified end-to-end with tool calling.
 
 ### Hermes (Nous hermes-agent) — VERIFIED (one-shot + tool loop)
 
-Hermes routes Khala through its `custom` provider (config-only; not a
+Hermes routes Khala through its `custom` provider (config-only, not a
 `--provider` CLI choice). Ran in an isolated `HERMES_HOME` so the owner's real
 Hermes install was untouched, with config:
 
@@ -153,7 +153,7 @@ verified set. Their recipes remain in
 [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md) as #6240
 reference. (For the record: during exploration before the descope, Aider's CLI
 applied a real edit through Khala and LiteLLM's direct Python SDK completion,
-streaming, and tool calling all worked; Cline/Continue are VS Code GUI
+streaming, and tool calling all worked. Cline/Continue are VS Code GUI
 extensions and were never smoked headless. None of this is claimed as #6306
 verification.)
 

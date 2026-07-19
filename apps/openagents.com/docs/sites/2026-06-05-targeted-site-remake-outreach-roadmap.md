@@ -104,9 +104,9 @@ target prospect
 Use Exa for target identification and enrichment:
 
 - find law firms or other verticals by geography, size, practice area,
-  technology signal, ranking, or weak website signal;
+  technology signal, ranking, or weak website signal.
 - enrich known targets with site URLs, snippets, likely pages, and source
-  cards;
+  cards.
 - dedupe against CRM contacts, suppression records, previous outreach,
   active customers, and blocked domains.
 
@@ -117,34 +117,34 @@ the only capture source for assets, screenshots, or full-page source packs.
 
 Start cheap:
 
-- fetch `/robots.txt`, sitemaps, homepage, and selected internal pages;
-- use strict URL normalization and same-origin asset graph tracking;
+- fetch `/robots.txt`, sitemaps, homepage, and selected internal pages.
+- use strict URL normalization and same-origin asset graph tracking.
 - use `HTMLRewriter` or structured HTML parsing to extract titles, metadata,
   headings, CTAs, links, images, logos, OpenGraph images, service pages,
   attorney/team pages, contact data, schema.org data, and basic technical
-  markers;
+  markers.
 - store normalized HTML, extracted text, link graph, asset manifest, source
-  hashes, response headers, and failure reasons;
-- avoid downloading large media by default; store refs and fetch thumbnails or
+  hashes, response headers, and failure reasons.
+- avoid downloading large media by default. Store refs and fetch thumbnails or
   review-safe assets only when needed.
 
 This is where custom Rust can be useful later: fast URL normalization,
 MIME/type sniffing, sitemap parsing, HTML extraction, dedupe, image hashing,
 archive packing, and batch analysis. Rust is less compelling as the primary
-browser runner; keep browser execution in Browser Run or a managed browser
+browser runner. Keep browser execution in Browser Run or a managed browser
 pool unless a very specific cost or control case appears.
 
 ### Rendered Capture
 
 Escalate to Cloudflare Browser Run when static capture is insufficient:
 
-- `/snapshot` for rendered HTML plus screenshot;
-- `/content` for rendered HTML;
-- `/markdown` for clean page text;
-- `/links` for rendered link discovery;
-- `/json` for structured extraction when a schema is known;
+- `/snapshot` for rendered HTML plus screenshot.
+- `/content` for rendered HTML.
+- `/markdown` for clean page text.
+- `/links` for rendered link discovery.
+- `/json` for structured extraction when a schema is known.
 - `/crawl` for bounded multi-page capture with depth, page limits, and
-  include/exclude paths;
+  include/exclude paths.
 - Puppeteer, Playwright, CDP, or Stagehand for multi-step pages, responsive
   checks, consent banner handling, or screenshot comparison.
 
@@ -158,13 +158,13 @@ the provider returns it.
 Containers should not be the default for prospect capture or preview. They make
 sense only when the job requires:
 
-- custom Chromium or Playwright dependencies that Browser Run cannot provide;
-- long-running crawl state or heavyweight post-processing;
+- custom Chromium or Playwright dependencies that Browser Run cannot provide.
+- long-running crawl state or heavyweight post-processing.
 - sidecar models, OCR, image analysis, or PDF extraction that does not fit a
-  Worker;
-- high-value targets where the user approved paid capture;
+  Worker.
+- high-value targets where the user approved paid capture.
 - customer-owned sites where the customer has explicitly permitted deeper
-  capture;
+  capture.
 - repeatable benchmark runs where environment control matters.
 
 For internal sales experiments, pass this cost to the campaign budget. For
@@ -175,26 +175,26 @@ recoverable `402` path before the heavy runner starts.
 
 The site audit should classify:
 
-- outdated visual design;
-- mobile/responsive problems;
-- poor information architecture;
-- weak local SEO and metadata;
-- missing or unclear CTAs;
+- outdated visual design.
+- mobile/responsive problems.
+- poor information architecture.
+- weak local SEO and metadata.
+- missing or unclear CTAs.
 - missing trust signals such as reviews, attorney bios, credentials, case
-  results where appropriate, office location, and consultation flow;
-- low-quality hero imagery or generic stock feel;
-- page speed and basic Core Web Vitals risk signals;
-- accessibility issues detectable from static/rendered HTML;
-- stale copyright dates, broken links, mixed content, and CMS markers;
+  results where appropriate, office location, and consultation flow.
+- low-quality hero imagery or generic stock feel.
+- page speed and basic Core Web Vitals risk signals.
+- accessibility issues detectable from static/rendered HTML.
+- stale copyright dates, broken links, mixed content, and CMS markers.
 - legal-sensitive claims that require human review.
 
 The remake brief should include:
 
-- source refs for every reused image or copied text span;
-- a public-safe source authority pack;
-- captured screenshots of the original site;
-- a concise diagnosis of what the preview improves;
-- a generation plan for a concept Site;
+- source refs for every reused image or copied text span.
+- a public-safe source authority pack.
+- captured screenshots of the original site.
+- a concise diagnosis of what the preview improves.
+- a generation plan for a concept Site.
 - constraints that prevent deceptive, defamatory, or unauthorized claims.
 
 For law firms, never generate legal advice, unverifiable success claims, fake
@@ -213,13 +213,13 @@ https://sites.openagents.com/concepts/<campaign>/<target-slug>
 
 Outreach must run through the typed `EmailService` boundary:
 
-- no direct ad hoc SMTP sends;
+- no direct ad hoc SMTP sends.
 - every send has idempotency, campaign ref, target ref, preview ref, template
-  version, suppression check, unsubscribe link, and redacted delivery attempt;
-- outreach only starts after operator approval for v0;
+  version, suppression check, unsubscribe link, and redacted delivery attempt.
+- outreach only starts after operator approval for v0.
 - the email should include the preview link, short value proposition, meeting
   link, sender identity, postal/contact information where required, and
-  unsubscribe/preference controls;
+  unsubscribe/preference controls.
 - bounces, spam complaints, unsubscribes, and replies must update campaign
   state before another send.
 
@@ -234,14 +234,14 @@ This lane depends directly on the open email issues:
 After the internal operator lane works, expose scoped tools for users and
 agents:
 
-- create a prospect campaign;
-- add target URLs or request Exa target discovery;
-- set geography, vertical, budget, daily send cap, and do-not-contact rules;
-- run dry-run capture and audit;
-- approve remake brief;
-- generate preview;
-- approve outreach;
-- track opens, clicks, meetings, replies, conversions, and accepted outcomes;
+- create a prospect campaign.
+- add target URLs or request Exa target discovery.
+- set geography, vertical, budget, daily send cap, and do-not-contact rules.
+- run dry-run capture and audit.
+- approve remake brief.
+- generate preview.
+- approve outreach.
+- track opens, clicks, meetings, replies, conversions, and accepted outcomes.
 - delegate tasks to owned agents with spend caps, scopes, and receipts.
 
 The future "freelancer army" path should be modeled as accepted outcomes, not
@@ -257,7 +257,7 @@ Short-term internal operator lane:
 | --- | --- | --- |
 | OPENAGENTS-SITES-OUTREACH-001 | Add targeted Site campaign and prospect schema | Implemented in #181. Campaigns and prospects are durable in D1 with deduped domains, public-safe contact refs, suppression/capture/review states, source refs, confidence, budget refs, owner/operator refs, and repository tests. |
 | OPENAGENTS-SITES-OUTREACH-002 | Add Exa-backed prospect discovery planner | Implemented in #182. Operators can plan bounded Exa company searches by vertical/geography/signal, review public-safe source cards, run dry-run discovery, and persist deduped prospect candidates through the #181 repository. |
-| OPENAGENTS-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. Capture policy events classify allowed, disallowed, blocked, manual-review, customer-owned, suppressed, and paid-escalation states; only allowed and paid-escalation records are fetchable, and projections redact suppression/contact/provider/payment/bypass material. |
+| OPENAGENTS-SITES-OUTREACH-003 | Add respectful capture policy and robots/suppression gates | Implemented in #183. Capture policy events classify allowed, disallowed, blocked, manual-review, customer-owned, suppressed, and paid-escalation states. Only allowed and paid-escalation records are fetchable, and projections redact suppression/contact/provider/payment/bypass material. |
 | OPENAGENTS-SITES-OUTREACH-004 | Add static site capture and asset graph service | Implemented in #184. Static capture runs require a fetchable #183 policy event, normalize same-origin homepage/page/asset refs, bound source-pack metadata and response summaries, and project only public/operator-safe capture state. |
 | OPENAGENTS-SITES-OUTREACH-005 | Add Browser Run rendered capture service | Implemented in #185. Rendered capture runs require a fetchable #183 policy event, optionally link to static capture, store Browser Run-style output refs and bounded usage summaries, and block bot-protection/login-wall output capture. |
 | OPENAGENTS-SITES-OUTREACH-006 | Add capture provider adapter boundary | Implemented in #186. Provider adapter runs record first-party Worker, Browser Run, Firecrawl, Browserless, Browserbase, Apify, or Container fallback/benchmark refs, require fetchable capture policy, require paid-escalation evidence for paid fallback, and redact raw payloads. |

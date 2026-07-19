@@ -49,7 +49,7 @@ Dataset boundaries:
 Evaluation boundaries:
 
 - Answer-mode and agentic patch-mode evaluation are both required for MVP.
-  Answer mode tests source-grounded codebase understanding; patch mode tests
+  Answer mode tests source-grounded codebase understanding. Patch mode tests
   tool-loop repo editing with budgets, tests, patches, and closeouts.
 - Candidate agents must not see private gold answers or private rubrics.
   Scorers may see scorer-visible gold, rubric, and evidence material.

@@ -25,7 +25,7 @@ behind the same `generateSarahGemmaReply` / `streamSarahGemmaReply` contract:
 Preserved on both transports:
 
 - **Streaming with fast first byte** — gateway deltas are forwarded
-  frame-by-frame off the gateway's pass-through stream; the avatar brain's
+  frame-by-frame off the gateway's pass-through stream. The avatar brain's
   immediate role-chunk + keepalive behavior in `llm-openai-compat.ts` is
   untouched.
 - **Thought filtering** — the gateway's Gemma 4 adapter already strips
@@ -33,17 +33,17 @@ Preserved on both transports:
   separate `reasoning_content` delta channel. Sarah reads ONLY
   `delta.content` / `message.content`, so scratchpad text cannot surface on
   either transport (tested).
-- **Deterministic pricing guard** — upstream of the model on every path;
+- **Deterministic pricing guard** — upstream of the model on every path.
   not touched by this change.
 - **Typed errors** — gateway errors are `gateway_inference_http_{status}` /
   `gateway_inference_timeout` / `gateway_inference_unreachable` /
-  `gateway_inference_empty_reply`; callers classify busy-vs-broken via
+  `gateway_inference_empty_reply`. Callers classify busy-vs-broken via
   `isSarahInferenceBusyError`.
 - **Exact-only usage** — non-streaming usage maps from the gateway's
-  provider-reported `usage`; `thoughtTokens` is the exact reconciliation gap
+  provider-reported `usage`. `thoughtTokens` is the exact reconciliation gap
   `total − (prompt + completion)` (the same `unaccountedTokens` derivation
   the gateway telemetry discloses). Streaming usage reads the terminal
-  chunk's `openagents.telemetry` token counts; `not_measured` sentinels
+  chunk's `openagents.telemetry` token counts. `not_measured` sentinels
   degrade to 0, never an estimate.
 
 ## Receipts / attribution
@@ -68,7 +68,7 @@ own/internal demand with receipts, never a metering bypass.
 `SARAH_TEXT_DAILY_TOKEN_CAP` (unset = no-op): a process-local UTC-day
 counter of provider-reported total tokens (exact-only, both transports).
 Once reached, calls refuse with the typed
-`sarah_daily_token_cap_exceeded` BEFORE any provider call; callers surface
+`sarah_daily_token_cap_exceeded` BEFORE any provider call. Callers surface
 the canned busy reply. Best-effort by design — the authoritative ledger is
 `token_usage_events`.
 
@@ -83,7 +83,7 @@ the canned busy reply. Best-effort by design — the authoritative ledger is
    - grant the account internal credits, or
    - use the operator exemption (`INFERENCE_OPERATOR_EXEMPTION_ENABLED` +
      owner grant, `inference-operator-exemption.ts`) — honest
-     `operator_credit` zero-debit receipts; allowed because
+     `operator_credit` zero-debit receipts. Allowed because
      `openagents/khala`'s conversational lanes are non-premium classes.
 3. Set on apps/sarah (staging):
    - `SARAH_INFERENCE_GATEWAY_URL=https://<staging-host>/api/v1`
@@ -91,8 +91,8 @@ the canned busy reply. Best-effort by design — the authoritative ledger is
    - optional `SARAH_INFERENCE_GATEWAY_MODEL` (default `openagents/khala`)
    - optional `SARAH_TEXT_DAILY_TOKEN_CAP`
 4. Verify: `GET /sarah/api/ops` shows
-   `modelPath: khala_gateway_live:openagents/khala`; run a text turn and a
-   streaming avatar turn; confirm a `token_usage_events` row with
+   `modelPath: khala_gateway_live:openagents/khala`. Run a text turn and a
+   streaming avatar turn. Confirm a `token_usage_events` row with
    `demand_kind=internal`, `demand_source=sarah` per turn and that first-byte
    latency on the avatar lane stays fast under sustained speech (no
    429-storm fallbacks).
@@ -121,14 +121,14 @@ The durable fix is the **persona-neutral internal model id**
 - **Zero persona conditioning** — no identity / refusal-posture /
   response-discipline / capability-truth system prompts are injected, and the
   Khala signature guard never runs. Sarah's own system prompt is the only
-  conditioning; the completion returns verbatim (`isKhalaModel` keeps gating
-  persona; the neutral id is deliberately outside it).
+  conditioning. The completion returns verbatim (`isKhalaModel` keeps gating
+  persona. The neutral id is deliberately outside it).
 - **Internal-only** — served exclusively to `INFERENCE_INTERNAL_ACCOUNT_REFS`
-  accounts; everyone else gets `model_unavailable`. Never listed in
+  accounts. Everyone else gets `model_unavailable`. Never listed in
   `/v1/models`, never quotable, absent from the pricing table.
 - **Authoritative caps** — `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`
   (`accountRef=tokens`) bounds Sarah's per-UTC-day served tokens gateway-side
-  (5M/day on both envs); over the cap the balance gate answers 402, which
+  (5M/day on both envs). Over the cap the balance gate answers 402, which
   Sarah maps to the busy reply. The process-local
   `SARAH_TEXT_DAILY_TOKEN_CAP` stays a best-effort client guard.
 - **Typed fallback visibility** — the gateway receipt's

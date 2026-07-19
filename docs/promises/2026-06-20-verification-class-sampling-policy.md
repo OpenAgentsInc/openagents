@@ -15,14 +15,14 @@ single incorrect or dishonest contribution can hide inside a batch that passes
 in aggregate, which violates the verify-by-replay / trust-nothing posture.
 
 Aggregate commitments (Merkle roots, batch digests) are still used as the
-*commitment* layer; the change is that **acceptance/reward is gated on
+*commitment* layer. The change is that **acceptance/reward is gated on
 per-contribution sample challenges**, not on the aggregate check alone.
 
-## Per-class sample rates (defaults; tunable knobs to balance rigor vs validator cost)
+## Per-class sample rates (defaults, tunable knobs to balance rigor vs validator cost)
 
 | Class | Default per-contribution sample rate | Notes |
 |---|---|---|
-| `exact_trace_replay` | **1.0** (every contribution) | Cheapest grade; already exercised per-contributor across 5 distinct paid contributors on `run.tassadar.executor.20260615` (5 Verified challenges, 5 settlements). |
+| `exact_trace_replay` | **1.0** (every contribution) | Cheapest grade. Already exercised per-contributor across 5 distinct paid contributors on `run.tassadar.executor.20260615` (5 Verified challenges, 5 settlements). |
 | `deterministic_recompute` | 0.25 of shards | Re-run a sampled shard exactly (tokenizer/BPE, A4 filters, reward grading). |
 | `freivalds_merkle` | per-step probabilistic + 0.20 per-contribution | Matrix work: row-opening Freivalds check per challenged contribution, not batch-only. |
 | `statistical_cross_check` | 0.15 | Benchmarks. |

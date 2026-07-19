@@ -20,8 +20,8 @@ Product Promises registry.
 
 ## Conventions
 
-- **Receipt-first.** If a claim can't be verified, we say so. Each answer separates
+- **Receipt-first.** If a claim cannot be verified, we say so. Each answer separates
   "built and working today" from "being proven live" from "on the roadmap."
-- **Link the source.** Answers cite the in-repo docs they're drawn from so a reader
+- **Link the source.** Answers cite the in-repo docs they are drawn from so a reader
   (human or agent) can check the work.
 - Add a new entry as its own Markdown file here and link it from the list above.

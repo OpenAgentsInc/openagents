@@ -30,12 +30,12 @@ INERT seam that builds + verifies the ONE composed-run receipt SHAPE from a plan
 its execution:
 
 - binds, per component, the **surface** receipt ref (from the plan envelope) to the
-  **settlement** receipt ref (from the execution charge);
+  **settlement** receipt ref (from the execution charge).
 - proves the plan and execution describe the SAME components 1:1 by `componentRunId`
-  (no plan component dropped, no execution charge orphaned, no duplicates);
-- proves the run id / envelope ref are consistent and there are ≥ 2 components;
+  (no plan component dropped, no execution charge orphaned, no duplicates).
+- proves the run id / envelope ref are consistent and there are ≥ 2 components.
 - reconciles `composedSpendMsat` to the sum of the per-component charges (the "one
-  balance" debit reconciles to the components it composes);
+  balance" debit reconciles to the components it composes).
 - emits a public-safe projection that carries both ref layers but **no amounts,
   idempotency keys, or destinations**, and honestly marks the receipt
   `billed: false`, `settled: false`, `inert: true`.
@@ -54,19 +54,19 @@ whether a composed-run receipt's evidence satisfies the bar, and whether the who
 set would clear
 `blocker.product_promises.autopilot_business_system_real_business_receipt_missing`:
 
-- composes ≥ 2 distinct primitives (the all-in-one invariant);
-- one shared balance ref;
-- composed spend reconciles to the sum of component charges;
-- every component charge actually billed (settled against the ledger);
-- revenue settled where it applies (or no revenue applies);
-- owner sign-off transition receipt recorded (`proof.claim_upgrade_receipts.v1`);
+- composes ≥ 2 distinct primitives (the all-in-one invariant).
+- one shared balance ref.
+- composed spend reconciles to the sum of component charges.
+- every component charge actually billed (settled against the ledger).
+- revenue settled where it applies (or no revenue applies).
+- owner sign-off transition receipt recorded (`proof.claim_upgrade_receipts.v1`).
 - demand provenance is external market, not internal first-party plumbing
   (`proof.demand_provenance.v1`).
 
 It DECIDES NOTHING IRREVERSIBLE: it flips no promise, drops no blocker, and moves
 no money — acting on a `true` result stays an owner-gated step outside the module.
 `inertReceiptGateEvidence(receipt)` derives the honest status-quo evidence for the
-current inert receipt; the gate returns `clearsBlocker: false` and names the unmet
+current inert receipt. The gate returns `clearsBlocker: false` and names the unmet
 criteria (components not billed, no owner sign-off, demand not external market).
 
 Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-gate.test.ts`
@@ -79,7 +79,7 @@ receipt fails the composition criterion.
 `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-manifest.ts` —
 a PURE, INERT manifest that turns each acceptance-gate criterion into the concrete,
 dereferenceable EVIDENCE a real armed run must produce. The gate decides whether
-supplied evidence clears the blocker; it does not say WHERE each piece of evidence
+supplied evidence clears the blocker. It does not say WHERE each piece of evidence
 comes from. The manifest closes that gap: per criterion it records the evidence
 field(s) the gate reads, the governing ref (an existing proof primitive, e.g.
 `proof.claim_upgrade_receipts.v1` / `proof.demand_provenance.v1`, or the real
@@ -91,7 +91,7 @@ It is keyed by the gate's own `RealBusinessReceiptCriterionId` union, so TypeScr
 enforces the manifest stays 1:1 with the gate — you cannot add a gate criterion
 without adding its evidence requirement (and vice versa). Helpers:
 `unmetEvidenceRequirements(result)` maps a gate result's unsatisfied criteria to the
-artifacts still owed; `reconcileManifestWithGate(result)` proves alignment at
+artifacts still owed. `reconcileManifestWithGate(result)` proves alignment at
 runtime. It DECIDES NOTHING IRREVERSIBLE: flips no promise, drops no blocker, moves
 no money.
 
@@ -105,7 +105,7 @@ governing proof primitives, and fully-armed evidence owes no outstanding artifac
 `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-readiness.ts` —
 a PURE module that produces the ONE reviewer-facing artifact joining the two
 upstream halves. The gate answers "does this evidence satisfy each criterion?"
-(satisfied + detail); the manifest answers "WHERE does each criterion's evidence
+(satisfied + detail). The manifest answers "WHERE does each criterion's evidence
 come from / what artifact must a real run produce?" (governingRef +
 requiredArtifact). Neither alone is the single thing a reviewer (or a future armed
 run) reads to see, in one ordered list: per criterion, whether it currently holds,
@@ -117,7 +117,7 @@ each criterion to its manifest requirement, projects a public-safe receipt conte
 (refs only — no amounts, idempotency keys, or destinations), and reports the
 satisfied/total tally, the outstanding artifacts, and the overall verdict. It
 INTRODUCES no new pass/fail rule — `clearsBlocker` mirrors the gate exactly. It
-DECIDES NOTHING IRREVERSIBLE: flips no promise, drops no blocker, moves no money;
+DECIDES NOTHING IRREVERSIBLE: flips no promise, drops no blocker, moves no money.
 a `true` verdict is a REPORT, not an action. `inertReadinessReport(receipt)`
 renders the honest status quo (not billed, no owner sign-off, internal first-party
 demand): verdict `clearsBlocker: false`, naming the outstanding artifacts with
@@ -174,7 +174,7 @@ the accepted-outcome totals to the gate's union: `external_market` when the surf
 permits the external-demand claim, `internal_first_party` when only internal
 first-party outcomes exist (plumbing proof, not market proof), `unknown` when
 nothing is labeled. `demandProvenanceSignalFromProjection(projection)` lifts a live
-`DemandProvenanceProjection` into the narrow public-safe signal;
+`DemandProvenanceProjection` into the narrow public-safe signal.
 `withDerivedDemandProvenance(evidence, signal)` rebinds gate evidence's
 `demandProvenance` from the surface — overwriting any hand-asserted value. It
 INTRODUCES no new demand rule (it honors the projection's) and DECIDES NOTHING
@@ -198,4 +198,4 @@ balance and a dereferenceable receipt shows the composed usage actually **billed
 (and, where revenue applies, **settled**) — with owner sign-off per
 `proof.claim_upgrade_receipts.v1` and demand provenance per
 `proof.demand_provenance.v1` (internal first-party use is plumbing proof, not market
-proof). No promise state was changed; no blocker was dropped.
+proof). No promise state was changed. No blocker was dropped.

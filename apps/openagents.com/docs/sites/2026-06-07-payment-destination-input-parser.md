@@ -23,16 +23,16 @@ settlement, or dispatch authority.
 
 The current Worker-safe boundary classifies:
 
-- BOLT11 invoices;
-- BOLT12 offers;
-- LNURL payloads;
-- Lightning Addresses;
-- BIP353-style human-readable names;
-- `bitcoin:` URI payloads;
-- on-chain addresses when that input type is enabled;
-- Cashu payment requests when that input type is enabled;
-- unsupported formats;
-- malformed Lightning-like formats; and
+- BOLT11 invoices.
+- BOLT12 offers.
+- LNURL payloads.
+- Lightning Addresses.
+- BIP353-style human-readable names.
+- `bitcoin:` URI payloads.
+- on-chain addresses when that input type is enabled.
+- Cashu payment requests when that input type is enabled.
+- unsupported formats.
+- malformed Lightning-like formats. And
 - ambiguous pasted inputs that contain multiple candidate destination types.
 
 LNURL, Lightning Address, and BIP353-style inputs are marked as requiring
@@ -58,12 +58,12 @@ customer dashboards.
 
 They should store and display only:
 
-- payment destination kind;
-- method refs;
-- network hint;
-- redacted destination ref;
-- resolution-required state;
-- approval-required state; and
+- payment destination kind.
+- method refs.
+- network hint.
+- redacted destination ref.
+- resolution-required state.
+- approval-required state. And
 - checkout/action policy refs.
 
 A parsed destination is not enough to charge, tip, boost, fund, or pay. Site

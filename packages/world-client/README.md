@@ -4,7 +4,7 @@ Effect client for the Cloudflare Verse World protocol.
 
 This package is the only client seam desktop and web should import for Verse
 world state. It speaks the Cloudflare Worker + Region Durable Object protocol
-defined by `@openagentsinc/world-contract`; it has no backend-kind union and no
+defined by `@openagentsinc/world-contract`. It has no backend-kind union and no
 legacy generated binding import.
 
 ## API
@@ -23,7 +23,7 @@ legacy generated binding import.
 - `projectWorldMinimapReadout(input)` projects a `WorldReadModel` into
   minimap markers, compass coordinates, and a region/subzone readout. Pylons,
   run cores, assignment markers, and remote avatars all come from the same
-  read model that the 3D scene consumes; subzone labels keep a small hysteresis
+  read model that the 3D scene consumes. Subzone labels keep a small hysteresis
   band to avoid boundary flicker.
 
 `applyDeltaToReadModel` preserves absent-means-unchanged semantics, prunes

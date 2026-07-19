@@ -7,7 +7,7 @@ not sign in, run an agent, inspect private threads, read user configuration or
 credentials, connect an IDE, start a runner, create an Orb, or exercise a paid
 model or tool.
 
-## TL;DR
+## TL.DR
 
 Amp is no longer best understood as a terminal coding agent. It is a
 **model-routed, cloud-backed thread system whose local CLI is both a client and
@@ -42,14 +42,14 @@ RivetKit actor and workflow packages, WebSocket and gRPC clients, Commander,
 MCP, a native keyring binding, telemetry, update code, and the CLI/TUI product.
 The payload is inspectable, not encrypted, but it is not public source with
 history, tests, readable module boundaries, or a license permitting the core to
-be treated as open. Amp's former public-looking repository URL returns 404;
+be treated as open. Amp's former public-looking repository URL returns 404.
 the current npm CLI packages distribute wrappers and prebuilt executables.
 [cli-binary] [registry] [limitation]
 
 Amp's strongest product idea is the thread fabric. A long thread remains a
-searchable source record even after compaction; other threads can reference it;
+searchable source record even after compaction. Other threads can reference it.
 `read_thread` searches the original history and distinguishes attempts from
-later outcomes; queue, steer, and force-interrupt are separate user actions;
+later outcomes. Queue, steer, and force-interrupt are separate user actions.
 and web/mobile review deepens the same work rather than starting another chat.
 OpenAgents should adapt that shape: durable work history should be remotely
 controllable, semantically searchable, and readable by bounded agents without
@@ -61,7 +61,7 @@ Its strongest negative lessons are equally concrete:
   external isolation for untrusted workspaces. Permission rules are
   authorization callbacks, not demonstrated OS containment. [public]
 - Threads are a cloud data substrate. They may retain messages, model output,
-  tool calls/results, attachments, and snippets or entire files; workspace
+  tool calls/results, attachments, and snippets or entire files. Workspace
   defaults and administrator visibility materially affect privacy. [public]
 - The same extension plane can add executable tools, lifecycle continuation,
   selectable modes, and subagents. Public types are not evidence of process,
@@ -78,13 +78,13 @@ Its strongest negative lessons are equally concrete:
   coherent product strategy, but it makes protocols, settings, plugins, docs,
   and saved work compatibility a first-class risk. [public]
 - Core load-bearing behavior remains closed. The bundle can establish shipped
-  client branches and dependencies; it cannot prove server authorization,
+  client branches and dependencies. It cannot prove server authorization,
   actor durability, exactly-once admission, model routing, deletion, training,
   retention, or isolation. [limitation]
 
 The central OpenAgents decision is: **adapt Amp's durable, cross-surface thread
 fabric, semantic history reading, explicit steer/queue distinction, and
-specialist-agent composition; reject cloud transcript authority, default-open
+specialist-agent composition. Reject cloud transcript authority, default-open
 execution, opaque durability, unsigned release authority, and extension-driven
 privilege amplification.**
 
@@ -94,15 +94,15 @@ privilege amplification.**
 
 | Artifact | Exact identity | What it establishes |
 | --- | --- | --- |
-| Installed CLI | `0.0.1784247472-g76909f`; release timestamp `2026-07-17T00:17:52Z`; macOS arm64 | Shipped command surface, embedded runtime, package fingerprints, strings, linkage, and local release posture |
+| Installed CLI | `0.0.1784247472-g76909f`. Release timestamp `2026-07-17T00:17:52Z`. MacOS arm64 | Shipped command surface, embedded runtime, package fingerprints, strings, linkage, and local release posture |
 | Installed CLI digest | SHA-256 `521a9473876d488a5f05f9ea8fca20c9686d3321422dea5f3f0283576f4d9bdc` | Exact local binary audited here |
-| Installed CLI size | 71,256,290 bytes; Mach-O UUID `C7E7A979-F99B-3466-9AD6-E56A63373A35` | Exact artifact and platform identity |
+| Installed CLI size | 71,256,290 bytes. Mach-O UUID `C7E7A979-F99B-3466-9AD6-E56A63373A35` | Exact artifact and platform identity |
 | Direct installer | `https://ampcode.com/install.sh`, read 2026-07-16 | Version selection, platform detection, checksum, signature, install, and PATH behavior |
-| npm CLI packages | `@ampcode/cli@0.0.1784247472-g76909f` and `@ampcode/cli-darwin-arm64@0.0.1784247472-g76909f` | Wrapper/postinstall and platform-binary distribution; no core source |
+| npm CLI packages | `@ampcode/cli@0.0.1784247472-g76909f` and `@ampcode/cli-darwin-arm64@0.0.1784247472-g76909f` | Wrapper/postinstall and platform-binary distribution. No core source |
 | Legacy npm alias | `@sourcegraph/amp@0.0.1784247472-g76909f` | 630-byte rename shell pointing users to `@ampcode/cli` |
 | TypeScript SDK | `@ampcode/sdk@0.1.0-20260605144103-g77da114` | Published execution/thread/permission wrapper, declarations, and compatibility code under the Amp Commercial License |
 | Plugin API | `@ampcode/plugin@0.0.0-20260717002806-g76909f1` | 42 KB public type contract for tools, events, UI, threads, modes, and agents |
-| Public Neovim bridge | `ampcode/amp.nvim`, read 2026-07-16 | Current inspectable editor-bridge behavior; not the Amp engine |
+| Public Neovim bridge | `ampcode/amp.nvim`, read 2026-07-16 | Current inspectable editor-bridge behavior. Not the Amp engine |
 | Manual, models, Chronicle, security, and privacy pages | read 2026-07-16 | Current intended product behavior, provider/data disclosures, pricing, and product-change history |
 
 The version's numeric prefix corresponds to a UTC release instant that falls
@@ -120,17 +120,17 @@ installer artifact. [registry] [limitation]
 ### 1.2 Evidence labels
 
 - **`[cli-binary]`** — static evidence from the installed Mach-O, embedded Bun
-  bundle, command help, or version output;
+  bundle, command help, or version output.
 - **`[runtime]`** — observed macOS verification or isolated non-agent command
-  behavior;
-- **`[installer]`** — the current official direct-install shell script;
+  behavior.
+- **`[installer]`** — the current official direct-install shell script.
 - **`[registry]`** — current npm manifests, tarball inventories, integrity, or
-  published declarations;
-- **`[source]`** — current public source such as `amp.nvim`;
+  published declarations.
+- **`[source]`** — current public source such as `amp.nvim`.
 - **`[public]`** — Amp's current manual, model page, Chronicle, security,
-  privacy, pricing, or news pages;
+  privacy, pricing, or news pages.
 - **`[inferred]`** — a conclusion supported by multiple observations but not a
-  vendor claim; and
+  vendor claim. And
 - **`[limitation]`** — something the available artifacts cannot establish.
 
 ### 1.3 Audit boundary and limitations
@@ -155,7 +155,7 @@ Amp's current core is not open source. The repository URL present in published
 SDK metadata, `https://github.com/sourcegraph/amp`, returns 404 to the public.
 The May 2026 packaging announcement says the CLI changed from a JavaScript
 source package to a Bun-compiled single-file executable. The old npm package is
-now a tiny rename shell; `@ampcode/cli` is a wrapper plus platform-specific
+now a tiny rename shell. `@ampcode/cli` is a wrapper plus platform-specific
 binary packages. [public] [registry]
 
 The published surface divides into four different evidence classes:
@@ -184,7 +184,7 @@ product copy operationalizes those principles through four current modes—
 matrix. The model page separately routes review, search, Oracle, Librarian,
 thread reading, media, image generation, titling, and compaction. [public]
 
-The durable product concept is not the mode; it is the thread. Models and
+The durable product concept is not the mode. It is the thread. Models and
 features can be replaced while the thread URL, history, references, search,
 review, and remote control remain the collaboration object. That yields a
 distinct strategy:
@@ -199,8 +199,8 @@ user select providers. Amp promises the current product's judgment about the
 best composition and treats backward compatibility as a cost. [public]
 
 The strategy has real benefits. A specialist can be upgraded without migrating
-the visible thread format; web and mobile can review work without reimplementing
-the local tool loop; and the CLI can become a runner without inventing a second
+the visible thread format. Web and mobile can review work without reimplementing
+the local tool loop. And the CLI can become a runner without inventing a second
 job product. It also concentrates authority in changing server-side routing and
 closed compatibility decisions. A saved thread does not by itself prove which
 model, prompt, catalog, policy, provider retention mode, or execution generation
@@ -232,11 +232,11 @@ The direct script adds x64 baseline variants and selects arm64 under Rosetta.
 
 The direct installer:
 
-1. fetches `cli-version.txt` from `static.ampcode.com`;
-2. fetches the versioned checksum;
-3. fetches the versioned platform executable;
-4. compares SHA-256;
-5. makes the file executable; and
+1. fetches `cli-version.txt` from `static.ampcode.com`.
+2. fetches the versioned checksum.
+3. fetches the versioned platform executable.
+4. compares SHA-256.
+5. makes the file executable. And
 6. links it into a PATH directory, preferring `~/.local/bin`.
 
 It downloads into a temporary file before rename, which is good installation
@@ -268,10 +268,10 @@ does not carry working Apple Developer ID/notarization assurance. [runtime]
 
 The bundle includes RivetKit and agent-actor packages:
 
-- `rivetkit@0.0.0-fix-ws-size.7d55b4f`;
-- `@rivet-dev/agent-os-core` and `@rivet-dev/agent-os-pi`;
+- `rivetkit@0.0.0-fix-ws-size.7d55b4f`.
+- `@rivet-dev/agent-os-core` and `@rivet-dev/agent-os-pi`.
 - `@rivetkit/workflow-engine`, virtual WebSocket, engine protocol, traces, and
-  N-API/Wasm packages; and
+  N-API/Wasm packages. And
 - client routes for `/api/thread-actors` and `/api/user-actor-credentials`.
 
 Runtime messages describe opening a `threadActor` connection over WebSocket.
@@ -297,7 +297,7 @@ The likely responsibility split is:
 | Orb | Amp-managed remote machine and service/portal lifecycle |
 | Web/mobile | thread inspection, messaging/remote control, diff review/staging, sharing and collaboration |
 
-The table combines documented product behavior with client evidence; it is not
+The table combines documented product behavior with client evidence. It is not
 a recovered server deployment diagram. [public] [cli-binary] [inferred]
 
 ## 6. Threads, persistence, and work history
@@ -347,8 +347,8 @@ with causal and supersession context. [inferred]
 
 The interactive client distinguishes three follow-up intents:
 
-- normal send while busy queues until the current turn ends;
-- double Enter marks a steer for the next safe interruption point; and
+- normal send while busy queues until the current turn ends.
+- double Enter marks a steer for the next safe interruption point. And
 - double Escape stops current work and sends immediately.
 
 Streaming JSON input exposes the same steer bit programmatically. This is much
@@ -366,7 +366,7 @@ delivered/interrupted outcomes. [limitation]
 
 Visibility can be private, workspace, group, or unlisted. “Unlisted” is
 internet-readable to anyone with the link. Workspace members can receive
-workspace sharing by default; admins can govern defaults and external sharing.
+workspace sharing by default. Admins can govern defaults and external sharing.
 Private workspace threads remain visible to administrators under stated
 conditions, with passkey requirements for privileged viewing. [public]
 
@@ -409,7 +409,7 @@ verification or acceptance authority. [public] [inferred]
 
 Pricing is usage-based. The manual says individual and non-enterprise usage is
 passed through at provider/tool cost with zero markup, a $5 minimum purchase,
-and no subscription; unused credits expire after one year of inactivity.
+and no subscription. Unused credits expire after one year of inactivity.
 Enterprise usage is 50% higher and begins with a one-time $1,000 purchase that
 also grants $1,000 in credits. [public]
 
@@ -438,7 +438,7 @@ subagent executes each check. This is a clean way to turn team review criteria
 into parallel bounded analysis without bloating the main thread. [public]
 
 OpenAgents should adapt the manifest shape while preserving a stricter proof
-law. A check result is an observation bound to exact source and environment;
+law. A check result is an observation bound to exact source and environment.
 it is not a release verdict until admitted evidence satisfies an AssuranceSpec.
 Tool restriction in Markdown also needs enforcement evidence from the runtime,
 not just prompt/catalog selection. [inferred]
@@ -474,7 +474,7 @@ containment profile, egress, and generation into an exact catalog receipt.
 ### 9.2 Skills and lazy MCP
 
 Amp loads project and user Agent Skills, including compatible Claude Code skill
-locations. A skill can contain `mcp.json`; its server starts with Amp but its
+locations. A skill can contain `mcp.json`. Its server starts with Amp but its
 tools remain hidden until the skill is loaded. This reduces model-context noise
 without delaying process startup. [public]
 
@@ -493,13 +493,13 @@ sampling capabilities, launcher ecosystems, and retry logic. [public]
 
 Amp plugins are TypeScript and can:
 
-- subscribe to agent, tool, and lifecycle events;
-- allow, reject, ask about, or delegate tool calls;
-- append a follow-up and continue after an agent turn;
-- add commands and change their availability;
-- add tools and synchronized UI;
-- ask an Amp model for a policy judgment;
-- define selectable modes; and
+- subscribe to agent, tool, and lifecycle events.
+- allow, reject, ask about, or delegate tool calls.
+- append a follow-up and continue after an agent turn.
+- add commands and change their availability.
+- add tools and synchronized UI.
+- ask an Amp model for a policy judgment.
+- define selectable modes. And
 - create/run conversational agents on local, runner, or Orb executors.
 
 The API is inspired by pi's extension API, and the binary retains a direct link
@@ -509,7 +509,7 @@ synced UI above that pattern. [public] [cli-binary]
 The bundle names a plugin runtime and worker/process facilities, but public
 evidence does not establish a fail-closed OS sandbox or capability broker for
 plugin filesystem, network, process, credential, thread, spend, or UI access.
-TypeScript types constrain well-behaved callers; they do not contain hostile
+TypeScript types constrain well-behaved callers. They do not contain hostile
 code. [cli-binary] [limitation]
 
 ## 10. Permission, policy, and containment
@@ -548,14 +548,14 @@ or plugin startup timeout cannot convert policy into allow. [inferred]
 
 The same executable supports:
 
-- interactive TUI;
-- `-x/--execute` final-answer mode;
-- Claude Code-compatible stream JSON;
-- optional thinking blocks outside that compatibility schema;
-- multi-message JSONL input with explicit steer;
-- thread continuation and raw/Markdown/JSON export;
-- review mode;
-- runner-only `--no-tui` operation; and
+- interactive TUI.
+- `-x/--execute` final-answer mode.
+- Claude Code-compatible stream JSON.
+- optional thinking blocks outside that compatibility schema.
+- multi-message JSONL input with explicit steer.
+- thread continuation and raw/Markdown/JSON export.
+- review mode.
+- runner-only `--no-tui` operation. And
 - SDK-spawned execution.
 
 This is the right convergence: terminal, automation, and remote execution are
@@ -564,7 +564,7 @@ host modes over one thread product. [public] [cli-binary]
 ### 11.2 Stream JSON is a compatibility projection
 
 Amp intentionally approximates Claude Code's stream schema. Child messages use
-`parent_tool_use_id`; final result waits for children; thinking is an explicit
+`parent_tool_use_id`. Final result waits for children. Thinking is an explicit
 non-compatible extension. Compatibility reduces integration friction, but a
 foreign transcript schema should not become the canonical internal event
 algebra. Amp's richer thread actors, plugins, modes, placement, remote control,
@@ -599,7 +599,7 @@ editor while the agent loop stays in the CLI. [source]
 The general risk remains minimization. The CLI help says open IDE file and text
 selection are automatically included with every message when IDE integration
 is active. The serving bridge should enforce workspace bounds, selection caps,
-sensitive-file policy, peer identity, generation, and explicit visibility; a
+sensitive-file policy, peer identity, generation, and explicit visibility. A
 client-side filter after a same-user socket is not enough. This audit did not
 exercise or fully recover those boundaries for every supported editor.
 [cli-binary] [limitation]
@@ -623,7 +623,7 @@ dies after an external effect but before acknowledgment. [limitation]
 
 Any interactive TUI can accept remotely created work when the default-off
 `amp.remoteThreadCreation.enabled` setting is enabled. `amp --no-tui` starts a
-runner-only process in the current directory; a stable runner ID can target it.
+runner-only process in the current directory. A stable runner ID can target it.
 This turns an existing developer machine into a placement target without a
 separate daemon product. [public] [cli-binary]
 
@@ -638,7 +638,7 @@ remote command is admitted.
 Orbs are Amp-managed remote machines. The CLI manages portal URLs, long-lived
 systemd services declared in `.amp/services.yaml`, health, logs, pause/resume,
 and short-lived audience-bound OIDC tokens. This is more than “run the CLI over
-SSH”; it is a managed agent-computer product with service lifecycle. [public]
+SSH”. It is a managed agent-computer product with service lifecycle. [public]
 
 The public security page names E2B as a sandbox subprocessor that sees code when
 sandboxes are used. It does not publish an Orb image, attestation, isolation,
@@ -652,7 +652,7 @@ enough to treat an Orb as verified containment. [public] [limitation]
 Amp says its service does not clone, index, or store an entire codebase as a
 standing corpus. It also says a thread can store snippets or entire files used
 as context, messages, model responses, tool results, and attachments. Multiple
-model providers receive partial code; E2B sees code for sandbox use; Pierre
+model providers receive partial code. E2B sees code for sandbox use. Pierre
 stores Git repositories used for plugins/documents. These statements can all be
 true, but only if “repository copy,” “selected thread content,” and “plugin
 artifact repository” remain separate data classes. [public]
@@ -672,7 +672,7 @@ not only after opening a billing breakdown. [inferred]
 ### 14.3 Retention, ownership, and sharing
 
 The security reference says deleted thread data is removed within 30 days.
-Non-enterprise threads are deleted with account deletion under the policy;
+Non-enterprise threads are deleted with account deletion under the policy.
 enterprise workspace threads belong to the enterprise and persist when a user
 leaves. Joining a workspace with the same account can place existing personal
 threads under workspace visibility unless the user separates accounts or
@@ -691,7 +691,7 @@ binding and recognizes API and MCP secret classes. Documentation says the
 client makes a best effort to avoid known sensitive files and uses low-level
 secret-pattern redaction before thread/cache/provider/server transmission, but
 nonstandard, encoded, obfuscated, or unknown secrets may pass through. A leaked
-secret must be rotated; changing thread visibility does not erase it from the
+secret must be rotated. Changing thread visibility does not erase it from the
 service. [public] [cli-binary]
 
 This is appropriately candid. Pattern redaction is a last defense, not a
@@ -710,7 +710,7 @@ the exact Amp telemetry opt-out behavior. [cli-binary] [limitation]
 Amp says its internal application audit logs are retained at least 30 days and
 are available to enterprise customers on request, while thread history itself
 acts as an audit trail for prompts, model output, tools, and attachments. A
-transcript is useful forensic evidence; it is not an admitted effect receipt or
+transcript is useful forensic evidence. It is not an admitted effect receipt or
 proof that the recorded tool outcome matches external state. [public]
 
 ## 15. Product change velocity and compatibility risk
@@ -718,12 +718,12 @@ proof that the recorded tool outcome matches external state. [public]
 The Chronicle is unusually direct about removal. Recent changes killed or
 replaced:
 
-- the old editor extension;
-- Amp Tab completion;
-- discoverable public threads;
-- slash/custom commands in favor of the palette and skills;
-- fork and TODO UI;
-- walkthrough; and
+- the old editor extension.
+- Amp Tab completion.
+- discoverable public threads.
+- slash/custom commands in favor of the palette and skills.
+- fork and TODO UI.
+- walkthrough. And
 - smart/deep/rush/large as primary modes, replaced by low/medium/high/ultra.
 
 At the same time Amp added actor-backed distributed agents, runners, Orbs,
@@ -734,7 +734,7 @@ This is evidence of real product focus, not merely instability. The risk is
 that durable work outlives rapidly changing control and extension surfaces.
 Every saved thread, plugin, SDK client, automation stream, permission rule,
 runner, and model mode needs explicit schema/component compatibility and a
-deprecation outcome. “No backcompat” is acceptable for a disposable experiment;
+deprecation outcome. “No backcompat” is acceptable for a disposable experiment.
 it is not by itself a recovery policy for enterprise work history. [inferred]
 
 ## 16. Security and architectural assessment
@@ -774,7 +774,7 @@ it is not by itself a recovery policy for enterprise work history. [inferred]
    disabled minisign, and a locally invalid ad-hoc signature are below the bar
    for an auto-updating privileged coding agent.
 5. **Mode names hide changing execution facts.** Quality routing is a product
-   strength; reproducibility and retention transparency suffer without exact
+   strength. Reproducibility and retention transparency suffer without exact
    receipts.
 6. **Workspace sharing changes the privacy unit.** A thread may be visible to
    teammates/admins even when the local repository's permissions suggest a
@@ -789,20 +789,20 @@ it is not by itself a recovery policy for enterprise work history. [inferred]
 
 | Concern | Amp | Closest or stronger reference | OpenAgents consequence |
 | --- | --- | --- | --- |
-| Core product unit | Cloud-backed searchable Thread | Codex Thread/Turn/Item; OpenCode V2 durable aggregate | Keep stable work identity but publish exact event/admission schemas |
-| Client convergence | CLI, stream, SDK, web/mobile, IDE, runner/Orb | Factory daemon clients; Codex app-server | One engine protocol, generated and public, across every host |
-| Durable remote execution | Actor/WebSocket thread fabric and runners | Factory daemon; OpenCode V2 managed service | Add leases, fencing, idempotency, replay, and observed receipts |
-| Queue versus steer | Explicit UI and JSONL semantics | OpenCode V2; T3 gap analysis | Adopt directly above durable command identities |
-| Very long history | Search-agent rereads originals after compaction | Claude JSONL; Codex JSONL+SQLite | Summaries orient; original accepted events remain evidence |
-| Model composition | Opinionated routing plus Oracle/specialists | T3 provider harness; Grok/Codex explicit model state | Route semantically but receipt exact model/provider/policy facts |
-| Subagents | Isolated, final-summary return, limited steering | Codex explicit agent graph; Claude sidechains | Preserve complete graph/transcripts and delivery state |
+| Core product unit | Cloud-backed searchable Thread | Codex Thread/Turn/Item. OpenCode V2 durable aggregate | Keep stable work identity but publish exact event/admission schemas |
+| Client convergence | CLI, stream, SDK, web/mobile, IDE, runner/Orb | Factory daemon clients. Codex app-server | One engine protocol, generated and public, across every host |
+| Durable remote execution | Actor/WebSocket thread fabric and runners | Factory daemon. OpenCode V2 managed service | Add leases, fencing, idempotency, replay, and observed receipts |
+| Queue versus steer | Explicit UI and JSONL semantics | OpenCode V2. T3 gap analysis | Adopt directly above durable command identities |
+| Very long history | Search-agent rereads originals after compaction | Claude JSONL. Codex JSONL+SQLite | Summaries orient. Original accepted events remain evidence |
+| Model composition | Opinionated routing plus Oracle/specialists | T3 provider harness. Grok/Codex explicit model state | Route semantically but receipt exact model/provider/policy facts |
+| Subagents | Isolated, final-summary return, limited steering | Codex explicit agent graph. Claude sidechains | Preserve complete graph/transcripts and delivery state |
 | Review fan-out | One subagent per Markdown check | OpenAgents Assurance Manifest lanes | Treat outputs as observations, not self-minted verdicts |
-| Plugins | Tools, events, UI, modes, agents, placement | OpenCode plugin generations; Executor authored functions | Immutable signed capability generations in isolation |
-| Permissions | Plugin rules; no approval by default | Codex sandbox/exec policy; Factory whole-process sandbox | Default fail-closed containment, separate from approval UX |
-| IDE | Narrow CLI bridge; large extension removed | Command Code bounded socket; OpenCode generated server client | Host-owned typed context with source-side minimization |
-| Remote work | Local runner, managed Orb, web/mobile control | T3 environments; Factory remote computers | Bind full WorkContext, authority, containment, and generation |
-| Persistence visibility | Server Postgres plus raw actor export | Codex local log/index; OpenCode V2 admission/replay/projection | Local portable evidence log beside optional sync |
-| Release | Bun binary, checksum, auto-update; invalid ad-hoc signature | T3/OpenCode build/update; OpenAgents signed manifest | Signed provenance, compatibility, staged activation, rollback |
+| Plugins | Tools, events, UI, modes, agents, placement | OpenCode plugin generations. Executor authored functions | Immutable signed capability generations in isolation |
+| Permissions | Plugin rules. No approval by default | Codex sandbox/exec policy. Factory whole-process sandbox | Default fail-closed containment, separate from approval UX |
+| IDE | Narrow CLI bridge. Large extension removed | Command Code bounded socket. OpenCode generated server client | Host-owned typed context with source-side minimization |
+| Remote work | Local runner, managed Orb, web/mobile control | T3 environments. Factory remote computers | Bind full WorkContext, authority, containment, and generation |
+| Persistence visibility | Server Postgres plus raw actor export | Codex local log/index. OpenCode V2 admission/replay/projection | Local portable evidence log beside optional sync |
+| Release | Bun binary, checksum, auto-update. Invalid ad-hoc signature | T3/OpenCode build/update. OpenAgents signed manifest | Signed provenance, compatibility, staged activation, rollback |
 | Learned preference | No Command Code-style evidence found | Command Code Taste | Do not mislabel thread retrieval as preference learning |
 | Change policy | Explicitly removes legacy surfaces | Grok/Claude/Codex compatibility layers | Delete aggressively only with state/plugin/protocol migrations |
 
@@ -812,11 +812,11 @@ it is not by itself a recovery policy for enterprise work history. [inferred]
 
 Build a bounded reader over exact thread/work-unit history that:
 
-- searches semantically and by typed fields;
-- returns source event refs, not only prose;
-- includes later supersession, revert, review, and acceptance state;
-- treats tool calls as attempts until an observed outcome is admitted;
-- uses compaction only for orientation; and
+- searches semantically and by typed fields.
+- returns source event refs, not only prose.
+- includes later supersession, revert, review, and acceptance state.
+- treats tool calls as attempts until an observed outcome is admitted.
+- uses compaction only for orientation. And
 - never turns retrieval confidence into effect or release authority.
 
 ### 18.2 Put queue, steer, and interrupt in the canonical command schema
@@ -913,7 +913,7 @@ and deletion gate.
     malformed, injected, or timed out must fail closed at mandatory denies.
 11. **No child summary as child history.** Preserve complete navigable child
     topology, execution, delivery, review, and acceptance state.
-12. **No “no backcompat” shortcut for durable work.** Product UI may evolve;
+12. **No “no backcompat” shortcut for durable work.** Product UI may evolve.
     accepted state needs explicit migration and recovery.
 
 ## 20. Recommended OpenAgents sequence
@@ -952,10 +952,10 @@ thread reader, explicit steer semantics, different-model Oracle, and plugin-
 created agents show a coherent product built around that object.
 
 The architecture also demonstrates what happens when the thread becomes the
-service. Code and tool evidence move into a cloud record; workspace visibility
-and administrator access become repository-security concerns; local workers
-execute without approval by default; remote routing changes model and privacy
-facts; and an extremely powerful extension plane sits on closed runtime and
+service. Code and tool evidence move into a cloud record. Workspace visibility
+and administrator access become repository-security concerns. Local workers
+execute without approval by default. Remote routing changes model and privacy
+facts. And an extremely powerful extension plane sits on closed runtime and
 release seams. The current direct-install chain and invalid macOS signature are
 especially weak for a privileged auto-updating binary.
 

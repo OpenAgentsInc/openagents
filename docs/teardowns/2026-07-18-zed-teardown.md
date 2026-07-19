@@ -6,7 +6,7 @@ Date: 2026-07-18
 
 Zed is the strongest public **integrated IDE architecture** reference in the
 current teardown set. Pierre is the better focused dependency candidate for
-trees and diffs; Monaco remains the practical code-editor component for
+trees and diffs. Monaco remains the practical code-editor component for
 OpenAgents Desktop. Zed supplies something neither does: a coherent account of
 how an editor, worktree scanner, language layer, Git model, remote environment,
 collaboration system, local database, extension host, and agent workbench fit
@@ -62,8 +62,8 @@ service, or release artifact was executed.
 | Commit timestamp | `2026-07-18T22:40:55Z` |
 | Commit subject | `agent_ui: Show controls after every agent message (#61245)` |
 | Application version | `1.13.0` in `crates/zed/Cargo.toml` |
-| Repository size | 4,206 tracked files; 239 crate directories; about 590 MiB packed locally |
-| License | GPL-3.0-or-later by default; marked components may use Apache-2.0 |
+| Repository size | 4,206 tracked files. 239 Crate directories. About 590 MiB packed locally |
+| License | GPL-3.0-or-later by default. Marked components may use Apache-2.0 |
 
 The nearest result from `git describe` is an unrelated extension tag, not an
 application release containing this commit. The commit and tree hashes above
@@ -89,23 +89,23 @@ evidence. They are upstream project material, not instructions to this audit.
 Zed is predominantly a Rust workspace rather than a web application wrapped in
 a desktop shell. The root workspace joins roughly 239 crates spanning:
 
-- `gpui`, platform backends, windowing, text, input, and rendering;
-- `sum_tree`, `rope`, `text`, `language`, `multi_buffer`, and `editor`;
-- `fs`, `worktree`, `project`, `workspace`, and `project_panel`;
+- `gpui`, platform backends, windowing, text, input, and rendering.
+- `sum_tree`, `rope`, `text`, `language`, `multi_buffer`, and `editor`.
+- `fs`, `worktree`, `project`, `workspace`, and `project_panel`.
 - `lsp`, `git`, `git_ui`, search, outline, diagnostics, tasks, terminal, and
-  debugger support;
+  debugger support.
 - themes, settings, keymaps, command palette, snippets, Vim mode, and
-  persistence;
-- extension registry, extension host, WASI guest API, and language packages;
+  persistence.
+- extension registry, extension host, WASI guest API, and language packages.
 - remote clients, a headless remote server, collaboration, channels, calls,
-  and shared projects;
+  and shared projects.
 - native agents, the agent UI, ACP threads, context servers, skills, edit
   prediction, and model providers.
 
 `crates/zed` is the application assembly point. Its dependency list makes the
 product thesis visible: there is one application graph, not a separate IDE and
 agent application loosely sharing a window. Native platform crates cover
-macOS, Linux/FreeBSD, and Windows; the repository also builds WASIp2 extension
+macOS, Linux/FreeBSD, and Windows. The repository also builds WASIp2 extension
 components, a web GPUI target, and a musl remote server. **[source]**
 
 The Rust toolchain is pinned to 1.95.0 at this revision. That detail matters
@@ -123,12 +123,12 @@ and invalidation state. `crates/gpui/src/app/entity_map.rs:414` defines typed
 The checked `.rules` explains the operating model:
 
 - `App`, `Context<T>`, `AsyncApp`, and `Window` expose progressively scoped
-  application and view authority;
-- UI and entity mutation run on one foreground thread;
+  application and view authority.
+- UI and entity mutation run on one foreground thread.
 - background work is explicitly spawned and must return to the relevant
-  entity/application context to mutate state;
+  entity/application context to mutate state.
 - tasks are cancellation-bearing resources: dropping a task cancels it unless
-  it is awaited, detached, or stored;
+  it is awaited, detached, or stored.
 - actions, focus, observation, subscriptions, and `notify` drive invalidation
   through typed contexts.
 
@@ -148,9 +148,9 @@ visual parity.
 `crates/sum_tree/src/sum_tree.rs:213` defines a persistent, cloneable
 `SumTree<T>` backed by an `Arc` node. Items summarize themselves, so callers
 can seek and transform positions in more than one dimension. `crates/rope` uses
-it for text chunks; text buffers use it for visible and deleted text,
-fragments, and edit metadata; MultiBuffer uses it for excerpt and diff
-coordinates; UI projections use related structures for rows and layouts.
+it for text chunks. Text buffers use it for visible and deleted text,
+fragments, and edit metadata. MultiBuffer uses it for excerpt and diff
+coordinates. UI projections use related structures for rows and layouts.
 **[source]**
 
 This is more important than the fact that Zed has a B+ tree. **[inferred]** A
@@ -221,11 +221,11 @@ This is one of Zed's most transferable ideas. OpenAgents should introduce an
 app-owned **excerpt projection** after basic Monaco editing is stable:
 
 - each excerpt retains source `WorkContext`, relative path, document
-  generation, source range, and projection range;
+  generation, source range, and projection range.
 - search results, references, changes, diagnostics, agent context, and review
-  may assemble excerpt sets;
+  may assemble excerpt sets.
 - edits map back only through an explicit writable capability and revision
-  check;
+  check.
 - a combined view never becomes a synthetic filesystem authority.
 
 The current Desktop IDE plan intentionally avoids an early multi-buffer editor.
@@ -243,7 +243,7 @@ projections. **[source]**
 
 **[inferred]** Zed's editor quality comes from this stratification, not from a
 single magical text-control API. For OpenAgents, Monaco supplies the lower
-editing and display machinery; the host still needs explicit document,
+editing and display machinery. The host still needs explicit document,
 project, language, Git, review, and agent-context services around it.
 
 ## 5. Worktree and Project form the IDE authority graph
@@ -254,7 +254,7 @@ project, language, Git, review, and agent-context services around it.
 worktree owns filesystem events, scanning, ignore stacks, Git repository
 discovery, and entry snapshots. `FS_WATCH_LATENCY` is 100 ms at line 82.
 Snapshots retain absolute roots internally while indexing entries by stable ID
-and relative path; scan IDs distinguish observed progress from completed scans.
+and relative path. Scan IDs distinguish observed progress from completed scans.
 **[source]**
 
 That shape closely validates OpenAgents' existing `WorkContext` boundary:
@@ -300,7 +300,7 @@ buffer results such as semantic tokens, colors, lenses, folds, links, symbols,
 inlay hints, and diagnostics. Requests are cancellable. **[source]**
 
 **[inferred]** This is Zed's primary architectural win: placement and semantics
-sit behind the same Project contract. The editor asks for capabilities; the
+sit behind the same Project contract. The editor asks for capabilities. The
 project decides whether the service is local, remote, shared, pending, failed,
 or unavailable.
 
@@ -317,12 +317,12 @@ list. Its state covers visible entries, expansion and unfolded state,
 selection, edits, drag/drop, marks, sorting, focus, and project subscriptions.
 Actions include:
 
-- expand, collapse, recursive expand, and directory folding;
-- create file/directory, rename, duplicate, move, delete/trash, and undo;
-- copy/cut/paste and drag/drop;
-- reveal, open terminal, search, and compare marked files;
-- hidden/ignored-file controls;
-- Git status and diagnostic navigation/decorations;
+- expand, collapse, recursive expand, and directory folding.
+- create file/directory, rename, duplicate, move, delete/trash, and undo.
+- copy/cut/paste and drag/drop.
+- reveal, open terminal, search, and compare marked files.
+- hidden/ignored-file controls.
+- Git status and diagnostic navigation/decorations.
 - keyboard and accessibility behavior.
 
 Visible entries are rebuilt from worktree and Git snapshots on a background
@@ -335,46 +335,46 @@ from React render or make each row its own authority.
 
 For the Pierre tree adapter, Zed supplies a concrete parity checklist:
 
-1. multi-root identity and root reorder;
-2. paged/incremental scanning with explicit incomplete/error state;
-3. virtualized flattening and stable selection/scroll anchoring;
-4. folded single-child directories and sticky ancestor context;
+1. multi-root identity and root reorder.
+2. paged/incremental scanning with explicit incomplete/error state.
+3. virtualized flattening and stable selection/scroll anchoring.
+4. folded single-child directories and sticky ancestor context.
 5. Git, diagnostic, conflict, hidden, ignored, symlink, and remote badges with
-   non-color cues;
-6. keyboard navigation, typeahead, focus restoration, and screen-reader names;
+   non-color cues.
+6. keyboard navigation, typeahead, focus restoration, and screen-reader names.
 7. create/rename/move/delete/copy/cut/paste/drag intents through main-owned
-   authority, expected revisions, and undo records;
+   authority, expected revisions, and undo records.
 8. reveal/search/compare/terminal commands through the one command registry.
 
-Pierre remains the chosen presentation package; Zed is the behavior and state
+Pierre remains the chosen presentation package. Zed is the behavior and state
 reference. Do not port `ProjectPanel` or its GPUI dependencies.
 
 ## 7. Language intelligence: parsing and LSP are capabilities
 
 Zed combines Tree-sitter language packages with a language registry and an LSP
-store. Parsing is associated with buffer snapshots; language servers produce
+store. Parsing is associated with buffer snapshots. Language servers produce
 versioned diagnostics, semantic tokens, symbols, links, lenses, code actions,
 folds, and inlay hints. A server has lifecycle, capability, and status rather
 than being inferred from whether a spinner vanished. **[source]**
 
 Remote-development documentation exposes a useful placement split: the local
 client retains the UI, model calls, Tree-sitter parsing, unsaved changes, and
-recent-project state; the remote server owns source files, language servers,
+recent-project state. The remote server owns source files, language servers,
 tasks, and terminals. Project settings span both. **[source]**
 
 OpenAgents should adapt the capability contract, not necessarily that exact
 placement:
 
-- `unconfigured | starting | ready | degraded | stopped | failed` is visible;
-- results carry source document generation and service generation;
-- cancellation and supersession are ordinary protocol events;
-- URI translation is main-owned and does not leak raw roots;
+- `unconfigured | starting | ready | degraded | stopped | failed` is visible.
+- results carry source document generation and service generation.
+- cancellation and supersession are ordinary protocol events.
+- URI translation is main-owned and does not leak raw roots.
 - one provider may be local, another remote, or absent without changing editor
-  intent schemas;
+  intent schemas.
 - diagnostics, definitions, references, rename, formatting, and code actions
   return typed losses or unsupported results, never silent no-ops.
 
-Tree-sitter and LSP are complementary: parsing provides cheap local structure;
+Tree-sitter and LSP are complementary: parsing provides cheap local structure.
 LSP provides project semantics. Neither should become a hidden permission path
 for launching arbitrary binaries or downloading servers.
 
@@ -392,20 +392,20 @@ stage/unstage, range actions, checkout/discard flows, commit/amend, fetch,
 push, and persistent commit drafts. **[source]** A very recent commit in the
 audited history fixed an ambiguous-hunk staging corruption. **[history]**
 
-The inference is cautionary. Staging is not a boolean on a file; it is a
+The inference is cautionary. Staging is not a boolean on a file. It is a
 three-base state machine over worktree, index, and HEAD with optimistic actions
 that can become stale while the user edits. Rich UI does not reduce the need
 for exact evidence.
 
 OpenAgents should:
 
-- keep Pierre as diff projection, not Git authority;
+- keep Pierre as diff projection, not Git authority.
 - preserve the current read-only Git review MVP until mutation has its own
-  admitted packet;
+  admitted packet.
 - carry repository identity, HEAD OID, index evidence, document generation,
-  hunk identity, operation generation, and pending status in future mutations;
-- re-read and prove the post-state after stage/unstage/discard/commit;
-- represent partial stage and ambiguous/stale hunks explicitly;
+  hunk identity, operation generation, and pending status in future mutations.
+- re-read and prove the post-state after stage/unstage/discard/commit.
+- represent partial stage and ambiguous/stale hunks explicitly.
 - receipt mutations and keep acceptance/publish authority outside the diff UI.
 
 Do not copy Zed's command-backed Git implementation wholesale or imply that
@@ -421,7 +421,7 @@ catalog. **[source]**
 This validates two existing OpenAgents choices:
 
 1. one canonical command registry should drive palette, menus, keyboard,
-   buttons, slash commands, mobile, and agent-proposed actions;
+   buttons, slash commands, mobile, and agent-proposed actions.
 2. Editor mode is a primary workbench mode, not a file viewer squeezed into
    the ancillary right panel.
 
@@ -437,7 +437,7 @@ wholesale pane framework.
 Zed's remote system runs a matching headless server near the source. The local
 client connects over SSH, installs or selects the exact server version, uses a
 daemon/proxy for reconnection, and exchanges length-prefixed protobuf
-envelopes. Source, language servers, tasks, and terminals are remote; UI and
+envelopes. Source, language servers, tasks, and terminals are remote. UI and
 local recovery state remain local. **[source]**
 
 The strongest lesson is not SSH. It is that remote and local Project stores
@@ -449,7 +449,7 @@ attachment generation. A remote workspace needs independently visible host,
 runtime, WorkContext, protocol/component compatibility, containment,
 credentials, latency/offline state, and recovery class. Exact-version server
 matching is useful operationally but should live in the signed component
-graph; downloading and launching a helper is an admitted component action, not
+graph. Downloading and launching a helper is an admitted component action, not
 an implementation detail.
 
 Zed's documented reconnectable daemon is not evidence of host-portable
@@ -470,7 +470,7 @@ language-server launch, agent execution, secret, publication, or acceptance
 rights. The multAIplayer teardown's singular execution attachment and bounded
 room projection remain the stronger authority model.
 
-Zed demonstrates collaborative editing mechanics; it does not prove group
+Zed demonstrates collaborative editing mechanics. It does not prove group
 E2EE, metadata privacy, tenant containment, or portable execution authority.
 **[limitation]**
 
@@ -479,18 +479,18 @@ E2EE, metadata privacy, tenant containment, or portable execution authority.
 `crates/theme/src/registry.rs:67` holds theme and icon-theme objects behind a
 thread-safe registry with defaults, metadata, listing, insertion, removal, and
 extension-load state. The theme schema models appearance, syntax, UI, editor,
-and terminal colors. User JSON themes are loaded and watched for changes;
+and terminal colors. User JSON themes are loaded and watched for changes.
 system light/dark mappings select variants. Zed can import VS Code themes.
 **[source]**
 
 This reinforces the Pierre/Monaco plan:
 
-- the Effect Native product theme remains canonical for the whole shell;
+- the Effect Native product theme remains canonical for the whole shell.
 - a validated resolved editor theme projects into Monaco, Pierre diffs/trees,
-  syntax highlighting, terminal, minimap, and code-adjacent chrome;
-- light/dark system behavior, live preview, and icon themes use stable IDs;
+  syntax highlighting, terminal, minimap, and code-adjacent chrome.
+- light/dark system behavior, live preview, and icon themes use stable IDs.
 - colors are tested with contrast, color-vision simulation, and non-color
-  status cues;
+  status cues.
 - untrusted theme JSON is parsed against a bounded schema—never injected as
   arbitrary CSS or executable extension code.
 
@@ -503,7 +503,7 @@ Zed extensions run through Wasmtime's component model/WASIp2 host.
 `crates/extension_host/src/wasm_host.rs` enables epoch interruption and
 preopens an extension-specific work directory. The guest API is versioned.
 Externally consequential capabilities are grouped as process execution, file
-download, and npm installation; a grant check intersects manifest allowance
+download, and npm installation. A grant check intersects manifest allowance
 with configured permission. **[source]**
 
 That double intersection is good. The defaults are not: the audited default
@@ -517,11 +517,11 @@ work directory, cancellation/fuel/epoch controls, and manifest-plus-owner
 intersection. It should strengthen them with:
 
 - deny-by-default command, network, package, filesystem, secret, spend, and
-  publication grants;
-- content-addressed signed components and dependencies;
-- no ambient host environment or credentials;
-- brokered tools mapped to canonical typed intents;
-- effective containment and effect receipts;
+  publication grants.
+- content-addressed signed components and dependencies.
+- no ambient host environment or credentials.
+- brokered tools mapped to canonical typed intents.
+- effective containment and effect receipts.
 - compatibility, staged activation, last-known-good rollback, and revocation.
 
 Do not claim “sandboxed” from Wasmtime alone, and do not use Zed's permissive
@@ -532,10 +532,10 @@ defaults as parity requirements.
 Zed exposes three agent experiences:
 
 1. a native Zed Agent integrated with Project, tools, context servers, skills,
-   model providers, and a local thread store;
+   model providers, and a local thread store.
 2. external agents through Agent Client Protocol, where the external runtime
    retains its own authentication, model, configuration, tools, and session
-   semantics;
+   semantics.
 3. terminal threads for interactive terminal-native agents.
 
 The Threads Sidebar groups parallel threads by project/worktree and the agent
@@ -572,11 +572,11 @@ depend on a persistent repository embedding index at this pin.
 - `RelatedExcerptStore` finds nearby identifiers and follows LSP definitions
   with debounce and caching.
 - the BM25 path enumerates tracked files, chunks them into overlapping line
-  windows, and builds an in-memory lexical index for a collection; active path,
-  recent edits, and cursor context receive different query weights;
-- Git-log context derives a file co-change graph from recent commits;
+  windows, and builds an in-memory lexical index for a collection. Active path,
+  recent edits, and cursor context receive different query weights.
+- Git-log context derives a file co-change graph from recent commits.
 - recent opens/views, edit history, current uncommitted diff, diagnostics,
-  repository identity, and editable regions contribute structured context;
+  repository identity, and editable regions contribute structured context.
 - prompt encodings support fill-in-the-middle and several explicit edit-region
   formats, then apply predicted diffs back to exact regions.
 
@@ -592,7 +592,7 @@ model candidate context as typed, budgeted records with source, revision,
 reason, sensitivity, audience, and truncation. Open buffers, recent edits,
 diagnostics, definitions, Git changes, and co-change history can feed the
 central semantic selector or a structured query planner. BM25 may be a bounded
-subretriever after route selection; it must not become ad hoc user-intent or
+subretriever after route selection. It must not become ad hoc user-intent or
 tool routing.
 
 Any context sent to a provider should have a previewable disclosure record and
@@ -604,20 +604,20 @@ prediction is not permission to upload the repository.
 `crates/paths/src/paths.rs` gives an unusually concrete inventory. On macOS,
 Zed uses:
 
-- application data: `~/Library/Application Support/Zed`;
-- user configuration: `~/.config/zed`;
-- state: `~/.local/state/Zed`;
-- logs: `~/Library/Logs/Zed`;
+- application data: `~/Library/Application Support/Zed`.
+- user configuration: `~/.config/zed`.
+- state: `~/.local/state/Zed`.
+- logs: `~/Library/Logs/Zed`.
 - OS cache/temp locations with Zed-specific subdirectories.
 
 Named local artifacts include:
 
 - settings, global settings, backups, keymap, tasks, debug configuration, and
-  an `AGENTS.md` path;
-- installed/staging/build extension directories and extension index metadata;
+  an `AGENTS.md` path.
+- installed/staging/build extension directories and extension index metadata.
 - language packages, debug adapters, external agents, Copilot, Prettier,
-  remote servers, and development-container assets;
-- themes, icon themes, snippets, prompts, and prompt overrides;
+  remote servers, and development-container assets.
+- themes, icon themes, snippets, prompts, and prompt overrides.
 - database, logs, crash state, terminal and editor state, and update/download
   caches.
 
@@ -638,16 +638,16 @@ contents and substantial project/workspace history, not only preferences.
 
 Agent thread content uses a separate `threads/threads.db`. Thread rows contain
 IDs, parent IDs, folder paths, titles, timestamps, type, and data. Full thread
-JSON is compressed with zstd level 3; recursive deletion also removes child
+JSON is compressed with zstd level 3. Recursive deletion also removes child
 threads and associated sandbox temp directories. **[source]**
 
 `paths.rs` defines an `embeddings_dir` described as semantic-search embedding
 storage. A repository-wide call-site search at this exact tree found no use
 beyond the definition itself. **[source]** The honest conclusion is:
 
-- there is a reserved or legacy embeddings path;
+- there is a reserved or legacy embeddings path.
 - this source pin does **not** show Zed currently building or persisting a
-  repository embedding index there;
+  repository embedding index there.
 - edit-prediction retrieval observed in this audit is in-memory BM25 plus
   LSP, Git, diagnostics, and recent-activity signals.
 
@@ -663,7 +663,7 @@ encryption, retention, quota, export, deletion, backup/Sync eligibility, crash
 behavior, and whether an external runtime can read it. Unsaved files, workspace
 roots, agent histories, terminal transcripts, trust grants, search history,
 language caches, indexes, and telemetry queues need separate controls.
-Renderer projections should continue to receive relative file references; raw
+Renderer projections should continue to receive relative file references. Raw
 absolute paths and provider-private histories must not leak into public receipts
 or owner Sync by convenience.
 
@@ -672,28 +672,28 @@ or owner Sync by convenience.
 The audited core crates contain broad unit, property, integration, and
 benchmark coverage. Examples include:
 
-- large random edit and MultiBuffer tests;
-- Rope benchmarks including many small appends;
-- project-panel sorting benchmarks over a realistic repository snapshot;
-- extension compilation benchmarks;
-- large locator/search cases and explicit project-search limits;
+- large random edit and MultiBuffer tests.
+- Rope benchmarks including many small appends.
+- project-panel sorting benchmarks over a realistic repository snapshot.
+- extension compilation benchmarks.
+- large locator/search cases and explicit project-search limits.
 - virtualized project-panel rows and background projection rebuilding.
 
 **[test]** A lexical survey across the selected core crates found thousands of
 test/property annotations, but count is not quality proof. The source also
-documents scaling edges; remote documentation warns that very large directory
+documents scaling edges. Remote documentation warns that very large directory
 counts remain problematic. **[limitation]** The recent Git hunk fix shows that
 deep test suites do not make mutable SCM trivial.
 
 OpenAgents should borrow the verification style:
 
 - property-test path normalization, coordinate conversion, stale generations,
-  edit application, and tree projections;
-- model buffer/save/reload/conflict and Git index transitions;
+  edit application, and tree projections.
+- model buffer/save/reload/conflict and Git index transitions.
 - benchmark cold open, large tree expansion, search, Monaco model switching,
-  diff rendering, LSP result bursts, restore, and remote latency;
+  diff rendering, LSP result bursts, restore, and remote latency.
 - gate the packaged application with accessibility and p50/p95/p99 frame/input
-  budgets;
+  budgets.
 - keep fixtures for ignored files, symlinks, multi-root collisions, encodings,
   huge/minified files, partial Git stage, offline remote, and corrupt recovery
   state.
@@ -724,7 +724,7 @@ measured in the packaged OpenAgents architecture. **[limitation]**
 ## 19. Limits, costs, and risks
 
 1. **Architecture gravity.** GPUI, SumTree, text CRDT, Project, and Editor are
-   mutually reinforcing; selectively adopting internals is expensive.
+   mutually reinforcing. Selectively adopting internals is expensive.
 2. **Large integrated surface.** Hundreds of crates and coordinated release
    targets impose substantial build, migration, and ownership cost.
 3. **Broad extension effects.** WASM memory isolation coexists with wildcard
@@ -743,7 +743,7 @@ measured in the packaged OpenAgents architecture. **[limitation]**
    Product claims must follow call sites and runtime evidence.
 10. **License boundary.** The repository's GPL-default licensing makes source
     study safe for architecture learning but wholesale code reuse a legal and
-    product decision; Pierre/Monaco package licenses and exact pins must be
+    product decision. Pierre/Monaco package licenses and exact pins must be
     evaluated separately.
 
 ## 20. Exact OpenAgents adaptation
@@ -756,7 +756,7 @@ measured in the packaged OpenAgents architecture. **[limitation]**
    `WorkContext` plus attachment generation.
 3. Define one revisioned document service: load/save base, dirty state,
    encoding, conflict, recovery, and expected-revision mutation.
-4. Treat Pierre tree flattening as a projection over host-owned snapshots;
+4. Treat Pierre tree flattening as a projection over host-owned snapshots.
    add folded directories, stable virtualization, sticky context, keyboard and
    accessibility, Git/diagnostic/conflict decorations, and explicit scan state.
 5. Give Monaco stable per-project URIs/model identity and make all language and
@@ -801,17 +801,17 @@ measured in the packaged OpenAgents architecture. **[limitation]**
 
 ### Reject
 
-- adopting GPUI or a second Rust UI runtime for Desktop;
-- reimplementing Monaco's text editor from Zed internals;
+- adopting GPUI or a second Rust UI runtime for Desktop.
+- reimplementing Monaco's text editor from Zed internals.
 - importing the Zed Project Panel instead of using Pierre behind the owned
-  adapter;
-- treating rich tree/diff/editor UI as workspace, Git, or review authority;
-- allowing absolute roots or ambient current directories into renderer state;
-- claiming WASM alone is containment or accepting wildcard host effects;
-- mutable Git in the first basic-editor milestone;
-- shared-project membership as execution authority;
-- persistent repository upload/indexing without an explicit data contract;
-- claiming active local embeddings from an unused directory definition;
+  adapter.
+- treating rich tree/diff/editor UI as workspace, Git, or review authority.
+- allowing absolute roots or ambient current directories into renderer state.
+- claiming WASM alone is containment or accepting wildcard host effects.
+- mutable Git in the first basic-editor milestone.
+- shared-project membership as execution authority.
+- persistent repository upload/indexing without an explicit data contract.
+- claiming active local embeddings from an unused directory definition.
 - copying GPL-default source without a separately reviewed legal decision.
 
 ## 21. Revised Desktop IDE architecture
@@ -849,7 +849,7 @@ OpenAgents runtime / HarnessAgent / external peers
 This is “Zed coherence” with OpenAgents components and trust boundaries. It
 also corrects an older teardown shorthand: files and code editing do not belong
 only in a generic right-panel surface manager. The right panel can still host
-ancillary review, evidence, terminal, and agent views; the existing Files mode
+ancillary review, evidence, terminal, and agent views. The existing Files mode
 should become a first-class primary Editor mode with rail, top bar, and main
 editing region.
 
@@ -859,20 +859,20 @@ The most consequential evidence paths at the pinned tree are:
 
 | Concern | Source paths |
 | --- | --- |
-| application assembly | `Cargo.toml`; `crates/zed/Cargo.toml`; `crates/zed/src/main.rs` |
-| GPUI state/runtime | `.rules`; `crates/gpui/src/app.rs`; `crates/gpui/src/app/entity_map.rs` |
-| indexed text substrate | `crates/sum_tree/src/sum_tree.rs`; `crates/rope/src/rope.rs`; `crates/text/src/text.rs` |
-| editor stack | `crates/language/src/buffer.rs`; `crates/multi_buffer/src/multi_buffer.rs`; `crates/editor/src/editor.rs` |
-| filesystem/project | `crates/worktree/src/worktree.rs`; `crates/project/src/project.rs`; `crates/project/src/worktree_store.rs`; `crates/project/src/buffer_store.rs` |
-| language services | `crates/project/src/lsp_store.rs`; `crates/language`; `crates/languages` |
+| application assembly | `Cargo.toml`. `crates/zed/Cargo.toml`. `crates/zed/src/main.rs` |
+| GPUI state/runtime | `.rules`. `crates/gpui/src/app.rs`. `crates/gpui/src/app/entity_map.rs` |
+| indexed text substrate | `crates/sum_tree/src/sum_tree.rs`. `crates/rope/src/rope.rs`. `crates/text/src/text.rs` |
+| editor stack | `crates/language/src/buffer.rs`. `crates/multi_buffer/src/multi_buffer.rs`. `crates/editor/src/editor.rs` |
+| filesystem/project | `crates/worktree/src/worktree.rs`. `crates/project/src/project.rs`. `crates/project/src/worktree_store.rs`. `crates/project/src/buffer_store.rs` |
+| language services | `crates/project/src/lsp_store.rs`. `crates/language`. `crates/languages` |
 | file explorer | `crates/project_panel/src/project_panel.rs` |
-| Git/diffs | `crates/buffer_diff/src/buffer_diff.rs`; `crates/project/src/git_store.rs`; `crates/git/src/repository.rs`; `crates/git_ui` |
-| workspace/persistence | `crates/workspace/src/persistence.rs`; `crates/editor/src/persistence.rs`; `crates/db/src/db.rs`; `crates/paths/src/paths.rs` |
-| themes | `crates/theme/src/registry.rs`; `crates/theme/src/theme.rs`; `crates/theme/src/schema.rs`; `docs/src/themes.md`; `docs/src/extensions/themes.md` |
-| extensions | `crates/extension_host/src/wasm_host.rs`; `crates/extension`; `crates/extension_api`; `assets/settings/default.json` |
-| remote/collaboration | `crates/remote/src/protocol.rs`; `crates/remote_server`; `crates/collab`; `docs/src/remote-development.md`; `docs/src/collaboration` |
-| agents | `crates/agent/src/agent.rs`; `crates/agent/src/db.rs`; `crates/agent/src/sandboxing.rs`; `crates/agent/src/tool_permissions.rs`; `crates/agent_ui`; `crates/acp_thread` |
-| edit context | `crates/edit_prediction_context/src/edit_prediction_context.rs`; `crates/edit_prediction_context/src/bm25_context.rs`; `crates/edit_prediction_context/src/git_log_context.rs`; `crates/edit_prediction` |
+| Git/diffs | `crates/buffer_diff/src/buffer_diff.rs`. `crates/project/src/git_store.rs`. `crates/git/src/repository.rs`. `crates/git_ui` |
+| workspace/persistence | `crates/workspace/src/persistence.rs`. `crates/editor/src/persistence.rs`. `crates/db/src/db.rs`. `crates/paths/src/paths.rs` |
+| themes | `crates/theme/src/registry.rs`. `crates/theme/src/theme.rs`. `crates/theme/src/schema.rs`. `docs/src/themes.md`. `docs/src/extensions/themes.md` |
+| extensions | `crates/extension_host/src/wasm_host.rs`. `crates/extension`. `crates/extension_api`. `assets/settings/default.json` |
+| remote/collaboration | `crates/remote/src/protocol.rs`. `crates/remote_server`. `crates/collab`. `docs/src/remote-development.md`. `docs/src/collaboration` |
+| agents | `crates/agent/src/agent.rs`. `crates/agent/src/db.rs`. `crates/agent/src/sandboxing.rs`. `crates/agent/src/tool_permissions.rs`. `crates/agent_ui`. `crates/acp_thread` |
+| edit context | `crates/edit_prediction_context/src/edit_prediction_context.rs`. `crates/edit_prediction_context/src/bm25_context.rs`. `crates/edit_prediction_context/src/git_log_context.rs`. `crates/edit_prediction` |
 
 ## Final recommendation
 

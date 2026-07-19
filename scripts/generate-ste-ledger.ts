@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
   countDiagnostics,
@@ -32,7 +33,7 @@ const paths = execFileSync(
   .filter(Boolean)
   .filter((path) => isGovernedPath(path, config))
   .toSorted();
-const profiles = paths.map((path) => ({
+const derivedProfiles = paths.map((path) => ({
   ...deriveProfile(path, config),
   ...overrides.profiles[path],
   path,
@@ -41,6 +42,38 @@ for (const path of Object.keys(overrides.profiles)) {
   if (!paths.includes(path))
     throw new Error(`STE profile override does not match a governed file: ${path}`);
 }
+const finalInventoryPath = `${root}/docs/ste/final-inventory.v1.json`;
+type FinalInventory = {
+  steIssue: number;
+  glossaryRevision: string;
+  entries: Array<{ path: string; sha256: string; profile: Partial<SteProfile> }>;
+};
+let finalEntries = new Map<string, FinalInventory["entries"][number]>();
+if (existsSync(finalInventoryPath)) {
+  const inventory = JSON.parse(readFileSync(finalInventoryPath, "utf8")) as FinalInventory;
+  if (inventory.steIssue !== 9 || inventory.glossaryRevision !== config.glossaryRevision) {
+    throw new Error("Final STE inventory revision does not match the checker configuration");
+  }
+  finalEntries = new Map(inventory.entries.map((entry) => [entry.path, entry]));
+  const missing = paths.filter((path) => !finalEntries.has(path));
+  const extra = [...finalEntries.keys()].filter((path) => !paths.includes(path));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `Final STE inventory path mismatch (missing=${missing.join(",") || "none"}; extra=${extra.join(",") || "none"})`,
+    );
+  }
+  for (const entry of inventory.entries) {
+    const digest = createHash("sha256").update(readFileSync(`${root}/${entry.path}`)).digest("hex");
+    if (digest !== entry.sha256) {
+      throw new Error(`Final STE inventory digest is stale: ${entry.path}`);
+    }
+  }
+}
+const profiles = derivedProfiles.map((profile) => ({
+  ...profile,
+  ...(finalEntries.get(profile.path)?.profile ?? {}),
+  path: profile.path,
+}));
 let previousBaseline: Record<string, Record<string, number>> = {};
 try {
   previousBaseline =

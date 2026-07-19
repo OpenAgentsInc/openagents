@@ -8,11 +8,11 @@ OpenAgents product surface now has a public-safe unpaid lease proof for Probe GE
 rollouts. The proof creates three demo Pylon workers and runs three
 metric-call assignments through the existing OpenAgents product surface lifecycle:
 
-1. assignment created;
-2. demo Pylon worker accepts a lease;
-3. worker reports progress refs;
-4. worker submits artifact, proof, verifier, closeout, and resource refs;
-5. evaluator closeout records accepted or rejected work;
+1. assignment created.
+2. demo Pylon worker accepts a lease.
+3. worker reports progress refs.
+4. worker submits artifact, proof, verifier, closeout, and resource refs.
+5. evaluator closeout records accepted or rejected work.
 6. OpenAgents product surface emits Psionic coordinator imports.
 
 The implementation lives in
@@ -32,7 +32,7 @@ benchmark score.
 
 Paid-work movement now belongs to the settlement-readiness gate documented in
 `docs/2026-06-08-probe-gepa-settlement-readiness-gate.md`. The unpaid lease
-proof remains the no-spend receipt path; `operator_credit`,
+proof remains the no-spend receipt path. `operator_credit`,
 `payable_pending_settlement`, and `settled_bitcoin` require separate accounting
 and receipt evidence.
 
@@ -40,16 +40,16 @@ and receipt evidence.
 
 The proof preserves:
 
-- OpenAgents product surface assignment refs;
-- demo Pylon worker refs;
-- lease refs;
-- progress refs;
-- artifact manifest refs;
-- proof bundle refs;
-- resource usage refs, including the live SHC resource-unavailable receipt;
-- verifier result refs;
-- accepted closeout refs;
-- rejected closeout refs;
+- OpenAgents product surface assignment refs.
+- demo Pylon worker refs.
+- lease refs.
+- progress refs.
+- artifact manifest refs.
+- proof bundle refs.
+- resource usage refs, including the live SHC resource-unavailable receipt.
+- verifier result refs.
+- accepted closeout refs.
+- rejected closeout refs.
 - Psionic coordinator import refs.
 
 One assignment imports the live SHC Harbor `db-wal-recovery` failure closeout
@@ -73,10 +73,10 @@ The proof rejects:
 - `operator_credit`
 - `payable_pending_settlement`
 - `settled_bitcoin`
-- payment receipt refs;
-- settlement receipt refs;
-- paid-work claims;
-- settlement claims;
+- payment receipt refs.
+- settlement receipt refs.
+- paid-work claims.
+- settlement claims.
 - automatic promotion claims.
 
 This is Pylon-distributed GEPA rollout optimization evidence, not distributed

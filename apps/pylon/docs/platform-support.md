@@ -6,7 +6,7 @@ Issue: #4655
 Promise: `pylon.release_tomorrow.v1`
 Former blocker: `blocker.product_promises.native_windows_wsl_unproven`
 Closeout: owner scoped Windows/WSL out of Pylon v0.3 release-candidate
-support on 2026-06-10; registry version `2026-06-10.26` removed this blocker.
+support on 2026-06-10. Registry version `2026-06-10.26` removed this blocker.
 Live version `2026-06-10.27` preserves that scope.
 
 ## Current Support Claim
@@ -38,16 +38,16 @@ The bootstrap surface reports the same supported target set.
 
 `tailscale status` on 2026-06-10 listed:
 
-- `macbook-pro-m5` on macOS, online;
-- `archlinux` on Linux, online;
-- `imac-pro-bertha` on macOS, online;
-- iOS devices offline;
+- `macbook-pro-m5` on macOS, online.
+- `archlinux` on Linux, online.
+- `imac-pro-bertha` on macOS, online.
+- iOS devices offline.
 - `macbook-pro-m2` on macOS, offline.
 
 No Windows or WSL host was available. Earlier SSH probes to `archlinux`
 requested a fresh Tailscale SSH browser authentication check, so no Linux
 remote install smoke was run from those sessions. A noninteractive SSH probe to
-`imac-pro-bertha` failed with `Permission denied`; it is also macOS, not a
+`imac-pro-bertha` failed with `Permission denied`. It is also macOS, not a
 Windows/WSL target.
 
 ## Registry Scope Decision
@@ -60,9 +60,9 @@ Windows/WSL is deliberately out of scope, and only retains
 
 This was a same-state blocker/copy edit rather than a green transition:
 
-- version `2026-06-10.26` removed the Windows/WSL blocker by owner decision;
+- version `2026-06-10.26` removed the Windows/WSL blocker by owner decision.
 - version `2026-06-10.27` is live and still shows only the stable-release
-  blocker for `pylon.release_tomorrow.v1`;
+  blocker for `pylon.release_tomorrow.v1`.
 - no Windows/WSL support claim is made.
 
 ## Copy-Drift Guard (`pylon.consumer_compute_earns_bitcoin_self_serve.v1`)
@@ -85,7 +85,7 @@ honest-copy requirement is now machine-checkable in
   mis-classifies a WSL host as `supported`, silently contradicting this scope-out.
   `detectWslHost` is a pure boolean detector over the supplied environment (the
   presence of `WSL_DISTRO_NAME` / `WSL_INTEROP` / `WSLENV`) and optional
-  `/proc/version` text (`microsoft`/`wsl`); it never reads files itself and never
+  `/proc/version` text (`microsoft`/`wsl`). It never reads files itself and never
   emits any env value, path, or identifier. Feeding its result as the `wsl` signal
   makes `classifyConsumerInstallHost` return `out-of-scope` with
   `reason.platform.wsl_out_of_scope` for a WSL host — so the documented WSL
@@ -98,7 +98,7 @@ honest-copy requirement is now machine-checkable in
   copy fixture cannot smuggle an unreviewed assertion past the guard.
 
 - `auditReadmePlatformCopy(readmeText)` — the APPLIED guard: derives a claim from
-  the actual README copy (supported set stays `{darwin, linux}`; any over-promise
+  the actual README copy (supported set stays `{darwin, linux}`, any over-promise
   phrase flips the matching scope flag) and runs `verifyConsumerInstallPlatformClaim`
   over it. Returns `copyHonest` — true only when the canonical narrowing sentence
   (`README_NARROWED_PLATFORM_SENTENCE`) is present, no over-promise phrase matched,
@@ -129,18 +129,18 @@ read `summary.platform.supported`, which is `true` for WSL (WSL reports
   `bootstrap.ts` can share it without a circular import.
 - `createBootstrapSummary` (`apps/pylon/src/bootstrap.ts`) now derives
   `platform.wsl` (WSL env signal on a `linux` host) and `platform.inScope`
-  (`supported && !wsl`). `supported` keeps its raw-platform meaning; `inScope` is
+  (`supported && !wsl`). `supported` keeps its raw-platform meaning. `inScope` is
   the authoritative self-serve gate.
 - The `pylon bootstrap` command (`apps/pylon/src/index.ts`) now refuses on
   `!platform.inScope` and prints WSL-specific guidance ("use a native macOS or
   Linux host") when `platform.wsl`, instead of silently proceeding.
 
 Tests: `apps/pylon/tests/bootstrap.test.ts` — WSL linux host is detected and
-`inScope:false` (while `supported:true`); native linux and macOS are `inScope`;
+`inScope:false` (while `supported:true`). Native linux and macOS are `inScope`.
 native Windows is out of scope.
 
 This does NOT clear the blocker and changes no promise state. It does not build
-Windows/WSL support or run a host probe; it locks the scope decision as an
+Windows/WSL support or run a host probe. It locks the scope decision as an
 enforceable gate so launch copy cannot over-promise platform coverage AND so the
 runtime install path can no longer silently treat a WSL host as supported.
 Clearing the blocker still requires the owner-facing copy-narrowing decision (and

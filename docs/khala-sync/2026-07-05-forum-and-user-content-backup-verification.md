@@ -56,7 +56,7 @@ repo's existing auth). Where `--verify` failed, ran the same script with no
 flags (full sweep), then again (`--restart`, the mandated catch-up sweep),
 then `--verify` again until clean. All commands and full logs are
 reproducible from `packages/khala-sync-server/` per each script's own
-`--help` usage banner; nothing here depends on state from an earlier session.
+`--help` usage banner. Nothing here depends on state from an earlier session.
 
 ## Table-by-table verdict
 
@@ -88,8 +88,8 @@ then `--verify --verify-newest 50 --verify-threads 25`.
 | forum_context_links | 2 | 2 | yes |
 
 Plus: per-topic post-chain comparison (count/distinct/min/max post_number per
-topic) exact across all 219 topics; 25 sampled thread spot-hashes (full
-ordered post chain including `sha256(body)` per post) all match; newest-50
+topic) exact across all 219 topics. 25 Sampled thread spot-hashes (full
+ordered post chain including `sha256(body)` per post) all match. Newest-50
 row hashes match on every table.
 
 `VERIFY OK: exact counts, domain tallies, post chains, thread spot hashes, and
@@ -102,7 +102,7 @@ only — money-bearing forum tables are KS-8.8's, not this lane's).
 
 **Before this pass:** `VERIFY FAILED` — `forum_notification_reads` (91 rows
 in D1) and all six `forum_work_request_*` tables (6/6/3/1/3/3 rows in D1)
-were entirely absent from Postgres; the work-request cross-domain ref-set
+were entirely absent from Postgres. The work-request cross-domain ref-set
 digests (`escrow_id`, `reserve_receipt_ref`, `quote_ref`, `receipt_ref`, which
 point at KS-8.1/KS-8.8 rows) all mismatched (d1 non-empty, postgres empty).
 
@@ -125,25 +125,25 @@ sweep, then `--verify --verify-newest 50`.
 | forum_work_request_acceptances | 3 | 3 | yes |
 | forum_work_request_results | 3 | 3 | yes |
 
-Plus: all 7 within-store referential orphan checks are 0 on both stores; all
+Plus: all 7 within-store referential orphan checks are 0 on both stores. All
 4 cross-domain ref-set digests (`escrow_id`, `reserve_receipt_ref`,
 `quote_ref`, `receipt_ref`) now match exactly between D1 and Postgres.
 (`forum_trust_edges` / `forum_actor_forum_trust` are correctly absent from
 both — genuinely write-dead, dropped from D1 in #8379 with confirmed
-zero-reference sweep evidence; not a gap.)
+zero-reference sweep evidence. Not a gap.)
 
 `VERIFY OK: exact counts, domain tallies, newest-N hashes, and work-request
 set-membership referential checks match.` (exit 0)
 
 **Verdict: SAFE TO INCLUDE IN #8330 D1 RETIREMENT.** (Private-message content
-is currently 0 rows in production — nothing to lose today; the mirror is
+is currently 0 rows in production — nothing to lose today. The mirror is
 proven to converge it correctly per the store's own contract suite plus this
 domain's PII-safe diagnostic discipline.)
 
 ### KS-8.11 — CRM, email, enrichment (36 tables) — issue #8322
 
 **Before this pass:** `VERIFY FAILED` — every non-empty table (max ~24 rows
-today; this domain carries low production volume) was fully absent from
+today. This domain carries low production volume) was fully absent from
 Postgres: business-outreach acceptances (6+2 rows), transactional email
 delivery events (1), Exa enrichment ledgers (6/11/8/6/5/24 rows across six
 tables).
@@ -153,12 +153,12 @@ catch-up pass), then `--verify --verify-newest 50`.
 
 **After:** `VERIFY OK: exact counts, tallies, newest-N hashes, and compliance
 set digests match.` (exit 0) — all previously-mismatched tables now converge
-exactly; suppression-list set equality (the compliance gate this domain's
+exactly. Suppression-list set equality (the compliance gate this domain's
 risk note calls out) holds.
 
 **Verdict: SAFE TO INCLUDE IN #8330 D1 RETIREMENT.** (No real CRM contact
 rows exist in production today — `crm_contacts` etc. are 0/0 on both sides —
-so the domain currently carries no customer PII to lose; the enrichment/
+so the domain currently carries no customer PII to lose. The enrichment/
 outreach ledger rows that DO exist now mirror exactly.)
 
 ### KS-8.12 — Sites, site builder, targeted sites (~51 tables) — issue #8323, #8357
@@ -178,7 +178,7 @@ version chains, deployment states, builder sequence chains, referential
 set-membership, and newest-N hashes match.` (exit 0) — per-project version
 chain contiguity, deployment state-machine census, and builder sequence
 chains (the domain's own stronger acceptance criteria beyond row counts) all
-pass; site commerce money tables are 0/0 on both sides today (nothing to
+pass. Site commerce money tables are 0/0 on both sides today (nothing to
 verify beyond the already-passing check).
 
 **Verdict: SAFE TO INCLUDE IN #8330 D1 RETIREMENT.** This is real
@@ -197,7 +197,7 @@ though the underlying state turned out fine (see below).
 `bun scripts/backfill-khala-code-product-state.ts --verify --verify-newest
 50` → `{"countMismatches":[],"messageChainMismatches":[],
 "newestHashMismatches":[]}` (exit 0). Cross-checked several tables directly
-against D1 counts to confirm this wasn't a trivial both-sides-zero result:
+against D1 counts to confirm this was not a trivial both-sides-zero result:
 `team_chat_messages` 41/41, `thread_files` 3/3, `teams` 2/2,
 `team_memberships` 11/11, `team_projects` 4/4, `prefilled_workspaces` 4/4,
 `khala_feedback` 7/7, `share_projections` 2/2 — all genuinely non-zero and
@@ -209,13 +209,13 @@ sync adoption" framing in the plan), not this legacy D1 table.
 **Verdict: SAFE TO INCLUDE IN #8330 D1 RETIREMENT.** No gap found. Flagging
 for the record: this domain's doc section should get an explicit production
 evidence note added at the next KS-8.13 touch, matching the other domains'
-convention, so a future reader doesn't have to independently re-derive that
-it's actually fine.
+convention, so a future reader does not have to independently re-derive that
+it is actually fine.
 
 ### KS-8.18 — Identity and auth core: users, sessions, provider custody (17 tables) — issue #8329
 
 The last and most sensitive domain (secrets/token custody). Ran
-`backfill-identity-auth.ts --verify --verify-newest 50` (read-only; the
+`backfill-identity-auth.ts --verify --verify-newest 50` (read-only, the
 script is secret-safe by construction — it never selects or prints
 ciphertext, `value_json`, `user_code`, or `state` columns, only row keys and
 sha256 hashes).
@@ -224,13 +224,13 @@ sha256 hashes).
 `openauth_storage` 176/176, `openauth_agent_links` 21/21, the three
 `github_write_*` tables 1/1/63/42/68 (spot pattern), the provider
 (BYOK) account custody family 155/478/64/31/26/12, two currently-empty
-tables 0/0. No secret values were read into this report; only row counts and
+tables 0/0. No secret values were read into this report. Only row counts and
 the script's own custody-safe scalar tallies were inspected.
 
 **Verdict: SAFE TO INCLUDE IN #8330 D1 RETIREMENT** for the mirror-fidelity
 precondition specifically. (Note: KS-8.18's OWN doc already tracks that the
 auth READ cutover — which store answers login/session-revocation checks — is
-a separate, owner-gated, done-last decision in follow-up #8362; this
+a separate, owner-gated, done-last decision in follow-up #8362. This
 verification pass only speaks to backup completeness, not to that read-path
 decision, which remains out of scope here as directed.)
 
@@ -243,11 +243,11 @@ whether they hold anything user-generated and irreplaceable that lacks
 evidence, and none did:
 
 - **KS-8.7 Billing/Stripe/pay-ins** — money, not "content." Already has its
-  own real production evidence (`#8337`: 20/21 tables exact; the 1 short
+  own real production evidence (`#8337`: 20/21 tables exact, the 1 short
   table, `pay_in_legs`, has a known, already-tracked, owner-gated 2-row
   historical data bug on `#8412` — explicitly NOT silently patched, per that
   issue's own discipline, which matches this task's guardrail). No action
-  taken; out of scope to touch money-ledger historical correction here.
+  taken. Out of scope to touch money-ledger historical correction here.
 - **KS-8.8 Treasury/payouts/tips**, **KS-8.9 Entitlements**, **KS-8.14
   Business funnel**, **KS-8.16 Forge**, **KS-8.17 Supervision long-tail** —
   each already has its own dated, production `--verify` closeout evidence
@@ -259,10 +259,10 @@ evidence, and none did:
 - **KS-8.1 Pylon dispatch**, **KS-8.2 Token ledger**, **KS-8.6 Artanis** —
   operational/dispatch/counter state, not user content. KS-8.6 has one
   already-open, already-tracked table-level drift bug (`#8409`,
-  `artanis_responder_ticks`) that is explicitly NOT a content-loss risk (it's
+  `artanis_responder_ticks`) that is explicitly NOT a content-loss risk (it is
   a scan/compose tick bookkeeping race, not user data) and is out of this
   pass's scope to fix.
-- **KS-8.15 Training/gym/evals** — not reviewed this pass; not
+- **KS-8.15 Training/gym/evals** — not reviewed this pass. Not
   user-generated content in the product sense (training run/eval artifacts).
   Flagged as unexamined, not asserted safe.
 
@@ -273,7 +273,7 @@ evidence, and none did:
   D1 remains sole read/write authority for every domain above.
 - No historical data correction (e.g. the known `pay_in_legs` 2-row bug on
   `#8412` was left exactly as its own issue already tracks it — not silently
-  patched here, consistent with the "stop and report, don't paper over"
+  patched here, consistent with the "stop and report, do not paper over"
   guardrail).
 - KS-8.15 (training/gym/evals) was not independently checked this pass.
 
@@ -300,7 +300,7 @@ All six commands above exit 0 as of 2026-07-05T11:5x UTC (this pass's run).
 **Forum posts (and the rest of the forum content + remainder domain) are now
 genuinely backed up to Postgres, verified with fresh evidence today — they
 were NOT before this pass, despite the migration plan reading otherwise.**
-CRM/email and Sites had the identical undetected gap; both are now fixed and
+CRM/email and Sites had the identical undetected gap. Both are now fixed and
 verified. Khala Code product state (chat/threads) and identity/auth were
 independently confirmed already safe. Billing has one small, already-tracked,
 owner-gated historical discrepancy unrelated to this pass's scope. All other
@@ -356,7 +356,7 @@ production: **VERIFY FAILED**.
 `pylon_assignment_events` is the domain's live event stream, including
 `payment_receipt` (47), `payout_target_admission` (60), and
 `settlement_status` (46) event kinds — not settlement authority itself (D1
-remains sole payout authority; these are receipt/status *records*, not the
+remains sole payout authority. These are receipt/status *records*, not the
 payout decision), but real financial-adjacent history that was silently
 missing from the mirror despite the domain being flagged "LANDED" on
 2026-07-04 and, per KS-8.4, already having `KHALA_SYNC_PYLON_READS=postgres`
@@ -371,7 +371,7 @@ both). `pylon_assignment_events` (425,300 rows) is too large for the
 page-by-page `wrangler d1 execute` backfill to finish in this session at the
 observed ~11-13 rows/sec throughput (rows carry full progress/heartbeat
 payloads) — left running as a detached background process (`nohup` +
-`disown`, safe/idempotent/resumable) for the remaining ~9-11 hours; see the
+`disown`, safe/idempotent/resumable) for the remaining ~9-11 hours. See the
 owner note below.
 
 ### KS-8.2 — Token ledger (issue #8308) — REAL GAP FOUND, now fixed
@@ -380,7 +380,7 @@ Fresh `bun scripts/backfill-token-ledger.ts --verify` against production:
 **VERIFY FAILED**. `token_usage_events` — the table backing the public
 `/api/public/khala-tokens-served` homepage counter — was 296,908 rows in D1
 against only 11,077 in Postgres (`sum_total_tokens` 8,441,160,476 vs
-182,795); all three public rollup tables
+182,795). All three public rollup tables
 (`public_khala_tokens_served_daily_rollups`,
 `_model_daily_rollups`, `_channel_daily_rollups`) showed the identical
 proportional gap.
@@ -391,7 +391,7 @@ incomplete Postgres mirror today), so this was a backup-completeness gap,
 not an active-serving bug.
 
 Action: ran the standard recipe (full sweep: 285,831 rows converged + all
-rollups; one transient `wrangler` API error mid-catch-up-sweep, resumed from
+rollups. One transient `wrangler` API error mid-catch-up-sweep, resumed from
 the saved cursor with no data loss since the upsert is `ON CONFLICT DO
 NOTHING`/idempotent). Final fresh `--verify` result is recorded in the
 "Final tallies" section below once the last sweep completed.
@@ -417,8 +417,8 @@ This matters more than the others because, per `MIGRATION_PLAN.md` §3.1,
 operator fleet-status route and the in-worker Artanis status-spine loader" —
 meaning some of this domain's reads ARE already being served from Postgres
 in production. Whether `pylon_provider_job_lifecycle` specifically feeds
-that read path was not re-derived in this pass; flagging the possibility
-honestly rather than asserting it did or didn't matter operationally.
+that read path was not re-derived in this pass. Flagging the possibility
+honestly rather than asserting it did or did not matter operationally.
 
 Action: ran the standard recipe (full sweep + one partial `--restart`
 catch-up before it hit the session Bash-tool timeout, so re-verified
@@ -436,7 +436,7 @@ not a missing-row/backup-completeness gap, and is the same *class* of issue
 as the already-tracked `artanis_responder_ticks` clobber race (#8409): a
 non-atomic "read D1, then upsert Postgres" dual-write can leave a stale
 Postgres copy of a row D1 later updated again. Not chased further in this
-pass; flagged here rather than silently left undocumented. Does not block
+pass. Flagged here rather than silently left undocumented. Does not block
 KS-8.19 citation for the other 10 tables in this domain.
 
 ### KS-8.5 — Agent runtime metadata (issue #8316) — REAL GAP FOUND, partially fixed
@@ -448,7 +448,7 @@ Fresh `bun scripts/backfill-agent-runtime.ts --verify` against production:
 |---|---:|---:|
 | agent_runs | 73 | 0 |
 | agent_run_events | 6,801 | 0 |
-| agent_goals / agent_goal_events | (small; d1 non-zero) | 0 |
+| agent_goals / agent_goal_events | (small, d1 non-zero) | 0 |
 | agent_traces | 230,331 | 0 |
 | agent_definitions / _runs / _triggers | 0 | 0 (correctly empty on both) |
 
@@ -459,20 +459,20 @@ resumed sweep — already caught up). `agent_traces` (230,331 rows, the
 domain's largest and highest-content table — full trace bodies) is, like
 `pylon_assignment_events` above, too large for this session's page-by-page
 backfill at the observed ~17-18 rows/sec — left running as a detached
-background process for the remaining ~3.5-4 hours; see the owner note below.
+background process for the remaining ~3.5-4 hours. See the owner note below.
 
 ### Owner note: two tables need hours, not minutes, to finish
 
 `pylon_assignment_events` (KS-8.1) and `agent_traces` (KS-8.5) were left
 running as detached (`nohup` + `disown`) background processes at the end of
 this pass rather than forced to finish inside one session — both are safe
-to leave running indefinitely (D1 stays sole authority throughout; the
-backfill only ever additively fills Postgres via `ON CONFLICT DO NOTHING`;
+to leave running indefinitely (D1 stays sole authority throughout, the
+backfill only ever additively fills Postgres via `ON CONFLICT DO NOTHING`.
 resumable from a saved cursor file if interrupted). This is flagged as an
 owner decision point (raised separately, since this pass could not write to
 the workspace-root `NEEDS_OWNER.md` from an isolated worktree): once both
 finish, re-run each script's `--verify --verify-newest 50` and confirm exit
-0; separately, decide whether the existing page-by-page `wrangler d1
+0. Separately, decide whether the existing page-by-page `wrangler d1
 execute` backfill mechanism needs a faster bulk-export/COPY path before
 KS-8.19's closing sweep for any other 100K+-row, large-payload table that
 turns up.
@@ -505,7 +505,7 @@ continuously-incrementing public counter (real production chat traffic
 lands new rows between the D1 read and the Postgres read of any single
 verify invocation), not a static backfill gap. This table receives ongoing
 production writes every few seconds, so a byte-perfect simultaneous
-snapshot of both stores is not achievable by design; the meaningful claim —
+snapshot of both stores is not achievable by design. The meaningful claim —
 the historical corpus is backed up — holds.
 
 **Updated overall verdict:** the mirror-completeness precondition now also

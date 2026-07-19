@@ -22,7 +22,7 @@ Native takes React — a model for describing UI and state — and runs it
 against native platforms, Effect Native takes **Effect** — a model for
 describing *entire programs* (state, effects, concurrency, data, services,
 resource lifetimes, and UI) — and runs it against native platforms. The UI
-is one part of an Effect Native application; the rest of the app *is Effect*.
+is one part of an Effect Native application. The rest of the app *is Effect*.
 
 The base is **Effect v4** — the `effect-smol` rewrite (`4.0.0-beta.94`): a
 re-architected fiber runtime (~6.3 KB core, ~15 KB with Schema), everything
@@ -32,7 +32,7 @@ system. We build on v4, not v3.
 ## 2. The parallel, precisely
 
 React Native is "React + a native host." React supplies the app-authoring
-model (components, hooks, state, context, the reconciler); a per-platform
+model (components, hooks, state, context, the reconciler). A per-platform
 host (Fabric on iOS/Android) turns that into native views. Effect Native is
 "Effect + a native host," and Effect supplies a *far larger* app-authoring
 model. Role for role:
@@ -49,7 +49,7 @@ model. Role for role:
 | **Errors** | throw / try-catch / error boundaries | **typed errors in the type** (`Schema.TaggedError`), never thrown |
 | **Resource lifetime** | `useEffect` cleanup | **`Scope` / `acquireRelease`** — guaranteed cleanup on `Exit` |
 | **Platform host** | Fabric (iOS/Android native) | **`platform-native`** adapter (`NativeRuntime.runMain` + native service Layers) — mirrors `platform-browser`/`-node`/`-bun` |
-| **Native painting** | Fabric mounting → UIView/View | **renderer adapters** (RN/Fabric now; Swift/Compose later; DOM on web; canvas via three-effect) |
+| **Native painting** | Fabric mounting → UIView/View | **renderer adapters** (RN/Fabric now, Swift/Compose later, DOM on web, canvas via three-effect) |
 | **UI description** | JSX component tree | **typed component set** (Schema-typed catalog + typed intents) — the view layer of the Effect app |
 
 Read the table top to bottom and the point lands: React gives React Native a
@@ -71,12 +71,12 @@ Effect is the opposite: it was *built* as the application foundation. So
 Effect Native inherits, for free, the things RN apps assemble by hand:
 
 - **The runtime is a reconciler-grade scheduler already.** Effects are inert
-  descriptions; the fiber runtime commits them, schedules cooperatively
+  descriptions. The fiber runtime commits them, schedules cooperatively
   (`Scheduler.shouldYield`), and enforces structured concurrency and
   interruption. This is the same "declare a description, the runtime commits
   it" mental model as React — we already own the engine.
 - **The app is *wired*, not prop-drilled.** `Layer` + `Context.Service` is a
-  memoized, scoped dependency graph; an Effect Native app is assembled by
+  memoized, scoped dependency graph. An Effect Native app is assembled by
   composing Layers into one root and handing it to the native `runMain` — the
   direct analog of mounting a React root, but for the *whole* app.
 - **Every boundary is typed and validated with Schema.** Component props,
@@ -112,13 +112,13 @@ adapter** — `NativeRuntime.runMain` for the mobile/native process, native
 bridge — plus the renderer(s) that paint the view. That is *exactly* how
 React Native relates to React (a host under a shared model), except the shared
 model is Effect and the host is ours to write. The pattern is proven three
-times over in the repo; we are extending it, not inventing it.
+times over in the repo. We are extending it, not inventing it.
 
 Two pieces already exist that a native renderer consumes:
 - **Reactive state → view binding** lives in `effect/unstable/reactivity`
   (`Atom`, `AtomRegistry`, `Reactivity`) and ships as framework bindings today
   (`@effect/atom-react` React hooks, plus Solid and Vue). The pattern for
-  "observe Effect state, drive a view" is established; Effect Native adds the
+  "observe Effect state, drive a view" is established. Effect Native adds the
   *native* binding.
 - **The runtime entry** (`Effect.runFork`, `makeRunMain`, `ManagedRuntime`
   for foreign call sites) is the seam a native host wraps — the same seam
@@ -141,7 +141,7 @@ One Effect program, run by a native host, painted by renderers:
 - **The UI** is the typed component set (this folder's other docs): a
   Schema-typed catalog with typed intents (not callbacks), a deterministic
   typed-object styling model, rendered by swappable adapters.
-- **Resource lifetimes** are `Scope`-managed; the native `runMain` interrupts
+- **Resource lifetimes** are `Scope`-managed. The native `runMain` interrupts
   the root fiber on process teardown, and everything cleans up on `Exit`.
 
 The UI is the last bullet, not the first — because Effect Native is an
@@ -150,8 +150,8 @@ The UI is the last bullet, not the first — because Effect Native is an
 ## 6. How this recontextualizes the other docs
 
 - **The main analysis + EN-0…EN-9 roadmap** describes the *UI/renderer layer*
-  of this framework — the typed component set and the renderer adapters. It's
-  correct; it's just one layer of the whole, and its "runtime" is Effect's
+  of this framework — the typed component set and the renderer adapters. It is
+  correct. It is just one layer of the whole, and its "runtime" is Effect's
   runtime, its typed contracts are Schema.
 - **Foldkit** is the closest prior art: a *whole-app* Effect framework
   (Elm/MVU) — the "framework, not library" instinct, but web-only and
@@ -159,7 +159,7 @@ The UI is the last bullet, not the first — because Effect Native is an
   Ports) into Effect Native's app + UI layers.
 - **React Native** is the *renderer* we borrow (Fabric/Yoga) — and the model
   we replace. The positive half of "use the renderer, leave the model" is:
-  **Effect is our React.** The app is authored in Effect; RN only paints.
+  **Effect is our React.** The app is authored in Effect. RN only paints.
 - **three-effect** is a *renderer* (canvas) folding under this framework, and
   a domain library it draws from.
 - **Styling** (Tailwind/StyleX) is one typed boundary among many — styles as
@@ -173,19 +173,19 @@ The UI is the last bullet, not the first — because Effect Native is an
 > `ViewProgram`, host-driver, token/style, mobile, and Electron host paths. A
 > fully native Swift/Compose `platform-native` target remains future work. The
 > remaining web-specific gap is first-class React DOM/SSR integration under
-> the same contract; see the
+> the same contract. See the
 > [React web renderer harmonization analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md).
 
 - **A fully native `platform-native` does not exist yet.** The platform-adapter
   pattern is proven and the React Native/Expo and Electron/DOM host paths now
   ship, but pure Swift/Compose host Layers and native
   reactive-state→view/process bindings remain net-new work.
-- **The Effect→View binding now exists; first-class React DOM does not.**
+- **The Effect→View binding now exists. First-class React DOM does not.**
   `ViewProgram` maps typed state into a renderer-neutral View stream consumed
   by the direct DOM and React Native renderers. A concurrency-safe synchronous
   View source plus React DOM SSR/hydration surface is the remaining web gap,
   not permission to move application state into hooks.
-- **v4 is beta.** We pin `effect-smol@4.0.0-beta.94` and track it; the core
+- **v4 is beta.** We pin `effect-smol@4.0.0-beta.94` and track it. The core
   programming model (Effect/Layer/Schema/Stream) is stable per the v4 migration
   notes, but the `unstable/*` surface (including reactivity) can move — expect
   it and pin hard.

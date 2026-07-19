@@ -29,7 +29,7 @@ path:
 The MPP endpoint is also launch-safe while owner-gated:
 
 - with `KHALA_MPP_ENABLED` off or no Stripe key, it returns 503 and constructs
-  no charge;
+  no charge.
 - when armed, an unauthenticated call must return 402 Payment challenge, not a
   free completion.
 

@@ -1,7 +1,7 @@
 # forge.openagents.com — Stand-Up Spec (operationalize the built components)
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
@@ -11,7 +11,7 @@ Forge implementation routing must respect the separate-private-repo boundary.
 > stand up the owned coordination layer **immediately**. The FORGE-0 first wave
 > (#6745) is built + merged but the components are libraries, not a running
 > service. This spec is the concrete assembly + cutover plan to a live
-> `forge.openagents.com`. Public-safe; no secrets.
+> `forge.openagents.com`. Public-safe. No secrets.
 > Update, 2026-06-28: the `apps/forge/` deploy bootstrap is live via #6759 and
 > the SU-1B shell is implemented via #6769. `forge.openagents.com` now serves
 > the separate Forge Worker/app shell with work, change, verification, queue,
@@ -43,13 +43,13 @@ Real, tested components — grounded:
   `openagents-forge` Worker to `forge.openagents.com`, reusing
   `@openagentsinc/ui` tokens while staying outside the main
   `openagents.com` logged-in route tree. #6759 shipped the first landing page
-  with the exact copy `THE FORGE` / `where agents git it on`; #6769 expands it
+  with the exact copy `THE FORGE` / `where agents git it on`. #6769 Expands it
   into route-owned shell surfaces for work, changes, verification, queue, refs,
   and `/shell.json` contract metadata.
 - **Legacy/source-material web surface.** `apps/openagents.com/apps/web/src/page/loggedIn/page/forge.ts` is older Forge dashboard material inside the main product app. It can be mined for copy/layout ideas, but it is not the target `forge.openagents.com` UI.
 - Bindings already present in `apps/openagents.com/workers/api/wrangler.jsonc`: R2 (`ARTIFACTS`), D1 (`openagents-autopilot`), Durable Objects.
 
-## The gap (why it isn't "stood up" yet)
+## The gap (why it is not "stood up" yet)
 
 The pieces are stores + parsers + protocols with no **control plane** binding them into a running service:
 
@@ -158,14 +158,14 @@ same app isolation.
 
 The API/control plane can initially live in the `apps/openagents.com` Worker to
 reuse existing R2/D1/DO bindings. The Forge UI itself lives in `apps/forge/` and
-is served on `forge.openagents.com`. It calls `/api/forge/*`; the API may later
+is served on `forge.openagents.com`. It calls `/api/forge/*`. The API may later
 move behind the same host or into its own Worker once the boundary is proven.
 
 ## Stand-up sequence (smallest-first, each shippable + green)
 
-- **SU-0 — Boundary/spec lock (P0, do first).** Freeze the execution boundary, auth model, canonical git object/ref store, receipt format, and UI app boundary before adding routes. Tenant git tokens are for smart Git HTTP only; control-plane calls use dedicated `forge:*` service/session/admin scopes. The R2 packfile archive is evidence, not the canonical ref store. Verification receipts include the change id, base/head refs, packfile digest, executor identity, command, exit code, timestamps, artifact refs, and log digest. The locked contract is `docs/forge/2026-06-28-forge-boundary-contract.md`; shared schemas live in `@openagentsinc/forge-protocol` as `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and `ForgePromotionDecisionReceipt`. Acceptance: docs/OpenAPI route notes name these boundaries and no route uses git tokens as control-plane auth.
-- **SU-1 — Separate Forge UI shell.** Stand up `apps/forge/` for `forge.openagents.com`, reusing `@openagentsinc/ui` and shared tokens while owning its own app shell, navigation, queue/change/work inspectors, and route model. #6759 shipped the deploy bootstrap and landing page; #6769 shipped the shell route model, work/change/verification/queue/ref surfaces, and `/shell.json` public-safe contract metadata. Acceptance: `forge.openagents.com` renders the Forge shell from the Forge API contract, and the old `openagents.com` logged-in Forge page is not the expansion target.
-- **SU-2 — Control-plane routes.** Expose the coordination store as `/api/forge/*` Worker routes: create/read work records, change records, status transitions, leases, queue state, verification receipts, and promotion decisions. #6770 implemented this in `apps/openagents.com/workers/api/src/forge-control-plane-routes.ts`, registered the surface in OpenAPI, added `OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN` scoped bearer support, and added migration `0254_forge_control_plane_receipts.sql` for verification/promotion receipts. Acceptance: an authed control-plane caller can create a work record + a change record + transition status through the API; rows land in D1 through `forge-coordination-store`.
+- **SU-0 — Boundary/spec lock (P0, do first).** Freeze the execution boundary, auth model, canonical git object/ref store, receipt format, and UI app boundary before adding routes. Tenant git tokens are for smart Git HTTP only. Control-plane calls use dedicated `forge:*` service/session/admin scopes. The R2 packfile archive is evidence, not the canonical ref store. Verification receipts include the change id, base/head refs, packfile digest, executor identity, command, exit code, timestamps, artifact refs, and log digest. The locked contract is `docs/forge/2026-06-28-forge-boundary-contract.md`. Shared schemas live in `@openagentsinc/forge-protocol` as `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and `ForgePromotionDecisionReceipt`. Acceptance: docs/OpenAPI route notes name these boundaries and no route uses git tokens as control-plane auth.
+- **SU-1 — Separate Forge UI shell.** Stand up `apps/forge/` for `forge.openagents.com`, reusing `@openagentsinc/ui` and shared tokens while owning its own app shell, navigation, queue/change/work inspectors, and route model. #6759 shipped the deploy bootstrap and landing page. #6769 Shipped the shell route model, work/change/verification/queue/ref surfaces, and `/shell.json` public-safe contract metadata. Acceptance: `forge.openagents.com` renders the Forge shell from the Forge API contract, and the old `openagents.com` logged-in Forge page is not the expansion target.
+- **SU-2 — Control-plane routes.** Expose the coordination store as `/api/forge/*` Worker routes: create/read work records, change records, status transitions, leases, queue state, verification receipts, and promotion decisions. #6770 implemented this in `apps/openagents.com/workers/api/src/forge-control-plane-routes.ts`, registered the surface in OpenAPI, added `OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN` scoped bearer support, and added migration `0254_forge_control_plane_receipts.sql` for verification/promotion receipts. Acceptance: an authed control-plane caller can create a work record + a change record + transition status through the API. Rows land in D1 through `forge-coordination-store`.
 - **SU-3 — Git intake → archive → canonical refs → coordination.** #6771 implemented the smart-Git receive-pack endpoint in the `apps/openagents.com` Worker: `GET /git/{tenantRef}/{repositoryRef}.git/info/refs?service=git-receive-pack` advertises refs, and `POST /git/{tenantRef}/{repositoryRef}.git/git-receive-pack` authenticates tenant git tokens, parses pushes via `apps/pylon/src/git-receive-pack.ts`, archives packfiles to R2, applies canonical ref/object metadata under D1 ref locks, and writes work/change/status rows through the Forge coordination store. Acceptance: a tenant-scoped push lands a packfile in R2, updates the canonical git object/ref store, and creates a change record in D1 while malformed pkt-lines, stale ref updates, wrong-scope tokens, and delete-only pushes fail closed.
 - **SU-3.5 — Import `OpenAgentsInc/openagents` into Forge (#6793).** Seed the
   public OpenAgents repo into the Forge canonical git/ref store so the team can
@@ -178,20 +178,20 @@ move behind the same host or into its own Worker once the boundary is proven.
   anti-#6719 deletion guard) over the coordination store and canonical refs to
   compute **`nextActualPromotion`** — promotion is a gated ref fast-forward,
   never an O(N) PR merge or metadata-only D1 flip. Acceptance: two concurrent
-  change records serialize through the queue with the gates enforced; a
+  change records serialize through the queue with the gates enforced. A
   deletion-poisoned change is blocked structurally (the #6719 class becomes
   impossible).
 - **SU-5 — Verification on intake (#6795).** The Worker enqueues verification
-  for each change; Pylon/owned runner executes `forge-verification-runner`
+  for each change. Pylon/owned runner executes `forge-verification-runner`
   (Docker-isolated `bun test`) and posts a receipt + verdict back to Forge
   before the change is promotable. Acceptance: a failing change cannot reach
   `nextActualPromotion`, and the D1 status is backed by a receipt artifact.
 - **SU-6 — GitHub mirror worker (#6796).** A one-way worker that pushes
-  promoted commits to GitHub as a read-only mirror (keeps external visibility;
+  promoted commits to GitHub as a read-only mirror (keeps external visibility,
   removes GitHub from the critical path). Acceptance: a Forge-promoted commit
   appears on GitHub `main` via the mirror, not via a PR.
 - **SU-7 — Dogfood one OpenAgents fleet lane (#6797).** Point ONE codex/Pylon
-  lane at Forge (intake -> verify -> queue -> promote -> mirror) end-to-end;
+  lane at Forge (intake -> verify -> queue -> promote -> mirror) end-to-end.
   prove zero GitHub PR contention. Then widen the cutover lane-by-lane.
   Acceptance: a real fleet change is coordinated entirely through Forge, the
   separate Forge UI shows the live queue/change state, and GitHub is only
@@ -208,15 +208,15 @@ move behind the same host or into its own Worker once the boundary is proven.
   `apps/openagents.com` logged-in route tree.
 - Serve `/api/forge/*` from the `apps/openagents.com` Worker first if that is
   the fastest route to reuse existing bindings (R2 `ARTIFACTS`, D1
-  `openagents-autopilot`, DOs) in `wrangler.jsonc`; keep the UI deploy separate.
-- Deploy via the standard `deploy:safe` gate; SU-1..SU-6 ship incrementally
+  `openagents-autopilot`, DOs) in `wrangler.jsonc`. Keep the UI deploy separate.
+- Deploy via the standard `deploy:safe` gate. SU-1..SU-6 ship incrementally
   behind the route, dogfooded (SU-7) before any external exposure.
 
 ## Governance / safety (non-negotiable)
 
 - Every promotion runs the **Blueprint gates** (merge-deploy-gate, issue-close-safe, command-execution-source-verified, operator-grounded-assertion) + the **anti-#6719 deletion guard** — the 119-duplicate-PR night and the stale-base mass-deletion are made *structurally* impossible, not policy-discouraged.
 - Tenant isolation (SU-8) must pass the adversarial security harness (#6643) in prod before any external fleet is admitted.
-- Own-capacity / $0; no external paid spend.
+- Own-capacity / $0. No external paid spend.
 
 ## Acceptance for "stood up"
 
@@ -231,19 +231,19 @@ coordination layer is live. SU-8 is the external multi-tenant expansion gate.
 
 - #6759 — SU-1 bootstrap: separate `apps/forge/` Worker, custom-domain deploy,
   and basic `THE FORGE` landing page. Closed after production verification.
-- #6768 — SU-0 boundary/spec lock; implemented by
+- #6768 — SU-0 boundary/spec lock. Implemented by
   `docs/forge/2026-06-28-forge-boundary-contract.md` and shared
   `@openagentsinc/forge-protocol` auth/receipt schemas.
-- #6769 — SU-1B Forge UI shell beyond the landing page; implemented in
+- #6769 — SU-1B Forge UI shell beyond the landing page. Implemented in
   `apps/forge/` with route-owned work, change, verification, queue, and ref
   views plus `/shell.json` preview contract metadata.
-- #6770 — SU-2 `/api/forge/*` control-plane routes; implemented in the
+- #6770 — SU-2 `/api/forge/*` control-plane routes. Implemented in the
   `apps/openagents.com` Worker with scoped Forge bearer/admin auth, D1-backed
   work/change/status/lease/queue route handlers, and receipt persistence.
-- #6771 — SU-3 smart-Git intake to archive/canonical refs/coordination records;
+- #6771 — SU-3 smart-Git intake to archive/canonical refs/coordination records.
   implemented in the `apps/openagents.com` Worker with migration
   `0255_forge_git_canonical_store.sql`.
-- #6782 — Linear adaptation + software-factory synergies; implemented by
+- #6782 — Linear adaptation + software-factory synergies. Implemented by
   `docs/forge/2026-06-28-forge-linear-adaptation.md`.
 - #6793 — SU-3.5 import `OpenAgentsInc/openagents` into Forge canonical refs
   for real repo visibility and idempotent dogfood refresh.
@@ -255,6 +255,6 @@ coordination layer is live. SU-8 is the external multi-tenant expansion gate.
 
 ---
 
-*Stand-up spec authored 2026-06-28 at owner direction; informed to Artanis. The
-FORGE-0 wave-1 components (#6746-#6752) are the substrate; this is their
+*Stand-up spec authored 2026-06-28 at owner direction. Informed to Artanis. The
+FORGE-0 wave-1 components (#6746-#6752) are the substrate. This is their
 operational assembly into `forge.openagents.com`.*

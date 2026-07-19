@@ -23,7 +23,7 @@ oa-node settlement receipt append \
 > **Ref naming:** CLI flags historically used `--treasury-ref` / `--nexus-ref`.
 > They store **opaque public-safe accounting / payout-bridge refs only**. They
 > do not grant the deprecated Treasury product authority or the old Nexus
-> product authority. Customer credits and ledgers live on the Worker; outbound
+> product authority. Customer credits and ledgers live on the Worker. Outbound
 > payout/custody remains on the **MDK/Nexus payout bridge** where that path is
 > still active.
 
