@@ -80,14 +80,14 @@ run-evidence core.
 
 ### Reconciled implementation truth at this revision
 
-| Surface | Narrowest current truth | Remaining authority |
-| --- | --- | --- |
-| Full Auto run core | #8968–#8977, #8987, #8991, #9000–#9002, and #8976 are closed: the durable run/lifecycle, mission, liveness, report/analyzer, handoff, picker, routing, guardrails, dedicated UX, thread-pressure survival, restart continuity, and real Codex/Claude owner-development matrix are on `main`. | #8978 must independently admit the AssuranceSpec, #8979 must bind the result to a signed packaged release and owner observation. Parent #8967 stays open until those distinct gates close. |
-| Mobile Full Auto | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey. | Remote Pause/Resume/Stop and report review remain later admitted work, simulator proof is not physical-device or general host-movement proof. |
-| Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed, #8922–#8924 are closed. | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim. |
-| Desktop/T3 workbench | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey. | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract. |
-| Mobile/T3 workbench | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface. | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof, live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
-| Fast Follow | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts. | The exact current FF-D1 packet in the accepted ledger owns the next mutation, Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy. |
+| Surface                   | Narrowest current truth                                                                                                                                                                                                                                                                      | Remaining authority                                                                                                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full Auto run core        | #8968–#8977, #8987, #8991, #9000–#9002, and #8976 are closed: the durable run/lifecycle, mission, liveness, report/analyzer, handoff, picker, routing, guardrails, dedicated UX, thread-pressure survival, restart continuity, and real Codex/Claude owner-development matrix are on `main`. | #8978 must independently admit the AssuranceSpec, #8979 must bind the result to a signed packaged release and owner observation. Parent #8967 stays open until those distinct gates close.                                            |
+| Mobile Full Auto          | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey.                                                                                                  | Remote Pause/Resume/Stop and report review remain later admitted work, simulator proof is not physical-device or general host-movement proof.                                                                                         |
+| Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed, #8922–#8924 are closed.                                                                                                                                        | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim.                                            |
+| Desktop/T3 workbench      | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey.                                                                                                                                                 | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract.                    |
+| Mobile/T3 workbench       | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface.                                                                                                                  | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof, live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
+| Fast Follow               | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts.                                                                                   | The exact current FF-D1 packet in the accepted ledger owns the next mutation, Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy.                            |
 
 ### Canonical waves
 
@@ -164,7 +164,7 @@ mutation through T3M-F2.
 
 The first deployable OpenAgents product is the signed, local-first OpenAgents
 Desktop Codex Workroom defined by the exact
-[`Product Spec`](../mvp/openagents-codex-workroom-mvp.product-spec.md). Its
+[`ProductSpec`](../mvp/openagents-codex-workroom-mvp.product-spec.md). Its
 evidence and product-shape analysis live in the adjacent
 [`audit`](../mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md), the
 [`MVP README`](../mvp/README.md) is the entry point. [MVP-01
@@ -298,15 +298,15 @@ ProductSpec revision/digest -> user-accepted plan -> criterion work packets
        host policy/admission -> Codex app-server -> typed outcome/evidence
 ```
 
-| Layer | Canonical responsibility |
-| --- | --- |
-| Intent | Exact ProductSpec revision/digest, stable criterion IDs, and user-accepted revisions |
-| Control | Repository/account grants, host policy, approvals, registered intents, and idempotency |
-| Planning | User-accepted criterion coverage, dependencies, and durable work packets |
-| Execution | One compatible host-owned Codex app-server using the ordinary logged-in Codex session |
-| Workroom | Sessions, typed timeline, controls, blockers, child graph, and bounded repository review |
-| Evidence | Criterion-linked verification, exact or explicitly unmeasured usage, review, and receipts |
-| Continuity | Host-owned durable admission, cursors, gap repair, restart recovery, and diagnostics |
+| Layer      | Canonical responsibility                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| Intent     | Exact ProductSpec revision/digest, stable criterion IDs, and user-accepted revisions      |
+| Control    | Repository/account grants, host policy, approvals, registered intents, and idempotency    |
+| Planning   | User-accepted criterion coverage, dependencies, and durable work packets                  |
+| Execution  | One compatible host-owned Codex app-server using the ordinary logged-in Codex session     |
+| Workroom   | Sessions, typed timeline, controls, blockers, child graph, and bounded repository review  |
+| Evidence   | Criterion-linked verification, exact or explicitly unmeasured usage, review, and receipts |
+| Continuity | Host-owned durable admission, cursors, gap repair, restart recovery, and diagnostics      |
 
 Desktop is the deep local workroom and Full Auto host. Mobile has the exact T3
 parity and Full Auto first-screen lanes named above, it remains a client of
@@ -350,43 +350,43 @@ adapter.
 ## Durable acceptance gates
 
 The numbered criteria in the exact
-[`MVP Product Spec`](../mvp/openagents-codex-workroom-mvp.product-spec.md) are
+[`MVP ProductSpec`](../mvp/openagents-codex-workroom-mvp.product-spec.md) are
 the acceptance authority for the first deployable shape. These four roadmap
 gates group that contract for sequencing, they neither restate nor weaken it:
 
-| Gate | Grouped scope | Exit evidence |
-| --- | --- | --- |
-| MVP-0 — ProductSpec authority | Guided valid Product Spec, exact revision/digest, stable criterion IDs, accepted criterion-addressed plan, hash-pinned built-in skill, no skill/model authority | One `ProductSpecRun` binds the granted spec and every work packet, invalid, stale, missing-ID, cyclic, or self-verifying states fail closed |
+| Gate                          | Grouped scope                                                                                                                                                                  | Exit evidence                                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MVP-0 — ProductSpec authority | Guided valid ProductSpec, exact revision/digest, stable criterion IDs, accepted criterion-addressed plan, hash-pinned built-in skill, no skill/model authority                 | One `ProductSpecRun` binds the granted spec and every work packet, invalid, stale, missing-ID, cyclic, or self-verifying states fail closed                                     |
 | MVP-1 — useful local workroom | Signed local-first Desktop app, ordinary logged-in Codex session, repository grant, sessions, causal timeline, controls/blockers, complete child graph, bounded files/Git diff | A real criterion-linked Codex task and child transcript remain inspectable beside exact repository effects without an OpenAgents account or separate Pylon account-linking flow |
-| MVP-2 — recovery and truth | Durable admission, exact retry, gap repair, renderer reload, app restart, explicit fault taxonomy, criterion evidence, redacted diagnostics | Restart/reconnect creates no duplicate work, silent retarget, flattened child, false verification, leaked private data, or invented completion |
-| MVP-3 — exact release journey | Install, valid Product Spec, accepted multi-packet plan, real child-agent work, evidence/review, terminal outcome, update, rollback, reinstall, cleanup | The exact signed artifact completes CW-AC-01 through CW-AC-18 at their narrowest proof rungs and declares only the bounded Codex Workroom scope proven |
+| MVP-2 — recovery and truth    | Durable admission, exact retry, gap repair, renderer reload, app restart, explicit fault taxonomy, criterion evidence, redacted diagnostics                                    | Restart/reconnect creates no duplicate work, silent retarget, flattened child, false verification, leaked private data, or invented completion                                  |
+| MVP-3 — exact release journey | Install, valid ProductSpec, accepted multi-packet plan, real child-agent work, evidence/review, terminal outcome, update, rollback, reinstall, cleanup                         | The exact signed artifact completes CW-AC-01 through CW-AC-18 at their narrowest proof rungs and declares only the bounded Codex Workroom scope proven                          |
 
 The former R0–R7 and D0–D6 matrices below are retained historical design
 constraints, not an active post-MVP queue. They are neither satisfied nor
 reopened by MVP acceptance and cannot dispatch work without new owner authority.
 
-| Gate | Required scope | Exit evidence |
-| --- | --- | --- |
-| R0 — truthful green foundation | Clean Desktop/mobile typecheck, tests, builds, capability manifests, and explicit unconfigured/offline/reconnecting/stale/refetch/failed/ready states | Neither fixture, cache, transcript, nor optimistic UI is presented as authority |
-| R1 — identity and session | One owner/org scope, device registration, stable conversation/project/session refs, readiness, refresh/revocation, and persona-neutral bootstrap | Both clients see the same authorized catalog, revoke either device, no secret/private payload crosses renderer or public evidence |
-| R2 — Khala Sync continuity | Canonical projections/outcomes, monotonic cursor/version, tombstones, bounded caches, idempotency, conflict/refetch | Cross-device change plus restart reconstructs matching refs/versions without duplicates or invented completion |
-| R3 — Fleet, targets, workrooms | Named worker/account/target, workroom lifecycle, one claim registry, approvals/controls, explicit quota/policy/isolation/fallback, usage and receipts | One real Codex+Claude fleet is controlled from both clients, owner-local, owner-managed remote, and managed targets use one registry, every command has one durable outcome with no silent provider/target/isolation substitution |
-| R4 — interruption and movement | Offline queue, lost ACK, replay/order faults, restart/revocation, host-independent identity, stable agent graph/cursors, generation-fenced attachment, secret-free checkpoint, detach/attach/move/failback | Fault injection and real movement produce no lost accepted intent, double execution, two live generations, orphaned child, topology corruption, leaked secret, false success, or indefinite spinner, stale clients/hosts converge or fail closed |
-| R5 — Desktop workbench | D0–D6: sessions/topology, composer, projects/files/editor/Git/PTY, commands, providers/models/MCP/permissions, settings/diagnostics, Fleet, lifecycle/distribution | Everyday OpenCode-parity workflow completes in hardened Effect Native/Electron and survives restart/reconnect |
-| R6 — mobile any-host coding | Directory/topology, repositories/threads, rich turns, targets, compact files/changes/terminal/preview/artifacts, writeback, Fleet controls, push/deep links, stop/checkpoint/move/resume, text and voice | Physical iOS plus Android emulator—nothing gates on physical Android—access every authorized enrolled-host session, inspect causal child activity and its transcript, use text or voice to follow up/interrupt and request a move, inspect/change/review/run/preview/write back, and supervise R3 without raw filesystem, shell, vendor, credential, or voice-only authority |
-| R7 — release and dogfood | Signed/recoverable Desktop, iOS/Android artifacts, schema/migration/rollback, diagnostics, Sync/graph/attachment/broker/command/reconnect telemetry | Sustained cross-host/Desktop/mobile dogfood exercises voice, secret revocation, update/restart/offline/lost-ACK, move/failback, and reclaim without fork, duplication, leak, orphan, data loss, or false authority |
+| Gate                           | Required scope                                                                                                                                                                                             | Exit evidence                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R0 — truthful green foundation | Clean Desktop/mobile typecheck, tests, builds, capability manifests, and explicit unconfigured/offline/reconnecting/stale/refetch/failed/ready states                                                      | Neither fixture, cache, transcript, nor optimistic UI is presented as authority                                                                                                                                                                                                                                                                                              |
+| R1 — identity and session      | One owner/org scope, device registration, stable conversation/project/session refs, readiness, refresh/revocation, and persona-neutral bootstrap                                                           | Both clients see the same authorized catalog, revoke either device, no secret/private payload crosses renderer or public evidence                                                                                                                                                                                                                                            |
+| R2 — Khala Sync continuity     | Canonical projections/outcomes, monotonic cursor/version, tombstones, bounded caches, idempotency, conflict/refetch                                                                                        | Cross-device change plus restart reconstructs matching refs/versions without duplicates or invented completion                                                                                                                                                                                                                                                               |
+| R3 — Fleet, targets, workrooms | Named worker/account/target, workroom lifecycle, one claim registry, approvals/controls, explicit quota/policy/isolation/fallback, usage and receipts                                                      | One real Codex+Claude fleet is controlled from both clients, owner-local, owner-managed remote, and managed targets use one registry, every command has one durable outcome with no silent provider/target/isolation substitution                                                                                                                                            |
+| R4 — interruption and movement | Offline queue, lost ACK, replay/order faults, restart/revocation, host-independent identity, stable agent graph/cursors, generation-fenced attachment, secret-free checkpoint, detach/attach/move/failback | Fault injection and real movement produce no lost accepted intent, double execution, two live generations, orphaned child, topology corruption, leaked secret, false success, or indefinite spinner, stale clients/hosts converge or fail closed                                                                                                                             |
+| R5 — Desktop workbench         | D0–D6: sessions/topology, composer, projects/files/editor/Git/PTY, commands, providers/models/MCP/permissions, settings/diagnostics, Fleet, lifecycle/distribution                                         | Everyday OpenCode-parity workflow completes in hardened Effect Native/Electron and survives restart/reconnect                                                                                                                                                                                                                                                                |
+| R6 — mobile any-host coding    | Directory/topology, repositories/threads, rich turns, targets, compact files/changes/terminal/preview/artifacts, writeback, Fleet controls, push/deep links, stop/checkpoint/move/resume, text and voice   | Physical iOS plus Android emulator—nothing gates on physical Android—access every authorized enrolled-host session, inspect causal child activity and its transcript, use text or voice to follow up/interrupt and request a move, inspect/change/review/run/preview/write back, and supervise R3 without raw filesystem, shell, vendor, credential, or voice-only authority |
+| R7 — release and dogfood       | Signed/recoverable Desktop, iOS/Android artifacts, schema/migration/rollback, diagnostics, Sync/graph/attachment/broker/command/reconnect telemetry                                                        | Sustained cross-host/Desktop/mobile dogfood exercises voice, secret revocation, update/restart/offline/lost-ACK, move/failback, and reclaim without fork, duplication, leak, orphan, data loss, or false authority                                                                                                                                                           |
 
 Desktop depth remains seven explicit acceptance gates:
 
-| Gate | Scope | Exit |
-| --- | --- | --- |
-| D0 | Hardened predictable truthful shell, manifest/capability agreement | Clean typecheck/tests/bundle plus isolated real-Electron smoke |
-| D1 | Real stream, loss-accounted history, canonical live topology, independent transcripts, composer/interactions, early mobile continuation | Real stream continues on physical mobile with matching refs/versions/cursor/phase/outcome and reconnect creates no duplicate, orphan, or inaccessible child |
-| D2 | Stable projects/sessions, commands/keybindings, catalogs/restore, enforced Effect topology | Pointer/keyboard actions are equivalent, restart restores exact selection, topology oracle rejects forbidden edges |
-| D3 | Grant-bounded workspace/files/editor/Git/review/PTY/preview | Conflict-safe restart/edit/diff/context/terminal journey preserves bounds and post-image |
-| D4 | Providers/models/reasoning, MCP/plugins/skills, permissions, settings, diagnostics, isolation/extensions | A real host mutation follows typed policy with no renderer secret or ambient authority |
-| D5 | Server-authoritative Fleet attention/control/outcomes/receipts | Desktop/mobile show matching state and durable controls converge under replay/reconnect |
-| D6 | Fuses, signing/notarization, install/update/rollback/recovery, legacy lockout, support diagnostics | Clean machine completes install, first run, update/interruption/resume, rollback/reinstall, uninstall, and support export |
+| Gate | Scope                                                                                                                                   | Exit                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D0   | Hardened predictable truthful shell, manifest/capability agreement                                                                      | Clean typecheck/tests/bundle plus isolated real-Electron smoke                                                                                              |
+| D1   | Real stream, loss-accounted history, canonical live topology, independent transcripts, composer/interactions, early mobile continuation | Real stream continues on physical mobile with matching refs/versions/cursor/phase/outcome and reconnect creates no duplicate, orphan, or inaccessible child |
+| D2   | Stable projects/sessions, commands/keybindings, catalogs/restore, enforced Effect topology                                              | Pointer/keyboard actions are equivalent, restart restores exact selection, topology oracle rejects forbidden edges                                          |
+| D3   | Grant-bounded workspace/files/editor/Git/review/PTY/preview                                                                             | Conflict-safe restart/edit/diff/context/terminal journey preserves bounds and post-image                                                                    |
+| D4   | Providers/models/reasoning, MCP/plugins/skills, permissions, settings, diagnostics, isolation/extensions                                | A real host mutation follows typed policy with no renderer secret or ambient authority                                                                      |
+| D5   | Server-authoritative Fleet attention/control/outcomes/receipts                                                                          | Desktop/mobile show matching state and durable controls converge under replay/reconnect                                                                     |
+| D6   | Fuses, signing/notarization, install/update/rollback/recovery, legacy lockout, support diagnostics                                      | Clean machine completes install, first run, update/interruption/resume, rollback/reinstall, uninstall, and support export                                   |
 
 ### Desktop host boundary
 
@@ -487,15 +487,15 @@ composed with closed #8980's Full Auto first-screen proof. Every source
 capability is adapted to the stronger contract, covered by an existing target
 surface, or rejected with a reason, presence in a source app is never enough.
 
-| Group | Required result |
-| --- | --- |
-| Identity/repositories | Sign in or remain local, select repository, bind/resume thread, revoke safely |
-| Conversation | Rich reasoning/text/tool/usage/file/writeback events plus queue/steer/interrupt/recover survive background, restart, reconnect, and target handoff |
-| Accounts/targets | Named readiness and policy, no default account or silent provider/target/isolation fallback |
-| Workroom | Typed create/resume/stop/reclaim, files, processes/PTY, preview, network policy, snapshots, artifacts |
-| Review/writeback | Exact files/diff/verification/post-image and safe branch/PR writeback, no force |
-| Fleet/attention | Same run/work/attempt/approval/control/outcome/receipt refs and versions as Desktop |
-| Quality/release | Clean builds, accessibility, crash/connectivity, migration/recovery, physical iOS and Android-emulator proof |
+| Group                 | Required result                                                                                                                                    |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity/repositories | Sign in or remain local, select repository, bind/resume thread, revoke safely                                                                      |
+| Conversation          | Rich reasoning/text/tool/usage/file/writeback events plus queue/steer/interrupt/recover survive background, restart, reconnect, and target handoff |
+| Accounts/targets      | Named readiness and policy, no default account or silent provider/target/isolation fallback                                                        |
+| Workroom              | Typed create/resume/stop/reclaim, files, processes/PTY, preview, network policy, snapshots, artifacts                                              |
+| Review/writeback      | Exact files/diff/verification/post-image and safe branch/PR writeback, no force                                                                    |
+| Fleet/attention       | Same run/work/attempt/approval/control/outcome/receipt refs and versions as Desktop                                                                |
+| Quality/release       | Clean builds, accessibility, crash/connectivity, migration/recovery, physical iOS and Android-emulator proof                                       |
 
 ## Proof vocabulary
 
@@ -514,12 +514,12 @@ worker closeout, or polished UI never manufactures live or owner acceptance.
 
 ### Cutover proof boundaries
 
-| Gate | State and meaning |
-| --- | --- |
-| C0 | Closed historical implementation baseline for the durable Fleet seam |
-| C1 | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate |
-| C2 | Closed #8640 simultaneous named Codex+Claude mixed-account proof, substrate only, never client cutover or Sarah authority |
-| C3 | Closed product integration boundary: #8547 accepts the first managed Agent Computer in production, #8636 accepts one concurrent owner-local plus managed-cloud run, one claim registry, mobile management of the admitted managed account, same-ref Android/Desktop projection, honest usage, and zero-residue reclaim |
+| Gate | State and meaning                                                                                                                                                                                                                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C0   | Closed historical implementation baseline for the durable Fleet seam                                                                                                                                                                                                                                                   |
+| C1   | Closed/deployed minimum-safe run, claim, reconnect, and supervision substrate                                                                                                                                                                                                                                          |
+| C2   | Closed #8640 simultaneous named Codex+Claude mixed-account proof, substrate only, never client cutover or Sarah authority                                                                                                                                                                                              |
+| C3   | Closed product integration boundary: #8547 accepts the first managed Agent Computer in production, #8636 accepts one concurrent owner-local plus managed-cloud run, one claim registry, mobile management of the admitted managed account, same-ref Android/Desktop projection, honest usage, and zero-residue reclaim |
 
 R7, not C2, is owner-facing software cutover. The historical C0–C3 evidence
 and fallback rules are archived in Backroom at
@@ -570,11 +570,11 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program | Open issues | Owning plan |
-| --- | --- | --- |
-| Basic IDE closure | #9014 | `docs/ide/ROADMAP.md` |
-| Managed sandboxes | #9023, #9024, #9025, #9026, #9027, #9028, #9029, #9030, #9031, #9032, #9033, #9034 | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
-| Agent IDE and parity | #9035, #9036, #9037, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md` |
+| Program              | Open issues                                                                               | Owning plan                                           |
+| -------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Basic IDE closure    | #9014                                                                                     | `docs/ide/ROADMAP.md`                                 |
+| Managed sandboxes    | #9023, #9024, #9025, #9026, #9027, #9028, #9029, #9030, #9031, #9032, #9033, #9034        | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
+| Agent IDE and parity | #9035, #9036, #9037, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                 |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and

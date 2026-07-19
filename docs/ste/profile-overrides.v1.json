@@ -1,6 +1,14 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
     "AUTHORITY.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
@@ -28,6 +36,14 @@
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
       "ste_reviewed_at": "2026-07-19T18:10:08Z",
       "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/sol/MASTER_ROADMAP.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
     },
     "docs/cloud/INVARIANTS.md": {
       "ste_status": "checked",
@@ -68,6 +84,54 @@
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "INVARIANTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "apps/openagents.com/AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "apps/openagents.com/INVARIANTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "apps/openagents.com/apps/start/public/AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "apps/openagents.com/docs/autopilot-tasks/AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "apps/openagents.com/docs/live/AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
     },
     "packages/assurance-spec/starter-kit/AGENTS.md": {
       "ste_status": "checked",

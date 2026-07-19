@@ -152,13 +152,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "AUTHORITY.md",
@@ -230,13 +238,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "NEEDS_OWNER.md",
@@ -633,13 +649,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "apps/openagents.com/DESIGN.md",
@@ -659,13 +683,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "apps/openagents.com/PRODUCT.md",
@@ -854,13 +886,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "apps/openagents.com/apps/start/public/HEARTBEAT.md",
@@ -3064,13 +3104,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "apps/openagents.com/docs/autopilot-tasks/adjutant-site-task-template.md",
@@ -4143,13 +4191,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "apps/openagents.com/docs/live/HEARTBEAT.md",
@@ -28147,13 +28203,21 @@
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:38:07Z",
       "owner": "OpenAgents control plane",
       "risk": "control",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     },
     {
       "path": "docs/sol/OPERATING_MODEL.md",

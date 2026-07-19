@@ -34,6 +34,8 @@ An agent section can use these extensions:
 - Labeled record fragments for scope, contracts, invariants, evidence, state, and lane
 - Compact tables or lists when each field has one stable meaning
 - Compact control clauses when each clause has one obligation
+- Dense technical sentences when a split would separate a condition from its control
+- Dense record paragraphs when a split would make the agent scan more units
 - A complex technical term when a shorter term would increase ambiguity
 
 Prefer the shortest text that keeps the complete meaning.
@@ -45,7 +47,11 @@ Do not use this profile to relax a safety or authority requirement.
 Do not use it to hide uncertainty or an incomplete proof state.
 Do not use a term with more than one meaning in the same context.
 Do not use semicolons or contractions in full sentences.
-Keep sentence limits for all full sentences.
+
+Keep sentence and paragraph limits when they help an agent read the text.
+An identified reviewer can accept a sentence or paragraph limit diagnostic in an agent-only document.
+The reviewer must confirm that the dense unit is faster to parse and keeps one control context.
+This exception cannot apply to a human or dual-audience document.
 
 Human-facing text cannot use this overlay.
 Public instructions, warnings, consent text, and operator procedures require the base STE profile.

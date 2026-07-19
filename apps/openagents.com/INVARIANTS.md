@@ -8,7 +8,7 @@ This is the invariant ledger for `openagents`.
   on Cloud Run, durable relational state is in Cloud SQL, live sync fanout is
   the Cloud Run LiveHub, blobs are in Cloud Storage, and secrets are in Secret
   Manager.
-- Cloudflare remains authoritative DNS for `openagents.com`; DNS-only records
+- Cloudflare remains authoritative DNS for `openagents.com`. DNS-only records
   point directly to Google Cloud. The nameserver delegation is intentional,
   not migration residue. Cloudflare proxy/CDN/WAF and application-runtime
   authority remain absent.
@@ -27,7 +27,7 @@ This is the invariant ledger for `openagents`.
   `/astro`, the exact `/download` route, and the authenticated application entry
   at `/app`. The root preserves the prior holding page without a visible change
   until the owner replaces its content. `/tanstack` is a compatibility redirect
-  to `/astro`; it has no separate product or framework-comparison authority.
+  to `/astro`. It has no separate product or framework-comparison authority.
 - The Cloud
   Run gate verifies the real OpenAuth session before rendering it, redirects
   signed-out visitors through `/login` with only the exact `/app` return path,
@@ -63,14 +63,14 @@ This is the invariant ledger for `openagents`.
   `apps/start/content/docs` tree.
   Repository-wide audits, runbooks, evidence, transcripts, internal topology,
   secrets, and archived product notes must not enter that graph. Historical or
-  dormant material belongs in `docs/archive/`; it must not be routed, indexed,
+  dormant material belongs in `docs/archive/`. It must not be routed, indexed,
   mirrored, or linked from public documentation, expose operational
   instructions, revive authority, or restate retired
   payment/credit/market/settlement/Sites/Autopilot claims as current product
   behavior.
 - Product promises do not appear in human top-level navigation.
   `/docs/product-promises` remains a stable compatibility redirect into the
-  agent-readable docs; mutable promise state stays authoritative in its JSON,
+  agent-readable docs. Mutable promise state stays authoritative in its JSON,
   transition, audit, and receipt projections.
 - The docs and Start landing foundations use the canonical Khala theme
   background (`khalaTheme.color.background`, `#05070d`) rather than pure black.
@@ -99,7 +99,7 @@ This is the invariant ledger for `openagents`.
   decommissions and deletes their executable paths instead of porting them.
 - VP-1 supersedes every positive money, market, Sites, wallet, credit, payout,
   and settlement invariant below. Those sections are retained only as
-  historical design and recovery constraints; they do not authorize a route,
+  historical design and recovery constraints. They do not authorize a route,
   job, daemon, binding, UI claim, or product promise. Former mutations return
   typed `money_surface_retired`, and paid capacity fails closed rather than
   becoming free.
@@ -124,7 +124,7 @@ This is the invariant ledger for `openagents`.
   the primary or default agent rail — it does not support offline receives,
   so it is used only when Spark is unavailable/unconfigured.
 - History (do not regress): Spark was stripped for MDK previously, then **re-added
-  as the primary rail**, demoting MDK to secondary; Pylon was moved to Spark
+  as the primary rail**, demoting MDK to secondary. Pylon was moved to Spark
   (2026-06). Never re-assert "MDK is the agent rail."
 - The standalone Khala MPP/x402 chat endpoint (`POST /mpp/v1/chat/completions`)
   was retired in #8387 (2026-07-05) because it was default-off, unarmed in
@@ -142,7 +142,7 @@ This is the invariant ledger for `openagents`.
   `KHALA_MPP_LIGHTNING_ENABLED` gate and the Khala Code paid-plan purchase gate,
   each keeps its bounded mint timeout, and a slow/failed issuer can only ever
   drop the Lightning rail, never hang the paid-plan route. The preimage is
-  verified LOCALLY (`sha256(preimage) === paymentHash`); offline receipt is
+  verified LOCALLY (`sha256(preimage) === paymentHash`). Offline receipt is
   confirmable via the container's `GET /spark/received/:paymentHash`. Disarmed by
   default (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod).
 - Owner directive, 2026-06-23.
@@ -174,7 +174,7 @@ This is the invariant ledger for `openagents`.
   `scripts/check-zero-debt-architecture.mjs` ("deleted simulated login auth
   symbols").
 - Login only authenticates. Authorization stays gated downstream
-  (Worker session/authorization gates and route-specific loaders); email
+  (Worker session/authorization gates and route-specific loaders). Email
   sign-in does not widen product access.
 - Khala mobile native sign-in may use only the exact OpenAuth public mobile
   client `openagents-khala-mobile` with GitHub authorization-code + PKCE S256
@@ -182,10 +182,10 @@ This is the invariant ledger for `openagents`.
   redirect is the exact `khala://auth` tuple for that same client and grant
   policy. Native sessions are
   cookie-free OpenAuth user bearer sessions verified through the same subject
-  verifier as browser cookies; sign-out must revoke the presented access token
+  verifier as browser cookies. Sign-out must revoke the presented access token
   server-side and remove the matching refresh token when the app supplies it.
   `/api/mobile/session` may return the existing mobile credential shape
-  `{ ownerUserId, syncToken }` only after verifying that bearer; `syncToken` is
+  `{ ownerUserId, syncToken }` only after verifying that bearer. `syncToken` is
   the current OpenAuth mobile access token accepted by `/api/sync/*` through the
   standard human actor path, not a separate agent/admin credential. This does
   not grant registered-agent authority, admin authority, repo writeback
@@ -194,9 +194,9 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/auth/mobile-session.test.ts`.
 - Khala Code Desktop's OpenAgents connect flow is a device-style bridge to the
   real browser session, not simulated auth. `/api/khala-code/auth/openagents/device/start`
-  may create only a short-lived pending attempt and poll secret; `/verify` must
+  may create only a short-lived pending attempt and poll secret. `/verify` must
   require a real browser session before minting a linked `oa_agent_` programmatic
-  token; `/device/{attempt}` may return the raw token only to the desktop caller
+  token. `/device/{attempt}` may return the raw token only to the desktop caller
   that presents the matching short-lived poll secret. The raw token must not be
   projected into browser UI, public docs, logs, or OpenAPI public contract
   surfaces, and this flow must not touch the primary Codex auth home.
@@ -210,7 +210,7 @@ This is the invariant ledger for `openagents`.
   an AUDIO-2 gateway grant for OpenAgents Desktop. It requires the existing
   revocation-aware OpenAuth user-bearer boundary, derives the owner from that
   verified session, and requires the host's exact device ref to match the typed
-  bounded `VoiceIdentity`; caller substitution fails closed.
+  bounded `VoiceIdentity`. Caller substitution fails closed.
 - Grants bind the exact owner/device/thread/session/generation identity, use a
   server-held HMAC secret shared only with the private audio gateway, and expire
   after five minutes (never more than AUDIO-2's 15-minute maximum). A missing or
@@ -395,7 +395,7 @@ This is the invariant ledger for `openagents`.
 
 - Product UI icons must render through the generated Fireball Apps SDK icon
   catalog in `apps/web/src/icon.ts`.
-- UI primitives must type icon props as `IconName`; browser app code must use
+- UI primitives must type icon props as `IconName`. Browser app code must use
   `iconView` or `IconService` instead of ad hoc inline SVG, Unicode/text icon
   stand-ins, image icon URLs, icon fonts, lucide/react-icons, Iconify, or new
   icon dependencies.
@@ -498,28 +498,28 @@ This is the invariant ledger for `openagents`.
   ATIF-v1.7 agent trajectory, keyed by a uuid, so `/trace/{uuid}` can
   dereference real runs (#6208/#6212, epic #6206). Large blobs
   (video/screenshots) live in R2 and are referenced from the trajectory by
-  public-safe R2 key only; the blob bytes are never stored in D1.
+  public-safe R2 key only. The blob bytes are never stored in D1.
 - Ingest (`POST /api/traces`, alias `POST /api/traces/upload`) is authenticated
   by EITHER a registered-agent bearer token OR an authenticated user web
   session (#6221) and requires an `Idempotency-Key`. A signed-in human owns the
   upload (`ownerUserId` from the session). The payload is schema-decoded against
   the pinned `ATIF-v1.7` subset (`workers/api/src/atif-trace-schema.ts`),
-  structurally validated (sequential `step_id` from 1; observation
-  `source_call_id` references a `tool_call`; agent-only fields only on agent
+  structurally validated (sequential `step_id` from 1, observation
+  `source_call_id` references a `tool_call`. Agent-only fields only on agent
   steps), and then tripwired BEFORE persistence. The tripwire is VALUE-based: it
   rejects (it does not silently redact) actual secret/token VALUES, wallet/payment
   VALUES, PII (emails), and local filesystem paths. It does NOT reject model ids
   or generic secret-discussion words ("api key", "password", "mnemonic"): a
   shareable trace — especially a user-uploaded Claude Code / Codex session — is
   content-rich and legitimately names the model it ran on and discusses secrets
-  generically; that is trace CONTENT, not a leak. The `openagents/khala`-only
+  generically. That is trace CONTENT, not a leak. The `openagents/khala`-only
   model-id rule is a Khala GATEWAY-projection invariant (a different surface), not
-  a trace one. The redaction service (#6219) is the primary scrubber; this tripwire
+  a trace one. The redaction service (#6219) is the primary scrubber. This tripwire
   is the value-based backstop. A rejected ingest returns finding CODES only and
   never echoes the offending values back.
 - Per-trace `visibility` is `public` | `unlisted` | `owner_only` and is
   enforced on read. `public` and `unlisted` reads need no auth (anyone with the
-  link); `owner_only` reads require the owning browser session (or an admin) and
+  link). `owner_only` reads require the owning browser session (or an admin) and
   otherwise return 404 so an owner-only trace's existence is not revealed.
 - READ-SCOPE TOKEN (mobile "Open traces in web", #6347). An `oa_agent_` agent
   token (the caller's OWN Khala API key) is also accepted on the GET read paths
@@ -530,20 +530,20 @@ This is the invariant ledger for `openagents`.
   app opens). The token resolves to a single owner id and grants STRICTLY
   READ-ONLY, OWNER-SCOPED access: it may read/list ONLY traces owned by that
   resolved owner, never another owner's. For linked Pylon/Codex credentials, the
-  owner id is `credential.openauthUserId`; otherwise it falls back to
+  owner id is `credential.openauthUserId`. Otherwise it falls back to
   `session.user.id`. This matches the owner id used when those traces are
   stored. A cross-owner, missing, malformed, or unrecognized token is
   indistinguishable from anonymous (owner_only stays a 404, no existence
   disclosure). The token NEVER authorizes ingest, visibility writes, blob
   upload, admin, or any broader account access — only the GET read paths consult
   it, and only the JSON read still emits the all-false `authority` block. The
-  token value is never logged and never persisted; the browser session always
+  token value is never logged and never persisted. The browser session always
   takes precedence over a token when both are present. The list's
   redaction/visibility rules and the value-based tripwire are unchanged.
 - Visibility updates (`PATCH /api/traces/{uuid}`) require the owning browser
   session or an admin session and accept only the same bounded visibility enum.
   This route is the owner/admin opt-in path from auto-captured `owner_only` to
-  `unlisted` link sharing or `public` feed discovery; it must not mutate
+  `unlisted` link sharing or `public` feed discovery. It must not mutate
   trajectory content, ownership, consent, reward, payout, settlement, or public
   claim authority.
 - Ingest has bounded abuse controls: a body-size cap, a max step count, and a
@@ -551,12 +551,12 @@ This is the invariant ledger for `openagents`.
   only.
 - A stored trace is evidence only. The store, ingest, and read paths grant no
   accepted-work, payout, settlement, provider-account, spend, or public-claim
-  authority by themselves; read projections always carry the explicit
+  authority by themselves. Read projections always carry the explicit
   all-false `authority` block.
 - The canonical in-repo ATIF Effect schema is
   `packages/atif/src/trace-schema.ts`, imported as
   `@openagentsinc/atif/trace`. The worker re-exports that schema and the Start
-  viewer decodes it directly; neither may maintain a route-local duplicate.
+  viewer decodes it directly. Neither may maintain a route-local duplicate.
 - Regression coverage for this policy lives in
   `workers/api/src/atif-trace-schema.test.ts` and
   `workers/api/src/trace-store-routes.test.ts`, plus the Start trace fetch/view
@@ -571,7 +571,7 @@ This is the invariant ledger for `openagents`.
 - The public stateless Khala chat route may answer only a bounded, tested
   initial greeting/identity parser with a deterministic standard greeting before
   opening any provider stream. This parser is exact, first-turn-only, and not a
-  general user-intent router; new task categories must still use the typed
+  general user-intent router. New task categories must still use the typed
   Blueprint / semantic routing contracts rather than ad hoc prompt keywords.
 - Agentic/tool-bearing `openagents/khala` turns are capability/self-hosted
   first. When the request declares tools/functions or carries tool-call
@@ -588,12 +588,12 @@ This is the invariant ledger for `openagents`.
   `resolveKhalaBackingModel` maps `deepseek-v4-flash`,
   `fireworks/deepseek-v4-flash`, and
   `accounts/fireworks/models/deepseek-v4-flash` to the Fireworks-first Khala
-  plan; every other value maps to the Hydralisk plan. For the current committed
+  plan. Every other value maps to the Hydralisk plan. For the current committed
   value, `workers/api/src/inference/model-router.ts`
   `selectAdapterPlanForKhalaBacking` orders the conversational plan fast-first,
   while `selectAdapterPlanForKhalaToolRequest` reorders the same public Khala
   model to GLM/self-hosted-first for tools. GPT-OSS is not in either main Khala
-  fallback thread; raw GPT-OSS model ids remain explicit named-model routes
+  fallback thread. Raw GPT-OSS model ids remain explicit named-model routes
   only.
 - DeepSeek-V4-Flash is not a fallback tier in the current GLM-first Khala
   overflow chain. It remains available through Fireworks open-model routing and
@@ -617,7 +617,7 @@ This is the invariant ledger for `openagents`.
   collapses to [the single Khala virtual model id]... must not be exposed as
   public choices" enforcement (`DEFAULT_CHAT_MODEL`/`isKhalaModel` gate on
   `/v1/chat/completions`). That gate protects the general OpenAI-compatible
-  gateway from arbitrary API callers picking arbitrary backing models/pricing;
+  gateway from arbitrary API callers picking arbitrary backing models/pricing.
   it stays untouched. Per-user model choice among Gemini/Claude/etc. is a
   NEW, intentionally more expansive mobile capability that must be threaded
   through a privileged, mobile/coding-turn-specific dispatch path (the
@@ -656,7 +656,7 @@ This is the invariant ledger for `openagents`.
   any placement request reaches the private control plane.
 - The Agent Computer lane is additive and must never resolve caller-supplied
   Pylon, runner, or user-capacity selectors. User-owned Pylon dispatch remains
-  on the owner-self path; org-cloud admission may route only to OpenAgents-owned
+  on the owner-self path. Org-cloud admission may route only to OpenAgents-owned
   Agent Computer capacity.
 - Mobile may advertise the `agent-computer` execution target only when an
   authenticated control-plane readiness probe reports the exact
@@ -667,7 +667,7 @@ This is the invariant ledger for `openagents`.
 - `managed_cloud` is a server-owned runtime lane. Its start mutator requires a
   repository-bound thread, and its queue consumer issues the owner-scoped
   provider grant only after winning the durable `turn.started` claim. A lost
-  claim issues no grant; missing Codex/GitHub authority settles the claimed
+  claim issues no grant. Missing Codex/GitHub authority settles the claimed
   turn as an error and never falls back to hosted or owner-local execution.
 - Public Worker projections may expose only refs: placement refs, Agent
   Computer refs, work-context refs, lifecycle receipt refs, resource usage
@@ -679,12 +679,12 @@ This is the invariant ledger for `openagents`.
   hard timeout, and the `openagents.agent_computer_isolation_policy.v1`
   contract. The control plane must echo the same work-context ref before the
   Worker may project or reuse an Agent Computer. A cleanup event may become
-  `reclaimed` only with both scratch-wipe and microVM-destroy receipt refs;
+  `reclaimed` only with both scratch-wipe and microVM-destroy receipt refs.
   missing or mismatched evidence fails closed.
 - Provider credentials for Agent Computers are broker-only and owner-scoped.
   The isolation policy must carry and the control plane must echo
   `provider_credential_policy: broker_only`, `provider_grants_owner_scoped:
-true`, and `subscription_capacity_resale: false`; any missing or mismatched
+true`, and `subscription_capacity_resale: false`. Any missing or mismatched
   echo fails closed before projection. A custodied ChatGPT/Codex subscription
   credential may be materialized only from a short-lived provider-account grant
   ref, only for the same authenticated owner and work context that requested the
@@ -705,10 +705,10 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   credentialed URLs, or credential helper output.
 - Agent Computer branch/PR writeback uses that same brokered GitHub user
   authorization. Scoped task branches may be pushed, but never force-pushed and
-  never over the base branch; permission and authorization failures must remain
+  never over the base branch. Permission and authorization failures must remain
   typed public-safe outcomes. Branch/PR links belong in thread-scoped runtime
   event metadata and closeout refs only. Opening the pull request is a
-  user-controlled preference (default `pull_request`; `branch_only` pushes the
+  user-controlled preference (default `pull_request`, `branch_only` pushes the
   branch and opens no PR) — both modes hold the no-force-push and no-base-branch
   rules and surface the same thread-scoped `writeback.recorded` runtime event.
 - The server-side recorder for that thread-scoped `writeback.recorded` event on
@@ -722,16 +722,16 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   typed `failed` writeback event carrying a public-safe
   `writeback.permission.<reason>` ref so the mobile thread shows an honest
   "authorize GitHub" state. A `failed` executor outcome skips the gate and is
-  recorded verbatim; an unknown turn, owner mismatch, or inconsistent outcome
+  recorded verbatim. An unknown turn, owner mismatch, or inconsistent outcome
   shape is a typed refusal that records nothing. The event is appended AS THE
   TURN OWNER through the sanctioned `runtime.recordEvent` push engine and is
-  projected only into `scope.thread.<threadId>`; nothing here writes a public
+  projected only into `scope.thread.<threadId>`. Nothing here writes a public
   scope.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
   from the same user credit balance as token charges, but the nonzero compute
   rate remains owner-gated until the owner sets it from real GCE host cost,
   expected active microVM density, and margin. Do not infer or hard-code a
-  compute price in the Worker or tests; use the injected pricing function and
+  compute price in the Worker or tests. Use the injected pricing function and
   lifecycle receipts only.
 
 ## Khala Response Discipline And Reasoning Channel
@@ -772,7 +772,7 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   never sufficient and cannot bypass current identity admission.
 - Sarah's active conversational harness is one released, content-addressed
   six-dimension policy bundle. The server binds its exact ref and digest to a
-  turn before provider inference; activation during that turn cannot change
+  turn before provider inference. Activation during that turn cannot change
   the binding and affects only a later turn.
 - Only completed/failed/interrupted/closed turns from the authenticated
   owner's exact Sarah thread can become private experiences. The current turn,
@@ -781,7 +781,7 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   refs/digests rather than copying transcript bodies.
 - Optimization and held-out evaluation are separate model invocations over
   disjoint terminal snapshots. The candidate schema can change only bounded
-  conversational instructions and a 40-240 word default ceiling; it cannot
+  conversational instructions and a 40-240 word default ceiling. It cannot
   express tools, authority, provider/account choice, workspace, budgets,
   guardrails, approvals, release rights, or external effects.
 - The optimizer and Sarah cannot release or activate a candidate. A distinct
@@ -790,7 +790,7 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   active base. A concurrent base change fails closed.
 - These records remain in Cloud SQL and have no Khala Sync/public projection.
   Mobile can receive only the resulting ordinary Sarah reply and private tool
-  activity; it never receives the bank, training transcript, evaluator prompt,
+  activity. It never receives the bank, training transcript, evaluator prompt,
   or private scores.
 
 ## Persona-Neutral Internal Inference Lane (`openagents/internal-neutral`)
@@ -805,25 +805,25 @@ true`, and `subscription_capacity_resale: false`; any missing or mismatched
   prompt is the only conditioning the provider sees, and the completion is
   returned verbatim. This exists because the shared khala lane's collective
   identity intermittently beat Sarah's system prompt on short turns
-  (2026-07-09 live finding, prod rollback); named-employee agents ride this
+  (2026-07-09 live finding, prod rollback). Named-employee agents ride this
   lane so their persona can never be contested by Khala's.
 - The lane is INTERNAL-ONLY: the chat route serves the id exclusively to
-  accounts on `INFERENCE_INTERNAL_ACCOUNT_REFS`; any other account receives
+  accounts on `INFERENCE_INTERNAL_ACCOUNT_REFS`. Any other account receives
   the same `model_unavailable` an unknown id gets. The id must never appear in
   the public catalog (`/v1/models`), the quote surface, or the pricing table.
-- Persona decisions must key on `isKhalaModel`; routing/receipt/usage/free-
+- Persona decisions must key on `isKhalaModel`. Routing/receipt/usage/free-
   tier decisions on `isKhalaRoutedModel` (`workers/api/src/inference/
 pricing.ts`). Do not widen `isKhalaModel` to cover the neutral id — that
   recreates the persona bleed by construction.
 - Internal accounts may carry an AUTHORITATIVE per-account daily served-token
   ceiling via `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`
   (`accountRef=tokens,...`): under the cap the account keeps the zero-debit
-  internal exemption; at/over the cap requests fall through to the normal
+  internal exemption. At/over the cap requests fall through to the normal
   balance gate, never to the shared external free-tier quota. Accounts without
   a cap entry keep the unbounded exemption.
 - Regression coverage (the persona probe fixture suite) lives in
   `workers/api/src/inference/internal-neutral-lane.test.ts` and
-  `workers/api/src/inference/inference-free-tier-key.test.ts`; the Sarah-side
+  `workers/api/src/inference/inference-free-tier-key.test.ts`. The Sarah-side
   probes and typed lane-fallback events live in
   `apps/sarah/src/services/google-inference.test.ts`.
 
@@ -834,7 +834,7 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   free-tier traffic (#6293, epic #6206) behind TWO staged flags: the master
   kill-switch `KHALA_CHAT_TRACE_EMIT_ENABLED` AND the separate
   `KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`. Both default OFF in code. The gate is
-  `enabled && (optedIn || captureDefault)`; the emitter re-checks it
+  `enabled && (optedIn || captureDefault)`. The emitter re-checks it
   (`not_opted_in` reject when neither holds). The master flag still
   HARD-disables everything.
 - `captureDefault = freeTier.free && !paidPrivacy`, resolved at the chat seam
@@ -865,7 +865,7 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   completion: a redaction/store/resolver error NEVER blocks, fails, or alters
   `/v1/chat/completions`. Idempotency is keyed on the chat `responseId`
   (`createTrace` idempotencyKey), so a retried emit never duplicates.
-- A captured trace stays evidence only (no reward/consent/authority drift; the
+- A captured trace stays evidence only (no reward/consent/authority drift, the
   data-market reward marker stays INERT). No raw backend model id, secret,
   wallet/payment material, PII, or raw CoT is ever stored.
 - Regression coverage:
@@ -890,7 +890,7 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   (`workers/api/src/khala-code-outside-user-run-routes.ts`,
   `khala_code_outside_user_run_receipts`, #8247) is explicit-action only. No
   desktop startup, refresh, harness inspection, page view, or background task
-  may post to `/api/public/khala-code/outside-user-runs`; only a user-invoked
+  may post to `/api/public/khala-code/outside-user-runs`. Only a user-invoked
   report action may submit.
 - The stored receipt shape is public-safe and intentionally small: app version,
   platform, architecture, distribution channel, bounded Codex CLI/auth/Pylon
@@ -915,20 +915,20 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   (`workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts`,
   `khala_code_trace_plugin_revenue_share_precedents`, #8251) records
   already-settled public-safe evidence only. It is admin-token gated and
-  idempotent; it does not move sats, dispatch payout, approve payout
+  idempotent. It does not move sats, dispatch payout, approve payout
   destinations, publish traces, or mutate product-promise state.
 - A valid precedent row must keep the refs distinct: consented trace receipt,
   trace digest, plugin admission receipt, plugin registry receipt, plugin ref,
   plugin digest, plugin route, routed request, exact usage event, usage
   idempotency, contributor attribution, amount envelope, payout receipt, and
-  settlement receipt. These refs must remain public-safe; raw traces, prompts,
+  settlement receipt. These refs must remain public-safe. Raw traces, prompts,
   usage payloads, invoices, payment hashes, preimages, payout destinations,
   wallet material, provider payloads, private source refs, and raw timestamps
   must be rejected before persistence or projection.
 - Accounting is exact and bounded: `gross_revenue_msats` and
   `contributor_share_msats` are positive integers, contributor share must not
   exceed gross revenue, contributor share must be whole sats, and the payout
-  rail is Spark. A route/receipt may demonstrate n=1 plumbing only; it is not a
+  rail is Spark. A route/receipt may demonstrate n=1 plumbing only. It is not a
   rate, pool policy, market-demand proof, or broad availability claim.
 - The public readback
   `/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
@@ -998,7 +998,7 @@ khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   first-engagement intake. It has the same policy role for first-dollar revenue
   events that modeled/measured/settled labels have for public metrics.
 - Producers must record exact ledger rows only: Khala Code paid-plan fulfillment
-  joins to `khala_code_paid_plan_payment_intents`; QA Swarm first engagement
+  joins to `khala_code_paid_plan_payment_intents`. QA Swarm first engagement
   joins to `qa_swarm_first_engagements`. Public factory metrics may count and
   sum exact rows from `revenue_event_provenance`, but must not synthesize
   counters or convert sats-only rows into USD cents.
@@ -1050,10 +1050,10 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   `docs/inference/2026-06-25-khala-heartbeat-runbook.md`.
 - The owner/corpus read (`GET /api/traces`, requireBrowserSession) EXCLUDES
   internal-dogfood (`internal` + `own_capacity`) from the default real-user
-  corpus view; `?demand_kind=` filters to named kinds and `?demand_kind=all`
+  corpus view. `?demand_kind=` filters to named kinds and `?demand_kind=all`
   returns every kind. The response carries a segmented count (`demandSegments`)
   over all of the owner's traces. Public/unlisted single-trace read behavior is
-  unchanged. Demand tagging grants no new authority; a trace stays evidence
+  unchanged. Demand tagging grants no new authority. A trace stays evidence
   only.
 - Regression coverage:
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
@@ -1099,7 +1099,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
 - `event_ledger.v1` is private owner-scoped inbox substrate, not a public
   projection and not model-training material. GitHub and Slack source ingest
   starts only from signed, source-specific background-agent webhook boundaries
-  after typed normalization; a matched trigger row supplies the owner boundary
+  after typed normalization. A matched trigger row supplies the owner boundary
   before any ledger queue message is emitted.
 - Queue messages and D1 rows may carry only bounded refs and summaries:
   source, externalRef, actorRef, contentRef, subjectRef, sourceRefs, event type,
@@ -1109,7 +1109,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   or payment/wallet material. `training_consent` is fixed false/0 in the
   BA-H1 table.
 - The per-owner `EVENT_LEDGER_OWNER` Durable Object is the ordering/dedup
-  authority for ledger ingest. D1 uniqueness is defense-in-depth; routes,
+  authority for ledger ingest. D1 uniqueness is defense-in-depth. Routes,
   request isolates, and generic queue consumers must not assign cross-owner
   ordering directly.
 - Transport note (CFG-7, #8522): ledger queue messages ride the oa-infra
@@ -1120,7 +1120,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   Object via the admin-bearer `/api/internal/queue/deliver` route — the pump
   (`apps/oa-queue-worker`) never assigns ordering itself.
 - Handled state is private owner-scoped ledger state, not a public projection.
-  Rows may be `open`, `handled`, `responded`, or `ignored`; any state change
+  Rows may be `open`, `handled`, `responded`, or `ignored`. Any state change
   must record the definition run and definition that touched the entry. The
   `/v1/agent-definitions/:id/event-ledger` gateway must authenticate the
   owner, read the owner-scoped definition first, enforce the compiled toolset,
@@ -1156,7 +1156,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
 
 ## Trace Upload Data Market
 
-- The trace upload data market (#6221, epic #6206; migrations
+- The trace upload data market (#6221, epic #6206, migrations
   `0229_agent_trace_data_market.sql` and `0230_agent_trace_trajectory_r2.sql`)
   extends the Agent Trace Store so a signed-in user (web session) or a
   registered agent (bearer) can upload a trace they OWN. It reuses the same
@@ -1166,7 +1166,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   8MB (the step cap stays 2000). A trajectory whose serialized public-safe JSON
   exceeds the inline D1 ceiling (~768KB, under D1's ~1MB value cap) is offloaded
   to R2 (`trajectory_r2_key`, the shared ARTIFACTS bucket) and only a pointer +
-  placeholder `{}` is kept in D1; the read path rehydrates it transparently so
+  placeholder `{}` is kept in D1. The read path rehydrates it transparently so
   the public-safe read projection is identical to an inline trace. R2 stores
   ONLY the same already-tripwired public-safe projection D1 would have held. If
   no R2 store is configured, an over-inline-ceiling trajectory is REJECTED (413)
@@ -1188,7 +1188,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   bounded number of stored traces per owner per rolling window) returning 429,
   and a per-owner content-digest dedup (a SHA-256 over the canonical public-safe
   payload) returning 409 on a duplicate — a duplicate is never stored again and
-  never earns a second reward. The content digest is a dedup key only; it is not
+  never earns a second reward. The content digest is a dedup key only. It is not
   a settlement or replay digest.
 - Redaction is the uploader/CLI's job (#6219). The ingest tripwire is still the
   hard value-based backstop: a payload carrying actual secret/token VALUES,
@@ -1289,7 +1289,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   explicit GitHub writeback authority receipts. Missing approval, missing
   grants, expired grants, unusable connections, unsupported repositories, and
   missing authority receipts become typed blocked artifacts or validation
-  errors; human/maintainer merge authority is not delegated to the market or
+  errors. Human/maintainer merge authority is not delegated to the market or
   agent runtime.
 - Regression coverage starts in
   `workers/api/src/autopilot-aperture-contracts.test.ts` and
@@ -1364,7 +1364,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   waiver is a contract failure, not a documentation gap.
 - The Bridge parity projection is public-safe evidence only. It carries
   `generatedAt`, the shared staleness contract, web/API/proof/test refs, and
-  waiver refs; it must not grant runtime, spend, provider mutation, payout,
+  waiver refs. It must not grant runtime, spend, provider mutation, payout,
   settlement, accepted-work, or public-claim authority by itself.
 - Forum `request-coding` and work-request interactions may spawn Autopilot
   coding orders only as ref-only links between the registered agent, Forum
@@ -1375,7 +1375,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
 - Autonomic `request_coding_work` ticks are proposal records gated by
   operator enablement, per-tick budget, funded payment authority, validator
   re-execution, and repo-authority review. The autonomic may propose a work
-  order draft and reserve intent; it must not self-execute, self-accept, or
+  order draft and reserve intent. It must not self-execute, self-accept, or
   bypass human review where repo authority is involved.
 - Regression coverage starts in
   `workers/api/src/autopilot-bridge-contracts.test.ts`.
@@ -1407,7 +1407,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
 
 ## Typed Email Side Effects
 
-- Production email sends must pass through `EmailService`; route handlers and
+- Production email sends must pass through `EmailService`. Route handlers and
   product services must not call Resend, Gmail, or another mail provider
   directly.
 - Every external email send must carry a typed email kind, an idempotency key,
@@ -1438,7 +1438,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   and leaderboard/privacy flags.
 - Token usage demand channel is a first-class dimension distinct from demand
   kind. `demand_channel = 'khala_api'` is the default/backfill for existing
-  Khala API and Khala-delegated rows; `demand_channel = 'direct_local'` is
+  Khala API and Khala-delegated rows. `demand_channel = 'direct_local'` is
   reserved for explicit opt-in local usage reported by owned tooling without a
   Khala assignment. Public channel projections may expose only aggregate
   `khala_api`/`direct_local` totals and must not expose account, prompt,
@@ -1452,7 +1452,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   projections.
 - Regression coverage for this policy lives in
   `workers/api/src/token-usage-ledger.test.ts` and
-  `workers/api/src/token-usage-ledger-routes.test.ts`; the D1 backing store
+  `workers/api/src/token-usage-ledger-routes.test.ts`. The D1 backing store
   starts in `workers/api/migrations/0137_token_usage_events.sql`.
 
 ## Blueprint Program Run Evidence Authority
@@ -1646,13 +1646,13 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   deleted:
   - the CREDITS set — `pay_ins`, `pay_in_legs`, `agent_balances`,
     `labor_escrows`, and `labor_escrow_receipts` — behind `PaymentsLedgerDb`
-    (`workers/api/src/payments-ledger-db.ts`);
+    (`workers/api/src/payments-ledger-db.ts`).
   - the IDENTITY CORE set — `users` and `auth_identities` — behind
     `IdentityDb` (`workers/api/src/identity-db.ts`, structurally the same
-    executor);
+    executor).
   - the MOBILE PUSH set — `push_device_tokens` and
     `push_notification_preferences` — behind the same `PaymentsLedgerDb`
-    executor (`workers/api/src/push/*`, wired via `paymentsLedgerDbForEnv`);
+    executor (`workers/api/src/push/*`, wired via `paymentsLedgerDbForEnv`).
   - the KHALA CODE PRODUCT-STATE set — the 25 thread/team/workspace tables
     in `packages/khala-sync-server/src/khala-code-product-state-tables.ts`
     (`teams`, `team_memberships`, `team_projects`, `thread_messages`,
@@ -1662,12 +1662,12 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
     D1-shaped Postgres adapter (`workers/api/src/postgres-d1-adapter.ts`)
     so the existing D1-API store factories run unchanged on Postgres.
     There is no D1 code path, no dual-write mirror, and no `KHALA_SYNC_*`
-    read flag for any of these 34 tables; all handles wire from the
+    read flag for any of these 34 tables. All handles wire from the
     `KHALA_SYNC_DB` Hyperdrive binding into the SAME khala_sync Postgres
     database (a statement may JOIN `users` × `agent_balances`).
 - The KHALA CODE PRODUCT-STATE set is the thread/turn CONTENT path.
   `khalaCodeProductStateDatabaseForEnv` returns the Postgres-backed
-  D1-shaped adapter (int8 twin columns parsed back as JS numbers; `?`→`$n`,
+  D1-shaped adapter (int8 twin columns parsed back as JS numbers, `?`→`$n`,
   `col IS ?`→`IS NOT DISTINCT FROM`, `INSERT OR IGNORE`→`ON CONFLICT DO
 NOTHING`) wrapped by the existing scope-changelog projection (still
   best-effort for live sync fanout, never failing the authoritative write).
@@ -1675,20 +1675,20 @@ NOTHING`) wrapped by the existing scope-changelog projection (still
   fallback. The adapter is proven on real Postgres against the actual
   consumer SQL by `workers/api/src/postgres-d1-adapter.contract.test.ts`.
   The twins (khala-sync migration `0017`) already carried every `ON
-CONFLICT` target and index, so no new schema was needed; the production
+CONFLICT` target and index, so no new schema was needed. The production
   twins verified exact (zero count / newest-hash / message-chain
   mismatches) at cutover, so there was no backfill.
 - The MOBILE PUSH set is the last of mobile session support to leave D1
   (CFG-3, commit 40ae3aa6d5, already hard-cut AUTH_STORAGE KV +
-  `openauth_storage` onto the Postgres KvStore; the AUTH KV "push-token prune
+  `openauth_storage` onto the Postgres KvStore. The AUTH KV "push-token prune
   keys" are unaffected). Both tables had NO Postgres twin and NO dual-write
   before CFG-4 and were EMPTY in production at cutover, so their twins
   (khala-sync migration `0044_push_tables_hard_cut.sql`) are created fresh as
   the sole authority with no backfill/reconcile lane and no one-time data
   copy. Every D1 UNIQUE/PK/CHECK is ported byte-for-byte
-  (`push_device_tokens` PK `(user_id, device_id)`;
+  (`push_device_tokens` PK `(user_id, device_id)`,
   `push_notification_preferences` PK `user_id`, `push_enabled` smallint 0/1
-  CHECK). Push writes/removals are FAIL-HARD through the same handle; the
+  CHECK). Push writes/removals are FAIL-HARD through the same handle. The
   `mobile-account-deletion-routes.ts` push DELETE left the D1 batch and runs
   on the ledger handle as `DELETE … RETURNING`, keeping the idempotent
   heal-on-retry seam. `admin-ops-routes.ts` reads the push readiness COUNT
@@ -1699,7 +1699,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   upserts (`index.ts` `upsertGitHubUser`/`upsertEmailUser`) serve from
   Postgres on every request. This is the owner-approved supersession of the
   earlier "identity reads stay D1 until the owner-gated last step" policy
-  for EXACTLY these two tables; the other fifteen identity/auth-domain
+  for EXACTLY these two tables. The other fifteen identity/auth-domain
   tables (openauth*agent_links, github_write*_, provider*account*_, and the
   legacy openauth_storage D1 table) keep D1 authority and the
   `identityAuthMirrorFromEnv` dual-write machinery, and the Worker mirror
@@ -1726,18 +1726,18 @@ CONFLICT` target and index, so no new schema was needed; the production
   SQLite-only constructs, and the executor semantics are proven on real
   Postgres by `workers/api/src/payments-ledger-postgres.contract.test.ts`.
 - Batches that previously co-committed credits rows with OTHER domains' D1
-  rows are split into one Postgres transaction plus one D1 batch; each such
+  rows are split into one Postgres transaction plus one D1 batch. Each such
   seam must keep an idempotency key that heals a crash between the two and
   an in-code comment naming the seam.
 - The D1 originals of these 34 tables (the credits set, the identity-core
   set, the mobile-push set, and the Khala Code product-state set) are frozen
-  legacy data pending the KS-8.19 (#8330) drop; no new code may read or write
+  legacy data pending the KS-8.19 (#8330) drop. No new code may read or write
   them, and the khala-sync-server converge/backfill sweeps must never copy
   them D1 → Postgres after the cutover deploy (`backfill-billing.ts` excludes
   the credits pay-in pair, `backfill-identity-auth.ts` excludes
   `users`/`auth_identities`, and `backfill-khala-code-product-state.ts`
   refuses its converge sweep without `--allow-post-cutover-converge` for
-  exactly this reason; the mobile-push pair has no backfill lane at all).
+  exactly this reason. The mobile-push pair has no backfill lane at all).
 - Old D1 JOINs against `users`/`auth_identities` split into a D1 read plus
   ONE identity IN-list enrichment (`readIdentityUserProfiles`) — never an
   N+1 loop and never a quiet fallback to the stale D1 twin.
@@ -1766,10 +1766,10 @@ CONFLICT` target and index, so no new schema was needed; the production
   operator configuration, the tick action may only propose ref-only requests
   that pass schema validation, the per-tick labor budget gate, and the seeded
   balance ceiling. Delivered Artanis-requested work releases escrow only on a
-  passing validator re-execution; failing validator verdicts refund escrow.
+  passing validator re-execution. Failing validator verdicts refund escrow.
 - Artanis studying contribution requests are data-direction labor, not compiled
   module construction or settled-bitcoin evidence. Requests and deliveries carry
-  study-packet, graph, contribution, and S3 verification refs only; delivered
+  study-packet, graph, contribution, and S3 verification refs only. Delivered
   work may reach `accepted`/`settled` in the Forum work-request lifecycle only
   after the S3 studied-knowledge correctness report passes. Rejected or
   validator-review-required S3 verdicts must refund escrow and must not record
@@ -1838,11 +1838,11 @@ CONFLICT` target and index, so no new schema was needed; the production
   deploys or rollbacks.
 - HTTP endpoints must be HTTPS (loopback HTTP is allowed only for local smoke
   stacks) and must carry the per-service token header. An off-Workers sidecar
-  must have its service token configured; a network-reachable `/api/mdk`
+  must have its service token configured. A network-reachable `/api/mdk`
   without a token gate is a policy violation.
 - The treasury and tips-buffer daemons are single writers against their wallet
   state. Off-Workers deployments must pin max instances to 1 for those two
-  services; raising it is a policy change, not a tuning knob.
+  services. Raising it is a policy change, not a tuning knob.
 - Regression coverage for this policy lives in
   `workers/api/src/mdk-service-endpoints.test.ts`.
 
@@ -1874,18 +1874,18 @@ CONFLICT` target and index, so no new schema was needed; the production
 - The credit<->Bitcoin asset-boundary invariant is enforced by the SHARED guard
   `workers/api/src/asset-bitcoin-boundary.ts` (`validateAssetBoundary`), not by
   scattered inline checks. The invariant: Bitcoin revenue may create a
-  withdrawable Bitcoin revenue share; credit/USD (Stripe-credit) revenue creates
+  withdrawable Bitcoin revenue share. Credit/USD (Stripe-credit) revenue creates
   a credit revenue share only and may NOT create a withdrawable Bitcoin
-  liability; free/promotional spend creates no withdrawable Bitcoin share at all.
+  liability. Free/promotional spend creates no withdrawable Bitcoin share at all.
 - This guard is wired onto the LIVE value-movement paths (RL-3, #5460), so the
   invariant is enforced at runtime, not just documented:
   - the RL-1 referral payout dispatch (`site-referral-payout-dispatch.ts`) fails
-    closed before calling any payout adapter for non-Bitcoin revenue;
+    closed before calling any payout adapter for non-Bitcoin revenue.
   - the RL-1 referral eligibility feed (`site-referral-payout-feed.ts`) records a
-    revenue-matched revshare and never a credit-funded Bitcoin eligibility;
+    revenue-matched revshare and never a credit-funded Bitcoin eligibility.
   - the RL-2 firm-up Bitcoin settlement decision
     (`firmup-bitcoin-settlement.ts` / `-routes.ts`) refuses a credit/USD/free-
-    funded escrow before any money moves; and
+    funded escrow before any money moves. And
   - the read-only commerce revenue-share projection
     (`site-commerce-revenue-share.ts`) delegates to the same guard.
 - A boundary denial is public-safe and reason-qualified. Regression coverage:
@@ -1923,7 +1923,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   agnostic accrual primitive `workers/api/src/referral-cross-category-accrual.ts`
   (`accrueCrossCategoryReferral`) is the single entry every category routes
   through to feed the ONE RL-1 payout ledger. It is usage-funded only (a real
-  metered paid event; never on signups; a zero/below-1-sat-cut event accrues
+  metered paid event. Never on signups. A zero/below-1-sat-cut event accrues
   nothing), idempotent per `(category, eventId)`, and enforces the same shared
   asset boundary (Bitcoin->Bitcoin, credit/USD->credit, never a credit-funded
   Bitcoin liability). It records eligibility only — it moves no money.
@@ -1942,7 +1942,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   (#8519) hard cutover these are two stores, debit-first with the grant ref
   as the idempotency key healing a crash between them (see the
   non-atomic-seam note in `usd-credit-bridge.ts`) — idempotent per grant
-  ref, and bounded by the available USD balance; the conversion is the single-source rate
+  ref, and bounded by the available USD balance. The conversion is the single-source rate
   in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
   `workers/api/src/inference/usd-credit-bridge.test.ts`.
 - GitHub-account-keyed signup credit grant (MM-D1, #8478, epic #8467 mobile-only
@@ -1963,7 +1963,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   `github_signup_credit_grants` metadata table (migration 0304). Since the
   CFG-4 (#8519) hard cutover the two guards live in different stores
   (ledger transaction first, metadata insert after — the ledger key alone
-  already prevents a double credit; see the non-atomic-seam note in
+  already prevents a double credit. See the non-atomic-seam note in
   `github-signup-credit-grant.ts`), so a race between two concurrent logins
   for the same GitHub account still credits exactly once. Anti-abuse floor: a
   GitHub-account-age heuristic (env-tunable, defers brand-new accounts with a
@@ -1996,10 +1996,10 @@ CONFLICT` target and index, so no new schema was needed; the production
   user's own Codex account inside the user's own admitted work context. The
   provider-ToS posture is "user-controlled machine for the user's work," not
   resale, pooling, lending, marketplace capacity, or org-demand fulfillment.
-  Every grant remains owner-scoped and short-lived; `subscription_capacity_resale`
+  Every grant remains owner-scoped and short-lived. `subscription_capacity_resale`
   stays blocked unconditionally.
 - Provider capacity monetization claims are provider-specific. ChatGPT/Codex is
-  the first modeled provider; unsupported prepaid providers must remain planned or blocked
+  the first modeled provider. Unsupported prepaid providers must remain planned or blocked
   until provider schemas, secret handling, route policy, metering, pricing, ToS
   boundaries, dispatch, assignment receipts, and settlement receipts exist for
   that provider.
@@ -2008,7 +2008,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   data, and timestamps must not enter public refs.
 - Pricing must distinguish agentic work or accepted outcomes from API-inference
   gateway resale. Converting a consumer subscription login into resale remains
-  blocked; API-inference gateway resale is allowed only through an explicit
+  blocked. API-inference gateway resale is allowed only through an explicit
   policy path such as this gate, with tests.
 - The authorizing policy required by the previous clause is
   `workers/api/src/inference-resale-authorization.ts`
@@ -2019,13 +2019,13 @@ CONFLICT` target and index, so no new schema was needed; the production
   present — provider grant, route policy, metering receipt, pricing policy,
   ToS boundary, dispatch, assignment receipt, and settlement receipt — and is
   refused on a subscription-auth account. `subscription_capacity_resale` is
-  blocked unconditionally (non-waivable). This authorizes the mechanism only;
+  blocked unconditionally (non-waivable). This authorizes the mechanism only.
   it does not relax the public-copy gate in the clauses below.
 - This no-resale gate is now enforced as a LIVE guard, not just a tested
   primitive (RL-3, #5460): the firm-up Bitcoin settlement decision
   (`firmup-bitcoin-settlement.ts`) calls `authorizeInferenceMonetization` and
   fails closed before any money moves. Firm-up is agent labor (`agentic_work`,
-  allowed); a `subscription_capacity_resale` is refused unconditionally. The
+  allowed). A `subscription_capacity_resale` is refused unconditionally. The
   no-resale rule stays scoped to consumer SUBSCRIPTION accounts only —
   API-inference gateway resale on an API-key account is NOT over-blocked.
   Coverage: `workers/api/src/firmup-bitcoin-settlement.test.ts`.
@@ -2054,12 +2054,12 @@ CONFLICT` target and index, so no new schema was needed; the production
 - Connected provider API keys are user-scoped: lease selection uses
   provider-tagged candidates from the requesting user's own connected
   accounts and never pools credentials across customers. Raw key material
-  lives only in the auth KV under `provider-auth:<providerAccountRef>`;
+  lives only in the auth KV under `provider-auth:<providerAccountRef>`.
   durable rows, events, grants, and projections carry secret refs only.
 - ChatGPT/Codex subscription OAuth refresh tokens are user-scoped custody
   material, not runner material. The Worker stores refresh tokens only in the
   owner-scoped `provider_account_token_custody` D1 table encrypted with
-  AES-GCM (`PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`); custody audit rows record
+  AES-GCM (`PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`). Custody audit rows record
   store/access/refresh outcomes without raw token values. Runner grant
   materialization may receive only short-lived access-token
   `OPENCODE_AUTH_CONTENT` without a refresh field. Regression coverage lives in
@@ -2067,7 +2067,7 @@ CONFLICT` target and index, so no new schema was needed; the production
 - PORT-03 portable movement revokes only the exact source provider/GitHub
   grant and reissues a caller-named, distinct destination grant bound to the
   same owner and underlying account/connection. Revoke and reissue are
-  replay-idempotent; cross-owner, already-consumed, non-revoked-source, and
+  replay-idempotent. Cross-owner, already-consumed, non-revoked-source, and
   conflicting destination scopes fail closed. The service-authority response
   contains refs and public status only (`material: excluded`), never the
   credential material resolved later inside the one-shot target installer.
@@ -2109,7 +2109,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   `user`, `device`, `runtime`) into immutable effective config refs. Provider,
   budget, approval, telemetry, retention, and routing decisions must fail as
   typed blockers when required settings are missing or invalid. Projections may
-  expose config refs, caveat refs, source layers, and value tags only; raw
+  expose config refs, caveat refs, source layers, and value tags only. Raw
   environment values, API keys, OAuth material, private repo data, raw prompts,
   shell logs, and provider payloads must be rejected before projection.
 - Pack B provider-peer security reviews must cite ToS review refs, credential
@@ -2154,7 +2154,7 @@ CONFLICT` target and index, so no new schema was needed; the production
 - The security-contract drift guard (`scripts/check-contract-drift.mjs`) scans
   repository source for duplicate provider-account and Blueprint contract
   authorities. Ignored local worktree/cache mirrors such as `.claude/`,
-  `.worktrees/`, and `.pylon-local/` are outside the guard's authority model;
+  `.worktrees/`, and `.pylon-local/` are outside the guard's authority model.
   tracked source copies and former-copy shims remain forbidden.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
@@ -2179,7 +2179,7 @@ CONFLICT` target and index, so no new schema was needed; the production
 - A GitHub issue may be routed through either an in-house Autopilot work order
   or an open-market work request, not both at once. Backlog faucet filings must
   use ref-only objective, repository, verification command, budget, and
-  deadline fields; issue bodies, raw prompts, private repo material, provider
+  deadline fields. Issue bodies, raw prompts, private repo material, provider
   payloads, wallet/payment material, local paths, secrets, and customer data
   must not enter the market filing or lifecycle comments.
 - Open-market listing comments are mirrors over Forum/NIP-LBR records. They
@@ -2187,7 +2187,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   claim authority by themselves.
 - Backlog faucet records reach `approved_for_publication` only through the
   typed operator approval transition carrying an `operator.*` ref and an
-  integer spend cap covering the filing budget; `published` additionally
+  integer spend cap covering the filing budget. `published` additionally
   requires a relay-accepted publish receipt with a real job event id. The
   generic market-state transition cannot reach either gated state, the
   dry-run path never publishes or escrows, and the `delivered → accepted`
@@ -2198,7 +2198,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   preemption, payout/settlement readiness, and earnings visibility refs exist.
   Owned work preempts market serving.
 - Lane C fanout is opt-in and public-tier only. Owned capacity wins when it is
-  available; market fanout requires customer opt-in, public or public-beta
+  available. Market fanout requires customer opt-in, public or public-beta
   privacy tier, mission/work-order unification, USD-to-sats settlement
   readiness, market inventory, artifact authority, validator policy, budget
   cap compliance, and a provider trust tier at the public floor.
@@ -2345,7 +2345,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   authority, accepted hygiene work is recognition/credit-class work, not a
   pending Bitcoin payout. `payable_pending_settlement` requires settlement
   approval or escrow/payout processing evidence. The lane state `settled`
-  requires settlement receipt refs; Bitcoin-specific payment-mode projections
+  requires settlement receipt refs. Bitcoin-specific payment-mode projections
   may spell that terminal state as `settled_bitcoin` only when they also prove
   real Bitcoin movement.
 - Payment follows verified delta, not churn: behavior or benchmark parity must
@@ -2360,7 +2360,7 @@ CONFLICT` target and index, so no new schema was needed; the production
   matching: `DebtReceiptKey = sha256(debtReceiptRef | repoBaselineRef |
 scopeDigest | objectiveDigest)` and `PatchNoveltyKey = sha256(DebtReceiptKey |
 normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
-  settlement is allowed per `DebtReceiptKey`, then it retires; a near-duplicate
+  settlement is allowed per `DebtReceiptKey`, then it retires. A near-duplicate
   patch carrying an already-retired `DebtReceiptKey` is a duplicate replay and
   is not payable.
 - When a debt receipt requires studied-codebase evidence, the cited study
@@ -2390,17 +2390,17 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `verificationChallengeRef` for hygiene work, and must not route hygiene work
   through the Tassadar lease/challenge settle endpoint (which would force a
   fabricated trace-replay verification receipt). The debt-receipt projection is
-  the source of truth for payability; an operator cannot assert payability
+  the source of truth for payability. An operator cannot assert payability
   through the request body, and an absent projection fails closed.
 - Hygiene settlement is fail-closed and idempotent: only a `payable`
   (non-duplicate, non-blocked) debt receipt with a payable computed amount
   (`computeHygieneLaneSettlementSats`, in [1, 100]) under the gate cap may move
-  real Bitcoin; the gate-disabled / over-cap / not-allowlisted cases record the
+  real Bitcoin. The gate-disabled / over-cap / not-allowlisted cases record the
   honest simulation chain (`moneyMovement:'none'`, `realBitcoinMoved:false`)
   rather than paying. One settlement per `DebtReceiptKey`, and a retry on the
   same `idempotencyRef` dispatches at most once. No registered Spark
   destination means no send. Receipt projections remain public-projection-safe
-  (redacted `payout.spark.<digest>`-style refs only; no raw `spark1…`,
+  (redacted `payout.spark.<digest>`-style refs only, no raw `spark1…`,
   preimages, invoices, or payout targets).
 - A payable debt receipt must exist in a durable store before it can settle.
   The requester / settlement-authority creates it through the admin-only
@@ -2412,7 +2412,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   row fails closed (`debt_receipt_not_found`), and a retired row reprojects to
   `duplicate_replay`. Once real Bitcoin moves, the settle route marks the key
   `retired` (recording the settlement receipt ref), so a second settle on the
-  same key is a duplicate replay and never re-pays; a retired key also cannot be
+  same key is a duplicate replay and never re-pays. A retired key also cannot be
   re-created. The simulation chain (gate OFF) does NOT retire the receipt, since
   nothing was paid. Every stored column is a public-safe ref or a bounded
   integer, and the policy re-validates ref safety on every reprojection, so the
@@ -2426,7 +2426,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/hygiene-lane-settlement-routes.test.ts`,
   `workers/api/src/hygiene-debt-receipt-store.test.ts`,
   `workers/api/src/hygiene-lane-debt-receipt-create-routes.test.ts`, and
-  `workers/api/src/artanis-studying-labor.test.ts`; the durable backing store
+  `workers/api/src/artanis-studying-labor.test.ts`. The durable backing store
   starts in `workers/api/migrations/0207_hygiene_debt_receipts.sql`, and the
   buyer-facing lane packet lives in
   `docs/labor/2026-06-18-debt-receipt-hygiene-lane.md`.
@@ -2518,7 +2518,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   are deleted, and `/sarah/*` returns an explicit 404 tombstone from the
   Cloud Run entrypoint. The FleetRun intake/execution authority below
   (`/api/sarah/fleet-runs`, migrations 0052/0053, the Pylon projection and
-  closeout seams) REMAINS in force as the server-side contract; its former
+  closeout seams) REMAINS in force as the server-side contract. Its former
   in-repo client (`apps/sarah` `coding_fleet_start`) is gone, and the C1
   acceptance test that composed that client end-to-end was deleted with it
   (route-level tests in `sarah-fleet-run-routes.test.ts` remain). A future
@@ -2527,7 +2527,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   section is historical where it names `apps/sarah` internals. The rebooted
   `principal.sarah` enters through authenticated `/api/mobile/sarah` and the
   supported OpenAgents mobile conversation system. It reuses this FleetRun
-  authority by typed capability; it does not restore the old client or turn
+  authority by typed capability. It does not restore the old client or turn
   Sarah identity into FleetRun mutation authority.
 - Sarah-created coding runs use the Cloud SQL Postgres authority in
   `@openagentsinc/khala-sync-server` (`fleet-run-authority.ts` and migration
@@ -2538,7 +2538,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   units, claims `scope.fleet_run.<runRef>` for the authenticated owner, and
   appends the redacted `fleet_run` draft post-image in one Postgres
   transaction. A reused owner/idempotency key replays only the byte-canonical
-  same request; changed input is a fixed `idempotency_conflict`, never a silent
+  same request. Changed input is a fixed `idempotency_conflict`, never a silent
   replay or a second run.
 - Every accepted run carries an exact non-placeholder 40-character commit,
   an unambiguous bounded Git branch, and a concrete bounded verifier argv that
@@ -2551,13 +2551,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   The server lease serializes exact-run and oldest-eligible claim races and
   permits replacement only after expiry or release. An exact idempotent accept
   transition removes an imported run from the pending queue before the lease
-  can expire; an accepted intake can never be silently re-leased to a second
+  can expire. An accepted intake can never be silently re-leased to a second
   Pylon.
 - Intake requires an active, heartbeat-fresh Pylon whose registration is owned
   directly by the run owner or by an agent with an active, unrevoked
   `openauth_agent_links` relationship to that owner. Foreign, unlinked,
   blocked, retired, future-dated, or stale Pylons fail closed. Owner-local
-  intake considers only `owner_local` and `auto` runs; `managed_cloud` is not
+  intake considers only `owner_local` and `auto` runs. `managed_cloud` is not
   silently substituted onto owner capacity.
 - Request, storage, and integrity failures expose fixed typed diagnostics.
   Owner IDs, owner idempotency keys, request fingerprints, SQL/connection
@@ -2576,7 +2576,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   no D1, process-local JSON, in-memory, or environment-selectable fixture
   fallback. It bounds request bytes, closes its SQL handle, maps authority
   failures to fixed typed responses, and returns only
-  `publicFleetRunAuthorityRecord`; cross-owner observation is the same fixed
+  `publicFleetRunAuthorityRecord`. Cross-owner observation is the same fixed
   `run_not_found` as an absent run.
 - `GET /api/sarah/fleet-runs` without a `runRef` returns the same owner-scoped
   authority as a bounded shared-client projection: at most 20 newest runs and
@@ -2585,7 +2585,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   placement, claim, dispatch, account-custody, or terminal authority.
 - OpenAgents mobile and Desktop consume that one projection rather than
   defining client-specific Fleet schemas. The mobile host and Desktop main
-  process retain the owner token; renderer/UI code receives only the decoded
+  process retain the owner token. Renderer/UI code receives only the decoded
   public projection. Legacy authority timestamps are normalized at the shared
   decoding boundary. Desktop requests server authority before its optional
   local-Pylon projection, so a missing local runtime cannot hide a valid
@@ -2594,38 +2594,38 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   canonical OpenAgents base resolver (`SARAH_OPENAGENTS_BASE_URL`, production
   default `https://openagents.com`) plus the fixed route. The Cloud Run request
   origin is not treated as the authority origin. It forwards only the existing
-  Cookie/User Authorization context plus the raw typed tool args; it never adds
+  Cookie/User Authorization context plus the raw typed tool args. It never adds
   an owner or relationship mode. Sarah decodes an exact Effect Schema
-  success/failure envelope with excess properties rejected; malformed, private,
+  success/failure envelope with excess properties rejected. Malformed, private,
   or hostile responses collapse to a fixed `invalid_response` without echo. Any
   refreshed OpenAuth `Set-Cookie` headers from the authority response are copied
   onto the outer `/sarah/api/eve/tool-call` response and never enter tool output
   or receipts. The earlier local file store remains available only through the
-  explicit in-process test setter; process environment cannot select it, and
+  explicit in-process test setter. Process environment cannot select it, and
   production has no second successful start path.
 - Accepted Pylons append the durable execution projection through
   `POST /api/pylons/{pylonRef}/fleet-runs/{runRef}/events`, backed by migration
   `0053_sarah_fleet_run_execution_projection.sql`. The registered-agent bearer,
   owned Pylon path, owner scope, exact run ref, and exact accepted intake
   `claimRef` must all agree. This is a lifecycle/outcome projection for the
-  Pylon orchestration authority already holding the run; it is never a second
+  Pylon orchestration authority already holding the run. It is never a second
   work-unit claim registry. A temporarily stale heartbeat does not erase an
   already accepted lease or prevent its executor from reporting closeout, but
   the Pylon must remain actively owner-linked.
 - Execution intake is strict, refs-only, at most 64 events and 256 KiB per
   batch, with contiguous sequence numbers. Event rows are append-only. An exact
-  `(runRef, sequence, eventRef, canonical event)` replay is idempotent; sequence
+  `(runRef, sequence, eventRef, canonical event)` replay is idempotent. Sequence
   gaps, changed replays, cross-run event-ref reuse, unknown units, a second
   terminal closeout for one unit, and all state regression fail closed. The
-  first event is `run_started`; a completed run requires accepted terminal
+  first event is `run_started`. A completed run requires accepted terminal
   evidence for every normalized work unit and can never return to running.
 - Per-unit terminal evidence is unique by run/unit and, when dispatch produced
   one, run/assignment. Accepted closeouts require the coherent assignment,
   account-hash, closeout, and usage-evidence carrier. Failed/stale terminal
   evidence may omit that carrier only as a whole when dispatch never produced
-  an assignment or closeout; the durable columns remain null and the server
+  an assignment or closeout. The durable columns remain null and the server
   never invents proof refs. Proof-bearing Codex and Claude closeouts require
-  exact token-usage refs; Grok is explicitly `not_measured` with no fabricated
+  exact token-usage refs. Grok is explicitly `not_measured` with no fabricated
   token refs until exact provider usage is available. Accepted closeouts carry
   no blocker refs, while failed/stale closeouts and failed runs require bounded
   public blocker refs. Raw prompts,
@@ -2685,7 +2685,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   from the start. One account holding its full slot count must never block
   another account's request on the same Pylon. The pooled
   `capacity.coding.codex.*` totals are derived from the per-account sum when
-  per-account refs are present; heartbeats with no per-account refs keep the
+  per-account refs are present. Heartbeats with no per-account refs keep the
   legacy pooled accounting (backward compatible). The account key, hash, and
   per-account refs are
   public-safe: never a raw account ref, email, or local home path.
@@ -2694,7 +2694,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   stale closeout for a no-spend lease only when the local owner process is dead,
   its owner heartbeat is stale, or the server lease has expired. Stale recovery
   closeouts must use `settlementState='not_applicable'`,
-  `payoutClaimAllowed=false`, and public blocker refs only; they must not expose
+  `payoutClaimAllowed=false`, and public blocker refs only. They must not expose
   raw local paths, prompts, credentials, or private repo material.
 - For caller-owned Khala -> Pylon -> Codex assignments, the local Pylon executor
   runs Codex with the SDK equivalent of
@@ -2723,8 +2723,8 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   invocation, pending approval gate, persisted approval gate, dispatch plan, and
   assignment evidence carries a typed `authorityScope`:
   `owner_self | shared_fleet | owner_operator`. `owner_self` means the caller's
-  own linked Pylons only; `shared_fleet` means org-operated pooled capacity and
-  is not wired to this own-capacity seam; `owner_operator` means human/operator
+  own linked Pylons only. `shared_fleet` means org-operated pooled capacity and
+  is not wired to this own-capacity seam. `owner_operator` means human/operator
   outward authority and does not imply coding capacity. The gated dispatch tool
   executes ONLY when (a) the caller is the authenticated owner (the
   `/api/operator/artanis/chat` route admits authenticated browser sessions,
@@ -2737,7 +2737,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   payout-bearing kind stays gated for everyone. If any precondition is missing
   — no seam, no effective same-scope approval, no eligible linked Pylon, or a
   non-`owner_self` scope on the own-capacity path — it returns the public-safe
-  plan and defers (`deferredToApprovalGate`); it never fires and never
+  plan and defers (`deferredToApprovalGate`). It never fires and never
   fabricates an `assignmentRef`. The dispatch carries no spend authority: it
   rides the `unpaid_smoke` coding-delegation path
   (`paymentMode='unpaid_smoke'`, settlement `not_applicable`,
@@ -2780,7 +2780,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `shared_fleet` approval.
 - NEVER-WAIVABLE BOUNDS (hold even for owner-Artanis). The standing approval is
   scoped by both risky-action kind and `authorityScope`: `pylon_job_dispatch`
-  only in `owner_self`, `forum_post` only in `owner_operator`; `shared_fleet`,
+  only in `owner_self`, `forum_post` only in `owner_operator`. `shared_fleet`,
   `wallet_spend`, `settlement`, `l402_redemption`, and every other
   money-movement / payout-bearing risky-action kind remain gated and still
   require an explicit effective approval gate. The self-approved dispatch still
@@ -2788,7 +2788,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   (`unpaid_smoke`, settlement `not_applicable`, `payoutClaimAllowed=false`,
   owner's own linked Pylons only — never pooled/third-party/marketplace
   capacity). The promotion grants NO new payout authority and invents NO new
-  custody path; real money movement still uses the existing custody path.
+  custody path. Real money movement still uses the existing custody path.
   No-resale on SUBSCRIPTION accounts, no secret/credential/wallet leakage,
   public-safe claims only, and no untraced destructive actions are
   never-waivable regardless of owner promotion.
@@ -2799,7 +2799,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 ## Artanis Autonomy Ladder
 
 - Artanis autonomy increases one gate at a time. The typed source of truth is
-  `workers/api/src/artanis-autonomy-ladder.ts`; owner standing approval must go
+  `workers/api/src/artanis-autonomy-ladder.ts`. Owner standing approval must go
   through that ladder before any risky-action kind is treated as standing
   approved.
 - The only standing approvals today remain the current bounded rungs:
@@ -2813,10 +2813,10 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `diagnosis-grounding=GROUNDED`, `issue-close-safe=SAFE_TO_CLOSE`,
   `command-source-verified=SAFE_TO_PROPOSE`, `merge-deploy=LIVE`) and the
   clean unattended tick track record is retained. Even then it is only eligible
-  for an explicit owner promotion step; it is not implicitly standing-approved.
+  for an explicit owner promotion step. It is not implicitly standing-approved.
 - Treasury autonomy is always envelope-bounded. Wallet spend, settlement, and
   L402 redemption cannot become standing-approved from the owner promotion
-  alone; they require the same signature and clean-tick evidence plus an active
+  alone. They require the same signature and clean-tick evidence plus an active
   owner cap envelope (`per_payout_cap_sat` and `per_day_cap_sat`) enforced by
   `artanis_standing_spend_grants` / `runArtanisSpendDecision`. Over-cap or
   unbounded spend must record/block (`blocked_over_cap` or the public ladder
@@ -2844,7 +2844,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `dispatch_codex_task`/`pylon khala burndown` seam, safe stale no-spend lease
   recovery, closeout verification, exact-token/trace reconciliation, and opening
   or updating public-safe issue/ledger refs. Counter movement alone is never
-  completion proof; exact `token_usage_events` and owner-only trace rows remain
+  completion proof. Exact `token_usage_events` and owner-only trace rows remain
   the proof source.
 - The tick does not gain deployment, provider mutation, wallet spend,
   settlement, payout, L402 redemption, runtime promotion, or third-party/pooled
@@ -2855,7 +2855,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   linked capacity and no-spend coding delegation.
 - Artanis fleet administration reads and writes through the shared runner-status
   spine, not a private status fork. `get_fleet_status` may read the public-safe
-  operator fleet snapshot backed by `pylon_agent_runner_status_events`; the
+  operator fleet snapshot backed by `pylon_agent_runner_status_events`. The
   fleet-overseer tick may append a neutral Artanis runner-status event with
   public refs/counts only. `dispatch_codex_task` may carry FleetRun start,
   status, and control intent refs through the existing coding-delegation
@@ -2895,11 +2895,11 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   raw Spark address from the private store and returns it as the native Spark
   send destination for the gated real-settlement path (#5232) and native send
   (#5225). It fails closed (returns `undefined`, no send) when the recipient has
-  no registered Spark target or the private store read fails; the raw
+  no registered Spark target or the private store read fails. The raw
   destination never enters any receipt projection. Registration grants no
   payout, settlement, spend, accepted-work, or public-claim authority by itself.
 - Regression coverage for this policy lives in
-  `workers/api/src/pylon-api-routes.test.ts` and `apps/pylon/tests/wallet.test.ts`;
+  `workers/api/src/pylon-api-routes.test.ts` and `apps/pylon/tests/wallet.test.ts`.
   the private D1 backing store starts in
   `workers/api/migrations/0202_pylon_spark_payout_targets.sql`.
 
@@ -2924,10 +2924,10 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   heartbeat: the verdict route fires the hook fire-and-forget under a catch. No
   real-settled receipt exists without a confirmed dispatch + matched
   reconciliation, preserving every #5232 safety + redaction guard
-  (`assertPublicProjectionSafe`; no raw `spark1…`, invoice, preimage, or wallet
+  (`assertPublicProjectionSafe`, no raw `spark1…`, invoice, preimage, or wallet
   material in any projection).
 - The validator leg SKIPS cleanly (no error, `skipped: no_payout_destination`)
-  when the validator has no registered Spark payout target; the worker leg is
+  when the validator has no registered Spark payout target. The worker leg is
   unaffected.
 - The validator-leg payout destination MUST resolve from the validator's OWN
   registered Spark target with NO operator step (#5310/#5306/#5394). The worker
@@ -2938,7 +2938,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   recent `pylon_ref` that device acted as a WORKER under (from
   `training_trace_contributions`), then resolve THAT pylon's owner, then use the
   owner-scoped `readByOwner` Spark target. This binding is to the device's own
-  historical worker pylon and its own owning agent only; it MUST NOT cross agent
+  historical worker pylon and its own owning agent only. It MUST NOT cross agent
   ownership, MUST fail closed (device never recorded a worker contribution, or
   the resolved owner has no target → `no_payout_destination`), and grants no new
   authority. Without this backstop the validator leg always skipped and the
@@ -2962,7 +2962,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   true, ANY contributor with a registered Spark payout target on an allowlisted
   run is eligible — still bounded by the per-payout cap, the daily cap, and the
   independent worker≠validator replay verification (the trust anchor). The run
-  must always be allowlisted even under run-scoped streaming; the explicit
+  must always be allowlisted even under run-scoped streaming. The explicit
   `allowedContributorRefs` path keeps working alongside it. No adapter is
   broadened and no existing guard is removed.
 - Compiled-module construction settlement (#5326) is a separate payment leg
@@ -3001,7 +3001,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   drift, or tampered constituent evidence must reject the linked-module replay
   even when the composed trace digest itself still matches. Marketplace
   purchase settlement remains blocked until
-  `compositionVerificationCleared: true`; purchase refs and settlement refs do
+  `compositionVerificationCleared: true`. Purchase refs and settlement refs do
   not override a failed composition verdict.
 - Public compiled-module marketplace projections may expose only digest-pinned
   refs, receipt refs, blocker refs, and caveats. They must not expose raw
@@ -3030,7 +3030,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 ## Probe GEPA Stage 0 No-Spend Campaign Gate
 
 - Probe GEPA Stage 0 is a no-spend campaign gate only. Accepted imports must
-  use `unpaid_smoke`; rejected closeouts may use `rejected_no_pay`. Stage 0
+  use `unpaid_smoke`. Rejected closeouts may use `rejected_no_pay`. Stage 0
   must not carry payment receipts, settlement receipts, payout claims, public
   Terminal-Bench score claims, model-training claims, or runtime candidate
   activation claims.
@@ -3105,7 +3105,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   - **Autopilot** is an **agent type that OpenAgents deploys** — the thing that
     _does_ the work (develops, runs QA, drives Chrome/terminal, ships) wherever
     OpenAgents deploys it (web, terminal, Forum, workroom, API). It is not the
-    top-level product on its own; it is an agent type OpenAgents deploys.
+    top-level product on its own. It is an agent type OpenAgents deploys.
   - **Khala** is the **agentic model orchestrator** that _powers_ Autopilot (the
     inference / model-orchestration layer). Khala is an engine, not an actor.
   - The chain is: **OpenAgents (network) → deploys Autopilot (agent type) →
@@ -3115,7 +3115,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   product-promise records) MUST NOT attribute product actions to Khala. Do not
   write "Khala does X", "Khala drives X", "Khala runs the QA", "Khala develops".
   Write "Autopilot does X" and, where the engine is relevant, "**powered by
-  Khala**". Do not frame Autopilot or Khala as the top-level product/network;
+  Khala**". Do not frame Autopilot or Khala as the top-level product/network.
   frame product and chat interactions as **with OpenAgents**, which deploys
   Autopilot.
 - Correct engine-level uses of "Khala" remain allowed: "powered by Khala", "the
@@ -3146,7 +3146,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   and absent from OpenAPI until implemented with separate authority gates.
 - Public agent onboarding docs must not point agents at stale repository-internal
   source paths. Critical onboarding links, including the Episode 230 founder
-  open-letter transcript, must be checked before deploy; the transcript check
+  open-letter transcript, must be checked before deploy. The transcript check
   must verify that the URL returns the expected transcript body, not an HTML
   fallback page.
 - The public launch dashboard must include every numbered source-transcript
@@ -3156,7 +3156,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Regression coverage for this policy lives in
   `workers/api/src/public-launch-copy-gate.test.ts`,
   `workers/api/src/public-launch-dashboard.test.ts`, and
-  `workers/api/src/openagents-agent-sheet-route-coverage.test.ts`; critical
+  `workers/api/src/openagents-agent-sheet-route-coverage.test.ts`. Critical
   onboarding link coverage lives in `scripts/check-live-agent-doc-links.mjs`
   via `pnpm run check:agent-doc-links`.
 
@@ -3232,7 +3232,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   not be described as a public benchmark score, and validation evidence must not
   be described as frozen holdout performance.
 - Probe may prepare public-safe copy or post only as its own registered agent.
-  Posting as Artanis requires the existing OpenAgents product surface/operator authority path; Probe
+  Posting as Artanis requires the existing OpenAgents product surface/operator authority path. Probe
   summaries must not invoke an Artanis bridge.
 - Artanis Probe GEPA public summaries require explicit operator authority refs
   and projection authority refs. Generated copy may describe GEPA as
@@ -3248,7 +3248,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Probe benchmark wins are not product wins unless they are connected to
   accepted coding outcome refs and public/private proof refs.
 - The Probe GEPA Stage 1 benchmark promotion gate may emit `shadow` or rejected
-  benchmark-only state only. It must not emit `active` or `release_candidate`;
+  benchmark-only state only. It must not emit `active` or `release_candidate`.
   those states require a separate explicit OpenAgents product surface/Blueprint production gate.
 - The product surface may display a Probe GEPA candidate as `benchmark_only`, `shadow`,
   `release_candidate`, or `active`, but `active` requires accepted outcome refs
@@ -3262,13 +3262,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 
 ## Public Projection Staleness Declaration
 
-- Every public projection carries `generatedAt` (or `lastRebuiltAt`; numeric
+- Every public projection carries `generatedAt` (or `lastRebuiltAt`, numeric
   `generatedAtUnixMs` where the surface's safety scan bans raw ISO timestamps
   in string fields) plus a declared staleness contract, and either rebuilds on
   the state transitions that matter (event-driven invalidation at the write
   site) or composes live at read. A projection that cannot meet its own
   declared staleness must say so in the payload rather than serve stale data
-  as current. (Epic #4751; instances #4744, #4745, #4746, #4747, #4735,
+  as current. (Epic #4751, instances #4744, #4745, #4746, #4747, #4735,
   #4752, #4753, #4754.)
 - The shared contract vocabulary is
   `workers/api/src/public-projection-staleness.ts`
@@ -3277,7 +3277,7 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   and the `rebuildsOn` transition set). It deliberately extends the shape
   frozen by the Tassadar trace factory's day-0 `projection_rebuild.v0.1`
   contract (#4748,
-  `workers/api/src/tassadar-trace-factory/projection-rebuild.ts`); do not
+  `workers/api/src/tassadar-trace-factory/projection-rebuild.ts`). Do not
   invent a second staleness vocabulary.
 - New public projections must ship compliant. The zero-debt architecture check
   (`scripts/check-zero-debt-architecture.mjs`, run by `pnpm run
@@ -3292,10 +3292,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
-  - `GET /api/public/khala-tokens-served` — projection-first (KS-6.3 #8304): the primary path serves the Khala Sync `scope.public.tokens-served` counter projection (`khala_sync_public_counters` via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2` over `token_usage_events`; the write path bumps the counter exact-once per ledger row and reconciliation proves projection == SUM(exact rows) — Khala Sync invariant 8 below); the fail-open fallback (binding absent, Postgres unreachable, or pre-backfill) serves the previous live-at-read D1 SUM with a `live_at_read` contract ("Tokens Served" homepage/stats counter, #6227/#7797). Aggregate only; no per-user/team/account/provider material. `staleness_declared`.
-  - `GET /api/public/khala-tokens-served/model-mix` — live at read over the canonical token usage ledger; the public `/stats` model/provider mix collapsed into `openagents.public_khala_model_mix.v1` groups (`family`, `label`, `tokens`, `reqs`, `pct`) across the canonical `glm`, `fireworks_deepseek`, `pylon_codex`, `codex_direct`, `pylon_claude`, `gpt_oss`, `gemini`, and `other` families — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; all demand rows are included, including `internal`, `own_capacity`, and direct-local rows, while no per-user/team/account/raw-provider/raw-model material is exposed. `staleness_declared`.
-  - `GET /api/public/khala-tokens-served/channel-mix` — live at read over the canonical token usage ledger; the public `/stats` channel mix collapsed into `openagents.public_khala_channel_mix.v1` groups (`channel`, `label`, `tokens`, `reqs`, `pct`) across `khala_api` and `direct_local`, with legacy rows defaulted to `khala_api` — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/raw-provider/raw-model/local-path material is exposed. `staleness_declared`.
-  - `GET /api/public/settled-feed` — projection-first (KS-6.4 #8414): the primary path serves the Khala Sync `scope.public.settled-feed` projection (recency-ordered settled-leg events + a running summary, via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2`); the fail-open fallback (binding absent, Postgres unreachable, or the projection is empty) serves the legacy `public-settled-feed:tassadar` D1 sync-outbox snapshot with a `live_at_read` contract, so availability never regresses relative to the pre-#8414 live settled feed (#5311). Each event/summary is scanned for raw payment material before it can ever be written or served. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served` — projection-first (KS-6.3 #8304): the primary path serves the Khala Sync `scope.public.tokens-served` counter projection (`khala_sync_public_counters` via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2` over `token_usage_events`, the write path bumps the counter exact-once per ledger row and reconciliation proves projection == SUM(exact rows) — Khala Sync invariant 8 below). The fail-open fallback (binding absent, Postgres unreachable, or pre-backfill) serves the previous live-at-read D1 SUM with a `live_at_read` contract ("Tokens Served" homepage/stats counter, #6227/#7797). Aggregate only. No per-user/team/account/provider material. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served/model-mix` — live at read over the canonical token usage ledger. The public `/stats` model/provider mix collapsed into `openagents.public_khala_model_mix.v1` groups (`family`, `label`, `tokens`, `reqs`, `pct`) across the canonical `glm`, `fireworks_deepseek`, `pylon_codex`, `codex_direct`, `pylon_claude`, `gpt_oss`, `gemini`, and `other` families — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only. All demand rows are included, including `internal`, `own_capacity`, and direct-local rows, while no per-user/team/account/raw-provider/raw-model material is exposed. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served/channel-mix` — live at read over the canonical token usage ledger. The public `/stats` channel mix collapsed into `openagents.public_khala_channel_mix.v1` groups (`channel`, `label`, `tokens`, `reqs`, `pct`) across `khala_api` and `direct_local`, with legacy rows defaulted to `khala_api` — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only. No per-user/team/account/raw-provider/raw-model/local-path material is exposed. `staleness_declared`.
+  - `GET /api/public/settled-feed` — projection-first (KS-6.4 #8414): the primary path serves the Khala Sync `scope.public.settled-feed` projection (recency-ordered settled-leg events + a running summary, via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2`). The fail-open fallback (binding absent, Postgres unreachable, or the projection is empty) serves the legacy `public-settled-feed:tassadar` D1 sync-outbox snapshot with a `live_at_read` contract, so availability never regresses relative to the pre-#8414 live settled feed (#5311). Each event/summary is scanned for raw payment material before it can ever be written or served. `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
   - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read
   - `POST /api/public/business/coding-quick-win-pipeline` — live at read
@@ -3303,20 +3303,20 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
     and `GET /api/public/business/coding-quick-win-receipts/{receiptRef}` —
     live at read over the coding quick-win paid-delivery claim store. Payloads
-    include `generatedAt` and the shared `projection_staleness.v1` contract;
+    include `generatedAt` and the shared `projection_staleness.v1` contract.
     the route grants no deploy, spend, payout, settlement, auto-merge, or
     green-claim authority. `staleness_declared`.
   - `GET /api/public/business/already-sold-engagement-receipts?view=paid-business-receipts`
     and `GET /api/public/business/already-sold-engagement-receipts/{receiptRef}`
     — live at read over the opaque already-sold business payment receipt store.
     Payloads include `generatedAt` and the shared `projection_staleness.v1`
-    contract; public rows expose only opaque buyer refs, vertical descriptors,
+    contract. Public rows expose only opaque buyer refs, vertical descriptors,
     payment totals, source refs, and privacy decision refs. The route grants no
     delivery completion, payout, settlement, self-serve, customer identity, or
     green-claim authority. `staleness_declared`.
   - `GET /api/public/agent-readiness/reports/{reportToken}` — created-once,
     token-addressed agent-readiness report artifact —
-    `static_contract_exempt`. The public payload is immutable after creation;
+    `static_contract_exempt`. The public payload is immutable after creation.
     successful reads update only private click-attribution metadata. Its
     `createdAt` records when the assessment artifact was created and is not a
     read-freshness claim. The payload contains the prospect's own public domain
@@ -3327,15 +3327,15 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/gym/mutalisk-khala-delegation/runs` — live at read over
     the Mutalisk Khala-delegation Gym workflow store — compliant
     (`generatedAt`, `staleness` contract `projection_staleness.v1`
-    live_at_read rebuilt on run_created/progress_ingested/summary_ingested;
-    public-safe run/candidate projections only; grants no promotion
+    live_at_read rebuilt on run_created/progress_ingested/summary_ingested.
+    public-safe run/candidate projections only. Grants no promotion
     authority — optimizer candidates stay admission-gated with
     `decisionGrade: false`). `staleness_declared`.
   - `GET /api/public/khala-code/download-counts` — live at read over
     `khala_code_download_events` (khala_code.desktop_codex_wrapper.v1, #8246)
     — compliant (`generatedAt`, `live_at_read` contract rebuilt on the
     download-event ledger). Public rows are grouped exact counts by artifact
-    kind/channel only; no per-user, account, private path, raw artifact, or
+    kind/channel only. No per-user, account, private path, raw artifact, or
     secret material is exposed. Empty or missing tables return `counts: []`
     with blocker refs instead of synthetic totals, and the route grants no
     public installer, outside-user, payout, settlement, or promise-green
@@ -3345,7 +3345,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     (khala_code.desktop_codex_wrapper.v1, #8247) — compliant (`generatedAt`,
     `live_at_read` contract rebuilt on the outside-user run receipt ledger).
     Public receipts project only app version, platform, architecture,
-    distribution channel, and bounded harness readiness; no paths, prompts,
+    distribution channel, and bounded harness readiness. No paths, prompts,
     tokens, logs, account ids, machine ids, request body blob, billing,
     payout, settlement, or promise-green authority. `staleness_declared`.
   - `GET /api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
@@ -3355,7 +3355,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     (`generatedAt`, `live_at_read` contract rebuilt on the precedent receipt
     ledger). Public receipts project only public-safe trace/plugin/routing,
     exact usage, attribution, amount envelope, payout receipt, and settlement
-    receipt refs; no raw traces, prompts, usage payloads, invoices, payment
+    receipt refs. No raw traces, prompts, usage payloads, invoices, payment
     hashes, preimages, payout destinations, wallet material, provider payloads,
     private source refs, spend, settlement authority, or promise-green
     authority. `staleness_declared`.
@@ -3365,7 +3365,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     (qa_swarm.service_packages.v1, #8252) — compliant (`generatedAt`,
     top-level `projection_staleness.v1` `live_at_read` contract). Public
     receipts project only operator-assisted intake/payment refs, workspace ref,
-    active service-promise ref, and commitment-ledger ref; no customer identity,
+    active service-promise ref, and commitment-ledger ref. No customer identity,
     raw invoices, payment hashes/preimages, target credentials, raw runner logs,
     provider payloads, wallet material, checkout creation, hosted-run dispatch,
     first paid delivery, payout, settlement, self-serve, or promise-green
@@ -3381,7 +3381,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     — compliant (`generatedAt`, top-level `projection_staleness.v1`
     `live_at_read` contract). Public bundles project only the receipt ref,
     ledger table/row ref, product ref, internal/external demand-provenance
-    label, amount envelope, and public-safe evidence refs; no customer identity,
+    label, amount envelope, and public-safe evidence refs. No customer identity,
     raw payment material, raw invoices, checkout URLs, hashes/preimages,
     provider payloads, wallet material, private source refs, payout, settlement,
     paid-plan availability, first paid delivery, external-demand copy, or
@@ -3406,7 +3406,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     live_at_read, a refs-only Tassadar distillation dataset-curation receipt
     for artanis.tassadar_evolution_loop.v1: receiptState, datasetRef,
     required/source verified trace counts, digest prefixes, closeout receipt
-    refs, and blocker-clearing refs; no raw trace bodies, runner logs,
+    refs, and blocker-clearing refs. No raw trace bodies, runner logs,
     settlement, model-training, or model-promotion authority).
   - `GET /api/public/artanis/responder-support` — live at read over the
     Artanis responder-action ledger — compliant (`generatedAt`, `staleness`
@@ -3416,13 +3416,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     each external interaction's dereferenceable reply-post ref).
   - `GET /api/public/artanis/labor-receipts` — live at read over the durable
     Artanis unattended-labor receipt store — compliant (`generatedAt`,
-    `staleness` contract `projection_staleness.v1` live_at_read; folds the
+    `staleness` contract `projection_staleness.v1` live_at_read. Folds the
     content-addressed, public-safe consolidated request receipts into a feed:
     per-terminal-state counts, placed-request count, and each receipt's
     lifecycle refs re-verified against the ref it is keyed under).
   - `GET /api/public/artanis/labor-green-readiness` — live at read over the
     durable Artanis unattended-labor receipt store — compliant (`generatedAt`,
-    `staleness` contract `projection_staleness.v1` live_at_read; the
+    `staleness` contract `projection_staleness.v1` live_at_read. The
     green-readiness projection for artanis.labor_requester.v1: folds the labor
     receipt feed onto the two named green-flip blockers, reporting
     placedRequestCount, liveEnablementProven, unattendedRequestReceiptsProven,
@@ -3431,8 +3431,8 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/artanis/activity` — live at read over public-safe Pylon
     registrations, assignments, event rows, and token-usage aggregates —
     compliant (`generatedAt`, `staleness` contract `projection_staleness.v1`
-    live_at_read; redacted fleet summary, active-assignment aliases, recent
-    public-safe decisions, burn pace, and failure-mode refs only; no owner
+    live_at_read. Redacted fleet summary, active-assignment aliases, recent
+    public-safe decisions, burn pace, and failure-mode refs only. No owner
     tokens, private prompts, diffs, local paths, emails, or wallet material).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
@@ -3450,7 +3450,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     compliant (#4754).
   - `GET /api/provider-accounts/pool` — live at read over provider-account,
     lease, and failover state — compliant (`generatedAt`, contract, typed
-    eligibility reasons and reconnect nudges; lease refs and typed state only,
+    eligibility reasons and reconnect nudges. Lease refs and typed state only,
     no provider secret material) (#4766).
   - `GET /api/public/metrics/accepted-outcomes-per-kwh` — live at read over
     the receipt-backed accepted-outcome seed, metric definition, and product
@@ -3459,9 +3459,9 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/gym/run-progress` — stored-snapshot projection of live
     Gym / Harbor run progress (`openagents.gym.run_progress.v1`, #6261) —
     compliant (`generatedAt`, stored-snapshot contract, each run carries its own
-    `lastUpdatedAt`; public-safe counts/denominator/pass-rate-over-completed/
+    `lastUpdatedAt`. Public-safe counts/denominator/pass-rate-over-completed/
     token-counts/freshness only, always `decisionGrade:false`/`inProgress` for
-    partial phases; `local_only` runs degrade to an awaiting-authorization
+    partial phases. `local_only` runs degrade to an awaiting-authorization
     marker with no live numbers).
   - `GET /api/public/gym/leaderboard` — stored-snapshot projection of the
     recurring Gym benchmark ladder (`openagents.gym.ladder_leaderboard.v1`,
@@ -3470,7 +3470,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `dataAgeSeconds`, and `staleExceeded`). Public-safe only: the three rungs
     (Big Pickle → free → paid frontier) carry rank, lane, accepted outcomes,
     verification-rate-bps, and cost-per-accepted-outcome-msat from decision-grade
-    rows only; fixture/synthetic numbers are never published, and a rung with no
+    rows only. Fixture/synthetic numbers are never published, and a rung with no
     measured opponent is `awaiting_owner` with its owner-gate refs shown rather
     than a fabricated number. Serves the honest empty ladder before the first
     decision-grade publish. No dispatch, spend, settlement, or payout authority.
@@ -3484,14 +3484,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     BOTH solve-rate (verified-rate-bps) AND
     cost-per-accepted-outcome-msat with an honest two-axis verdict, while
     carrying aggregate input/output/total token counts and mean wall-clock
-    context from decision-grade rows only; fixture/synthetic numbers are never
+    context from decision-grade rows only. Fixture/synthetic numbers are never
     published, and a matchup with no measured comparator is `awaiting_owner` with
     its owner-gate refs shown rather than a fabricated number. Serves the honest
     empty shape before the first decision-grade publish. No dispatch, spend,
     settlement, or payout authority.
   - `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>` —
     live at read over one persisted accepted-outcome economics record (promise
-    `payments.accepted_outcome_economics.v1`, red;
+    `payments.accepted_outcome_economics.v1`, red.
     `blocker.product_promises.contributor_ledger_missing`) — compliant
     (`generatedAt`, `live_at_read` contract). Read-only public projection of the
     reconciled gross-margin receipt + contributor accrual ledger: lifecycle and
@@ -3506,14 +3506,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     discipline only: no revenue, demand, payout, settlement, reporting, or
     public-claim upgrade authority.
   - `GET /api/public/marketplace/composed-products` — live at read over the
-    INERT compose-and-list listing store (EPIC #5510, #5515; promise
+    INERT compose-and-list listing store (EPIC #5510, #5515, promise
     `marketplace.compose_and_list_products.v1`, planned) — compliant
     (`generatedAt`, `live_at_read` contract). The surface is flag-gated
     (`MARKETPLACE_COMPOSE_AND_LIST_ENABLED`, default off => empty store) and the
-    payload always reports `inert: true` / `promiseState: 'planned'`; it makes
+    payload always reports `inert: true` / `promiseState: 'planned'`. It makes
     no billing, fulfillment, or live-product claim.
   - `GET /api/public/autopilot/composed-runs` — live at read over the INERT
-    Autopilot all-in-one composed-run store (EPIC #5510, #5519; promises
+    Autopilot all-in-one composed-run store (EPIC #5510, #5519, promises
     `autopilot.all_in_one_business_system.v1` + `cloud.primitives_suite.v1`, both
     planned) — compliant (`generatedAt`, `live_at_read` contract). The surface is
     flag-gated (`AUTOPILOT_COMPOSED_RUN_ENABLED`, default off => empty store) and
@@ -3521,7 +3521,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     capstone promise ids, with the three composition blockers surfaced as
     `unclearedBlockerRefs`. It shows the composition SHAPE only (one balance ref,
     one receipt envelope referencing per-component receipt refs derived from the
-    inference / fine-tuning / sandbox primitive scaffolds); it provisions no
+    inference / fine-tuning / sandbox primitive scaffolds). It provisions no
     primitive, debits no balance, and makes no billing, settlement, or
     live-business claim.
   - `GET /api/public/autopilot/labor-products` — live at read over the INERT
@@ -3535,7 +3535,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     settle, with the settlement receipt ref derived from the shared
     cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
     flag-gated INERT and owner-gated and is unreachable from this read-only
-    route; the surface debits no balance and makes no live-sale claim.
+    route. The surface debits no balance and makes no live-sale claim.
   - `POST /api/public/ecommerce-campaign/workspaces` — live at write public-safe
     self-serve workspace creation (promise `business.ecommerce_workspace_pack.v1`,
     yellow) — compliant (`generatedAt`, `live_at_read` contract). Returns
@@ -3553,7 +3553,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     customer-initiated single-action fanout plan (the lane-C gate decision plus
     the linked market work-request the fanout would list) over the existing
     server-side lane-C gate. The dispatch seam (`dispatchSelfServeFanout`) is
-    flag-gated INERT and is unreachable from this read-only route; the surface
+    flag-gated INERT and is unreachable from this read-only route. The surface
     lists nothing on the market and moves no money.
   - `GET /api/public/autopilot/marketplace-work-classes` — live at read over the
     in-module marketplace work-class catalog (promise
@@ -3564,7 +3564,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `pluginMarketplaceBeyondCodeTaskLive: true` at the planner contract level.
     Optional `?workClass=` narrows to one class. No flag and no store:
     `assertCatalogInvariants` (inside the projection) throws rather than let the
-    catalog silently lose its non-code live class; the surface moves no money and
+    catalog silently lose its non-code live class. The surface moves no money and
     does not claim settled broad marketplace execution.
   - `GET /api/public/markets/signature-monetization/metering` — live at read
     over the INERT signature usage-metering store (promise
@@ -3576,7 +3576,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `exactUsageSubjectRefs`) the signature revenue gate consumes. Metering
     PRODUCES those refs (clearing
     `blocker.product_promises.signature_usage_metering_missing`) and drives the
-    revenue gate to its `metered` rung; it meters no payload, prices nothing,
+    revenue gate to its `metered` rung. It meters no payload, prices nothing,
     debits no balance, and settles nothing — `signature_settlement_missing`
     stays owner-gated and is surfaced as `remainingOwnerGatedBlocker` (#5529).
   - `GET /api/public/pylon/multi-earning-node` — live at read over the INERT
@@ -3590,7 +3590,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     never asserts the bar met as authority and never reports a settled mode
     without a public-safe `settlementReceiptRef`. It is the safe public
     projection deliverable (clearing
-    `blocker.product_promises.safe_public_projection_missing`); the three
+    `blocker.product_promises.safe_public_projection_missing`). The three
     install/receipt/settlement blockers
     (`pylon_v1_default_install_not_fully_closed`,
     `multi_earning_mode_receipts_missing`,
@@ -3610,7 +3610,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     nothing, mutates no connector, notifies nobody, launches no runner, and
     upgrades no public claim. It is the read-only delivery-projection
     deliverable (clearing
-    `blocker.product_promises.omni_client_delivery_projection_missing`); the
+    `blocker.product_promises.omni_client_delivery_projection_missing`). The
     live-integration, owner-sign-off, and closeout-receipt blockers
     (`integration_inert_disabled`, `owner_sign_off_missing`,
     `closeout_receipt_missing`) stay owner-gated and are surfaced as
@@ -3622,26 +3622,26 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/markets/open-markets` — live at read over the six
     Episode 213 markets with honest per-market state — compliant (`generatedAt`,
     contract, evidence-only per-market state/receipt flags, counts, blockers, and
-    unsafe-copy guards; no market-making, settlement, or claim authority) (#5514).
+    unsafe-copy guards. No market-making, settlement, or claim authority) (#5514).
   - `GET /api/public/markets/liquidity/skeleton` — live at read over the inert
     liquidity market skeleton — compliant (`generatedAt`, contract,
     `state="skeleton"`, `inert=true`, `moneyMovement="none"`,
-    `settledTransactionCount=0`, `promiseGreen=false`; documents protocol shapes
+    `settledTransactionCount=0`, `promiseGreen=false`. Documents protocol shapes
     only, moves no money) (#5514).
   - `GET /api/public/markets/risk/skeleton` — live at read over the inert
     risk market skeleton (incl. the agentic-insurance-policy primitive) —
     compliant (`generatedAt`, contract, `state="skeleton"`, `inert=true`,
-    `moneyMovement="none"`, `settledTransactionCount=0`, `promiseGreen=false`;
+    `moneyMovement="none"`, `settledTransactionCount=0`, `promiseGreen=false`.
     documents protocol shapes only, binds/underwrites/pays nothing) (#5514).
   - `POST /api/public/business-signup` — live-at-write intake receipt over the
     inserted business signup row — compliant (`generatedAt`, contract,
-    public-safe request id/status only; no email, phone, website, or freeform
+    public-safe request id/status only. No email, phone, website, or freeform
     request text echoed). A converted signup may bind to the referral
     attribution spine (issue #5809): a bounded inbound `?ref=`/`referralCode`
     (a `site_referral_sources.public_source_ref`) or an already-captured
     `oa_pending_referral_attribution` cookie resolves a pending attribution that
     is consumed exactly once into `business_signup_referral_attributions` (keyed
-    on the signup id; PRIMARY KEY + pending->claimed guard prevent
+    on the signup id. PRIMARY KEY + pending->claimed guard prevent
     double-credit) and recorded on the row as `referral_attribution_id`. This is
     ATTRIBUTION ELIGIBILITY ONLY — it moves no money and accrues no payout
     (refer-once-earn-forever payout stays usage-funded via
@@ -3663,7 +3663,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     intake turn over one bounded, non-streaming Khala completion (or the
     deterministic opening constant for an empty transcript) — compliant
     (`generatedAt`, `live_at_read` contract). Stateless: the browser holds the
-    transcript; the server owns the system prompt, validates closed-catalog
+    transcript. The server owns the system prompt, validates closed-catalog
     typed component frames before returning them, derives a typed
     `business_intake_spec.v1` object when the final markdown spec is complete,
     and keeps `done=false` until required fields (`vertical`, `goals`, `pains`,
@@ -3671,41 +3671,41 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     roles, over-bound transcripts (max 24 messages / 2,000 chars each / 24,000
     total), and non-user-first transcripts with typed 400s. Gated on
     the same conditions as the free gateway (`INFERENCE_GATEWAY_ENABLED` +
-    Fireworks key presence; otherwise 503 `business_intake_chat_unavailable`)
-    and per-IP rate limited (8/min, 60/day; 429
+    Fireworks key presence. Otherwise 503 `business_intake_chat_unavailable`)
+    and per-IP rate limited (8/min, 60/day, 429
     `business_intake_rate_limited`). Every served completion records one exact
     `token_usage_events` row fail-soft via the canonical served-tokens
     recorder (`usage_truth='exact'`, `demand_kind='internal'`,
-    `demand_source='business_intake_chat'`); estimated tokens are never
+    `demand_source='business_intake_chat'`). Estimated tokens are never
     counted. The turn grants no work-order, spend, payout, settlement, or
     agent authority and never requests credentials.
   - `GET /api/public/training/runs/{trainingRunRef}` — live at read over the
     Worker-authoritative training run, window, lease, verification challenge,
     and provider-confirmed settlement receipt rows — compliant (`generatedAt`,
     top-level contract, public-safe run projection, source refs, and
-    provenance-labeled summary metrics only; no admin token, private logs,
+    provenance-labeled summary metrics only. No admin token, private logs,
     wallet material, pending-as-paid payout, or write authority).
   - `GET /api/public/training/runs/{trainingRunRef}/settlements` — public alias
     for the per-run settlements feed (#5403), serving the identical public-safe
     `routeReadRunSettlements` handler as the non-`/public/` path over
     provider-confirmed settlement receipts — compliant (`generatedAt`,
     top-level contract, public-safe settlement rows with `movementMode` and
-    `realBitcoinMoved` flagged so simulation rows never count as real Bitcoin;
+    `realBitcoinMoved` flagged so simulation rows never count as real Bitcoin.
     no seeds, raw addresses, payment hashes, or write authority).
   - `GET /api/public/training/verification-challenges/{challengeRef}` — live at
     read standalone per-challenge dereference (#5403) over the
     Worker-authoritative verification challenge row, serving the same
     public-safe `publicTrainingVerificationChallengeProjection` (worker,
-    validator, verdict, and challenge refs; the two compared sha256 digests;
+    validator, verdict, and challenge refs. The two compared sha256 digests.
     public-safe failure codes) exposed inside the run summary — compliant
-    (`generatedAt`, top-level contract; no payloads, seeds, payment material,
+    (`generatedAt`, top-level contract, no payloads, seeds, payment material,
     raw traces, or write authority).
   - `GET /api/public/tassadar-run-summary` — live at read compatibility feed
     for the live Tassadar spatial view over the same Worker-authoritative
     training run/window/lease/challenge rows — compliant (`generatedAt`,
     top-level contract, public-safe summary metrics, plain-language
     `bulletin` copy derived only from those public metrics/refs, and honest
-    idle envelope only; no admin token, private logs, wallet material,
+    idle envelope only. No admin token, private logs, wallet material,
     pending-as-paid payout, or write authority).
   - `GET /api/public/activity-timeline` — live at read over public-safe Pylon,
     training, verification, settlement receipt, Forum, Artanis, and capacity
@@ -3753,7 +3753,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   green flip for a promise whose green criteria require a live event (real
   payment, real external user, signed installer, settled receipt) that has not
   actually occurred. The audit panel records the operating agent as the signoff
-  actor; fabricating deservingness is a hard violation.
+  actor. Fabricating deservingness is a hard violation.
   - `GET /api/public/training/ablation-derisking-ledger` — live at read over
     the candidate-only training ablation derisking ledger (promise
     `training.ablation_system.v1`, planned) — compliant (`generatedAt`,
@@ -3763,7 +3763,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     retained checkpoint-eval reproduction receipt, remaining blocker refs, and
     no private training, provider, payment, wallet, or customer material). The
     surface clears the projection, one-delta harness, and eval-reproduction
-    blockers; `blocker.product_promises.paid_ablation_dispatch_missing`
+    blockers. `blocker.product_promises.paid_ablation_dispatch_missing`
     remains. It grants no dispatch, assignment, spend, settlement,
     model-promotion, verdict, or public-claim authority and flips no promise.
     Regression coverage:
@@ -3781,7 +3781,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     smoke run, bit-exact resume drill, and committed report fixture synchronized
     with deterministic generator output. It clears
     `blocker.product_promises.instruct_sft_lane_missing` and
-    `blocker.product_promises.instruct_sft_fixture_sync_missing`; paid dispatch,
+    `blocker.product_promises.instruct_sft_fixture_sync_missing`. Paid dispatch,
     preference rollout, and vibe-test blockers remain. It grants no assignment, spend,
     settlement, model promotion, model-service, fine-tuning-service, or
     public-claim authority and flips no promise. Regression coverage:
@@ -3806,7 +3806,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     paid-ledger-row proof only). It exposes the receipt ref, kind, paid state,
     caveats, and source refs while omitting account ids, amounts, idempotency
     keys, Stripe session ids, invoices, preimages, wallet material, provider
-    payloads, and raw prompts. Read-only; grants no spend, refund, payout,
+    payloads, and raw prompts. Read-only. Grants no spend, refund, payout,
     checkout, settlement, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-inference-receipt-routes.test.ts`.
@@ -3821,7 +3821,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     ids, amounts, idempotency keys, invoices, preimages, wallet material,
     provider payloads, and raw job/sandbox bodies. The projection carries a
     caveat noting demand provenance and owner sign-off are still pending, so it
-    asserts no product-promise is green. Read-only; grants no spend, refund,
+    asserts no product-promise is green. Read-only. Grants no spend, refund,
     payout, provisioning, settlement, provider, public-claim, or registry
     authority. Regression coverage:
     `workers/api/src/cloud/public-cloud-primitive-receipt-routes.test.ts` and
@@ -3834,7 +3834,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     fulfilled and that the webhook-created positive Stripe checkout credit row
     exists. It omits customer ids, checkout URLs, email, raw Stripe payloads,
     secrets, ledger ids, invoices, payment material, wallet material, and raw
-    account data. Read-only; grants no checkout, spend, refund, payout,
+    account data. Read-only. Grants no checkout, spend, refund, payout,
     settlement, provider, public-claim, or registry authority. Regression
     coverage: `workers/api/src/public-stripe-checkout-receipt-routes.test.ts`.
   - `GET /api/public/site-referral-payout-receipts/{receiptRef}` — live at
@@ -3847,7 +3847,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     public-safe evidence refs while omitting payout refs, user ids, attribution
     ids, referral source or invite ids, payout destinations, invoices, payment
     hashes, preimages, raw provider payloads, wallet material, and ledger ids.
-    Read-only; grants no attribution, invite, checkout, spend, refund, payout,
+    Read-only. Grants no attribution, invite, checkout, spend, refund, payout,
     settlement, wallet, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-site-referral-payout-receipt-routes.test.ts`.
@@ -3860,7 +3860,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     qualifying-event kind, policy refs, caveats, and public-safe evidence refs
     while omitting partner refs, user ids, payout refs, qualifying-event refs,
     payout destinations, invoices, payment hashes, preimages, provider payloads,
-    wallet material, and ledger ids. Read-only; grants no attribution,
+    wallet material, and ledger ids. Read-only. Grants no attribution,
     eligibility, checkout, spend, refund, payout, settlement, wallet, provider,
     revenue, public-claim, or registry authority. Regression coverage:
     `workers/api/src/public-partner-payout-receipt-routes.test.ts`.
@@ -3870,7 +3870,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     top-level `projection_staleness.v1` `live_at_read` contract,
     capture-excluded reason refs, bounded caveats). It omits account refs,
     prompts, completions, payment material, provider payloads, wallet material,
-    raw tokens, and secrets. Read-only; grants no billing, refund, payout,
+    raw tokens, and secrets. Read-only. Grants no billing, refund, payout,
     settlement, provider, broad privacy guarantee, confidential-runtime,
     public-claim, or registry authority. Regression coverage:
     `workers/api/src/inference/inference-privacy-receipt-routes.test.ts`.
@@ -3880,7 +3880,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     terms/policy contract (#6296: version, ordered terms, bounded policy facts),
     exempt (not a state projection, no `generatedAt`/staleness contract). Honest
     and code-accurate to the capture seams (redacted, `owner_only` default,
-    paid-privacy fail-closed opt-out, public opt-in only, reward marker inert);
+    paid-privacy fail-closed opt-out, public opt-in only, reward marker inert).
     grants no capture, training-consent, spend, payout, or settlement authority.
     Regression coverage:
     `workers/api/src/inference/free-tier-data-sharing-disclosure.test.ts`.
@@ -3893,13 +3893,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/product-promises/transitions` — stored receipt rows,
     served with live registry context — compliant (`generatedAt`,
     `registryVersion`, `registryGeneratedAt`, and the top-level
-    `projection_staleness.v1` `live_at_read` contract; receipt rows remain
+    `projection_staleness.v1` `live_at_read` contract. Receipt rows remain
     transition evidence only and do not mutate registry state).
   - Wave 1 retrofit (#8377, 2026-07-05): the frozen legacy set is now
     compliant and the architecture guard budget is `0/0`.
     - `GET /api/public/pylon-stats` — rebuilt-on-transition public stats over
       the cached registration/heartbeat/settlement/training aggregate —
-      compliant (`generatedAtUnixMs`, 4-second bound; raw ISO timestamps stay
+      compliant (`generatedAtUnixMs`, 4-second bound, raw ISO timestamps stay
       out of this safety-scanned payload).
     - `GET /api/public/pylon-capacity-funnel` — live at read over pylon
       registrations, assignments, and provider job lifecycle rows — compliant.
@@ -3942,7 +3942,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   `generatedAt`, and the shared public-projection staleness contract.
 - Private Customer #1 cohort row intake and storage must stay behind the
   operator/admin boundary at `/api/operator/customer-one-cohort/rows`. Stored
-  rows are source evidence only; the public route may expose only the
+  rows are source evidence only. The public route may expose only the
   `CustomerOneCohortProjection` output.
 - The Customer #1 cohort projection must reject raw prompts, shell logs, private
   repo or local filesystem refs, URLs, email addresses, provider payloads,
@@ -3996,18 +3996,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   `oa_component_channel: true` body field) AND a Khala model. With any of those
   absent, `/v1/chat/completions` is byte-for-byte the prior text-only stream and
   the default response shape never changes. A standard OpenAI client must always
-  parse the stream as normal `chat.completion.chunk` text; the `oa.component`
+  parse the stream as normal `chat.completion.chunk` text. The `oa.component`
   frame uses a custom SSE `event:` type that standard clients ignore.
 - The component catalog is a CLOSED enum (six v1 components: `credit_kickoff`,
   `intake_progress`, `quick_win_card`, `dashboard_preview`, `human_handoff`,
-  `consent_gate`). The model may only SELECT from and FILL the catalog; an
+  `consent_gate`). The model may only SELECT from and FILL the catalog. An
   unknown/model-invented component name is rejected at the gateway and never
   emitted. Adding a 7th component is a deliberate, reviewed catalog bump in
   `workers/api/src/inference/khala-component-channel.ts`, never an ad-hoc model
   invention.
 - Component props are validated against the closed catalog with Effect Schema at
   the gateway BEFORE a frame leaves Khala. On a schema-invalid candidate exactly
-  ONE bounded repair turn may run; if the repaired candidate is still invalid the
+  ONE bounded repair turn may run. If the repaired candidate is still invalid the
   component is DROPPED (never ship malformed UI). Each emitted frame is atomic and
   versioned (`{"v":1,"component":...,"props":...,"id":...}`) — one complete card
   per frame, no JSON-patch reassembly and no partial-JSON parse.
@@ -4018,7 +4018,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   alongside component frames is identity-guarded by the same backstop.
 - The component channel is evidence/UX only. A component frame does not grant
   payment, accepted-work, payout, settlement, deploy, or public-claim authority
-  by itself; a `credit_kickoff` card is a render hint that links to the existing
+  by itself. A `credit_kickoff` card is a render hint that links to the existing
   Stripe checkout path, not a settlement event.
 - Regression coverage for this policy lives in
   `workers/api/src/inference/khala-component-channel.test.ts` and the route
@@ -4029,24 +4029,24 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 ## Khala Sync (SPEC §7 invariant set)
 
 Khala Sync is the owned replication substrate (Cloud SQL Postgres →
-per-scope live hubs → SQLite clients; the hub layer is the LiveHub Cloud
+per-scope live hubs → SQLite clients. The hub layer is the LiveHub Cloud
 Run service `apps/khala-live-hub`, configured through
 `KHALA_SYNC_LIVE_HUB_URL`/`_TOKEN`). There is no in-process or edge-runtime
 fallback. The
-normative spec is `docs/khala-sync/SPEC.md`; §7 defines nine invariants and
+normative spec is `docs/khala-sync/SPEC.md`. §7 Defines nine invariants and
 this section registers them (KS-9.3, #8312). The Cloud Run API owns the sync
 routes (`POST /api/sync/push`, `GET /api/sync/log`,
 `POST /api/sync/bootstrap`, `GET /api/sync/connect`, and the admin-bearer
-internal hub append/log/connect routes); the substrate and
+internal hub append/log/connect routes). The substrate and
 client engines
 live in `packages/khala-sync-server` / `packages/khala-sync-client` and are
 cited here because the invariants span the seam. Statuses are honest:
-`enforced` means named passing tests exist today; `partial` and `pending`
+`enforced` means named passing tests exist today. `partial` and `pending`
 name the blocking issue instead of claiming enforcement.
 
 1. **Dense, monotonic, server-assigned versions (enforced).** Per-scope
    versions are allocated inside the writing Postgres transaction under the
-   scope-counter row lock; they are dense (no gaps) and monotonic. Enforced
+   scope-counter row lock. They are dense (no gaps) and monotonic. Enforced
    by `packages/khala-sync-server/src/outbox-writer.test.ts` ("sequential
    transactions get dense monotonic versions per scope", "CONCURRENT
    writers on one scope serialize into dense versions with no gaps or
@@ -4057,7 +4057,7 @@ name the blocking issue instead of claiming enforcement.
    `apps/khala-live-hub/src/scope-hub.test.ts` (both: "rejects a gapped
    append against a non-empty window (dense-version invariant)").
 2. **No optimistic effects in the durable client store (enforced).** A
-   client never persists optimistic mutation effects; the durable SQLite
+   client never persists optimistic mutation effects. The durable SQLite
    store holds server-confirmed state only and optimism lives in the
    in-memory overlay. Enforced by
    `packages/khala-sync-client/src/overlay.test.ts` ("optimistic effects
@@ -4072,7 +4072,7 @@ name the blocking issue instead of claiming enforcement.
    a named system writer. The push path stamps
    `mutationRefFor(clientGroupId, clientId, mutationId)` — asserted in
    `packages/khala-sync-server/src/push-engine.test.ts` ("applied flow:
-   business write + changelog + ledger commit together, dense versions");
+   business write + changelog + ledger commit together, dense versions").
    the fleet projection stamps `FLEET_PROJECTION_SYSTEM_REF` — asserted in
    `packages/khala-sync-server/src/fleet-projection.test.ts` ("projection
    appends entities + claims the scope owner in one transaction"). HONEST
@@ -4082,19 +4082,19 @@ name the blocking issue instead of claiming enforcement.
    new changelog producer must stamp a mutation ref or a named system ref
    and assert it in its tests.
 4. **At-least-once delivery, idempotent apply (enforced).** Delivery may
-   duplicate; apply is idempotent by `(scope, version, entity)` at every
+   duplicate. Apply is idempotent by `(scope, version, entity)` at every
    layer. Client store:
    `packages/khala-sync-client/src/sqlite-store.test.ts` ("re-applying the
    same entries + cursor is a no-op end state", "skips entries with version
-   <= the stored entity version"); session:
+   <= the stored entity version"). Session:
    `packages/khala-sync-client/src/session.test.ts` ("out-of-order and
-   duplicate delta delivery is safe (idempotent apply)"); overlay:
+   duplicate delta delivery is safe (idempotent apply)"). Overlay:
    `packages/khala-sync-client/src/overlay.test.ts` ("redelivered confirm
-   batch changes nothing and notifies nothing"); hub:
+   batch changes nothing and notifies nothing"). Hub:
    `workers/api/src/khala-sync-hub-do.test.ts` ("appends a batch, then
-   ignores a full replay (idempotent, at-least-once safe)"); capture
+   ignores a full replay (idempotent, at-least-once safe)"). Capture
    producer: `packages/khala-sync-server/src/capture.test.ts` ("restart
-   resumes from the durable checkpoint with no hub duplicates"); end-to-end
+   resumes from the durable checkpoint with no hub duplicates"). End-to-end
    seam (real Postgres + hub DO + client store):
    `workers/api/src/khala-sync-stitch-seam.e2e.test.ts` ("client converges
    byte-equal under writes committed while paging, catching up, and
@@ -4106,7 +4106,7 @@ name the blocking issue instead of claiming enforcement.
    one answers duplicate").
 5. **Single-transaction mutators (enforced).** Mutator execution — permission
    check, business write, changelog append, ledger upsert — is one Postgres
-   transaction; a mid-mutator failure rolls everything back together.
+   transaction. A mid-mutator failure rolls everything back together.
    Enforced by `packages/khala-sync-server/src/push-engine.test.ts`
    ("applied flow: business write + changelog + ledger commit together,
    dense versions", "atomicity: a mid-mutator storage failure rolls back
@@ -4121,27 +4121,27 @@ name the blocking issue instead of claiming enforcement.
    `docs/khala-sync/MUTATORS.md`.
 6. **MustRefetch behind the retained window, never a partial log
    (enforced).** A cursor behind the retained window must receive
-   `MustRefetch`; no layer may serve a partial log. Compaction watermark:
+   `MustRefetch`. No layer may serve a partial log. Compaction watermark:
    `packages/khala-sync-server/src/compaction.test.ts` ("after compaction a
    stale cursor raises cursor_behind_retained_window while a fresh
    bootstrap converges", "capture-checkpoint bound never advances the
    watermark past pushed_through_version + 1", "a scope with NO checkpoint
-   row fails closed (no compaction at all)"); read service:
+   row fails closed (no compaction at all)"). Read service:
    `packages/khala-sync-server/src/read-service.test.ts` ("logPage fails
    with cursor_behind_retained_window when afterVersion predates
    retention", "bootstrap page token behind the retained window fails
-   closed (re-bootstrap)"); hub: `workers/api/src/khala-sync-hub-do.test.ts`
+   closed (re-bootstrap)"). Hub: `workers/api/src/khala-sync-hub-do.test.ts`
    ("a behind-window socket gets MustRefetch(cursor_behind_retained_window)
-   and is closed"); HTTP mapping:
+   and is closed"). HTTP mapping:
    `workers/api/src/khala-sync-log-routes.test.ts` ("Postgres
-   behind-retained-window is a 410 MustRefetch SyncError"); client
+   behind-retained-window is a 410 MustRefetch SyncError"). Client
    recovery: `packages/khala-sync-client/src/session.test.ts` ("MustRefetch
-   mid-live → must_refetch → re-bootstrap → live with replaced state");
+   mid-live → must_refetch → re-bootstrap → live with replaced state").
    capture never fabricates a partial log on a hub gap:
    `packages/khala-sync-server/src/capture.test.ts` ("hub 409 version gap
    heals by re-pushing from the hub's expectation").
 7. **Scope access control (enforced — KS-7.1 #8305).** Scope access is
-   checked at bootstrap/connect/log and re-checked on membership change;
+   checked at bootstrap/connect/log and re-checked on membership change.
    revocation retracts synced state via re-bootstrap. The read gate is the
    taxonomy-complete resolver `resolveScopeRead`
    (`packages/khala-sync-server/src/scope-auth.ts`) over live capability
@@ -4149,7 +4149,7 @@ name the blocking issue instead of claiming enforcement.
    self-only, public, live D1 team membership, agent_run/thread ownership
    (the `agent_runs` rule incl. the autopilot-thread mapping, plus MC-1
    owner-private thread ownership via `khala_sync_scope_owners`), fleet_run
-   `khala_sync_scope_owners` owners; UNKNOWN taxonomy members are gated
+   `khala_sync_scope_owners` owners. UNKNOWN taxonomy members are gated
    CLOSED (403 typed `unknown_scope`) and a failed lookup fails CLOSED as a
    retryable 503 — never a grant. Resolver matrix:
    `packages/khala-sync-server/src/scope-auth.test.ts` ("scope.user: self
@@ -4159,12 +4159,12 @@ name the blocking issue instead of claiming enforcement.
    throwing … capability fails CLOSED as typed unavailable (never a grant,
    never a silent 403)"). Worker wiring:
    `workers/api/src/khala-sync-scope-auth.test.ts` ("team: LIVE D1
-   membership grants; non-member and removed-member deny", "agent_run:
-   owner allowed; team run readable by an active member; foreign denied",
+   membership grants. Non-member and removed-member deny", "agent_run:
+   owner allowed. Team run readable by an active member. Foreign denied",
    "thread: resolves through agent_runs directly and via the
    autopilot-thread mapping", "thread: owner-private MC-1 chat scopes
    resolve through khala_sync_scope_owners", "fleet_run:
-   khala_sync_scope_owners owner allowed, foreign/unowned denied; client
+   khala_sync_scope_owners owner allowed, foreign/unowned denied. Client
    always released"). Routes:
    `workers/api/src/khala-sync-log-routes.test.ts` ("a LIVE team member
    reads the team scope (hub-served)", "a NON-MEMBER is denied a team scope
@@ -4177,10 +4177,10 @@ name the blocking issue instead of claiming enforcement.
    `workers/api/src/khala-sync-hub-do.test.ts` ("broadcasts
    MustRefetch(access_changed) to EVERY socket and closes them all",
    "drives the REAL hub DO: sockets get MustRefetch(access_changed) and
-   close"); revocation e2e (real Postgres + real hub DO + real client
+   close"). Revocation e2e (real Postgres + real hub DO + real client
    store/session):
    `workers/api/src/khala-sync-access-revocation.e2e.test.ts` ("membership
-   removal + access-changed retracts the team scope end to end"); client
+   removal + access-changed retracts the team scope end to end"). Client
    retraction:
    `packages/khala-sync-client/src/session.test.ts` ("revocation (KS-7.1
    invariant 7): MustRefetch(access_changed) → denied re-bootstrap CLEARS
@@ -4189,7 +4189,7 @@ name the blocking issue instead of claiming enforcement.
    Write side: `packages/khala-sync-server/src/push-engine.test.ts`
    ("client group bound to another user: whole request fails typed, nothing
    executes") and `packages/khala-sync-server/src/fleet-projection.test.ts`
-   ("a FOREIGN user is rejected in-band with zero writes; queue never
+   ("a FOREIGN user is rejected in-band with zero writes, queue never
    blocks"). HONEST LIMIT (call-site obligation, not a gap in denial):
    live-at-read means a revoked user fails their NEXT request with no
    operator action, but retracting an ALREADY-OPEN socket requires the
@@ -4197,13 +4197,13 @@ name the blocking issue instead of claiming enforcement.
    deletion write path exists today (memberships are operator-managed), so
    the trigger is the admin route
    `POST /api/internal/khala-sync/hub/access-changed { scope }`
-   (docs/khala-sync/RUNBOOK.md "Access revocation"); every FUTURE Worker
+   (docs/khala-sync/RUNBOOK.md "Access revocation"). Every FUTURE Worker
    write path that revokes scope access MUST call
    `notifyKhalaSyncHubAccessChangedBestEffort` after its commit and cite it
    here. CVR v2 remains #8306.
 8. **Public-projection reconciliation (enforced for the landed
    tokens-served projection — a per-projection obligation).** Public-scope
-   projections (e.g. tokens-served) must reconcile to exact source rows;
+   projections (e.g. tokens-served) must reconcile to exact source rows.
    the sync path never invents counter deltas. Enforced for the KS-6.3
    tokens-served projection (#8304): every increment is keyed to exactly
    one `token_usage_events` row's idempotency key through a
@@ -4232,7 +4232,7 @@ name the blocking issue instead of claiming enforcement.
    future public-scope projection must land equivalent exact-once +
    reconcile tests in the same change.
 9. **Post-image redaction for broader-than-owner scopes (partial — enforced
-   for the landed fleet projection; a per-projection obligation).** Raw
+   for the landed fleet projection. A per-projection obligation).** Raw
    private material (prompts, tokens, wallet material, local paths, emails)
    never enters changelog post-images for scopes broader than the owner.
    Enforced for the only landed projection (fleet cockpit, #8302) by

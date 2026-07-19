@@ -142,6 +142,25 @@ describe("STE screening review", () => {
       "STE-8.1",
     ]);
   });
+
+  test("accepts density only for an identified agent compact review", () => {
+    const profile = {
+      ...deriveProfile("AGENTS.md", config),
+      ste_reviewer: "test-reviewer",
+      ste_reviewed_at: "2026-07-19T00:00:00Z",
+      ste_audience: "agent" as const,
+      ste_agent_compact_revision: "openagents-agent-compact-v1" as const,
+      ste_accepted_screening_rules: ["STE-5.1" as const, "STE-8.2" as const],
+    };
+    const sentence = "Use " + Array.from({ length: 30 }, () => "one").join(" ") + ".";
+    const paragraph = Array.from({ length: 7 }, () => "Use one.").join(" ");
+    expect(
+      applyScreeningReview(
+        inspectStructure("AGENTS.md", `${sentence}\n${paragraph}`, "descriptive"),
+        profile,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("STE structural rewrite", () => {
@@ -157,7 +176,7 @@ describe("STE structural rewrite", () => {
     ].join("\n");
     expect(rewriteSteSemicolons(input)).toBe(
       [
-        "Use the route, then inspect it.",
+        "Use the route. Then inspect it.",
         "Keep `printf 'a;b'` and https://example.com/a;b unchanged.",
         "Keep `multi;line",
         "code;span` unchanged.",

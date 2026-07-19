@@ -18,6 +18,8 @@ export const rewriteSteSemicolons = (input: string): string => {
       (match) => [match.index ?? 0, (match.index ?? 0) + match[0].length] as const,
     );
     let result = "";
+    let parenthesisDepth = 0;
+    let capitalizeNextWord = false;
     for (let index = 0; index < line.length; index += 1) {
       const rest = line.slice(index);
       const url = /^https?:\/\/\S+/.exec(rest)?.[0];
@@ -28,14 +30,28 @@ export const rewriteSteSemicolons = (input: string): string => {
       }
       const character = line[index] ?? "";
       if (character === "`" && line[index - 1] !== "\\") {
+        if (!inCodeSpan && capitalizeNextWord) capitalizeNextWord = false;
         inCodeSpan = !inCodeSpan;
+        result += character;
+      } else if (!inCodeSpan && character === "(") {
+        parenthesisDepth += 1;
+        result += character;
+      } else if (!inCodeSpan && character === ")") {
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1);
         result += character;
       } else if (
         !inCodeSpan &&
         character === ";" &&
         !semanticCodeRanges.some(([start, end]) => index >= start && index < end)
       ) {
-        result += ",";
+        if (parenthesisDepth > 0) result += ",";
+        else {
+          result += ".";
+          capitalizeNextWord = true;
+        }
+      } else if (!inCodeSpan && capitalizeNextWord && /[A-Za-z]/.test(character)) {
+        result += character.toUpperCase();
+        capitalizeNextWord = false;
       } else result += character;
     }
     return result;

@@ -4,11 +4,7 @@
   "files": {
     "AGENTS.md": {
       "sourceSha256": "0ee5472c798f8ed8fbf19aeab8cd94c12179ff650746d79e2992494e0532c3b1",
-      "normativeKeywords": [
-        "NEVER",
-        "NEVER",
-        "ONLY"
-      ],
+      "normativeKeywords": ["NEVER", "NEVER", "ONLY"],
       "inlineCode": [
         " + Xcode/Gradle); ",
         "$PYLON",
@@ -603,13 +599,7 @@
     },
     "INVARIANTS.md": {
       "sourceSha256": "23a8bd1ff73002f76ed7196c4da5365ed4528363f370e950afee472edc9d32c5",
-      "normativeKeywords": [
-        "MAY",
-        "MUST",
-        "ONLY",
-        "ONLY",
-        "ONLY"
-      ],
+      "normativeKeywords": ["MAY", "MUST", "ONLY", "ONLY", "ONLY"],
       "inlineCode": [
         "$HOME",
         "--account-ref",
@@ -1764,7 +1754,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "2b66e3bfb7d81898ca82615b351d8e35979e28f4af50b554f10ecdeec248bf67",
+      "sourceSha256": "7f4b8aebd6ff2f568c8113b358aa5a83aa0aa4f3a32d5c0bb2a3c623dfafccb8",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -1809,12 +1799,12 @@
         "July 9 Backroom archive manifest",
         "MOB-*",
         "MVP AssuranceSpec",
-        "MVP Product Spec",
+        "MVP ProductSpec",
         "MVP README",
         "ManagedRuntime",
         "Mobile any-host fleet controller",
         "OpenChamber whole-product teardown",
-        "Product Spec",
+        "ProductSpec",
         "ProductSpec",
         "ProductSpecRun",
         "REL-*",
@@ -2479,9 +2469,7 @@
       "urls": [
         "https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md"
       ],
-      "issueRefs": [
-        "#8640"
-      ],
+      "issueRefs": ["#8640"],
       "numericValues": [
         "09",
         "1",
@@ -2535,17 +2523,7 @@
       ],
       "urls": [],
       "issueRefs": [],
-      "numericValues": [
-        "09",
-        "1",
-        "10",
-        "10",
-        "2",
-        "2026-07",
-        "2026-07",
-        "2026-07",
-        "90"
-      ]
+      "numericValues": ["09", "1", "10", "10", "2", "2026-07", "2026-07", "2026-07", "90"]
     },
     "specs/CONVENTIONS.md": {
       "sourceSha256": "ce8205c250d1f08daf6e0f9e50a983d1e944b8748dcdb82a575361a339e6aaec",
@@ -2592,23 +2570,11 @@
         "tool_metadata"
       ],
       "urls": [],
-      "issueRefs": [
-        "#8593"
-      ],
-      "numericValues": [
-        "0.19.0",
-        "08",
-        "1",
-        "1",
-        "2026-07",
-        "5",
-        "5",
-        "8",
-        "8593"
-      ]
+      "issueRefs": ["#8593"],
+      "numericValues": ["0.19.0", "08", "1", "1", "2026-07", "5", "5", "8", "8593"]
     },
     "apps/openagents.com/AGENTS.md": {
-      "sourceSha256": "17d2f0d45aeeef4a86f92174788adca843a7883265802c4c14268108c6dfca1e",
+      "sourceSha256": "c020d7d74771bc3afca988a3cdac8ab7b5916dc44b2a4d1e037b7a84827e3a49",
       "normativeKeywords": [],
       "inlineCode": [
         " and the concrete ",
@@ -2829,15 +2795,8 @@
         "~/.local/share/effect-solutions/effect",
         "~/.local/share/effect-solutions/effect"
       ],
-      "urls": [
-        "https://openagents.com/`",
-        "https://openagents.com/new`."
-      ],
-      "issueRefs": [
-        "#5058",
-        "#8610",
-        "#8813"
-      ],
+      "urls": ["https://openagents.com/`", "https://openagents.com/new`."],
+      "issueRefs": ["#5058", "#8610", "#8813"],
       "numericValues": [
         "0",
         "04",
@@ -2879,7 +2838,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "77a9869330ca4d7a71ad5f7e40de6a58040df8fd99f2683f8359fc59692ed490",
+      "sourceSha256": "c0d6b302c043aa64af3db1e6b0f39e85a0bdd121bfd397485c7d0c185e833cf8",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -4667,9 +4626,7 @@
         "{}",
         "~/.codex"
       ],
-      "urls": [
-        "https://openagents.com`"
-      ],
+      "urls": ["https://openagents.com`"],
       "issueRefs": [
         "#1",
         "#1",
@@ -5185,7 +5142,7 @@
       ]
     },
     "apps/openagents.com/docs/autopilot-tasks/AGENTS.md": {
-      "sourceSha256": "e99b28142347c7ede13cce9f8a25e9e9c69a6ce9ed43616f9d4738eca7357352",
+      "sourceSha256": "639c6bfd34a0f72ef3c17af37b87fc8f8f2eebe9ea4e76adb48f119e691694b3",
       "normativeKeywords": [],
       "inlineCode": [
         "../2026-06-04-programmatic-autopilot-work-runbook-audit.md",
@@ -5269,9 +5226,7 @@
     },
     "docs/cloud/INVARIANTS.md": {
       "sourceSha256": "6c554bed6ec2b184e4881f97088fc33616a08088f069bf29931d24d55f64fc5d",
-      "normativeKeywords": [
-        "ONLY"
-      ],
+      "normativeKeywords": ["ONLY"],
       "inlineCode": [
         "*_RAW_PER_VM_SEC_NANOUSD",
         "/dev/kvm",
@@ -5386,15 +5341,7 @@
         "vm_seconds"
       ],
       "urls": [],
-      "issueRefs": [
-        "#8547",
-        "#8636",
-        "#8748",
-        "#8748",
-        "#9028",
-        "#9029",
-        "#9034"
-      ],
+      "issueRefs": ["#8547", "#8636", "#8748", "#8748", "#9028", "#9029", "#9034"],
       "numericValues": [
         "0",
         "0",

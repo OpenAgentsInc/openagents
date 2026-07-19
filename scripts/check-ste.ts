@@ -136,6 +136,16 @@ for (const path of selected) {
     errors.push(`${path}: STE-PROFILE: use ${config.agentCompactRevision}`);
   if (profile.ste_agent_compact_revision && !["agent", "dual"].includes(profile.ste_audience ?? ""))
     errors.push(`${path}: STE-PROFILE: identify an agent or dual audience`);
+  const acceptsAgentDensity = profile.ste_accepted_screening_rules?.some((rule) =>
+    ["STE-5.1", "STE-8.2"].includes(rule),
+  );
+  if (
+    acceptsAgentDensity &&
+    (profile.ste_audience !== "agent" || !profile.ste_agent_compact_revision)
+  )
+    errors.push(
+      `${path}: STE-PROFILE: sentence or paragraph density acceptance requires an agent-only compact profile`,
+    );
   if (
     (profile.ste_status === "inspected" || profile.ste_status === "source-data") &&
     (!profile.ste_reviewer || !profile.ste_reviewed_at) &&

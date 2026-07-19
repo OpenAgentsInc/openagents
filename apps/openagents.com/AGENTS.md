@@ -7,7 +7,7 @@ conversion in
 [`docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`](../../docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
 The Node conversion is complete. Do not add runtime-specific code outside the
 shared Node contracts or new payment, wallet, tip, payout, checkout, market, or
-settlement paths. The payment invariants below remain factual and binding; the payment phase must
+settlement paths. The payment invariants below remain factual and binding. The payment phase must
 stop new money, reconcile outstanding value, preserve historical receipts and
 applied migrations, withdraw promises, and revoke authority before deletion.
 
@@ -32,7 +32,7 @@ This exception does not restore the deleted Foldkit app, `/trace/compare`, a
 public trace feed, marketplace UI, or any acceptance/payout authority.
 
 New and converted retained UI is authored in Effect Native. As of #8813 the
-former `apps/web` Foldkit/Tailwind application is deleted; `apps/start` owns
+former `apps/web` Foldkit/Tailwind application is deleted. `apps/start` owns
 retained web documents and its built server/client artifacts are staged into
 the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
 React, TanStack Start, and DOM remain renderer/host machinery, not the product
@@ -42,7 +42,7 @@ The restored trace viewer consumes `@openagentsinc/atif/trace` at its network
 boundary and authors its goal, metadata, transcript, tool, observation, and
 screenshot presentation as Effect Native views. Recorded URL video playback is
 a narrow renderer-host exception because the current Effect Native
-`media-video` host accepts live stream attachment only; do not generalize that
+`media-video` host accepts live stream attachment only. Do not generalize that
 exception into route-local component architecture.
 
 ## 2026-07-15 unified TanStack Start public and authenticated surfaces
@@ -51,13 +51,13 @@ exception into route-local component architecture.
 `/astro`, the exact `/download` release-candidate page, and the authenticated
 application at `/app`. The root preserves the current holding page until its
 content is separately replaced. Keep public work minimal, Khala-themed, and
-centered on the accepted Desktop MVP; do not revive retired product areas.
+centered on the accepted Desktop MVP. Do not revive retired product areas.
 
 The Cloud Run
 document gate must validate the real OpenAuth session before rendering Start,
 preserve refreshed session cookies, and redirect signed-out visitors to the
 real `/login` flow with only the exact bounded `/app` return target. App
-documents and auth redirects are private and `no-store`; cookie presence alone
+documents and auth redirects are private and `no-store`. Cookie presence alone
 is never authentication.
 
 During the completed root ownership cutover, retire remaining
@@ -78,10 +78,10 @@ Keep page-to-page reading client-routed and prefetched, with no decorative
 document transition delay. Docs route modules and reader pages must remain in
 the eagerly loaded docs shell rather than per-route or per-page dynamic imports:
 an open client must remain able to navigate after a deployment replaces hashed
-assets. Search may load Orama lazily on first use; it must not inflate the
+assets. Search may load Orama lazily on first use. It must not inflate the
 initial reader route.
 
-The docs compiler may read only its owned `apps/start/content/docs` tree; never
+The docs compiler may read only its owned `apps/start/content/docs` tree. Never
 point it at the repository-wide `docs/` directory. Ask AI, hosted MCP, remote
 content, analytics, and documentation-specific application secrets are not
 permitted. Public content must stay within the current Desktop MVP, retained
@@ -122,7 +122,7 @@ Never guess at Effect patterns - check the guide first.
 
 The Effect v4 repository is cloned to `~/.local/share/effect-solutions/effect` for reference.
 Use this to explore APIs, find usage examples, and understand implementation
-details when the documentation isn't enough.
+details when the documentation is not enough.
 
 ## Canonical UI references
 
@@ -154,7 +154,7 @@ Historical Foldkit docs remain migration evidence only.
   The script builds the web assets, bundles the Node Cloud Run entrypoint, renders
   non-secret env vars, mounts Secret Manager secrets, attaches the Cloud SQL
   instance, and deploys `openagents-monolith` in `us-central1`. Use the
-  automation service-account config from the workspace `AGENTS.md`; do not fall
+  automation service-account config from the workspace `AGENTS.md`. Do not fall
   back to interactive `gcloud`.
 - The old Wrangler/Cloudflare Worker deploy path is legacy for this app. Do not
   restore or invoke it. Google Cloud is the only deploy authority for this app.
@@ -181,7 +181,7 @@ https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   "Connect", "Reconnect", "Open Settings", or "Check status".
 - Product UI icons must come from the generated Fireball Apps SDK icon catalog
   in `apps/web/src/icon.ts`. Type icon props as `IconName` and render through
-  `iconView` or `IconService`; do not add ad hoc SVG paths, Unicode/text icon
+  `iconView` or `IconService`. Do not add ad hoc SVG paths, Unicode/text icon
   stand-ins, image icon URLs, icon fonts, lucide/react-icons, Iconify, or new
   icon dependencies. If a needed icon is missing, update the upstream Fireball
   catalog first, then run `pnpm run sync:icons` and keep `apps/web/src/icon*.test.ts`
@@ -190,7 +190,7 @@ https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   `@openagentsinc/three-effect` renderer vocabulary and the visual taxonomy
   documented in `docs/launch/2026-06-17-tassadar-training-run-visual-language.md`
   plus the `/animations` studies. `@openagentsinc/proof-replay` owns replay
-  bundle shape, clocks, source gates, and render plans only; it is not a visual
+  bundle shape, clocks, source gates, and render plans only. It is not a visual
   renderer. Browser or desktop app code may adapt public replay bundles into
   `three-effect` options and may render Foldkit controls, inspectors, transcript
   mirrors, and accessibility fallbacks. Do not add new app-local DOM/CSS/canvas
@@ -198,7 +198,7 @@ https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
   or other proof replay visuals. Add missing primitives to
   `/Users/christopherdavid/work/three-effect` first, then consume the package.
   The current `apps/web/src/scene/tassadarProofReplayElement.ts` is a temporary
-  legacy bridge for the first replay route; do not extend its visual language
+  legacy bridge for the first replay route. Do not extend its visual language
   except to replace it with `three-effect` mounts.
 - Use Tailwind utility classes and the local Foldkit UI registry as the default
   styling path. For Worker-rendered HTML, put Tailwind classes in the template
@@ -226,7 +226,7 @@ Pylon presence and lifecycle writes (`POST /api/pylons/:ref/heartbeat`,
 
 A node's self-held Nostr key (NIP-98) is **not** accepted as presence
 authority. Registrations are bound to `ownerAgentUserId` derived from the
-bearer-token session; the registry does not bind a verified Nostr pubkey to
+bearer-token session. The registry does not bind a verified Nostr pubkey to
 that owner (`providerNostrPubkey` is optional discovery metadata, only set for
 NIP-90 provider Pylons, and is never verified server-side). Accepting a
 self-signed heartbeat would require server-side NIP-98 schnorr verification
@@ -240,7 +240,7 @@ naming the token-only contract and pointing the node at the bearer path,
 rather than a bare `unauthorized` (#5058). Do not silently fall back to a bare
 401 for the Nostr-signed presence path. If self-signed presence is ever to be
 supported, design the NIP-98 verification + pubkey binding deliberately with a
-new dated review and tests; do not broaden any other authority (spend,
+new dated review and tests. Do not broaden any other authority (spend,
 settlement, moderation) in the process. Regression coverage lives in
 `workers/api/src/pylon-api-routes.test.ts`.
 
@@ -277,7 +277,7 @@ Define a Command with `Command.define`, which is curried: the first call binds t
 
 For the with-args shape, see `../projects/repos/foldkit/examples/weather/src/main.ts` or `../projects/repos/foldkit/examples/kanban/src/command.ts`. For an argless DOM-side-effect Command, the argless form in `kanban/src/command.ts` (`FocusAddCardInput`) is the canonical reference.
 
-For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` module. For time, randomness, UUIDs, and delays, use Effect's built-ins directly (`Clock`, `Random`, `Effect.uuid`, `Effect.sleep`). Don't reach for raw `document.querySelector`, `setTimeout`, `Date.now()`, or `Math.random()`.
+For DOM operations (focus, scroll, modals, scroll lock), Foldkit ships a `Dom` module. For time, randomness, UUIDs, and delays, use Effect's built-ins directly (`Clock`, `Random`, `Effect.uuid`, `Effect.sleep`). Do not reach for raw `document.querySelector`, `setTimeout`, `Date.now()`, or `Math.random()`.
 
 ### File Organization
 
@@ -285,7 +285,7 @@ This directory is part of the pnpm workspace and uses the Vite Plus toolchain:
 
 - `apps/start/` owns the public website, curated documentation, install page,
   authenticated `/app`, and retained document routes.
-- `apps/web/` source is deleted; ignored build remnants are not an application.
+- `apps/web/` source is deleted. Ignored build remnants are not an application.
 - `workers/api/` is the retained directory name for the Node API deployed to
   Google Cloud Run. It has no Cloudflare runtime or deploy authority.
 - `packages/sync-schema/` holds Effect Schema protocol models shared by browser and API code.
@@ -307,7 +307,7 @@ Test update functions with `foldkit/test`. Since update is pure, tests run witho
 ## Code Style
 
 - Encode state in discriminated unions, not booleans or nullable fields. `Idle | Loading | Error | Ok`, not `isLoading: boolean`. Make impossible states unrepresentable.
-- Use `Option` instead of `null` or `undefined`. Prefix Option-typed values with `maybe*`. Match with `Option.match`; don't unwrap with `Option.map(...)` + `Option.getOrElse(...)` when you can just match.
+- Use `Option` instead of `null` or `undefined`. Prefix Option-typed values with `maybe*`. Match with `Option.match`. Do not unwrap with `Option.map(...)` + `Option.getOrElse(...)` when you can just match.
 - Use Effect modules over native methods in `pipe` chains (`Array.map`, `String.startsWith`, `Array.findFirst`). Native methods are fine when calling directly on a named variable.
 - Never cast Schema values with `as Type`. Use the callable constructor: `SucceededLogin({ sessionId })`, not `{ _tag: 'SucceededLogin', sessionId } as Message`.
 - Always `Array.isEmptyArray` / `Array.isNonEmptyArray` (not `.length === 0`). Use `Array.match` when handling both empty and non-empty cases.
@@ -315,7 +315,7 @@ Test update functions with `foldkit/test`. Since update is pure, tests run witho
 - Never use `T[]`. Always `Array<T>` or `ReadonlyArray<T>`.
 - Always use `Effect.Match`, never `switch`.
 - Always use braces for control flow: `if (foo) { return true }`.
-- Don't add inline comments to explain code. Use better names instead. Reserve `// NOTE:` for behavior that would mislead a careful reader.
+- Do not add inline comments to explain code. Use better names instead. Reserve `// NOTE:` for behavior that would mislead a careful reader.
 
 ## Message Layout
 

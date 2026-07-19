@@ -15,12 +15,12 @@ dispatching task packets from this directory:
 
 That runbook establishes the operating model:
 
-- the foreground coding agent acts as an Autopilot operator;
-- Autopilot owns product implementation work;
+- the foreground coding agent acts as an Autopilot operator.
+- Autopilot owns product implementation work.
 - the foreground agent should repair only Autopilot infrastructure defects that
-  block launch, execution, reporting, continuation, or visibility;
+  block launch, execution, reporting, continuation, or visibility.
 - implementation specs must live in tracked repo files, then be committed and
-  pushed before dispatch;
+  pushed before dispatch.
 - future launches should use preflight, provider reconnect gating, canonical
   callback contracts, callback retry/backfill, run continuation, and public/team
   observer surfaces rather than one-off manual shell recipes.
@@ -37,12 +37,12 @@ launch mechanics.
 Do not dispatch a packet from this directory until the runbook recommendations
 needed for reliable delegation are complete enough for the requested work:
 
-- `POST /api/operator/autopilot/preflight` or equivalent readiness check;
-- provider reconnect gating before dispatch;
-- canonical SHC callback contract and tests;
-- safe callback retry/backfill by run ID;
-- durable goal/run continuation relationship;
-- public/team goal observer page that does not leak private delivery mechanics;
+- `POST /api/operator/autopilot/preflight` or equivalent readiness check.
+- provider reconnect gating before dispatch.
+- canonical SHC callback contract and tests.
+- safe callback retry/backfill by run ID.
+- durable goal/run continuation relationship.
+- public/team goal observer page that does not leak private delivery mechanics.
 - operator checklist command or equivalent status summary.
 
 Current implementation status as of the 2026-06-04 foreground session:
@@ -50,11 +50,11 @@ Current implementation status as of the 2026-06-04 foreground session:
 - preflight/checklist, callback retry, continuation, provider reconnect gating,
   and callback contract tests are implemented, committed, pushed, deployed, and
   passing focused API tests/typecheck/architecture guard plus full deploy
-  checks;
+  checks.
 - production checklist smoke passed for the ImageGen target run
   `11a4ff12-601b-48f3-b596-34f947bfc4bb`: database, team/project/agent
   metadata, provider account, GitHub writeback, SHC control, callback
-  configuration, and callback lag were all `ok`;
+  configuration, and callback lag were all `ok`.
 - existing team/public observer primitives are usable, but a polished single
   "goal observer" browser page remains a product follow-up unless a task packet
   explicitly requires it.
@@ -114,6 +114,7 @@ The packet should be safe for the remote runner to read from the repository.
 - `2026-06-04-cloudflare-containers-runner-backup-implementation.md`: runner
   backup implementation packet for adding Cloudflare Containers as a backup and
   burst lane.
+
 ## Done Packets
 
 Completed packets are moved to `done/` rather than left in the active packet

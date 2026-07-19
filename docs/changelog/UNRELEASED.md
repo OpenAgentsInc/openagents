@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Agent controls complete their STE review (#9049)
+
+- issues: #9049
+- commits: this change
+- contracts-specs: 15 P1 control contracts, openagents-agent-compact-v1
+- invariants: no requirement reduction, agent density exceptions cannot apply to human or dual-audience text
+- evidence: docs/ste/p1-control-conversion-receipt.md, docs/ste/control-semantic-baseline.v1.json
+- lane: codex/asd-ste100-migration-20260719-r2
+
+All P1 control contracts now have checked STE profiles.
+Agent-only controls can keep a dense sentence or paragraph after an identified review.
+The exception helps agents parse one technical control context quickly.
+It does not permit semicolons, contractions, unsafe terms, ambiguity, or a weaker requirement.
+
 ## Root control documents remove prose semicolons (#9049)
 
 - issues: #9049

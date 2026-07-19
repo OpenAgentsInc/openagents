@@ -51,12 +51,6 @@
       "STE-5.1": 3,
       "STE-8.1": 34
     },
-    "AGENTS.md": {
-      "STE-8.1": 93,
-      "STE-2.4": 135,
-      "STE-5.1": 70,
-      "STE-8.2": 7
-    },
     "CLAUDE.md": {
       "STE-8.1": 93,
       "STE-2.4": 135,
@@ -79,12 +73,6 @@
       "STE-5.1": 8,
       "STE-8.1": 4,
       "STE-9.1": 1
-    },
-    "INVARIANTS.md": {
-      "STE-2.4": 346,
-      "STE-5.1": 277,
-      "STE-8.1": 253,
-      "STE-8.2": 23
     },
     "NEEDS_OWNER.md": {
       "STE-2.4": 23,
@@ -234,21 +222,8 @@
       "STE-5.1": 7,
       "STE-8.2": 1
     },
-    "apps/openagents.com/AGENTS.md": {
-      "STE-8.1": 15,
-      "STE-2.4": 44,
-      "STE-5.1": 21,
-      "STE-8.2": 1,
-      "STE-9.1": 4
-    },
     "apps/openagents.com/DESIGN.md": {
       "STE-2.4": 6
-    },
-    "apps/openagents.com/INVARIANTS.md": {
-      "STE-5.1": 337,
-      "STE-8.1": 189,
-      "STE-2.4": 409,
-      "STE-8.2": 9
     },
     "apps/openagents.com/PRODUCT.md": {
       "STE-2.4": 2,
@@ -305,10 +280,6 @@
     },
     "apps/openagents.com/apps/start/public/AGENTS-CORE.md": {
       "STE-2.4": 2
-    },
-    "apps/openagents.com/apps/start/public/AGENTS.md": {
-      "STE-2.4": 4,
-      "STE-5.1": 2
     },
     "apps/openagents.com/apps/start/public/HEARTBEAT.md": {
       "STE-2.4": 8,
@@ -1115,11 +1086,6 @@
       "STE-8.1": 2,
       "STE-2.4": 11
     },
-    "apps/openagents.com/docs/autopilot-tasks/AGENTS.md": {
-      "STE-2.4": 15,
-      "STE-8.1": 12,
-      "STE-5.1": 5
-    },
     "apps/openagents.com/docs/autopilot-tasks/adjutant-site-task-template.md": {
       "STE-2.4": 2
     },
@@ -1495,10 +1461,6 @@
     },
     "apps/openagents.com/docs/live/AGENTS-CORE.md": {
       "STE-2.4": 2
-    },
-    "apps/openagents.com/docs/live/AGENTS.md": {
-      "STE-2.4": 4,
-      "STE-5.1": 2
     },
     "apps/openagents.com/docs/live/HEARTBEAT.md": {
       "STE-2.4": 8,
@@ -9779,12 +9741,6 @@
     },
     "docs/sol/IMPLEMENTATION_ROADMAP.md": {
       "STE-2.4": 1
-    },
-    "docs/sol/MASTER_ROADMAP.md": {
-      "STE-8.1": 108,
-      "STE-2.4": 61,
-      "STE-8.2": 1,
-      "STE-5.1": 45
     },
     "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md": {
       "STE-8.1": 43,

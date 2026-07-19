@@ -37,7 +37,7 @@
     "ste_accepted_screening_rules": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["STE-2.4", "STE-3.6"] }
+      "items": { "enum": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"] }
     },
     "ste_audience": { "enum": ["human", "agent", "dual"] },
     "ste_agent_compact_revision": { "const": "openagents-agent-compact-v1" }

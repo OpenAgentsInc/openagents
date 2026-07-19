@@ -109,8 +109,10 @@ It does not decide if a general noun group has more than three words.
 The STE inspector must make these decisions.
 
 A profile can accept a possible-defect rule after an identified review.
-This disposition is available only for the `-ing` and passive-voice rules.
-It cannot accept a sentence limit, semicolon, contraction, word-form, term, or profile defect.
+All profiles can accept the `-ing` and passive-voice rules.
+An agent-only compact profile can also accept sentence and paragraph density rules.
+The reviewer must confirm that the dense unit improves fast and precise agent communication.
+A profile cannot accept a semicolon, contraction, word-form, term, or profile defect.
 
 ## Review
 
