@@ -564,7 +564,7 @@ lifecycle runs request → quote → acceptance → result with provider *bonds*
 and a content-addressed closeout receipt. Five markets were named and two
 were launched on camera: compute, data, labor, liquidity, risk. Episode
 213's Economy Kernel ported Catalini's cost curves directly into the
-codebase; episode 237 named the atomic unit (the accepted outcome), the
+codebase. Episode 237 named the atomic unit (the accepted outcome), the
 load-bearing wall (the clearing layer), and this essay's borrowed axiom:
 "money only travels across a gap it can verify."
 
@@ -615,11 +615,11 @@ Four flows, all denominated in the objects the IDE already produces:
 **Buying verification.** The structural risk named in Addendum I §7 is
 verifier correlation — AI checking AI shares blind spots (κ_corr ≫ 1). A
 market is the cleanest decorrelator we know of. An editor that wants
-independent proof posts a NIP-90-style job — "falsify this claim; here is
+independent proof posts a NIP-90-style job — "falsify this claim. Here is
 the signed evidence bundle and the oracle" — and *strangers'* editors,
 running different models, different toolchains, different priors, compete
 to break it for sats. Paid independent falsification is not a nice-to-have
-on top of the assurance pipeline; it is the only scalable source of the
+on top of the assurance pipeline. It is the only scalable source of the
 independence the AssuranceSpec format already demands. The reviewer roles
 Addendum I could not fill by hire, a market fills by price.
 
@@ -639,7 +639,7 @@ the next falsifier.
 **Bonding outcomes.** NIP-LBR's provider bonds already model the top
 confidence tier: a verifier stakes sats on its verdict, forfeited if an
 accepted claim is later refuted. That is Liability-as-a-Service at
-keystroke scale — "the product is no longer the agent; it is the
+keystroke scale — "the product is no longer the agent. It is the
 indemnified outcome" — and it makes draft / verified / reviewed / bonded
 literal price points on one diff rather than marketing language.
 
@@ -665,21 +665,21 @@ Following this essay's rules, the inventory:
 **Live today:** every Pylon derives a real Nostr identity — NIP-06 HD keys
 from a locally stored BIP-39 mnemonic (`packages/pylon-core/src/shared/nostr-identity.ts`)
 — and authenticates its control surfaces with NIP-98 signed events. The
-keypair half of the vision is running code in the node runtime today; the
+keypair half of the vision is running code in the node runtime today. The
 editor inherits it the moment the IDE binds to Pylon identity.
 
 **Protocol-complete, settlement-free:** `packages/nip90` implements the
 market grammar — job kinds, the labor lifecycle, provider bonds,
 content-addressed closeout receipts, dataset kinds — with tests and proof
 scripts, and *by explicit design* "moves no sats, opens no escrow, grants
-no settlement authority." The receipts are real; the money is not.
+no settlement authority." The receipts are real. The money is not.
 
 **Deliberately retired or inert:** Pylon's wallet actions return
-`money_capability_retired`; the Spark/MDK scaffolding (wallet panes,
-control commands, payout targets) is present but unwired; the
+`money_capability_retired`. The Spark/MDK scaffolding (wallet panes,
+control commands, payout targets) is present but unwired. The
 openagents.com MDK sidecar/treasury/tips services are emptied and the
-Lightning invoice rail is flag-gated inert; the Nostr relay app is
-stripped; `docs/nostr/` is marked postponed (2026-07-08) behind the
+Lightning invoice rail is flag-gated inert. The Nostr relay app is
+stripped. `docs/nostr/` is marked postponed (2026-07-08) behind the
 current product focus. The network described in §1 was built, ran, paid
 real sats on camera — and its money paths are currently, intentionally,
 off.
@@ -688,12 +688,12 @@ So the honest statement is symmetric with Addendum I: the *identity* half
 is live, the *market grammar* is implemented and tested, and the
 *settlement* half is a deliberate zero awaiting a product decision, not a
 technical unknown. Re-activation is a bounded list — bind IDE identity to
-the existing Pylon keypair; sign the evidence objects the IDE already
-mints; re-enable a wallet path on the MDK stack that episode 235 proved
-end-to-end; wire NIP-LBR closeouts to settlement — and every item on it is
+the existing Pylon keypair. Sign the evidence objects the IDE already
+mints. Re-enable a wallet path on the MDK stack that episode 235 proved
+end-to-end. Wire NIP-LBR closeouts to settlement — and every item on it is
 an owner-gated authority change under `AUTHORITY.md` and the payment
 invariants, not a research problem. This essay flips none of those
-switches; it argues they are worth flipping.
+switches. It argues they are worth flipping.
 
 ### 5. Why this completes the argument
 
@@ -703,8 +703,8 @@ under-supply verification unless it is priced, and "durable advantage
 belongs not to those who generate output but to those who can certify it,
 insure it, and absorb the liability when it fails." A keypair and a wallet
 in every editor is where those two claims meet. The keypair makes every
-receipt attributable and portable; the wallet makes every receipt
-priceable and settleable; the IDE makes both ambient, because it already
+receipt attributable and portable. The wallet makes every receipt
+priceable and settleable. The IDE makes both ambient, because it already
 mints the receipts as a side effect of ordinary work.
 
 Reed's Law then does the rest. Editors that can pay each other for proof
@@ -735,7 +735,7 @@ of the OpenAgents codebase itself, across its whole surface area.
 ### 1. The bootstrap is already underway
 
 Episode 254 was the cutover: Claude Code and Codex Desktop closed, and the
-owner's development moved inside the near-alpha app — "we're going to fix
+owner's development moved inside the near-alpha app — "we are going to fix
 OpenAgents from within OpenAgents," with the first self-hosted commit
 landing on camera. Episode 258 turned an incident into sixteen
 by-construction controls. IDE-07's acceptance oracle decoded a real
@@ -760,7 +760,7 @@ admissions, transactional apply, host-observed diagnostics, disclosed
 context. The IDE's own Git history becomes a receipt stream.
 
 **Stage 1 — observed tests (#9038, IDE-10).** Today the completion gate —
-`pnpm run check` — is terminal prose from the IDE's point of view; the
+`pnpm run check` — is terminal prose from the IDE's point of view. The
 evidence plane honestly reports tests as `Unavailable`. IDE-10 (terminal,
 tasks, tests, Output over the project graph) is the single most
 load-bearing packet for the bootstrap: after it, "the sweep passed" is a
@@ -775,7 +775,7 @@ state. The multi-agent hygiene rules this repo runs on (claims, leases,
 clean worktrees) become enforced structure rather than contract prose.
 
 **Stage 3 — unattended verification (#8967 + #9023).** Full Auto runs the
-sweeps nobody watches; managed sandboxes (SBX-06 #9027 integrates them
+sweeps nobody watches. Managed sandboxes (SBX-06 #9027 integrates them
 into the IDE project graph, SBX-09 #9033 proves isolation and cleanup)
 give those runs disposable, receipted execution environments. Order
 matters here: #8978 (independent AssuranceSpec admission for Full Auto)
@@ -805,7 +805,7 @@ registry, Electron smoke and QA harness suites, and STE document checks.
 What does not exist — in the codebase or in any open issue — is the *map*:
 a typed inventory that binds every surface to its oracle, or to an honest
 `unverified` tag. IDE-10 through IDE-19, SBX, Full Auto closure, and the
-DIST chain each verify their own slice; nothing owns the whole.
+DIST chain each verify their own slice. Nothing owns the whole.
 
 The essay's own laws say what that program looks like. Call it
 **ASSURE-REPO**, in the spirit of the packet programs that precede it:
@@ -835,7 +835,7 @@ The essay's own laws say what that program looks like. Call it
   it" becomes a machine's standing job rather than an agent's memory.
 - **AR-4 — drift oracles.** Checks that the repo's own claims about
   itself hold: AGENTS.md and INVARIANTS.md assertions that name files,
-  commands, and behaviors; OpenAPI against served routes; roadmap status
+  commands, and behaviors. OpenAPI against served routes. Roadmap status
   lines against issue state. The unverified operational directive from
   Section I was exactly this class of failure — a stated fact with no
   compiler — and the repository's own documentation is the largest
@@ -857,7 +857,7 @@ producer admits its own work. An IDE that verifies itself still needs
 independent falsification — which is precisely what Addendum II's economy
 supplies (strangers paid to break your claims) and what #8978 models
 internally (an independent reviewer role no producer can fill). The
-bootstrap does not repeal that law; it is the law applied reflexively,
+bootstrap does not repeal that law. It is the law applied reflexively,
 with the codebase as first subject.
 
 But within that boundary, dogfooding is the strongest evidence a
@@ -866,7 +866,7 @@ itself produces verification-grade ground truth as a byproduct — real
 proposals, real staleness refusals, real observed sweeps, real false
 greens caught and adjudicated — the exact K_IP^ver the economics says
 makes oversight cheap and risk insurable. The teardowns judged competitors
-by their artifacts; this program invites the same judgment and stakes the
+by their artifacts. This program invites the same judgment and stakes the
 thesis on surviving it. A company whose product is proof, proving its own
 codebase in public, with the map of what remains unproven published
 alongside — that is not just the dogfood plan. It is the demo.
