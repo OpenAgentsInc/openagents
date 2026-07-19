@@ -1,4 +1,4 @@
-import { ComponentValueBinding, IntentRef } from "@effect-native/core";
+import { ComponentValueBinding, IntentRef, StaticPayload } from "@effect-native/core";
 import { Effect, Stream } from "@effect-native/core/effect";
 import {
   composerBlockId,
@@ -112,7 +112,7 @@ describe(`contract ${contractId}`, () => {
     const home = JSON.stringify(renderContentView(program.initialState));
     expect(home).toContain('"key":"khala-surface"');
     expect(home).toContain('"paddingTop":"2"');
-    expect(home).toContain('"autoCorrect":false');
+    expect(home).toContain('"autoCorrect":true');
     expect(home).not.toContain("Owner orchestrator");
     expect(chromeProps(program.initialState).composerPlaceholder).toBe("Message Sarah");
     const drawer = JSON.stringify(renderDrawerView(program.initialState));
@@ -273,13 +273,170 @@ describe(`contract ${contractId}`, () => {
 
     expect(view).toContain("Visible Sarah reply");
     expect(view).toContain("Couldn't get a reply. Please try again.");
-    expect(view).toContain("Listen · AI-generated voice");
+    expect(view).not.toContain("Listen · AI-generated voice");
+    expect(view).toContain("Long press to play AI-generated voice.");
+    expect(view).toContain("onLongPress");
     expect(view).toContain("SarahSpeechRequested");
     expect(view).not.toContain("Internal runtime detail");
     expect(view).not.toContain("source.internal.private-ref");
     expect(view).toContain("Gemma 4 31B · Google AI Studio");
     expect(view).not.toContain("Retry");
     expect(view).not.toContain("Close turn");
+  });
+
+  test("puts voice playback on each completed Sarah message and shows state only on the active message", () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [thread],
+      newThread: async () => ({ ok: true, thread }),
+      openThread: async () => thread,
+      sendMessage: async () => ({ ok: true, thread }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [thread],
+        archivedThreads: [],
+        activeThread: thread,
+      },
+    });
+    const view = JSON.stringify(renderContentView({
+      ...program.initialState,
+      sarahSpeech: {
+        phase: "playing",
+        generation: 1,
+        messageRef: "assistant-earlier",
+        message: null,
+      },
+      khala: {
+        ...program.initialState.khala,
+        entries: [{
+          key: "assistant-earlier",
+          role: "assistant",
+          text: "Earlier Sarah reply",
+          status: "done",
+          createdAt: now,
+        }, {
+          key: "assistant-latest",
+          role: "assistant",
+          text: "Latest Sarah reply",
+          status: "done",
+          createdAt: now,
+        }],
+        transcriptVisibleCount: 2,
+      },
+    }));
+
+    expect(view).not.toContain("Listen · AI-generated voice");
+    expect(view.match(/\"onLongPress\"/g)).toHaveLength(2);
+    expect(view).toContain("Playing AI-generated voice · Long-press to stop");
+    expect(view).toContain("SarahSpeechStopped");
+    expect(view).toContain("SarahSpeechRequested");
+    expect(view).toContain("assistant-speech-message-assistant-earlier");
+    expect(view).toContain("assistant-speech-message-assistant-latest");
+  });
+
+  test("plays an exact completed Sarah message and stops the prior clip when another message is selected", async () => {
+    const voiceThread: MobileConversationThread = {
+      ...thread,
+      timeline: {
+        status: { phase: "live", cursor: 2, pendingMutationCount: 0 },
+        run: {
+          runRef: "run.sarah.voice",
+          routeRef: thread.threadRef,
+          status: "completed",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: now,
+          failedAt: null,
+          canceledAt: null,
+          version: 2,
+        },
+        events: [{
+          eventRef: "assistant.voice.earlier",
+          runRef: "run.sarah.voice",
+          sequence: 1,
+          eventType: "text.delta",
+          summary: "Earlier reply",
+          status: null,
+          artifactRefs: [],
+          item: { kind: "text", messageRef: "message.voice.earlier", text: "Earlier reply" },
+          createdAt: now,
+          version: 1,
+        }, {
+          eventRef: "assistant.voice.latest",
+          runRef: "run.sarah.voice",
+          sequence: 2,
+          eventType: "text.delta",
+          summary: "Latest reply",
+          status: null,
+          artifactRefs: [],
+          item: { kind: "text", messageRef: "message.voice.latest", text: "Latest reply" },
+          createdAt: now,
+          version: 2,
+        }],
+      },
+    };
+    const host: MobileConversationHost = {
+      listThreads: async () => [voiceThread],
+      newThread: async () => ({ ok: true, thread: voiceThread }),
+      openThread: async () => voiceThread,
+      sendMessage: async () => ({ ok: true, thread: voiceThread }),
+    };
+    const played: Array<string> = [];
+    const completions: Array<(state: "completed" | "stopped") => void> = [];
+    let stops = 0;
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [voiceThread],
+        archivedThreads: [],
+        activeThread: voiceThread,
+      },
+      sarahSpeech: {
+        play: async (input) => {
+          played.push(input.messageRef);
+          return {
+            state: "started",
+            completed: new Promise((resolve) => completions.push(resolve)),
+          };
+        },
+        stop: () => {
+          stops += 1;
+          for (const complete of completions.splice(0)) complete("stopped");
+        },
+      },
+    });
+    const request = (messageRef: string, text: string) =>
+      IntentRef("SarahSpeechRequested", StaticPayload({
+        threadRef: thread.threadRef,
+        messageRef,
+        text,
+      }));
+
+    Effect.runFork(program.report(request("assistant.voice.earlier", "Earlier reply")) as Effect.Effect<unknown>);
+    await Effect.runPromise(Effect.yieldNow);
+    expect((await Effect.runPromise(lastState(program))).sarahSpeech).toMatchObject({
+      phase: "playing",
+      messageRef: "assistant.voice.earlier",
+    });
+
+    Effect.runFork(program.report(request("assistant.voice.latest", "Latest reply")) as Effect.Effect<unknown>);
+    await Effect.runPromise(Effect.yieldNow);
+    expect(played).toEqual(["assistant.voice.earlier", "assistant.voice.latest"]);
+    expect(stops).toBe(1);
+    expect((await Effect.runPromise(lastState(program))).sarahSpeech).toMatchObject({
+      phase: "playing",
+      messageRef: "assistant.voice.latest",
+    });
+
+    await Effect.runPromise(
+      program.report(IntentRef("SarahSpeechStopped", StaticPayload({}))) as Effect.Effect<unknown>,
+    );
   });
 
   test("streams confirmed Sarah tool activity as conversational evidence", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test"
 import {
   Button,
+  Card,
   ComponentValueBinding,
   Composer,
   DiffView,
@@ -110,6 +111,43 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("React Native renderer host boundaries", () => {
+  test("keeps plain cards structural and makes long-press cards accessible and interactive", () => {
+    const reported: Array<string> = []
+    const plain = renderReactNativeView(
+      Card({ key: "plain-card" }, [Text({ key: "plain-copy", content: "Plain", variant: "body" })]),
+      { React: { createElement }, ReactNative: reactNative },
+      () => Effect.void,
+    )
+    const interactive = renderReactNativeView(
+      Card({
+        key: "voice-card",
+        interactions: { onLongPress: IntentRef("SarahSpeechRequested") },
+        a11y: { label: "Sarah message. Long press to play AI-generated voice." },
+      }, [Text({ key: "voice-copy", content: "Hello", variant: "body" })]),
+      { React: { createElement }, ReactNative: reactNative },
+      ref => {
+        reported.push(ref.name)
+        return Effect.void
+      },
+    )
+
+    expect(plain.type).toBe("View")
+    expect(interactive.type).toBe("Pressable")
+    expect(interactive.props.accessible).toBe(true)
+    expect(interactive.props.accessibilityRole).toBe("button")
+    expect(interactive.props.accessibilityLabel).toBe("Sarah message. Long press to play AI-generated voice.")
+    expect(interactive.props.accessibilityActions).toEqual([{
+      name: "activate",
+      label: "Sarah message. Long press to play AI-generated voice.",
+    }])
+
+    ;(interactive.props.onLongPress as () => void)()
+    ;(interactive.props.onAccessibilityAction as (event: {
+      readonly nativeEvent: { readonly actionName: string }
+    }) => void)({ nativeEvent: { actionName: "activate" } })
+    expect(reported).toEqual(["SarahSpeechRequested", "SarahSpeechRequested"])
+  })
+
   test("full-swipe resolution is horizontal, thresholded, declared, and reversible-only by app policy", () => {
     const view = SwipeableListItem({
       key: "swipe-row",
@@ -345,7 +383,7 @@ describe("React Native renderer host boundaries", () => {
         return Effect.void
       },
     )
-    const calls: Array<unknown> = []
+    const calls: Array<readonly [string, unknown]> = []
     ;(element.props.ref as (value: unknown) => void)({
       scrollToEnd: (input: unknown) => calls.push(["end", input]),
       scrollToIndex: (input: unknown) => calls.push(["index", input]),

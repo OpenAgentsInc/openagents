@@ -726,21 +726,36 @@ const mobileGestureProps = (
 ): Record<string, unknown> => {
   const interactions = "interactions" in view ? view.interactions : undefined
   if (interactions === undefined) return {}
+  const longPress = interactions.onLongPress
+  const swipe = interactions.onSwipe
+  const accessibilityActions = [
+    ...(longPress === undefined
+      ? []
+      : [{ name: "activate", label: view.a11y?.label ?? "Activate" }]),
+    ...(swipe === undefined
+      ? []
+      : [{ name: "swipeLeft" }, { name: "swipeRight" }])
+  ]
   return {
-    ...(interactions.onLongPress === undefined
+    ...(longPress === undefined
       ? {}
       : {
-          onLongPress: () => runReportedIntent(report, interactions.onLongPress!)
+          onLongPress: () => runReportedIntent(report, longPress)
         }),
-    ...(interactions.onSwipe === undefined
+    ...(accessibilityActions.length === 0
       ? {}
       : {
-          // Commit swipe via accessibility action until gesture-handler is host-injected (#56).
-          accessibilityActions: [{ name: "swipeLeft" }, { name: "swipeRight" }],
+          accessibilityActions,
           onAccessibilityAction: (event: { readonly nativeEvent: { readonly actionName: string } }) => {
             const name = event.nativeEvent.actionName
-            const direction = name === "swipeLeft" ? "left" : name === "swipeRight" ? "right" : "up"
-            runReportedIntent(report, interactions.onSwipe!, direction)
+            if (name === "activate" && longPress !== undefined) {
+              runReportedIntent(report, longPress)
+              return
+            }
+            if (swipe !== undefined && (name === "swipeLeft" || name === "swipeRight")) {
+              // Commit swipe via accessibility action until gesture-handler is host-injected (#56).
+              runReportedIntent(report, swipe, name === "swipeLeft" ? "left" : "right")
+            }
           }
         })
   }
@@ -1318,11 +1333,17 @@ const renderCard = (
     },
     viewStyle(view, options)
   )
+  const interactive = view.interactions?.onLongPress !== undefined
 
   return createElement(
     dependencies,
-    dependencies.ReactNative.View,
-    baseProps(view, style),
+    interactive ? dependencies.ReactNative.Pressable : dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      ...(interactive
+        ? { accessible: true, accessibilityRole: "button", ...mobileGestureProps(view, report) }
+        : {})
+    },
     ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
   )
 }

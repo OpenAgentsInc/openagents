@@ -468,7 +468,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-19.sarah-live-tool-activity-10"
+export const BUNDLE_TAG = "2026-07-19.sarah-message-voice-11"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -1064,34 +1064,47 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
   sending: state.khala.pending,
 })
 
-const latestSarahAssistantEntry = (state: HomeState): Readonly<{
+const sarahAssistantEntries = (state: HomeState): ReadonlyArray<Readonly<{
   messageRef: string
   text: string
-}> | null => {
-  if (state.sarah === null || state.activeThreadRef !== state.sarah.threadRef) return null
-  for (let index = state.khala.entries.length - 1; index >= 0; index -= 1) {
-    const entry = state.khala.entries[index]
-    if (entry?.role !== "assistant" || entry.status !== "done") continue
+}>> => {
+  if (state.sarah === null || state.activeThreadRef !== state.sarah.threadRef) return []
+  return state.khala.entries.flatMap(entry => {
+    if (entry.role !== "assistant" || entry.status !== "done") return []
     const text = sanitizeOwnerConversationResponse(entry.text).trim()
-    if (text.length === 0 || text.length > 4_096) return null
-    return { messageRef: entry.key, text }
-  }
-  return null
+    return text.length === 0 || text.length > 4_096
+      ? []
+      : [{ messageRef: entry.key, text }]
+  })
 }
 
-const sarahSpeechControlForState = (state: HomeState): AssistantSpeechControlView | null => {
-  const entry = latestSarahAssistantEntry(state)
-  if (entry === null) return null
-  return {
-    phase: state.sarahSpeech.phase,
-    message: state.sarahSpeech.message,
-    onPlay: IntentRef("SarahSpeechRequested", StaticPayload({
-      threadRef: state.sarah!.threadRef,
+const sarahSpeechControlsForState = (state: HomeState): ReadonlyArray<AssistantSpeechControlView> => {
+  const sarah = state.sarah
+  if (sarah === null || state.activeThreadRef !== sarah.threadRef) return []
+  return sarahAssistantEntries(state).map(entry => {
+    const active = state.sarahSpeech.messageRef === entry.messageRef
+    const phase = active ? state.sarahSpeech.phase : "idle"
+    const isPlaying = phase === "generating" || phase === "playing"
+    return {
       messageRef: entry.messageRef,
-      text: entry.text,
-    })),
-    onStop: IntentRef("SarahSpeechStopped", StaticPayload({})),
-  }
+      phase,
+      message: active ? state.sarahSpeech.message : null,
+      accessibilityLabel: phase === "generating"
+        ? "Sarah message. Preparing AI-generated voice. Long press to stop."
+        : phase === "playing"
+          ? "Sarah message. AI-generated voice playing. Long press to stop."
+          : phase === "failed"
+            ? "Sarah message. AI-generated voice unavailable. Long press to retry."
+            : "Sarah message. Long press to play AI-generated voice.",
+      onLongPress: isPlaying
+        ? IntentRef("SarahSpeechStopped", StaticPayload({}))
+        : IntentRef("SarahSpeechRequested", StaticPayload({
+            threadRef: sarah.threadRef,
+            messageRef: entry.messageRef,
+            text: entry.text,
+          })),
+    }
+  })
 }
 
 export const renderContentView = (state: HomeState): View =>
@@ -1139,7 +1152,7 @@ export const renderContentView = (state: HomeState): View =>
             ? {
                 mode: "compact",
                 assistantLabel: state.sarah.displayName,
-                speech: sarahSpeechControlForState(state),
+                speech: sarahSpeechControlsForState(state),
               }
             : "visible",
         )]
@@ -4843,19 +4856,33 @@ export const makeHomeHandlers = (
       messageRef: string
       text: string
     }>) => Effect.gen(function* () {
-      if (options.sarahSpeech === undefined) return
+      const speech = options.sarahSpeech
+      if (speech === undefined) return
       const before = yield* SubscriptionRef.get(state)
-      const latest = latestSarahAssistantEntry(before)
+      const entry = sarahAssistantEntries(before).find(candidate => candidate.messageRef === payload.messageRef)
       if (
         before.sarah === null ||
         before.activeThreadRef !== before.sarah.threadRef ||
         payload.threadRef !== before.sarah.threadRef ||
-        latest === null ||
-        latest.messageRef !== payload.messageRef ||
-        latest.text !== payload.text ||
-        before.sarahSpeech.phase === "generating" ||
-        before.sarahSpeech.phase === "playing"
+        entry === undefined ||
+        entry.text !== payload.text
       ) return
+      const active = before.sarahSpeech.phase === "generating" || before.sarahSpeech.phase === "playing"
+      if (active) {
+        speech.stop()
+        if (before.sarahSpeech.messageRef === payload.messageRef) {
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            sarahSpeech: {
+              phase: "idle" as const,
+              generation: current.sarahSpeech.generation + 1,
+              messageRef: null,
+              message: null,
+            },
+          }))
+          return
+        }
+      }
       const generation = before.sarahSpeech.generation + 1
       yield* SubscriptionRef.update(state, current => ({
         ...current,
@@ -4867,7 +4894,7 @@ export const makeHomeHandlers = (
         },
       }))
       const result = yield* Effect.tryPromise({
-        try: () => options.sarahSpeech!.play(payload),
+        try: () => speech.play(payload),
         catch: cause => cause,
       }).pipe(Effect.option)
       if (result._tag === "None") {

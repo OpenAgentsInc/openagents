@@ -1,9 +1,11 @@
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import {
   Badge,
-  Composer,
   Button,
+  Card,
+  Composer,
   ComponentValueBinding,
+  Icon,
   IntentRef,
   Stack,
   Spacer,
@@ -71,10 +73,11 @@ export interface MobileAccessibilityProfile {
 }
 
 export type AssistantSpeechControlView = Readonly<{
+  messageRef: string
   phase: "idle" | "generating" | "playing" | "failed"
-  onPlay: ReturnType<typeof IntentRef>
-  onStop: ReturnType<typeof IntentRef>
+  onLongPress: ReturnType<typeof IntentRef>
   message: string | null
+  accessibilityLabel: string
 }>
 
 export const defaultMobileAccessibilityProfile: MobileAccessibilityProfile = {
@@ -447,40 +450,37 @@ const compactRuntimeStatusViews = (state: KhalaState): ReadonlyArray<View> => {
   ])]
 }
 
-const assistantSpeechControlViews = (
-  speech: AssistantSpeechControlView | null,
-  accessibility: MobileAccessibilityProfile,
-): ReadonlyArray<View> => speech === null
+const assistantSpeechStatusViews = (
+  speech: AssistantSpeechControlView,
+): ReadonlyArray<View> => speech.phase === "idle"
   ? []
-  : [
-      Button({
-        key: "assistant-speech-control",
-        label: speech.phase === "generating"
-          ? "Creating voice…"
-          : speech.phase === "playing"
-            ? "Stop voice"
-            : speech.phase === "failed"
-              ? "Try voice again · AI-generated"
-              : "Listen · AI-generated voice",
-        variant: speech.phase === "playing" ? "secondary" : "ghost",
-        disabled: speech.phase === "generating",
-        onPress: speech.phase === "playing" ? speech.onStop : speech.onPlay,
-        a11y: {
-          label: speech.phase === "playing"
-            ? "Stop the AI-generated assistant voice"
-            : "Listen to the AI-generated assistant voice",
-        },
-        style: { width: "full", minHeight: accessibility.minTouchTarget },
+  : [Stack({
+      key: `assistant-speech-status-${speech.messageRef}`,
+      direction: "row",
+      gap: "1",
+      align: "center",
+      style: { width: "full", marginTop: "2" },
+    }, [
+      Icon({
+        key: `assistant-speech-status-icon-${speech.messageRef}`,
+        name: speech.phase === "failed" ? "AlertCircle" : speech.phase === "playing" ? "Activity" : "Loader",
+        size: "sm",
+        color: speech.phase === "failed" ? "danger" : "accent",
+        label: speech.phase === "failed" ? "Voice unavailable" : speech.phase === "playing" ? "Voice playing" : "Voice loading",
       }),
-      ...(speech.phase === "failed" && speech.message !== null
-        ? [Text({
-            key: "assistant-speech-error",
-            content: speech.message,
-            variant: "caption",
-            color: "textMuted",
-          })]
-        : []),
-    ]
+      Text({
+        key: `assistant-speech-status-label-${speech.messageRef}`,
+        content: speech.phase === "generating"
+          ? "Preparing AI-generated voice…"
+          : speech.phase === "playing"
+            ? "Playing AI-generated voice · Long-press to stop"
+            : `${speech.message ?? "AI-generated voice is unavailable."} · Long-press to retry`,
+        variant: "caption",
+        color: speech.phase === "failed" ? "danger" : "textMuted",
+        weight: "medium",
+        style: { flex: 1 },
+      }),
+    ])]
 
 const agentBadgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
   tone === "active"
@@ -955,7 +955,7 @@ export const renderKhalaSurface = (
   runtimeDetails: "visible" | "hidden" | Readonly<{
     mode: "compact"
     assistantLabel: string
-    speech?: AssistantSpeechControlView | null
+    speech?: ReadonlyArray<AssistantSpeechControlView>
   }> = "visible",
 ): View => {
   const compactRuntime = typeof runtimeDetails === "object"
@@ -987,32 +987,43 @@ export const renderKhalaSurface = (
     visibleEntries.length,
     state.transcriptUnreadCount,
   )
-  const messages = visibleEntries.flatMap((entry, index): ReadonlyArray<TranscriptMessage> => [
-    ...(unreadBoundaryIndex === index
-      ? [{
-          key: "khala-transcript-unread-boundary",
-          role: "system" as const,
-          status: "done" as const,
-          body: [Text({
-            key: "khala-transcript-unread-boundary-label",
-            content: `${state.transcriptUnreadCount} ${state.transcriptUnreadCount === 1 ? "unread update" : "unread updates"}`,
-            variant: "caption",
-            color: "accent",
-            style: { width: "full", textAlign: "center" },
-          })],
-        }]
-      : []),
-    {
-      key: entry.key,
-      role: entry.role,
-      status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
-      ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
-      ...(entry.role !== "assistant" && entry.createdAt !== undefined
-        ? { timestamp: localTranscriptTime(entry.createdAt) }
-        : {}),
-      body: interactionBody(state, entry, accessibility, compactRuntime !== null),
-    },
-  ])
+  const messages = visibleEntries.flatMap((entry, index): ReadonlyArray<TranscriptMessage> => {
+    const speech = compactRuntime?.speech?.find(candidate => candidate.messageRef === entry.key)
+    const body = interactionBody(state, entry, accessibility, compactRuntime !== null)
+    return [
+      ...(unreadBoundaryIndex === index
+        ? [{
+            key: "khala-transcript-unread-boundary",
+            role: "system" as const,
+            status: "done" as const,
+            body: [Text({
+              key: "khala-transcript-unread-boundary-label",
+              content: `${state.transcriptUnreadCount} ${state.transcriptUnreadCount === 1 ? "unread update" : "unread updates"}`,
+              variant: "caption",
+              color: "accent",
+              style: { width: "full", textAlign: "center" },
+            })],
+          }]
+        : []),
+      {
+        key: entry.key,
+        role: entry.role,
+        status: entry.status === "thinking" || entry.status === "pending" ? "thinking" : "done",
+        ...(entry.role === "system" ? { senderLabel: "SYSTEM" } : {}),
+        ...(entry.role !== "assistant" && entry.createdAt !== undefined
+          ? { timestamp: localTranscriptTime(entry.createdAt) }
+          : {}),
+        body: speech === undefined
+          ? body
+          : [Card({
+              key: `assistant-speech-message-${entry.key}`,
+              interactions: { onLongPress: speech.onLongPress },
+              a11y: { label: speech.accessibilityLabel },
+              style: { width: "full" },
+            }, [...body, ...assistantSpeechStatusViews(speech)])],
+      },
+    ]
+  })
   const hiddenRetainedCount = Math.max(0, presentedEntries.length - visibleEntries.length)
   const unavailableEarlierCount = state.threadHistory === null
     ? 0
@@ -1135,9 +1146,6 @@ export const renderKhalaSurface = (
       ...(compactRuntime === null
         ? []
         : compactRuntimeStatusViews(state)),
-      ...(compactRuntime === null
-        ? []
-        : assistantSpeechControlViews(compactRuntime.speech ?? null, accessibility)),
       ...(runtimeDetails !== "visible" ? [] : runtimeControlViews(state, accessibility)),
       ...(runtimeDetails !== "visible"
         ? []
@@ -1162,7 +1170,7 @@ export const renderKhalaSurface = (
         doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
         mode: "normal",
         placeholder: authority === "sync" ? runAdmission.placeholder : "Message Khala",
-        ...(compactRuntime === null ? {} : { autoCorrect: false }),
+        ...(compactRuntime === null ? {} : { autoCorrect: true }),
         ...(composerAutocomplete === undefined ? {} : { autocomplete: composerAutocomplete }),
         ...(codingComposer === null ? {} : {
           attachments: codingComposer.draft.doc.attachments.map(attachment => ({
