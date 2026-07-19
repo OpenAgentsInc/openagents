@@ -290,19 +290,42 @@ export type TerminalHost = Readonly<{
   dispose: () => void
 }>
 
-const defaultSafeEnv = (): Readonly<Record<string, string>> => {
+const admittedHostEnvironmentKeys = [
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "PATH",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TERM",
+  "COLORTERM",
+  "TMPDIR",
+] as const
+
+/**
+ * Construct the bounded environment used by the low-level terminal transport.
+ * The IDE-10 Effect graph owns the manifest and policy. This adapter receives
+ * only the admitted values; it never copies the complete host environment.
+ */
+export const defaultSafeTerminalEnvironment = (
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): Readonly<Record<string, string>> => {
   const env: Record<string, string> = {}
-  for (const [name, value] of Object.entries(process.env)) {
-    if (typeof value === "string") env[name] = value
+  for (const name of admittedHostEnvironmentKeys) {
+    const value = source[name]
+    if (typeof value === "string" && value.length > 0) env[name] = value
   }
   env.TERM = env.TERM ?? "xterm-256color"
+  env.COLORTERM = env.COLORTERM ?? "truecolor"
   env.OPENAGENTS_DESKTOP_TERMINAL = "1"
   return env
 }
 
 export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => {
   const backend = options.backend ?? childProcessTerminalBackend()
-  const envFactory = options.env ?? defaultSafeEnv
+  const envFactory = options.env ?? defaultSafeTerminalEnvironment
   const shell = options.shell ?? {
     command: process.env.SHELL ?? "/bin/bash",
     args: [] as ReadonlyArray<string>,

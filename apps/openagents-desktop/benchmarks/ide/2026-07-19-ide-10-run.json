@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "openagents.desktop.ide-run-benchmark.v1",
+  "issue": "IDE-10",
+  "measuredAt": "2026-07-19T21:55:33.652Z",
+  "candidateCommitSha": "54430a59ad7a943fb002208d3e511302948e0eb6",
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.13.1",
+    "shell": "/bin/zsh",
+    "runtime": "Effect v4 + Node child_process",
+    "corpus": "deterministic declared-task and output fixture"
+  },
+  "metrics": [
+    {
+      "name": "environment-admission",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.01579199999997627,
+      "p95": 0.024042000000008557,
+      "p99": 0.025417000000004464,
+      "thresholdP95": 2,
+      "thresholdP99": 5,
+      "passed": true
+    },
+    {
+      "name": "command-schema-decode",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.006541999999967629,
+      "p95": 0.012457999999980984,
+      "p99": 0.012624999999957254,
+      "thresholdP95": 2,
+      "thresholdP99": 5,
+      "passed": true
+    },
+    {
+      "name": "task-test-discovery",
+      "unit": "milliseconds",
+      "repetitions": 10,
+      "warmup": 5,
+      "p50": 0.4128340000000321,
+      "p95": 0.7540419999999699,
+      "p99": 0.7540419999999699,
+      "thresholdP95": 25,
+      "thresholdP99": 50,
+      "passed": true
+    },
+    {
+      "name": "terminal-input-echo-projection",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.24987500000003138,
+      "p95": 0.4737079999999878,
+      "p99": 0.551667000000009,
+      "thresholdP95": 5,
+      "thresholdP99": 10,
+      "passed": true
+    },
+    {
+      "name": "terminal-resize",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.32720800000004147,
+      "p95": 0.5766669999999863,
+      "p99": 0.6895420000000172,
+      "thresholdP95": 5,
+      "thresholdP99": 10,
+      "passed": true
+    },
+    {
+      "name": "output-burst-64k",
+      "unit": "milliseconds",
+      "repetitions": 10,
+      "warmup": 5,
+      "p50": 0.8392920000000004,
+      "p95": 1.0542499999999677,
+      "p99": 1.0542499999999677,
+      "thresholdP95": 30,
+      "thresholdP99": 60,
+      "passed": true
+    },
+    {
+      "name": "output-search",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.02908300000001418,
+      "p95": 0.043083000000024185,
+      "p99": 0.04929200000003675,
+      "thresholdP95": 5,
+      "thresholdP99": 10,
+      "passed": true
+    },
+    {
+      "name": "task-start-to-semantic-completion",
+      "unit": "milliseconds",
+      "repetitions": 5,
+      "warmup": 5,
+      "p50": 216.96495799999957,
+      "p95": 219.3938330000001,
+      "p99": 219.3938330000001,
+      "thresholdP95": 500,
+      "thresholdP99": 1000,
+      "passed": true
+    },
+    {
+      "name": "snapshot-projection",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "warmup": 5,
+      "p50": 0.0007080000000314612,
+      "p95": 0.0011250000002291927,
+      "p99": 0.001291999999921245,
+      "thresholdP95": 5,
+      "thresholdP99": 10,
+      "passed": true
+    },
+    {
+      "name": "teardown",
+      "unit": "milliseconds",
+      "repetitions": 1,
+      "warmup": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "thresholdP95": 100,
+      "thresholdP99": 250,
+      "passed": true
+    }
+  ],
+  "outputFacts": {
+    "sequenceMonotonic": true,
+    "boundedRetention": true,
+    "gapAccounted": true,
+    "redactionObserved": true,
+    "invalidEncodingAccounted": true,
+    "rendererReceivesEnvironmentValues": false,
+    "inheritedAllHostVariables": false
+  },
+  "resources": {
+    "activeHandlesDelta": 1,
+    "heapDeltaBytes": 8241400,
+    "runningProcessesAfter": 0,
+    "subscriptionsAfter": 0
+  },
+  "nativeDecision": {
+    "rustAdmitted": false,
+    "reason": "The TypeScript and Node process-group adapter meets the deterministic latency, security, cancellation, and packaged behavior gates. No measured platform-correctness or p95/p99 deficit justifies a six-target Rust helper.",
+    "targets": [
+      {
+        "target": "macos-arm64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      },
+      {
+        "target": "macos-x64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      },
+      {
+        "target": "windows-arm64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      },
+      {
+        "target": "windows-x64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      },
+      {
+        "target": "linux-arm64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      },
+      {
+        "target": "linux-x64",
+        "nativeHelper": false,
+        "typescriptFallback": true,
+        "disposition": "not_claimed_native_helper_unnecessary"
+      }
+    ]
+  },
+  "passed": true
+}

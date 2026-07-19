@@ -50,6 +50,7 @@ import {
   type TerminalRendererBridge,
 } from "./terminal-workspace.ts"
 import type { TerminalEvent } from "../terminal-contract.ts"
+import type { IdeRunEvent } from "../ide/run-contract.ts"
 import {
   unavailableGitGithubBridge,
   type GitGithubBridge,
@@ -370,6 +371,11 @@ type DesktopBridge = Readonly<{
     snapshot?: () => Promise<unknown>
     openPreview?: (value: unknown) => Promise<unknown>
     onEvent?: (listener: (event: TerminalEvent) => void) => () => void
+  }>
+  ideRun?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+    onEvent?: (listener: (event: IdeRunEvent) => void) => () => void
   }>
   mcpConfig?: Readonly<{
     list?: () => Promise<unknown>

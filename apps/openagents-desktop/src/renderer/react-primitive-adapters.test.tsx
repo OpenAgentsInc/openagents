@@ -849,7 +849,7 @@ describe("React workbench shell", () => {
     const terminal = [...container.querySelectorAll('[role="menuitem"]')].find(button => button.textContent === "Terminal") as HTMLButtonElement
     await interact(() => terminal.click())
     expect(received).toContainEqual({ name: "TerminalCreateRequested", payload: null })
-    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[aria-label="Workbench surfaces"] [role="tab"]')).toHaveLength(2)
     const tablist = container.querySelector('[aria-label="Workbench surfaces"]') as HTMLElement
     await interact(() => tablist.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }) as unknown as Event))
     expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "review" })
@@ -1052,13 +1052,19 @@ describe("React workbench shell", () => {
     await interact(() => terminalButton.click())
     expect(container.querySelector('[aria-label="Terminal surface"]')?.textContent).toContain("42 passed")
     expect(container.querySelector('[aria-label="Terminal sessions"] [role="tab"][aria-selected="true"]')?.textContent).toContain("zshrunning")
-    expect((container.querySelector('[aria-label="Terminal input"]') as HTMLInputElement).value).toBe("pnpm test")
-    await interact(() => (container.querySelector(".oa-react-terminal-input") as HTMLFormElement).requestSubmit())
+    expect(container.querySelector('[data-xterm-projection="true"]')).not.toBeNull()
+    const terminalInput = container.querySelector('[aria-label="Terminal input"]') as HTMLTextAreaElement
+    expect(terminalInput.value).toBe("")
+    await interact(() => {
+      const keydown = new window.KeyboardEvent("keydown", { key: "a", code: "KeyA", bubbles: true })
+      Object.defineProperty(keydown, "keyCode", { configurable: true, value: 65 })
+      terminalInput.dispatchEvent(keydown)
+    })
     await interact(() => (container.querySelector('[aria-label="Interrupt terminal"]') as HTMLButtonElement).click())
     await interact(() => ([...container.querySelectorAll(".oa-react-terminal-toolbar button")].find(button => button.textContent === "Add output") as HTMLButtonElement).click())
     await interact(() => (container.querySelector(".oa-react-terminal-previews button") as HTMLButtonElement).click())
     expect(received).toEqual(expect.arrayContaining([
-      { name: "TerminalInputSubmitted", payload: null },
+      { name: "TerminalPtyInputReceived", payload: "a" },
       { name: "TerminalInterruptRequested", payload: null },
       { name: "TerminalContextAttached", payload: null },
       { name: "TerminalPreviewOpenRequested", payload: 3000 },

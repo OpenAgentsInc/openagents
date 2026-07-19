@@ -2358,8 +2358,26 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `agent-code-service.test.ts`, `agent-code-host.test.ts`,
   `react-agent-code.test.tsx`, `electron-boundary.test.ts`, the IDE boundary
   oracle, and the packaged IDE-08 journey. It implements the local agent-code
-  loop only, IDE-09 inline completion and IDE-10+ terminal/SCM/portable breadth
-  remain separate authorities.
+  loop only, IDE-09 inline completion and IDE-10 terminal/run breadth remain
+  separate authorities while IDE-11+ debug/SCM/portable breadth remains open.
+- Desktop terminal, task, test, and Output behavior has one main-owned Effect
+  run graph at `apps/openagents-desktop/src/ide/run-contract.ts`. Boundary data
+  is strictly decoded from Effect Schema; attachment, run, stream, task,
+  discovery, test, and artifact identities carry exact generations. Xterm is a
+  disposable screen projection and has no process, filesystem, policy,
+  persistence, or evidence authority. Only an explicit named environment
+  allowlist crosses into child processes. Task dependency order, readiness,
+  timeout, literal artifact paths, test semantic outcomes, sequence gaps,
+  byte-bounded retention, and redaction are canonical graph facts; exit zero
+  alone cannot fabricate task or test success. Process groups terminate on
+  cancellation, replacement, and scope finalization. Actor-bearing commands
+  create bounded receipts, exports are mode-restricted, private roots and raw
+  environment values never enter public evidence, and late generations cannot
+  revive settled state. A native/Rust PTY helper is not admitted unless the
+  six-target benchmark proves a bounded primitive is necessary. These laws are
+  enforced by `run-contract.test.ts`, `run-service.test.ts`,
+  `run-host.test.ts`, `terminal-host.test.ts`, the IDE boundary oracle, and the
+  IDE-10 benchmark, packaged journey, and acceptance receipts.
 - Rich coding drafts use `@openagentsinc/composer-state`, apps must not create a
   second editor/attachment state machine. The private
   `openagents.coding_composer_draft.v1` snapshot carries only stable context and

@@ -214,6 +214,10 @@ export const TerminalCreateRequested = defineIntent("TerminalCreateRequested", S
 export const TerminalSelected = defineIntent("TerminalSelected", Schema.String)
 export const TerminalInputChanged = defineIntent("TerminalInputChanged", Schema.String)
 export const TerminalInputSubmitted = defineIntent("TerminalInputSubmitted", Schema.Null)
+export const TerminalPtyInputReceived = defineIntent(
+  "TerminalPtyInputReceived",
+  Schema.String.check(Schema.isMaxLength(8_192)),
+)
 export const TerminalResizeRequested = defineIntent("TerminalResizeRequested", Schema.Struct({
   cols: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: TERMINAL_MIN_COLS, maximum: TERMINAL_MAX_COLS })),
   rows: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: TERMINAL_MIN_ROWS, maximum: TERMINAL_MAX_ROWS })),
@@ -232,6 +236,7 @@ export const terminalWorkspaceIntents = [
   TerminalSelected,
   TerminalInputChanged,
   TerminalInputSubmitted,
+  TerminalPtyInputReceived,
   TerminalResizeRequested,
   TerminalInterruptRequested,
   TerminalRestartRequested,
@@ -346,6 +351,20 @@ export const makeTerminalWorkspaceHandlers = <S extends TerminalCapableState>(
         yield* Effect.promise(() =>
           bridge.input({ sessionRef, data: `${line}\n` }).catch(() => null)),
       )
+    }),
+  TerminalPtyInputReceived: (data: string) =>
+    Effect.gen(function* () {
+      const sessionRef = activeRefOf(yield* SubscriptionRef.get(state))
+      if (sessionRef === null) return
+      const result = decodeTerminalAckResult(
+        yield* Effect.promise(() => bridge.input({ sessionRef, data }).catch(() => null)),
+      )
+      if (!result.ok) {
+        yield* SubscriptionRef.update(state, (current) => ({
+          ...current,
+          terminal: { ...current.terminal, notice: `Terminal input was refused (${result.reason}).` },
+        }))
+      }
     }),
   TerminalResizeRequested: ({ cols, rows }: Readonly<{ cols: number; rows: number }>) =>
     Effect.gen(function* () {

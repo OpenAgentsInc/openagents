@@ -1,0 +1,173 @@
+.oa-react-terminal-workbench,
+.oa-react-run-panel,
+.oa-react-test-tree,
+.oa-react-output-workbench {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-run-modes,
+.oa-react-terminal-tabs,
+.oa-react-terminal-toolbar,
+.oa-react-run-summary,
+.oa-react-output-toolbar,
+.oa-react-test-tree > section > header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-run-modes { border-bottom: 1px solid var(--en-color-borderSubtle); }
+
+.oa-react-run-modes > button,
+.oa-react-output-channels > button {
+  min-height: 2rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-run-modes > button[aria-selected="true"],
+.oa-react-output-channels > button[aria-selected="true"] {
+  border-bottom-color: var(--en-color-accent);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-xterm-shell {
+  position: relative;
+  min-width: 0;
+  min-height: clamp(16rem, 42vh, 36rem);
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-background);
+}
+
+.oa-react-xterm { position: absolute; inset: var(--en-spacing-2); }
+.oa-react-xterm-search-toggle { position: absolute; z-index: 3; top: var(--en-spacing-1); right: var(--en-spacing-1); }
+
+.oa-react-xterm-find {
+  position: absolute;
+  z-index: 4;
+  top: var(--en-spacing-1);
+  right: var(--en-spacing-8);
+  display: flex;
+  max-width: min(28rem, 70%);
+  align-items: center;
+  gap: var(--en-spacing-1);
+  padding: var(--en-spacing-1);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceOverlay);
+}
+
+.oa-react-run-list,
+.oa-react-test-tree ol,
+.oa-react-output-channels { min-width: 0; min-height: 0; overflow: auto; }
+
+.oa-react-run-list > article,
+.oa-react-test-tree li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-react-run-list > article > div,
+.oa-react-run-summary,
+.oa-react-test-tree header > div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.oa-react-run-summary > button,
+.oa-react-test-tree header > button { margin-left: auto; }
+.oa-react-output-channels { display: flex; gap: var(--en-spacing-1); }
+.oa-react-output-channels > button { display: inline-flex; align-items: center; gap: var(--en-spacing-1); white-space: nowrap; }
+
+.oa-react-output-workbench > pre {
+  min-width: 0;
+  min-height: 16rem;
+  flex: 1;
+  overflow: auto;
+  padding: var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-background);
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+  white-space: pre-wrap;
+}
+
+.oa-react-output-gap,
+.oa-react-terminal-notice { color: var(--en-color-warning); }
+.oa-react-run-empty { display: grid; place-content: center; min-height: 16rem; gap: var(--en-spacing-2); text-align: center; }
+
+/* Minimal xterm projection CSS. The upstream scrollbar rules include a generic
+   inset-shadow selector that violates the Desktop build boundary, so the adapter
+   owns only the layout rules that xterm 6 requires. */
+.xterm { position: relative; cursor: text; user-select: none; }
+.xterm.focus,
+.xterm:focus { outline: none; }
+.xterm .xterm-helpers { position: absolute; top: 0; z-index: 5; }
+.xterm .xterm-helper-textarea {
+  position: absolute;
+  z-index: -5;
+  top: 0;
+  left: -9999em;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
+  resize: none;
+  white-space: nowrap;
+}
+.xterm .composition-view {
+  position: absolute;
+  z-index: 1;
+  display: none;
+  background: var(--en-color-background);
+  color: var(--en-color-textPrimary);
+  white-space: nowrap;
+}
+.xterm .composition-view.active { display: block; }
+.xterm .xterm-viewport {
+  position: absolute;
+  inset: 0;
+  overflow-y: scroll;
+  background: var(--en-color-background);
+  cursor: default;
+}
+.xterm .xterm-screen { position: relative; }
+.xterm .xterm-screen canvas { position: absolute; top: 0; left: 0; }
+.xterm-char-measure-element { position: absolute; top: 0; left: -9999em; display: inline-block; visibility: hidden; line-height: normal; }
+.xterm.enable-mouse-events { cursor: default; }
+.xterm.xterm-cursor-pointer,
+.xterm .xterm-cursor-pointer { cursor: pointer; }
+.xterm.column-select.focus { cursor: crosshair; }
+.xterm .xterm-accessibility:not(.debug),
+.xterm .xterm-message { position: absolute; z-index: 10; inset: 0; color: transparent; pointer-events: none; }
+.xterm .xterm-accessibility-tree:not(.debug) *::selection { color: transparent; }
+.xterm .xterm-accessibility-tree { font-family: var(--oa-font-mono); user-select: text; white-space: pre; }
+.xterm .xterm-accessibility-tree > div { width: fit-content; transform-origin: left; }
+.xterm .live-region { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.xterm-dim { opacity: 1 !important; }
+.xterm-underline-1 { text-decoration: underline; }
+.xterm-underline-2 { text-decoration: double underline; }
+.xterm-underline-3 { text-decoration: wavy underline; }
+.xterm-underline-4 { text-decoration: dotted underline; }
+.xterm-underline-5 { text-decoration: dashed underline; }
+.xterm-overline { text-decoration: overline; }
+.xterm-strikethrough { text-decoration: line-through; }
+.xterm-screen .xterm-decoration-container .xterm-decoration { position: absolute; z-index: 6; }
+.xterm-screen .xterm-decoration-container .xterm-decoration.xterm-decoration-top-layer { z-index: 7; }
+.xterm-decoration-overview-ruler { position: absolute; z-index: 8; top: 0; right: 0; pointer-events: none; }
+.xterm-decoration-top { position: relative; z-index: 2; }

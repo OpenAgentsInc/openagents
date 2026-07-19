@@ -209,6 +209,16 @@ import {
   type TerminalEvent,
 } from "./terminal-contract.ts"
 import {
+  IdeRunCommandChannel,
+  IdeRunEventChannel,
+  IdeRunSnapshotChannel,
+  decodeIdeRunCommand,
+  decodeIdeRunCommandResult,
+  decodeIdeRunEvent,
+  decodeIdeRunSnapshot,
+  type IdeRunEvent,
+} from "./ide/run-contract.ts"
+import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
   decodeDesktopRuntimeGatewayEvent,
@@ -902,6 +912,23 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(TerminalEventChannel, handler)
       return () => ipcRenderer.removeListener(TerminalEventChannel, handler)
+    },
+  },
+  /** IDE-10 canonical terminal/task/test/Output projection. */
+  ideRun: {
+    snapshot: async () => decodeIdeRunSnapshot(await ipcRenderer.invoke(IdeRunSnapshotChannel)),
+    command: async (value: unknown) => {
+      const command = decodeIdeRunCommand(value)
+      if (command === null) return null
+      return decodeIdeRunCommandResult(await ipcRenderer.invoke(IdeRunCommandChannel, command))
+    },
+    onEvent: (listener: (event: IdeRunEvent) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeIdeRunEvent(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(IdeRunEventChannel, handler)
+      return () => ipcRenderer.removeListener(IdeRunEventChannel, handler)
     },
   },
   codexAccounts: () => ipcRenderer.invoke(CodexAccountsChannel),

@@ -418,7 +418,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
             (name === "boot.ts" && (
               specifier === "./ide/agent-code.ts" ||
               specifier === "./ide/cursor.ts" ||
-              specifier === "./ide/managed-sandbox.ts")) ||
+              specifier === "./ide/managed-sandbox.ts" ||
+              specifier === "../ide/run-contract.ts")) ||
             ((name === "git-panel.ts" || name === "shell.ts") && specifier === "../ide/review-contract.ts") ||
             (name === "shell.ts" && (
               specifier === "../ide/agent-code-contract.ts" ||
@@ -437,7 +438,9 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
                 (name === "react-workspace-surfaces.tsx" &&
                   (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts" ||
                     specifier === "../ide/language-workbench-contract.ts" ||
-                    specifier === "./ide/react-cursor.tsx")))),
+                    specifier === "./ide/react-cursor.tsx" ||
+                    specifier === "./ide/react-run.tsx" ||
+                    specifier === "./ide/react-xterm.tsx")))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }

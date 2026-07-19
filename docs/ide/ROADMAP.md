@@ -109,8 +109,8 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 | themes                      | The owner-selected Khala editor projection now mounts from native window/first paint through chrome, Pierre, Monaco, and terminal. Tokyo Night remains the built-in fallback | IDE-18 adds broader user-selectable modes  |
 | Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
 | language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal. IDE-07 accepts the integrated path | later languages remain explicit gaps       |
-| terminal screen             | typed child-process terminal exists. No admitted xterm/PTY projection                                                         | IDE-10                                     |
-| tasks/tests/debug           | useful substrate is fragmented. No one project evidence graph                                                                 | IDE-10/11                                  |
+| terminal screen             | IDE-10 ships the xterm 6 screen projection over the Effect-owned, project-bound terminal graph, with direct PTY input frames, bounded sequence/gap/redaction truth, policy-bound links, and process-group teardown | IDE-10 delivered; a native PTY helper remains unadmitted |
+| tasks/tests/debug           | IDE-10 ships declared package/manifest tasks, dependency order, readiness, timeouts, artifacts, test discovery/results, semantic-success rules, Output, and actor receipts. DAP remains absent | IDE-11 adds debug                          |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
 | agent-to-code loop          | IDE-08 ships exact attachment, eleven-source disclosure, proposal/Pierre review, canonical apply/rebase/undo, backlinks, and host-only post-image evidence. Broader delivery remains explicit | IDE-08 delivered locally. IDE-12 adds delivery |
 | inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
@@ -673,10 +673,17 @@ silent upload, or direct Monaco mutation.
 
 ### IDE-10 — Integrate terminal, tasks, tests, and Output
 
-Keep terminal/session/task/test identity and retention in Effect. Add xterm as
-the screen projection and a bounded Rust PTY/process-group/containment helper
-only for the admitted OS mechanics. Reuse the current typed terminal path and
-redaction rather than creating a second shell authority.
+Delivered by #9038. The implementation and exact evidence contract are in
+`docs/ide/2026-07-19-ide-10-effect-run-graph.md`. Closing this packet does not
+complete the integrated-agent-IDE rung. IDE-11 debug and IDE-12 Git delivery
+remain required. The Desktop and Cursor AssuranceSpecs remain proposed and
+unreviewed.
+
+Terminal/session/task/test identity and retention stay in Effect. Xterm is the
+screen projection. The packet reuses the typed Node terminal transport and
+redaction path. It does not admit a Rust PTY helper because the measured
+TypeScript/Node fallback passes and no six-target correctness or percentile
+deficit justifies a native binary.
 
 Add profiles, splits, reconnect, resize, signals, links under policy, named
 tasks, problem matchers, test discovery/run/result trees, Output/log channels,
@@ -957,20 +964,19 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-IDE-00 through IDE-07 are implemented and closed with exact issue receipts.
+IDE-00 through IDE-10 are implemented and closed with exact issue receipts.
 IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
 candidate. It preserved the TypeScript-only project-language limit, every
-IDE-09..19 gap, and the epic's separate owner-acceptance boundary.
+later packet gap, and the epic's separate owner-acceptance boundary.
 
-IDE-08 is implemented and closed with its exact evidence record. SBX-06 has
-also landed the default-off managed placement component without bypassing
-IDE-10, IDE-12, IDE-13, IDE-17, or SBX-09. The next IDE packet is IDE-09: add
-Cursor-class completion, next-edit prediction, inline
-ask/edit/generate, selection transforms, and fast multi-file editing on the
-existing exact proposal graph, with selected/effective runtime, latency,
-cost/usage, fallback, custody, and quality disclosure. IDE-10 may proceed only
-at its documented dependency boundary. Neither packet may smuggle project or
-mutation authority into Monaco, xterm, a harness, or a native helper.
+IDE-08, IDE-09, and IDE-10 are implemented and closed with exact evidence
+records. SBX-06 has also landed the default-off managed placement component
+without bypassing IDE-12, IDE-13, IDE-17, or SBX-09. The next packet is IDE-11:
+add one Effect-owned DAP graph with adapter
+supervision, exact launch/attach disclosure, breakpoints, stack/scopes/
+variables/watch/console, stepping, restart, termination, and late-event
+fencing. It may not move project, credential, policy, or persistence authority
+into a debug adapter or renderer.
 
 In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with

@@ -483,6 +483,13 @@ import {
   type IdeManagedSandboxHost,
 } from "./ide/managed-sandbox-host.ts"
 import {
+  IdeRunCommandChannel,
+  IdeRunEventChannel,
+  IdeRunSnapshotChannel,
+  type IdeRunEvent,
+} from "./ide/run-contract.ts"
+import { openIdeRunHost } from "./ide/run-host.ts"
+import {
   DesktopWorkspaceLanguageCancelChannel,
   DesktopWorkspaceLanguageRequestChannel,
   DesktopWorkspaceLanguageStopChannel,
@@ -1537,7 +1544,7 @@ const drainDesktopUpdateRuntimes = async () => {
     timeoutMs: 15_000,
     drainers: [
       { kind: "agent", drain: async () => { fableLocal.dispose(); codexLocal.dispose(); await acpProviderHost.shutdown() } },
-      { kind: "pty", drain: () => terminalHost.dispose() },
+      { kind: "pty", drain: () => { terminalHost.dispose(); disposeIdeRunHost() } },
       { kind: "local_server", drain: () => { codexControlPlanes.close(); codexThreadLifecycles.close(); codexEcosystems.close(); codexHostServices.close(); codexExperimentalRuntimes.close(); codexAppServerSupervisor.close() } },
       { kind: "helper", drain: () => {
         for (const flush of localTurnFlushers) flush()
@@ -2863,10 +2870,24 @@ const terminalWorkspaceBinding = (): { root: string; grantRef: string } | null =
   }
   return smokeMode ? { root: smokeGitRoot, grantRef: "workspace.grant.smoke" } : null
 }
+const broadcastIdeRunEvent = (event: IdeRunEvent): void => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(IdeRunEventChannel, event)
+  }
+}
+const ideRunHost = openIdeRunHost({
+  workspace: terminalWorkspaceBinding,
+  emit: broadcastIdeRunEvent,
+  exportRoot: path.join(app.getPath("userData"), "ide-run", "exports"),
+})
+const disposeIdeRunHost = (): void => {
+  void ideRunHost.then((host) => host.dispose())
+}
 const broadcastTerminalEvent = (event: TerminalEvent): void => {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(TerminalEventChannel, event)
   }
+  void ideRunHost.then((host) => host.observeTerminalEvent(event))
 }
 const confirmTerminalPreview = async (url: string): Promise<boolean> => {
   const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed()) ?? null
@@ -2903,7 +2924,10 @@ ipcMain.handle(TerminalInputChannel, (_event, value: unknown) => {
 })
 ipcMain.handle(TerminalResizeChannel, (_event, value: unknown) => {
   const request = decodeTerminalResizeRequest(value)
-  return request === null ? { ok: false, reason: "invalid_request" } : terminalHost.resize(request.sessionRef, request.cols, request.rows)
+  if (request === null) return { ok: false, reason: "invalid_request" }
+  const result = terminalHost.resize(request.sessionRef, request.cols, request.rows)
+  if (result.ok) void ideRunHost.then((host) => host.observeTerminalResize(request.sessionRef, request.cols, request.rows))
+  return result
 })
 ipcMain.handle(TerminalInterruptChannel, (_event, value: unknown) => {
   const request = decodeTerminalSessionRequest(value)
@@ -2924,6 +2948,9 @@ ipcMain.handle(TerminalPreviewOpenChannel, (_event, value: unknown) => {
     ? Promise.resolve({ ok: false, reason: "invalid_request" })
     : terminalHost.openPreview(request.sessionRef, request.port)
 })
+ipcMain.handle(IdeRunSnapshotChannel, () => ideRunHost.then((host) => host.snapshot()))
+ipcMain.handle(IdeRunCommandChannel, (_event, value: unknown) =>
+  ideRunHost.then((host) => host.command(value)))
 
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
@@ -7974,6 +8001,7 @@ const runSmoke = (window: BrowserWindow): void => {
   const finish = (code: 0 | 1): void => {
     workspaceSearchRegistry.dispose()
     terminalHost.dispose()
+    disposeIdeRunHost()
     hostLifecycle.dispose()
     const snapshot = hostLifecycle.snapshot()
     const active = Number(snapshot.runtime) + Number(snapshot.workspace) + Number(snapshot.sync) +
@@ -8884,6 +8912,7 @@ void app.whenReady().then(async () => {
   const closeProof = (code: number): void => {
     workspaceSearchRegistry.dispose()
     terminalHost.dispose()
+    disposeIdeRunHost()
     hostLifecycle.dispose()
     providerAccounts.dispose()
     desktopCorrelationJournal.dispose()
@@ -8936,6 +8965,7 @@ app.on("before-quit", () => {
   disposeIdeManagedSandboxHost()
   disposeIdeAgentCodeHost()
   terminalHost.dispose()
+  disposeIdeRunHost()
   hostLifecycle.dispose()
   providerAccounts.dispose()
   fableLocal.dispose()

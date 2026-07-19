@@ -32,7 +32,9 @@ const sourceFiles = (root: string): ReadonlyArray<string> => {
 const relative = (file: string): string => path.relative(repositoryRoot, file);
 
 export const isHandMirroredBoundaryDeclaration = (sourceLine: string): boolean =>
-  /^export\s+(?:type|interface)\s+\w+(?![^=]*=\s*typeof\s+\w+(?:Schema)?\.Type)/u.test(sourceLine);
+  /^export\s+(?:type|interface)\s+\w+/u.test(sourceLine) &&
+  !/=\s*typeof\s+\w+(?:Schema)?\.Type/u.test(sourceLine) &&
+  !/extends\s+Schema\.Schema\.Type<typeof\s+\w+(?:Schema)?>/u.test(sourceLine);
 
 const cursorRendererAuthorityPatterns = [
   ['from "node:', "node-host-import"],
@@ -86,6 +88,8 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
     path.join(ideRoot, "cursor-contract.ts"),
     path.join(ideRoot, "cursor-benchmark-contract.ts"),
     path.join(ideRoot, "managed-sandbox-contract.ts"),
+    path.join(ideRoot, "run-contract.ts"),
+    path.join(ideRoot, "run-benchmark-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
@@ -289,6 +293,46 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
       rule: "cursor-provider-document-authority",
       detail: "The cursor provider adapter cannot acquire canonical document authority.",
     });
+  }
+
+  const runServicePath = path.join(ideRoot, "run-service.ts");
+  const runService = readFileSync(runServicePath, "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "run-context-service"],
+    ["Layer.effect", "run-layer-effect"],
+    ["Effect.fn", "run-named-effect-functions"],
+    ["Schema.TaggedErrorClass", "run-typed-expected-errors"],
+    ["Effect.addFinalizer", "run-scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "run-boundary-decode"],
+  ] as const) {
+    if (!runService.includes(needle)) {
+      violations.push({
+        file: relative(runServicePath),
+        line: 1,
+        rule,
+        detail: `Required IDE run Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+  const runRendererFiles = [
+    path.join(appRoot, "src", "renderer", "ide", "react-run.tsx"),
+    path.join(appRoot, "src", "renderer", "ide", "react-xterm.tsx"),
+  ];
+  for (const file of runRendererFiles) {
+    const source = readFileSync(file, "utf8");
+    for (const forbidden of [
+      'from "node:', "from 'node:", 'from "electron"', "from 'electron'",
+      "child_process", "process.env", "writeFile", "spawn(", "execFile",
+    ]) {
+      if (source.includes(forbidden)) {
+        violations.push({
+          file: relative(file),
+          line: 1,
+          rule: "run-renderer-projection-only",
+          detail: `The IDE run renderer acquired host, environment, process, or filesystem authority through ${forbidden}.`,
+        });
+      }
+    }
   }
 
   const cursorRendererFiles = sourceFiles(path.join(appRoot, "src", "renderer"))

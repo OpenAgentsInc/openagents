@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react"
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react"
 import { ArrowLeft, ArrowRight, Camera, ChevronLeft, ChevronRight, CircleStop, Columns2, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings2, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
@@ -17,6 +17,8 @@ import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract
 import { activeGitReviewSource } from "./ide/review-source.ts"
 import { AgentProposalList, AgentProposalReviewPanel } from "./react-agent-code.tsx"
 import { ReactIdeCursor } from "./ide/react-cursor.tsx"
+import { ReactIdeRunPanel, type IdeRunPanelMode } from "./ide/react-run.tsx"
+import { ReactXtermProjection } from "./ide/react-xterm.tsx"
 import {
   languageItemsFor,
   languageResultFor,
@@ -32,19 +34,21 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
 
 const pathName = (pathRef: string): string => pathRef.split("/").at(-1) ?? pathRef
 
-const tablistKey = (
+function tablistKey<Ref extends string>(
   event: KeyboardEvent<HTMLElement>,
-  refs: ReadonlyArray<string>,
-  activeRef: string | null,
-  select: (ref: string) => void,
-): void => {
+  refs: ReadonlyArray<Ref>,
+  activeRef: Ref | null,
+  select: (ref: Ref) => void,
+): void {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || refs.length === 0) return
   event.preventDefault()
-  const current = Math.max(0, refs.indexOf(activeRef ?? ""))
+  const current = activeRef === null ? 0 : Math.max(0, refs.indexOf(activeRef))
   const next = event.key === "Home" ? 0 : event.key === "End" ? refs.length - 1
     : (current + (event.key === "ArrowRight" ? 1 : -1) + refs.length) % refs.length
   select(refs[next]!)
-  event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"] > button:first-child')[next]?.focus()
+  const tab = event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]
+  const focusTarget = tab instanceof HTMLButtonElement ? tab : tab?.querySelector<HTMLButtonElement>("button:first-child")
+  focusTarget?.focus()
 }
 
 export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
@@ -454,29 +458,15 @@ const GitBranchLabel = ({ branch }: { readonly branch: string | null }): ReactEl
 export const ReactTerminalSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const terminal = state.terminal
   const active = terminal.sessions.find(session => session.sessionRef === terminal.activeRef) ?? null
-  const outputRef = useRef<HTMLPreElement>(null)
-  useEffect(() => {
-    const output = outputRef.current
-    if (output !== null) output.scrollTop = output.scrollHeight
-  }, [active?.output])
-  useEffect(() => {
-    const output = outputRef.current
-    if (output === null || active === null || typeof ResizeObserver === "undefined") return
-    let last = ""
-    const observer = new ResizeObserver(entries => {
-      const box = entries[0]?.contentRect
-      if (box === undefined) return
-      const cols = Math.max(1, Math.min(1_000, Math.floor(box.width / 8)))
-      const rows = Math.max(1, Math.min(1_000, Math.floor(box.height / 18)))
-      const next = `${cols}:${rows}`
-      if (next === last) return
-      last = next
-      dispatch(report, "TerminalResizeRequested", { cols, rows })
-    })
-    observer.observe(output)
-    return () => observer.disconnect()
-  }, [active?.sessionRef, report])
+  const [mode, setMode] = useState<"terminal" | IdeRunPanelMode>("terminal")
+  const xtermInput = useCallback((data: string) => dispatch(report, "TerminalPtyInputReceived", data), [report])
+  const xtermResize = useCallback((cols: number, rows: number) => dispatch(report, "TerminalResizeRequested", { cols, rows }), [report])
+  const xtermPreview = useCallback((port: number) => dispatch(report, "TerminalPreviewOpenRequested", port), [report])
   return <section className="oa-react-terminal-workbench" aria-label="Terminal surface">
+    <nav className="oa-react-run-modes" role="tablist" aria-label="Terminal tasks tests and Output" onKeyDown={event => tablistKey(event, ["terminal", "tasks", "tests", "output"], mode, candidate => setMode(candidate))}>
+      {(["terminal", "tasks", "tests", "output"] as const).map((candidate) => <button aria-selected={mode === candidate} key={candidate} onClick={() => setMode(candidate)} role="tab" tabIndex={mode === candidate ? 0 : -1} type="button">{candidate === "output" ? "Output" : candidate[0]!.toLocaleUpperCase() + candidate.slice(1)}</button>)}
+    </nav>
+    {mode === "terminal" ? <>
     <header className="oa-react-terminal-tabs">
       <div role="tablist" aria-label="Terminal sessions" onKeyDown={event => tablistKey(event, terminal.sessions.map(session => session.sessionRef), terminal.activeRef, sessionRef => dispatch(report, "TerminalSelected", sessionRef))}>
         {terminal.sessions.map((session, index) => <div aria-selected={session.sessionRef === terminal.activeRef} key={session.sessionRef} role="tab">
@@ -492,14 +482,10 @@ export const ReactTerminalSurface = ({ state, report }: { readonly state: Deskto
         <div><strong>{active.cwdLabel}</strong><small>{active.shellLabel}{active.recovered ? " · recovered" : ""}{active.gap ? " · output gap" : ""}</small></div>
         <div><Button size="sm" variant="ghost" disabled={active.output.length === 0} onClick={() => dispatch(report, "TerminalContextAttached")}><File aria-hidden="true" />Add output</Button><Button size="sm" variant="ghost" aria-label="Interrupt terminal" disabled={active.status !== "running"} onClick={() => dispatch(report, "TerminalInterruptRequested")}><CircleStop aria-hidden="true" />Interrupt</Button><Button size="sm" variant="ghost" onClick={() => dispatch(report, "TerminalRestartRequested")}><RotateCcw aria-hidden="true" />Restart</Button><Button size="icon-sm" variant="ghost" aria-label="Refresh terminals" onClick={() => dispatch(report, "TerminalRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></div>
       </div>
-      <pre className="oa-react-terminal-output" ref={outputRef} aria-label={`Output for ${active.shellLabel}`} tabIndex={0}>{active.output || (active.status === "running" ? "Terminal ready." : `Process exited${active.exitCode === null ? "." : ` with code ${active.exitCode}.`}`)}</pre>
+      <ReactXtermProjection session={active} onInput={xtermInput} onResize={xtermResize} onOpenPreview={xtermPreview} />
       {active.previews.length === 0 ? null : <div className="oa-react-terminal-previews" aria-label="Detected previews">{active.previews.map(preview => <button disabled={!preview.ready} key={preview.port} onClick={() => dispatch(report, "TerminalPreviewOpenRequested", preview.port)} type="button">{preview.ready ? "Open" : "Waiting for"} localhost:{preview.port}</button>)}</div>}
-      <form className="oa-react-terminal-input" onSubmit={event => { event.preventDefault(); dispatch(report, "TerminalInputSubmitted") }}>
-        <span aria-hidden="true">›</span><Input aria-label="Terminal input" autoComplete="off" disabled={active.status !== "running"} value={terminal.input} onChange={event => dispatch(report, "TerminalInputChanged", event.currentTarget.value)}
-          onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "c") { event.preventDefault(); dispatch(report, "TerminalInterruptRequested") } }} />
-        <Button size="sm" disabled={active.status !== "running"} type="submit">Run</Button>
-      </form>
     </>}
+    </> : <ReactIdeRunPanel mode={mode} />}
   </section>
 }
 

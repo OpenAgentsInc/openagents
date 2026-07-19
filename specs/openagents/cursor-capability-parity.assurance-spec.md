@@ -300,7 +300,12 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure CP-AC-18"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/ide/run-host.test.ts",
+      "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json",
+      "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-acceptance.json"
+    ],
     "criterion_refs": [
       "CP-AC-19"
     ],
@@ -344,7 +349,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure CP-AC-22"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/scripts/check-ide-boundaries.ts",
+      "apps/openagents-desktop/src/ide/run-benchmark-contract.test.ts",
+      "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json"
+    ],
     "criterion_refs": [
       "CP-AC-23"
     ],
