@@ -122,5 +122,26 @@ describe("managed sandbox boundary schemas", () => {
         requestedCapabilities: [],
       }),
     ).toThrow();
+
+    expect(() =>
+      S.decodeUnknownSync(ManagedSandboxCommandSchema)({
+        _tag: "Create",
+        schema: "openagents.managed_sandbox_command.v1",
+        commandRef: "command.test.bad-ttl",
+        requestedByRef: "principal.sol.sbx01",
+        ownerRef: "owner.test",
+        tenantRef: "tenant.test",
+        idempotencyRef: "idem.test.bad-ttl",
+        requestedAt: "2026-07-19T12:00:00.000Z",
+        workUnitRef: "work.test.bad-ttl",
+        attachmentRef: "attachment.test.bad-ttl",
+        target,
+        imageDigest: `sha256:${"c".repeat(64)}`,
+        profileRef: "profile.sbx.gce.cpu.v1",
+        lease: { ...lease, expiresAt: "2026-07-19T12:30:00.000Z" },
+        budget,
+        requestedCapabilities: [],
+      }),
+    ).toThrowError(/exact positive TTL/);
   });
 });

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "3ef80b696a8e23883fe6b1e30545f0a1051a93fbf9dc50d5896d9838ed4c54c4",
+  "sourceTreeSha256": "2d1912004dcad22073a311f43aa5b7ea4f35768a95b5cf4a13abae1b796c2062",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2290,7 +2290,7 @@
       "owner": "OpenAgents managed sandboxes / epic #9023",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "765497de983045da7ab53c7c3f97520802b066f287db1b65535071df4ade2505",
+      "sha256": "17d2a6928f41f1a50c1f2c02d2801b3f6e8b63b8d724e3d09aede631afe1011e",
       "status": "active",
       "snapshot": "2026-07-19",
       "reviewedAt": "2026-07-12",

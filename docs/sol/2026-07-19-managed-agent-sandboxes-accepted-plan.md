@@ -89,19 +89,19 @@ or cleanup truth.
 
 ## Dependency-ordered issue ledger
 
-| Packet | GitHub | Outcome | Depends on | State |
-| --- | --- | --- | --- | --- |
-| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan | contract frozen and runtime unavailable |
-| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store | SBX-00 | next |
-| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission | SBX-00/01 | not started |
-| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof | SBX-00/01 | not started |
-| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt | SBX-01/02/03 | not started |
-| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening | SBX-02/03 | not started |
-| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started |
-| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker | SBX-00/04/05 | not started |
-| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision | SBX-06/07 | not started |
-| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout | SBX-00 through SBX-08 | not started |
-| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2 | SBX-09 | not started |
+| Packet | GitHub                                                           | Outcome                                                               | Depends on                                                  | State                                                  |
+| ------ | ---------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
+| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan                                                   | complete                                               |
+| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | implemented and verified; provider runtime unavailable |
+| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | next                                                   |
+| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | not started                                            |
+| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | not started                                            |
+| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | not started                                            |
+| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started                                            |
+| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | not started                                            |
+| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                            |
+| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                            |
+| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                            |
 
 The issues are native subissues of #9023. Each child owns one bounded claim;
 the epic is not a mutation claim. SBX-01, SBX-03, and the Assurance/model lane
@@ -209,20 +209,20 @@ Each hot contract has one integration owner before parallel mutation.
 
 ### Integration ownership freeze
 
-| Hot contract | Integration owner | Package or path |
-| --- | --- | --- |
-| native identity, command, event, receipt, lifecycle model | SBX-00 | `packages/managed-sandbox-contract/**` |
-| root and Sarah action authority | SBX-00 for policy and SBX-07 for runtime | `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, `packages/authority/**` |
-| durable command/event/idempotency store | SBX-01 | `packages/khala-sync-server/**` and its Cloud SQL migrations |
-| GCP target, image, provisioner, and reconciliation | SBX-02 | `crates/oa-codex-control/**`, `crates/oa-node/**`, `crates/oa-workroomd/**` |
-| Box-v1 HTTP/SDK compatibility adapter | SBX-03 | `packages/ai-sdk-sandbox-openagents/**` and `apps/openagents.com/workers/api/**`. Native types stay in `packages/managed-sandbox-contract/**` |
-| runtime turn/event/interrupt semantics | SBX-04 | `crates/oa-workroomd/**`, Cloud control adapter, native event ingest |
-| file/command/artifact policy and quota | SBX-05 | `crates/oa-workroomd/**`, shared artifact/receipt contracts |
-| IDE placement and agent-graph consumer | SBX-06 | `apps/openagents-desktop/src/ide/**`, shared IDE schemas |
-| Sarah tool schema and ordered activity | SBX-07 | `apps/openagents.com/workers/api/**`, Sarah mobile projection |
-| bounded mobile/web controller | SBX-08 | `apps/openagents-mobile/**`, authenticated `openagents.com` projections |
-| live rollout/evidence and cleanup oracle | SBX-09 | `scripts/cloud/**`, `docs/sol/evidence/**`, GCP deployment config |
-| checkpoint/fork/private-ingress Phase 2 | SBX-10 | native contract plus exact Cloud/guest paths selected by its later claim |
+| Hot contract                                              | Integration owner                        | Package or path                                                                                                                               |
+| --------------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| native identity, command, event, receipt, lifecycle model | SBX-00                                   | `packages/managed-sandbox-contract/**`                                                                                                        |
+| root and Sarah action authority                           | SBX-00 for policy and SBX-07 for runtime | `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, `packages/authority/**`                                                                  |
+| durable command/event/idempotency store                   | SBX-01                                   | `packages/khala-sync-server/**` and its Cloud SQL migrations                                                                                  |
+| GCP target, image, provisioner, and reconciliation        | SBX-02                                   | `crates/oa-codex-control/**`, `crates/oa-node/**`, `crates/oa-workroomd/**`                                                                   |
+| Box-v1 HTTP/SDK compatibility adapter                     | SBX-03                                   | `packages/ai-sdk-sandbox-openagents/**` and `apps/openagents.com/workers/api/**`. Native types stay in `packages/managed-sandbox-contract/**` |
+| runtime turn/event/interrupt semantics                    | SBX-04                                   | `crates/oa-workroomd/**`, Cloud control adapter, native event ingest                                                                          |
+| file/command/artifact policy and quota                    | SBX-05                                   | `crates/oa-workroomd/**`, shared artifact/receipt contracts                                                                                   |
+| IDE placement and agent-graph consumer                    | SBX-06                                   | `apps/openagents-desktop/src/ide/**`, shared IDE schemas                                                                                      |
+| Sarah tool schema and ordered activity                    | SBX-07                                   | `apps/openagents.com/workers/api/**`, Sarah mobile projection                                                                                 |
+| bounded mobile/web controller                             | SBX-08                                   | `apps/openagents-mobile/**`, authenticated `openagents.com` projections                                                                       |
+| live rollout/evidence and cleanup oracle                  | SBX-09                                   | `scripts/cloud/**`, `docs/sol/evidence/**`, GCP deployment config                                                                             |
+| checkpoint/fork/private-ingress Phase 2                   | SBX-10                                   | native contract plus exact Cloud/guest paths selected by its later claim                                                                      |
 
 Writers may add adapters in their row.
 They must not move another row's domain identity or relax its invariants.

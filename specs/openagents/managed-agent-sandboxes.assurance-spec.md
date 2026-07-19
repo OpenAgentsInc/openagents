@@ -175,7 +175,11 @@ or observations exist today.
     "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "packages/managed-sandbox-contract/src/lifecycle.test.ts",
+      "packages/khala-sync-server/migrations/0080_managed_sandbox_authority.sql",
+      "packages/khala-sync-server/src/managed-sandbox-store.test.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-02"
     ],
@@ -194,12 +198,12 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "duplicate_accepting_generation",
-      "ref": "packages/managed-sandbox-contract/src/lifecycle.test.ts"
+      "ref": "packages/khala-sync-server/src/managed-sandbox-store.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/lifecycle.test.ts",
-      "statement": "Exhaustively explore the bounded lifecycle and reject gaps, replays, generation mismatch, stop before checkpoint, and delete before observed cleanup."
+      "evaluator_ref": "packages/khala-sync-server/src/managed-sandbox-store.test.ts",
+      "statement": "Combine the bounded lifecycle model with real Postgres fault tests for gaps, retries, concurrency, generation fencing, crash reconciliation, and cleanup observation."
     },
     "technique": "bounded_state_model"
   },

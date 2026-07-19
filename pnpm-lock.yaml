@@ -1926,6 +1926,9 @@ importers:
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../khala-sync
+      '@openagentsinc/managed-sandbox-contract':
+        specifier: workspace:*
+        version: link:../managed-sandbox-contract
       '@openagentsinc/portable-session-contract':
         specifier: workspace:*
         version: link:../portable-session-contract

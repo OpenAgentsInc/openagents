@@ -15,21 +15,24 @@ primary infrastructure, and is not accepted by current dispatch admission.
 
 ## Components
 
-- `migrations/` defines the Cloud SQL schema, including per-scope counters,
-  the transactional changelog, mutation idempotency, projections, and the
-  Google-Cloud-only admission boundary.
+- `migrations/` defines the Cloud SQL schema.
+  The schema contains per-scope counters, the transactional changelog,
+  mutation idempotency, projections, and the Google-Cloud-only admission
+  boundary.
 - `src/push-engine.ts` runs named mutators in one Cloud SQL transaction.
 - `src/read-service.ts` serves consistent bootstrap pages and resumable log
-  pages using self-contained cursors; no request-spanning database session is
-  required.
+  pages with self-contained cursors.
+  It requires no database session across requests.
 - `src/outbox-writer.ts` allocates commit-ordered per-scope versions and
   appends changelog rows transactionally with business state.
 - `src/scope-auth.ts` is the fail-closed read authorization gate over live
   Cloud SQL ownership and membership data.
 - `src/capture.ts` tails the changelog through a direct Postgres connection
   and forwards ordered, replayable frames to LiveHub.
-- `src/compaction.ts` advances retained windows without creating partial-log
+- `src/compaction.ts` advances retained windows and does not create partial-log
   gaps.
+- `src/managed-sandbox-store.ts` owns generation-fenced managed-sandbox
+  commands, native events, receipts, turn order, and compatibility cursors.
 - projection modules publish redacted public or owner-scoped post-images from
   authoritative Cloud SQL state.
 
@@ -43,7 +46,7 @@ The shared Cloud SQL instance is `khala-sync-pg` in project
 `openagentsgemini`, region `us-central1`:
 
 - production database: `khala_sync_prod`
-- staging database: `khala_sync_staging`
+- `staging` database: `khala_sync_staging`
 - request role: `khala_app`
 - migration role: `khala_migrate`
 - capture role: `khala_capture`
@@ -65,6 +68,10 @@ Khala Sync runbook.
 6. Capture delivery is at least once; hub and client apply are idempotent.
 7. The production admission lane is `cloud-gcp`; the managed runner backend is
    `gcloud_vm`. Retired pilot provenance is terminal history only.
+8. Managed-sandbox command bytes enter Cloud SQL before provider effects.
+9. One sandbox has at most one `pending` command and one generation with
+   `acceptingWork: true`.
+10. Compatibility cursors never replace or advance beyond native event truth.
 
 ## Commands
 

@@ -100,7 +100,15 @@ export const SandboxLeaseSchema = S.Struct({
   expiresAt: SandboxTimestamp,
   ttlSeconds: PositiveInt,
   renewable: S.Boolean,
-});
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (lease) =>
+        Date.parse(lease.expiresAt) - Date.parse(lease.issuedAt) === lease.ttlSeconds * 1_000,
+      { message: "lease timestamps must encode the exact positive TTL" },
+    ),
+  ),
+);
 export type SandboxLease = typeof SandboxLeaseSchema.Type;
 
 export const SandboxBudgetSchema = S.Struct({

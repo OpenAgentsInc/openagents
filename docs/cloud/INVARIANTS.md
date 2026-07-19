@@ -100,7 +100,7 @@ design context only.
 - Ingress, token minting, public exposure, custom-domain binding, capability
   attachment, artifact upload, and closeout are receipt-bearing events.
 
-## Managed Agent Sandbox Contract (SBX-00, #9029)
+## Managed Agent Sandbox Contract (SBX-00/01, #9029/#9034)
 
 - `openagents.managed_sandbox.v1` is the sole managed-sandbox domain identity.
   GCE, Firecracker, Box-v1, IDE, mobile, and Sarah records are projections or
@@ -115,6 +115,20 @@ design context only.
   cleanup facts remain distinct. Stop requires a durable filesystem
   checkpoint. Delete requires observed cleanup. Uncertainty becomes failed or
   `recovery_required`, never an invented success.
+- `PostgresManagedSandboxStore` is the sole durable lifecycle and native event
+  authority.
+  It records an exact command fingerprint before any provider effect.
+  An exact retry returns the stored command state or receipt.
+  A receipt retry must match the stored settlement fingerprint.
+  Different bytes under the same command or idempotency identity refuse.
+- One sandbox may have only one pending command and one accepting resource
+  generation.
+  Resume fences the old generation before a new generation can accept work.
+  Native event sequence remains dense across that generation change.
+- Native event cursors and Box compatibility cursors use separate tables and
+  versions.
+  A compatibility cursor cannot advance beyond or replace native event
+  authority.
 - Box-v1 is a development/conformance projection that uses exact
   `@asciidev/box-sdk@0.0.24` bytes. Unsupported SDK operations return a typed
   `501 capability_not_implemented`. Projection cursor/omission metadata is
@@ -127,7 +141,9 @@ design context only.
   healthy, within budget, and receipt-capable.
 - Deterministic enforcement lives in
   `packages/managed-sandbox-contract/src/{schemas,lifecycle,box-v1}.test.ts`
-  and `packages/authority/src/managed-sandbox-authority.test.ts`. Live target
+  and `packages/khala-sync-server/src/managed-sandbox-store.test.ts`.
+  Authority denial tests live in
+  `packages/authority/src/managed-sandbox-authority.test.ts`. Live target
   evidence is separately required by SBX-09 and must not be inferred from
   these contract tests.
 

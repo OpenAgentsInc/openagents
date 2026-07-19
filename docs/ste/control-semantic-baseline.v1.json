@@ -5255,7 +5255,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "f5b4c91ef55848ac511dcf88a6a574377e61b75da3a7c6a616407e98a5efe269",
+      "sourceSha256": "760ad950dc68cdc9a859d33c9cdd73bd296bcdf5c17d76d1509bfea1ce872b14",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5283,6 +5283,7 @@
         "POST /v1/portable-agent-computers/operations",
         "PortableCapabilityBroker",
         "PortableCapabilityLease",
+        "PostgresManagedSandboxStore",
         "apps/openagents.com",
         "apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts",
         "apps/pylon",
@@ -5343,6 +5344,7 @@
         "openagents.resource_usage_receipt.v1",
         "openagents_cloud_contract",
         "packages/authority/src/managed-sandbox-authority.test.ts",
+        "packages/khala-sync-server/src/managed-sandbox-store.test.ts",
         "packages/khala-sync-server/src/portable-managed-agent-computer-target.test.ts",
         "packages/khala-sync-server/src/portable-session-move.test.ts",
         "packages/managed-sandbox-contract/src/{schemas,lifecycle,box-v1}.test.ts",
@@ -5372,7 +5374,8 @@
         "#8636",
         "#8748",
         "#8748",
-        "#9029"
+        "#9029",
+        "#9034"
       ],
       "numericValues": [
         "0",
@@ -5380,6 +5383,7 @@
         "0.0.24",
         "00",
         "0067",
+        "01",
         "01",
         "01",
         "01",
@@ -5410,6 +5414,7 @@
         "8748",
         "8748",
         "9029",
+        "9034",
         "96"
       ]
     },

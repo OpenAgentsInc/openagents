@@ -24,6 +24,7 @@ export type SandboxModelState = typeof SandboxModelStateSchema.Type;
 
 export type SandboxModelEvent = Readonly<{
   kind:
+    | "ProvisionRequested"
     | "GuestReady"
     | "RuntimeStarted"
     | "RuntimeSettled"
@@ -149,6 +150,15 @@ export const applySandboxModelEvent = (
   let next: SandboxModelState;
 
   switch (event.kind) {
+    case "ProvisionRequested":
+      if (state.lifecycle !== "provisioning" || state.lastEventSequence !== 0) {
+        return refuse(
+          "invalid_transition",
+          "ProvisionRequested requires a new provisioning resource",
+        );
+      }
+      next = nextBase;
+      break;
     case "GuestReady":
       if (!["provisioning", "resuming"].includes(state.lifecycle)) {
         return refuse("invalid_transition", "GuestReady requires provisioning or resuming");
@@ -303,12 +313,36 @@ export const applySandboxModelEvent = (
 };
 
 /**
+ * Fence a resumed guest into a fresh resource generation before it can accept
+ * work. The global native event sequence remains continuous across generations.
+ */
+export const advanceSandboxModelGeneration = (
+  state: SandboxModelState,
+  nextGeneration: number,
+): SandboxModelState => {
+  if (state.lifecycle !== "resuming" || state.acceptingWork || state.guestState !== "starting") {
+    return refuse(
+      "invalid_transition",
+      "generation advance requires a non-accepting resuming resource",
+    );
+  }
+  if (nextGeneration !== state.resourceGeneration + 1) {
+    return refuse(
+      "generation_mismatch",
+      `expected generation ${state.resourceGeneration + 1}, received ${nextGeneration}`,
+    );
+  }
+  return { ...state, resourceGeneration: nextGeneration };
+};
+
+/**
  * Exhaustively explores the bounded transition graph to the requested depth.
  * This is intentionally deterministic and dependency-free so the same model
  * can be reused by CI and future TLA+/Alloy correspondence checks.
  */
 export const enumerateSandboxModel = (depth: number): ReadonlyArray<SandboxModelState> => {
   const kinds: ReadonlyArray<SandboxModelEvent["kind"]> = [
+    "ProvisionRequested",
     "GuestReady",
     "RuntimeStarted",
     "RuntimeSettled",

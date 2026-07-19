@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applySandboxModelEvent,
+  advanceSandboxModelGeneration,
   enumerateSandboxModel,
   initialSandboxModelState,
   sandboxInvariantViolations,
@@ -51,6 +52,48 @@ describe("managed sandbox lifecycle model", () => {
         sequence: 2,
       }),
     ).toThrowError(/sequence/);
+  });
+
+  it("fences resume into one fresh generation before guest readiness", () => {
+    let state = initialSandboxModelState(4);
+    state = applySandboxModelEvent(state, {
+      kind: "GuestReady",
+      resourceGeneration: 4,
+      sequence: 1,
+    });
+    state = applySandboxModelEvent(state, {
+      kind: "StopRequested",
+      resourceGeneration: 4,
+      sequence: 2,
+    });
+    state = applySandboxModelEvent(state, {
+      kind: "FilesystemCheckpointed",
+      resourceGeneration: 4,
+      sequence: 3,
+    });
+    state = applySandboxModelEvent(state, {
+      kind: "GuestStopped",
+      resourceGeneration: 4,
+      sequence: 4,
+    });
+    state = applySandboxModelEvent(state, {
+      kind: "ResumeRequested",
+      resourceGeneration: 4,
+      sequence: 5,
+    });
+
+    expect(() => advanceSandboxModelGeneration(state, 6)).toThrowError(/expected generation 5/);
+    state = advanceSandboxModelGeneration(state, 5);
+    state = applySandboxModelEvent(state, {
+      kind: "GuestReady",
+      resourceGeneration: 5,
+      sequence: 6,
+    });
+    expect(state).toMatchObject({
+      lifecycle: "ready",
+      resourceGeneration: 5,
+      acceptingWork: true,
+    });
   });
 
   it("keeps every reachable state valid in the bounded graph", () => {

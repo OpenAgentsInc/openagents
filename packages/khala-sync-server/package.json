@@ -21,7 +21,7 @@
     "compact": "node --import tsx scripts/compact.ts",
     "load-test": "node --import tsx scripts/load-test.ts",
     "migrate": "node --import tsx scripts/migrate.ts",
-    "test": "vp test --run",
+    "test": "vp test --run packages/khala-sync-server/src packages/khala-sync-server/scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit",
     "capture": "node --import tsx scripts/capture.ts",
     "check:pending-migrations": "node --import tsx scripts/check-pending-migrations.ts",
@@ -30,6 +30,7 @@
   "dependencies": {
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/postgres-runtime": "workspace:*",
     "effect": "catalog:",
