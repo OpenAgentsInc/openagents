@@ -13,11 +13,11 @@
 
 .oa-ide-project-semantic-function,
 .oa-ide-project-semantic-method {
-  color: #7aa2f7;
+  color: #3b82f6;
 }
 
 .oa-ide-project-semantic-parameter,
 .oa-ide-project-semantic-variable,
 .oa-ide-project-semantic-property {
-  color: #c0caf5;
+  color: #eef3ff;
 }

@@ -19,9 +19,11 @@ import {
   preferencesRootAttributes,
   reduceMotionAttributeValue,
   themeForPreferences,
+  khalaEditorDesktopTheme,
   tokyoNightDesktopTheme,
 } from "../src/desktop-preferences-effects.ts"
 import { khalaTheme } from "@effect-native/tokens"
+import { khalaEditorDesktopThemeProjection } from "../src/ide/khala-editor-theme.ts"
 import { tokyoNightDesktopThemeProjection } from "../src/ide/tokyo-night-theme.ts"
 
 const dirs: string[] = []
@@ -295,7 +297,8 @@ describe("preferences effects (density / font / reduced-motion)", () => {
     })
     expect(theme.typeScale.body.fontSize).toBeGreaterThan(khalaTheme.typeScale.body.fontSize)
     expect(theme.spacing["4"]).toBeLessThan(khalaTheme.spacing["4"])
-    expect(theme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
+    expect(theme.color).toBe(khalaEditorDesktopThemeProjection.effectNative)
+    expect(khalaEditorDesktopTheme.color).toBe(khalaEditorDesktopThemeProjection.effectNative)
     expect(tokyoNightDesktopTheme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
   })
 })

@@ -17,6 +17,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { radiusTokens, spacingTokens } from "@effect-native/tokens"
+import { khalaEditorDesktopThemeProjection } from "../ide/khala-editor-theme.ts"
 import { tokyoNightDesktopThemeProjection } from "../ide/tokyo-night-theme.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 
@@ -36,7 +37,7 @@ const sharedWorkbenchSourcePath = path.resolve(rendererDir, "../../../../package
 
 /**
  * Files allowed to carry raw color values. theme.ts is the single theme
- * module (it re-exports the Tokyo Night projection and is where any future desktop-scoped
+ * module (it re-exports the Khala default and is where any future desktop-scoped
  * color value would live); test files assert against literals.
  */
 const colorAllowlist = new Set(["theme.ts"])
@@ -91,10 +92,11 @@ describe("design conformance (a): no raw color literals in renderer modules", ()
     expect(css).not.toMatch(/--color-(?:blue|red|slate|gray)-/)
   })
 
-  test("the only desktop theme stays the pinned Tokyo Night projection", () => {
-    expect(openagentsDesktopTheme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
-    expect(openagentsDesktopTheme.color.background).toBe("#1a1b26")
-    expect(openagentsDesktopTheme.color.accent).toBe("#7aa2f7")
+  test("the mounted desktop theme is Khala editor with Tokyo Night retained as fallback", () => {
+    expect(openagentsDesktopTheme.color).toBe(khalaEditorDesktopThemeProjection.effectNative)
+    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
+    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+    expect(tokyoNightDesktopThemeProjection.palette.background).toBe("#1a1b26")
   })
 
   test("macOS integrated chrome uses the shared control and spacing scales", () => {

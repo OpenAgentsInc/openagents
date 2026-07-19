@@ -8,9 +8,9 @@
  *
  * Scope note (honest, per the issue's nine listed keys):
  * - `theme` is intentionally NOT a preference: the app is the single fixed
- *   dark Tokyo Night projection (see
- *   `openagents_desktop.ide_monaco_document_runtime.v1`) with no light variant
- *   and no runtime theme switch. It is a fixed product fact, not a mutable field.
+ *   dark Khala editor projection, with Tokyo Night retained as a built-in
+ *   fallback, no light variant, and no runtime theme switch. The mounted
+ *   default is a fixed product fact, not a mutable field.
  * - `keybindings` already have a typed durable store (`desktop-command-bindings`
  *   → `<userData>/commands/bindings.json`); this document does not duplicate
  *   them, it references that store as the authority.

@@ -5,12 +5,12 @@
  * inert stored value:
  *
  * - `fontScale` and `density` produce a SCALED copy of the fixed product
- *   theme (Tokyo Night colors over the shared type-scale, spacing, and control
+ *   theme (Khala editor colors over the shared type-scale, spacing, and control
  *   tokens for density). The renderer emits every scaled token as a `--en-*`
  *   CSS variable, so passing the scaled theme to the Effect Native DOM
  *   renderer / `setTheme` genuinely resizes the whole app through the
- *   existing token pipeline. The one Tokyo Night color identity is untouched
- *   (single-theme policy) — only sizing scales.
+ *   existing token pipeline. The default Khala color identity is untouched —
+ *   only sizing scales. Tokyo Night remains a code-owned fallback projection.
  * - `reducedMotion` produces a root data attribute the app CSS honors
  *   (`:root[data-en-reduce-motion="true"]`) so an explicit user override works
  *   regardless of the OS `prefers-reduced-motion` setting; `system` leaves the
@@ -27,12 +27,21 @@ import type {
   DesktopPreferences,
   DesktopReducedMotion,
 } from "./desktop-preferences-contract.ts"
-import { tokyoNightDesktopThemeProjection } from "./ide/tokyo-night-theme.ts"
+import {
+  defaultDesktopEditorThemeProjection,
+  fallbackDesktopEditorThemeProjection,
+} from "./ide/desktop-editor-themes.ts"
 
-/** Tokyo Night is installed before the first workbench/editor paint. */
+/** Khala editor is installed before the first workbench/editor paint. */
+export const khalaEditorDesktopTheme: Theme = {
+  ...khalaTheme,
+  color: defaultDesktopEditorThemeProjection.effectNative,
+}
+
+/** Retained built-in fallback; it is not the default mounted theme. */
 export const tokyoNightDesktopTheme: Theme = {
   ...khalaTheme,
-  color: tokyoNightDesktopThemeProjection.effectNative,
+  color: fallbackDesktopEditorThemeProjection.effectNative,
 }
 
 /** Multiplier applied to type-scale font/line tokens. */
@@ -107,9 +116,9 @@ export const applyPreferencesToTheme = (
   return { ...base, typeScale, spacing, control }
 }
 
-/** The scaled theme for a full preferences document, from fixed Tokyo Night. */
+/** The scaled theme for a full preferences document, from the Khala default. */
 export const themeForPreferences = (preferences: DesktopPreferences): Theme =>
-  applyPreferencesToTheme(tokyoNightDesktopTheme, {
+  applyPreferencesToTheme(khalaEditorDesktopTheme, {
     fontScale: preferences.appearance.fontScale,
     density: preferences.appearance.density,
   })

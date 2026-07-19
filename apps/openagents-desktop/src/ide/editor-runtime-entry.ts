@@ -40,6 +40,7 @@ import {
   type IdeMonacoProjectLanguageProjection,
 } from "./language-contract.ts"
 import { IdeServiceGenerationSchema } from "./project-contract.ts"
+import { khalaEditorMonacoThemeData } from "./khala-editor-theme.ts"
 import { tokyoNightMonacoThemeData } from "./tokyo-night-theme.ts"
 
 const workerUrls: Readonly<Record<string, string>> = {
@@ -78,7 +79,8 @@ globalThis.MonacoEnvironment = {
 }
 
 monaco.editor.defineTheme("openagents-tokyo-night", tokyoNightMonacoThemeData())
-monaco.editor.setTheme("openagents-tokyo-night")
+monaco.editor.defineTheme("openagents-khala-editor", khalaEditorMonacoThemeData())
+monaco.editor.setTheme("openagents-khala-editor")
 
 type ModelEntry = {
   readonly model: monaco.editor.ITextModel
@@ -620,7 +622,7 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim, onLo
   modelEntry.views.add(viewKey)
   const editor = monaco.editor.create(host, {
     model: modelEntry.model,
-    theme: "openagents-tokyo-night",
+    theme: "openagents-khala-editor",
     automaticLayout: true,
     ariaLabel: `Code editor for ${input.pathLabel}`,
     accessibilitySupport: input.editorOptions.accessibilitySupport ? "on" : "off",

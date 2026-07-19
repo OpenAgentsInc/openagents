@@ -273,7 +273,7 @@ const defaults: ReadonlyArray<Readonly<{ id: IdeEditorSettingId; value: IdeEdito
   { id: "editor.renderWhitespace", value: { _tag: "String", value: "selection" } },
   { id: "editor.rulers", value: { _tag: "Integers", value: [80, 120] } },
   { id: "editor.stickyScroll", value: { _tag: "Boolean", value: true } },
-  { id: "workbench.theme", value: { _tag: "String", value: "tokyo-night" } },
+  { id: "workbench.theme", value: { _tag: "String", value: "khala-editor" } },
 ]
 
 export const IdeEditorSettingsStateSchema = Schema.Struct({

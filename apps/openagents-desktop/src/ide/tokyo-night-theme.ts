@@ -10,9 +10,13 @@ const colorFields = <const Keys extends ReadonlyArray<string>>(keys: Keys) =>
     readonly [Key in Keys[number]]: typeof HexColorSchema;
   };
 
-export const TokyoNightThemeSchemaVersion = Schema.Literal(
+export const DesktopThemeProjectionSchemaVersion = Schema.Literals([
   "openagents.desktop.tokyo-night-projection.v1",
-);
+  "openagents.desktop.khala-editor-projection.v1",
+]);
+
+/** Compatibility export retained for the admitted Tokyo Night fallback. */
+export const TokyoNightThemeSchemaVersion = DesktopThemeProjectionSchemaVersion;
 
 export const TokyoNightPaletteSchema = Schema.Struct({
   ...colorFields([
@@ -82,7 +86,7 @@ export const TokyoNightMonacoProjectionSchema = Schema.Struct({
 export type TokyoNightMonacoProjection = typeof TokyoNightMonacoProjectionSchema.Type;
 
 export const TokyoNightPierreProjectionSchema = Schema.Struct({
-  themeName: Schema.Literal("openagents-tokyo-night"),
+  themeName: Schema.Literals(["openagents-tokyo-night", "openagents-khala-editor"]),
   cssVariables: Schema.Struct({
     background: HexColorSchema,
     foreground: HexColorSchema,
@@ -142,17 +146,29 @@ const semanticSurfaceSchema = Schema.Struct({
 });
 
 export const DesktopThemeProjectionSchema = Schema.Struct({
-  schemaVersion: TokyoNightThemeSchemaVersion,
-  id: Schema.Literal("tokyo-night"),
+  schemaVersion: DesktopThemeProjectionSchemaVersion,
+  id: Schema.Literals(["tokyo-night", "khala-editor"]),
   kind: Schema.Literal("owned_static_data"),
   initializedBeforeEditorPaint: Schema.Literal(true),
   recreatesModelsOrSessions: Schema.Literal(false),
   provenance: Schema.Struct({
-    upstream: Schema.Literal("https://github.com/tokyo-night/tokyo-night-vscode-theme"),
-    sourceCommit: Schema.Literal("7c0f11eaef322f293621ca7befe462214b7ea468"),
-    sourceFile: Schema.Literal("themes/tokyo-night-color-theme.json"),
+    upstream: Schema.Literals([
+      "https://github.com/tokyo-night/tokyo-night-vscode-theme",
+      "repository://@effect-native/tokens/khalaTheme",
+    ]),
+    sourceCommit: Schema.Literals([
+      "7c0f11eaef322f293621ca7befe462214b7ea468",
+      "467bde0760d052ee2f4a8fa678bb2f1f6bf200d8",
+    ]),
+    sourceFile: Schema.Literals([
+      "themes/tokyo-night-color-theme.json",
+      "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
+    ]),
     license: Schema.Literal("MIT"),
-    palettePolicy: Schema.Literal("data-only-curated-semantic-projection"),
+    palettePolicy: Schema.Literals([
+      "data-only-curated-semantic-projection",
+      "repository-owned-khala-semantic-projection",
+    ]),
   }),
   accessibility: Schema.Struct({
     adjustedForegroundFaint: Schema.Literal(true),
@@ -375,40 +391,37 @@ export const tokyoNightDesktopThemeProjection = DesktopThemeProjectionSchema.mak
 });
 
 /** Data-only Monaco projection; importing this file never imports Monaco. */
-export const tokyoNightMonacoThemeData = () => ({
-  base: tokyoNightDesktopThemeProjection.monaco.base,
-  inherit: tokyoNightDesktopThemeProjection.monaco.inherit,
-  rules: tokyoNightDesktopThemeProjection.monaco.rules.map((rule) => ({
+export const monacoThemeDataForProjection = (projection: DesktopThemeProjection) => ({
+  base: projection.monaco.base,
+  inherit: projection.monaco.inherit,
+  rules: projection.monaco.rules.map((rule) => ({
     token: rule.token,
     foreground: rule.foreground.slice(1),
     fontStyle: rule.fontStyle,
   })),
   colors: {
-    "editor.background": tokyoNightDesktopThemeProjection.monaco.colors.editorBackground,
-    "editor.foreground": tokyoNightDesktopThemeProjection.monaco.colors.editorForeground,
-    "editorCursor.foreground": tokyoNightDesktopThemeProjection.monaco.colors.cursor,
-    "editorLineNumber.foreground": tokyoNightDesktopThemeProjection.monaco.colors.lineNumber,
-    "editorLineNumber.activeForeground":
-      tokyoNightDesktopThemeProjection.monaco.colors.activeLineNumber,
-    "editor.lineHighlightBackground": tokyoNightDesktopThemeProjection.monaco.colors.lineHighlight,
-    "editor.selectionBackground": tokyoNightDesktopThemeProjection.monaco.colors.selection,
-    "editor.inactiveSelectionBackground":
-      tokyoNightDesktopThemeProjection.monaco.colors.inactiveSelection,
-    "editor.findMatchBackground": tokyoNightDesktopThemeProjection.monaco.colors.findMatch,
-    "editor.findMatchBorder": tokyoNightDesktopThemeProjection.monaco.colors.findMatchBorder,
-    focusBorder: tokyoNightDesktopThemeProjection.monaco.colors.focusBorder,
-    "editorGutter.addedBackground": tokyoNightDesktopThemeProjection.monaco.colors.gutterAdded,
-    "editorGutter.modifiedBackground":
-      tokyoNightDesktopThemeProjection.monaco.colors.gutterModified,
-    "editorGutter.deletedBackground": tokyoNightDesktopThemeProjection.monaco.colors.gutterDeleted,
-    "editorError.foreground": tokyoNightDesktopThemeProjection.monaco.colors.error,
-    "editorWarning.foreground": tokyoNightDesktopThemeProjection.monaco.colors.warning,
-    "editorInfo.foreground": tokyoNightDesktopThemeProjection.monaco.colors.info,
+    "editor.background": projection.monaco.colors.editorBackground,
+    "editor.foreground": projection.monaco.colors.editorForeground,
+    "editorCursor.foreground": projection.monaco.colors.cursor,
+    "editorLineNumber.foreground": projection.monaco.colors.lineNumber,
+    "editorLineNumber.activeForeground": projection.monaco.colors.activeLineNumber,
+    "editor.lineHighlightBackground": projection.monaco.colors.lineHighlight,
+    "editor.selectionBackground": projection.monaco.colors.selection,
+    "editor.inactiveSelectionBackground": projection.monaco.colors.inactiveSelection,
+    "editor.findMatchBackground": projection.monaco.colors.findMatch,
+    "editor.findMatchBorder": projection.monaco.colors.findMatchBorder,
+    focusBorder: projection.monaco.colors.focusBorder,
+    "editorGutter.addedBackground": projection.monaco.colors.gutterAdded,
+    "editorGutter.modifiedBackground": projection.monaco.colors.gutterModified,
+    "editorGutter.deletedBackground": projection.monaco.colors.gutterDeleted,
+    "editorError.foreground": projection.monaco.colors.error,
+    "editorWarning.foreground": projection.monaco.colors.warning,
+    "editorInfo.foreground": projection.monaco.colors.info,
   },
 });
 
-export const tokyoNightPierreCssVariables = () => {
-  const colors = tokyoNightDesktopThemeProjection.pierre.cssVariables;
+export const pierreCssVariablesForProjection = (projection: DesktopThemeProjection) => {
+  const colors = projection.pierre.cssVariables;
   return {
     "--diffs-bg": colors.background,
     "--diffs-fg": colors.foreground,
@@ -425,5 +438,11 @@ export const tokyoNightPierreCssVariables = () => {
     "--diffs-fg-conflict-marker-override": colors.conflictMarkerForeground,
   } as const;
 };
+
+export const tokyoNightMonacoThemeData = () =>
+  monacoThemeDataForProjection(tokyoNightDesktopThemeProjection);
+
+export const tokyoNightPierreCssVariables = () =>
+  pierreCssVariablesForProjection(tokyoNightDesktopThemeProjection);
 
 export const decodeDesktopThemeProjection = Schema.decodeUnknownSync(DesktopThemeProjectionSchema);

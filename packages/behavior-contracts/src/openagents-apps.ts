@@ -75,7 +75,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This admits exact Monaco and Pierre Diffs artifacts plus an owned Tokyo Night data projection and a first-party public-Monaco Vim contract. It does not make a widget canonical for files, grants, Git, processes, approvals, persistence, proposals, or receipts; it does not ship the opt-in admission fixture on the ordinary renderer path; and it does not claim the IDE-02 through IDE-07 production integrations.",
+        "This admits exact Monaco and Pierre Diffs artifacts plus an owned local theme registry and a first-party public-Monaco Vim contract. Khala editor is the fixed default and Tokyo Night the retained fallback. It does not make a widget canonical for files, grants, Git, processes, approvals, persistence, proposals, or receipts; it does not ship the opt-in admission fixture on the ordinary renderer path; and it does not admit remote or executable themes.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_package_admission.v1",
       enforcementTier: "test-sweep",
@@ -84,6 +84,8 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "apps/openagents-desktop/src/ide/package-admission.test.ts",
         "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
         "apps/openagents-desktop/src/ide/tokyo-night-theme.ts",
+        "apps/openagents-desktop/src/ide/khala-editor-theme.ts",
+        "apps/openagents-desktop/src/ide/desktop-editor-themes.ts",
         "apps/openagents-desktop/src/ide/vim-mode-contract.ts",
         "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json",
         "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-audit.json",
@@ -94,7 +96,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "Decodes every package/Vim/theme/projection decision, proves exact production pins, rejects both evaluated third-party Vim adapters, keeps authority fields outside the Pierre projection, checks Tokyo Night accessibility/provenance, and validates all generated receipts.",
+            "Decodes every package/Vim/theme/projection decision, proves exact production pins, rejects both evaluated third-party Vim adapters, keeps authority fields outside the Pierre projection, checks Khala-default/Tokyo-fallback accessibility and provenance, and validates all generated receipts.",
           id: "openagents_desktop.ide_package_admission.contract",
           kind: "bun-test",
           mode: "unit",
@@ -204,13 +206,15 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This makes Monaco the production editing mechanic behind one schema-first, Effect-owned document state and makes Tokyo Night the one initial workbench theme. Monaco receives only opaque document/view refs, relative display labels, bounded text/options, and typed callbacks; it receives no root, filesystem grant, preload bridge, Git/process/network/persistence authority, or canonical success claim. Vim is a first-party controller over public Monaco commands, not a second document model. The legacy CodeEditor stub remains only in the explicitly named compatibility renderer and tests. This does not claim LSP, diagnostics, formatting, debugging, collaboration, remote editing, or arbitrary theme installation.",
+        "This makes Monaco the production editing mechanic behind one schema-first, Effect-owned document state. The current owner-selected Khala editor projection is the mounted default and Tokyo Night remains a built-in fallback; neither permits arbitrary theme installation. Monaco receives only opaque document/view refs, relative display labels, bounded text/options, and typed callbacks; it receives no root, filesystem grant, preload bridge, Git/process/network/persistence authority, or canonical success claim. Vim is a first-party controller over public Monaco commands, not a second document model. The legacy CodeEditor stub remains only in the explicitly named compatibility renderer and tests. This does not claim debugging, collaboration, remote editing, or arbitrary theme installation.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_monaco_document_runtime.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "apps/openagents-desktop/src/ide/monaco-document-contract.ts",
         "apps/openagents-desktop/src/ide/editor-runtime-entry.ts",
+        "apps/openagents-desktop/src/ide/khala-editor-theme.ts",
+        "apps/openagents-desktop/src/ide/desktop-editor-themes.ts",
         "apps/openagents-desktop/src/ide/monaco-runtime-loader.ts",
         "apps/openagents-desktop/src/renderer/monaco-editor-host.tsx",
         "apps/openagents-desktop/src/renderer/workspace-editor.ts",
@@ -269,14 +273,14 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "enforced",
       statement:
-        "The production Desktop editor uses lazy offline Monaco instead of a textarea while Effect-owned schema-derived document state remains canonical; opaque grant-scoped identity survives path changes, generations and sequences fence stale events, edits/save-all/conflicts/recovery/split views stay coherent, Vim is built in and durable but off by default, and Tokyo Night is installed before the native window, workbench, Monaco, Pierre, and future terminal paint from one pinned projection.",
+        "The production Desktop editor uses lazy offline Monaco instead of a textarea while Effect-owned schema-derived document state remains canonical; opaque grant-scoped identity survives path changes, generations and sequences fence stale events, edits/save-all/conflicts/recovery/split views stay coherent, Vim is built in and durable but off by default, and the Khala editor projection is installed before the native window, workbench, Monaco, Pierre, and terminal paint while Tokyo Night remains a validated fallback.",
       surface: "openagents-desktop",
       verification:
         "The normal Desktop and behavior-contract sweeps run the contract/state/DOM/accessibility/preferences/command/boundary suites. verify:ide-03 rebuilds and audits the lazy production island, emits a schema-decoded public-safe benchmark receipt, executes the packaged Electron journey, and requires all Monaco models, views, workers, and listeners to reach zero after disposal.",
     },
     {
       authorityBoundary:
-        "This contract owns daily workbench projection and orchestration only. The path index remains the source of admitted project/root/worktree identity; the document reducer remains canonical for bytes, dirty state, and recovery; the workspace service remains the only filesystem authority; Monaco receives validated display/options data only; and Pierre receives a bounded projection plus typed commands. Symbol results are populated only by IDE-06 exact-generation receipts, Tokyo Night is the only admitted theme, and neither React nor these workbench schemas acquire roots, filesystem callbacks, process authority, or arbitrary Monaco contribution access.",
+        "This contract owns daily workbench projection and orchestration only. The path index remains the source of admitted project/root/worktree identity; the document reducer remains canonical for bytes, dirty state, and recovery; the workspace service remains the only filesystem authority; Monaco receives validated display/options data only; and Pierre receives a bounded projection plus typed commands. Symbol results are populated only by IDE-06 exact-generation receipts, Khala editor is the fixed default with Tokyo Night retained as fallback, and neither React nor these workbench schemas acquire roots, filesystem callbacks, process authority, arbitrary theme input, or arbitrary Monaco contribution access.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_daily_workbench.v1",
       enforcementTier: "test-sweep",
@@ -332,7 +336,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "enforced",
       statement:
-        "Desktop provides one schema-first daily IDE workbench: exact project/root/worktree/document navigation and explicit stale history; bounded Quick Open, search-origin reuse, breadcrumbs, and honest symbol placeholders; preview/pinned tabs, dirty close operations, closed-tab recovery, shared-document split groups, and restart restore; one stable command and durable keybinding graph with visible source/context/platform/Vim precedence; complete typed grant-scoped Explorer operations; and bounded default/user/workspace editor settings projected through an allowlist into Monaco with Tokyo Night fixed.",
+        "Desktop provides one schema-first daily IDE workbench: exact project/root/worktree/document navigation and explicit stale history; bounded Quick Open, search-origin reuse, breadcrumbs, and honest symbol placeholders; preview/pinned tabs, dirty close operations, closed-tab recovery, shared-document split groups, and restart restore; one stable command and durable keybinding graph with visible source/context/platform/Vim precedence; complete typed grant-scoped Explorer operations; and bounded default/user/workspace editor settings projected through an allowlist into Monaco with Khala editor fixed as default and Tokyo Night retained as fallback.",
       surface: "openagents-desktop",
       verification:
         "verify:ide-04 builds Desktop, emits the workbench benchmark, typechecks, runs contract/editor/browser/Pierre/command/binding/DOM/accessibility/behavior tests, and checks IDE boundaries. The packaged LaunchServices journey additionally proves Quick Open, preview/pin, split, recovery v4, fixed private-scheme Monaco, and root withholding in the signed-shape application artifact.",
@@ -372,7 +376,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "Mounts the production review workspace through the owned Pierre adapter with explicit base/target/source labels, unified/split controls, context bounds, line selection, annotations, open-in-editor, disclosure actions, non-color semantics, Tokyo Night, and no custom React hunk renderer.",
+            "Mounts the production review workspace through the owned Pierre adapter with explicit base/target/source labels, unified/split controls, context bounds, line selection, annotations, open-in-editor, disclosure actions, non-color semantics, the Khala editor default plus registered Tokyo Night fallback, and no custom React hunk renderer.",
           id: "openagents_desktop.ide_versioned_pierre_review.dom",
           kind: "bun-test",
           mode: "dom",
@@ -398,7 +402,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "Desktop renders every admitted comparison through one app-owned @pierre/diffs adapter over a schema-first versioned source: Git HEAD/index/worktree, saved/draft, external conflict, checkpoint/current, exact-base agent proposal, and candidate A/B remain semantically distinct; explicit project/root/worktree/file/document refs, base/target versions and generations, encoding/EOL/content-safety state, origin, actions, and ready/stale/unavailable lifecycle prevent text-label authority; selected bounded context and annotations are keyboard/screen-reader legible; and any mutating action revalidates exact generations before dispatching a canonical typed command, while stale or unavailable bases refuse.",
       surface: "openagents-desktop",
       verification:
-        "verify:ide-05 builds Desktop, emits and decodes the 500-file benchmark/teardown receipt, typechecks, runs review/project/Git/host/refusal/Pierre/DOM/accessibility/behavior/boundary suites, and checks IDE boundaries. The packaged offline journey renders the eight-source fixture corpus from the ASAR with Tokyo Night and no remote theme/code dependency before recording source-class and teardown evidence.",
+        "verify:ide-05 builds Desktop, emits and decodes the 500-file benchmark/teardown receipt, typechecks, runs review/project/Git/host/refusal/Pierre/DOM/accessibility/behavior/boundary suites, and checks IDE boundaries. The packaged offline journey renders the eight-source fixture corpus from the ASAR with the owned local theme registry and no remote theme/code dependency before recording source-class and teardown evidence.",
     },
     {
       authorityBoundary:

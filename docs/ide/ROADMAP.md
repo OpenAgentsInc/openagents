@@ -99,9 +99,9 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 | Effect Native editor seam   | production uses the app-local React Monaco host; `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
 | repository tree             | IDE-02/04 ship the complete Effect-owned, generation-fenced Pierre projection plus mouse/keyboard navigation, reveal, and durable workbench integration | IDE-02 and IDE-04 delivered                |
 | review                      | IDE-05 ships one eight-variant versioned review source and both production React surfaces render through the projection-only `@pierre/diffs@1.2.12` adapter | IDE-08 adds real proposals; IDE-12 adds safe SCM mutation |
-| themes                      | IDE-03 mounts owned Tokyo Night from native window/first paint through chrome, Pierre, and Monaco                             | IDE-18 adds broader theme modes            |
+| themes                      | The owner-selected Khala editor projection now mounts from native window/first paint through chrome, Pierre, Monaco, and terminal; Tokyo Night remains the built-in fallback | IDE-18 adds broader user-selectable modes  |
 | Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
-| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared projections, cancellation, restart, and stale-result refusal; IDE-07 accepts the integrated path | later languages remain explicit gaps       |
+| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal; IDE-07 accepts the integrated path | later languages remain explicit gaps       |
 | terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
 | tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
@@ -178,9 +178,9 @@ Desktop keeps the existing shell and adds one first-class **Editor** mode:
 
 The initial opinionated defaults are:
 
-- **Tokyo Night for everyone.** It is the only initially supported IDE and
-  workbench theme. There is no requirement to ship a theme picker before the
-  first useful editor.
+- **Khala editor by default.** The owner-selected Khala blue-black projection
+  is the fixed IDE/workbench default. Tokyo Night remains a built-in fallback.
+  There is no user-facing theme picker before IDE-18.
 - **Vim mode is built in and off by default.** A user can toggle it in
   Settings, the command palette, or the editor status control. The choice
   persists and applies to every Editor-mode Monaco view.
@@ -192,10 +192,11 @@ The initial opinionated defaults are:
 - no remote semantic indexing, telemetry expansion, computer use, autosave,
   format-on-save, or agent mutation enabled merely because the UI exists.
 
-Tokyo Night is the initial product decision, not the end of the accessibility
-contract. Light, high-contrast dark/light, and system-following modes move to
-IDE-18 before any claim of complete theme/accessibility parity. They do not
-block the first daily-use editor.
+Khala editor is the current product decision, with Tokyo Night retained as the
+rollback/fallback projection. Light, high-contrast dark/light,
+system-following, and user selection move to IDE-18 before any claim of
+complete theme/accessibility parity. They do not block the first daily-use
+editor.
 
 ## Built-in Vim contract
 
@@ -245,11 +246,12 @@ public commands—not a dependency on VS Code's extension host.
 6. Complete tree, editor, Problems, diff, terminal, dialog, and agent-review
    journeys by keyboard with Vim on and off.
 
-## Tokyo Night contract
+## Khala editor and Tokyo Night fallback contract
 
-Tokyo Night becomes one owned `DesktopThemeProjection`, not separate lookalike
-themes chosen independently by each library. The projection maps a pinned,
-license-reviewed Tokyo Night palette into:
+Khala editor and Tokyo Night are owned `DesktopThemeProjection` values in one
+typed registry, not lookalike themes chosen independently by each library.
+Khala editor is the fixed mounted default; Tokyo Night is the built-in
+fallback. The projections map their reviewed semantic palettes into:
 
 - Effect Native/app-chrome semantic tokens;
 - Monaco base colors and syntax token rules;
@@ -266,11 +268,11 @@ theme contributions are never admitted. Theme initialization happens before
 the first Editor paint, causes no flash of the old palette, works offline, and
 does not destroy models, selection, scroll, terminals, or diffs.
 
-Initial acceptance requires WCAG contrast checks for the semantic text and
-focus roles already covered by Desktop guarantees, visual fixtures for chrome,
-tree, source, diff, Problems, terminal, and agent states, and a packaged proof
-that only the Tokyo Night projection is active. Broader theme import remains an
-isolated extension capability, not part of the first editor.
+Acceptance requires WCAG contrast checks for both projections' semantic text
+and focus roles, visual fixtures for chrome, tree, source, diff, Problems,
+terminal, and agent states, and a packaged proof that Khala editor paints by
+default while Tokyo Night remains locally registered. Broader theme import
+remains an isolated extension capability, not part of the first editor.
 
 ## Target service and package architecture
 
@@ -700,8 +702,8 @@ through signed provenance, capability manifests, guest isolation, host-effect
 brokering, compatibility, review, rollback, and data inventory.
 
 There is no trusted in-process VS Code-compatible extension host and no binary
-ABI parity promise. Tokyo Night remains the built-in default even after safe
-declarative themes are admitted.
+ABI parity promise. Khala editor remains the built-in default and Tokyo Night
+the built-in fallback even after safe declarative themes are admitted.
 
 Exit: discover/install/import/export/update/disable/remove/team-distribute
 journeys work without untrusted code entering the shell or Effect engine.
@@ -793,7 +795,7 @@ It maps every required Cursor family to its main closure packets.
 | Cursor capability family    | Current OpenAgents footing                                                                       | Closure packets           |
 | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
 | product shells              | agent-first Desktop plus Monaco, complete navigation/configuration, versioned Pierre review, and the IDE-07 packaged basic-IDE gate exist | IDE-17                    |
-| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Tokyo Night, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist; later run/SCM/theme breadth remains | IDE-10–12/18              |
+| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Khala editor default with Tokyo Night fallback, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist; later run/SCM/theme breadth remains | IDE-10–12/18              |
 | AI editing                  | harness editing exists outside a complete editor-native loop                                     | IDE-08/09                 |
 | repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
 | conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
@@ -850,7 +852,7 @@ The release-blocking integrated corpus must eventually cover:
 
 1. Finder-to-input-ready Monaco before secondary hydration.
 2. One document opened from every navigation origin.
-3. Tokyo Night across every mounted IDE projection.
+3. Khala editor across every default-mounted IDE projection, with Tokyo Night fallback registration intact.
 4. Vim toggle, editing, conflict, splits, restart, and disable cleanup.
 5. Dirty split recovery plus a pending proposal.
 6. Diagnostic-to-agent-to-versioned-proposal-to-test evidence.

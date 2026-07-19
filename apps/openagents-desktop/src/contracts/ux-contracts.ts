@@ -452,7 +452,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "ALL styles harmonized with apps-sdk-ui while preserving our starcraft design",
         authorityBoundary:
-          "OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The only desktop theme is the pinned Tokyo Night semantic projection. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.",
+          "OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The mounted default is the repository-owned Khala editor semantic projection, with Tokyo Night retained as a built-in fallback and no mutable theme marketplace. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/app.css",
           "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
@@ -467,7 +467,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
             description:
-              "Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the pinned Tokyo Night projection is the one mounted palette.",
+              "Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the Khala editor projection is the mounted palette while Tokyo Night remains a validated fallback.",
           },
         ],
         verification:
@@ -2813,7 +2813,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app",
         authorityBoundary:
-          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as shared @effect-native/tokens roles/groups, the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only, now the owned Tokyo Night projection admitted by IDE-01 and mounted by IDE-03; no light theme, mutable theme marketplace, 24px composer radius, backdrop-blur popover variant, 9-step lattice, or donor icons. Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
+          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as shared @effect-native/tokens roles/groups, the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark default uses the owned Khala editor projection with Tokyo Night retained as a built-in fallback; no light theme, mutable theme marketplace, 24px composer radius, backdrop-blur popover variant, 9-step lattice, or donor icons. Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
@@ -2833,12 +2833,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Mechanical conformance: (a) zero raw hex/rgb/hsl color literals in renderer modules and the host stylesheet outside the theme module; (b) spacing/radius/type style values are members of the shared token scales with a small documented numeric-dimension allowlist; (c) per-surface structural recipes — sidebar rail sections, palette on surfaceOverlay+borderSubtle+xl with chord captions, composer radius cap + recessed segmented harness track, settings panel padding/hairline, fleet chrome, inspector rail scale, tool-card shimmer keys, 240px raw wells, context-group anatomy.",
           },
           {
-            id: "chrome_design.theme_is_tokyo_night_canonical",
+            id: "chrome_design.theme_is_khala_editor_canonical",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The desktop theme uses the pinned Tokyo Night semantic colors over the canonical shared state-overlay, dim-ladder, motion, spacing, radius, and control groups; app-local palette drift remains forbidden.",
+              "The desktop theme uses the repository-owned Khala editor semantic colors over the canonical shared state-overlay, dim-ladder, motion, spacing, radius, and control groups; Tokyo Night remains a tested fallback and app-local palette drift remains forbidden.",
           },
           {
             id: "chrome_design.smoke_pixels",
@@ -3937,7 +3937,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.",
         authorityBoundary:
-          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, built-in Vim enablement, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT mutable: the app mounts the fixed pinned Tokyo Night projection; keybindings keep their existing typed store (desktop-command-bindings). Density and font resize the app through a scaled theme, reduced-motion resolves to a root attribute, and Vim is off by default but persists when toggled. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
+          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, built-in Vim enablement, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT mutable: the app mounts the fixed Khala editor projection and retains Tokyo Night as a code-owned fallback; keybindings keep their existing typed store (desktop-command-bindings). Density and font resize the app through a scaled theme, reduced-motion resolves to a root attribute, and Vim is off by default but persists when toggled. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
         evidenceRefs: [
           "https://github.com/OpenAgentsInc/openagents/issues/8704",
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
@@ -4178,16 +4178,16 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.design.khala_autopilot_foldin.v1",
-        state: "retired",
+        state: "enforced",
         surface: "openagents-desktop",
         productArea: "product theme / palette",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-16" },
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-19" },
         statement:
-          "Some recent Autopilot UI change changed my blue background to gray, undo that. The Autopilot palette needs to be kinda folded INTO Khala: use its mono/condensed ideas and generally its colors, but do not override or conflict with Khala.",
+          "Keep Tokyo Night as a backup, write a new Khala editor theme based on our Khala theme, and set that as the editor default while retaining Tokyo Night syntax highlighting and contrast discipline.",
         authorityBoundary:
-          "Retired on 2026-07-19 by the owner's newer IDE roadmap directive selecting Tokyo Night as the initial theme for everyone. The one-theme-many-hosts, shared-scale, no-Autopilot-override, and no-mutable-theme invariants remain; only the former Khala color identity is superseded by openagents_desktop.ide_monaco_document_runtime.v1.",
+          "The repository-owned Khala editor projection is the single mounted default across native-window paint, workbench chrome, Monaco, Pierre, terminal, and IDE status surfaces. Tokyo Night remains a schema-valid built-in fallback and its syntax separation informs the Khala projection. Neither projection accepts remote theme bytes, unsafe CSS, executable contributions, or renderer authority, and theme selection remains outside mutable preferences.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents-desktop/src/renderer/theme.ts",
@@ -4206,7 +4206,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
             description:
-              "Historical oracle now proves the successor Tokyo Night projection is mounted over the shared scales and no desktop module mounts the temporary autopilotTheme.",
+              "Proves the Khala editor projection is mounted over the shared scales, Tokyo Night remains available as fallback, and no desktop module mounts the temporary autopilotTheme.",
           },
           {
             id: "khala_autopilot_foldin.theme_is_canonical",
@@ -4214,7 +4214,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The theme-parity suite pins the successor Tokyo Night colors while retaining the shared radius, motion, and control scales.",
+              "The theme-parity suite pins the Khala editor colors while retaining Tokyo Night fallback coverage and the shared radius, motion, and control scales.",
           },
         ],
         verification:
@@ -4265,7 +4265,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the branded boot frame exists in index.html and every color literal in it is an exact Tokyo Night projection value — no off-palette frame can paint — and BrowserWindow backgroundColor stays the projected background.",
+              "Proves the branded boot frame exists in index.html and every color literal in it is an exact Khala editor projection value — no off-palette frame can paint — and BrowserWindow backgroundColor stays the projected background.",
           },
           {
             id: "startup.sidebar_scanning_honesty",

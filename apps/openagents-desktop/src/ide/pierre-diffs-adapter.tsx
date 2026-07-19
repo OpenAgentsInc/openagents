@@ -10,8 +10,11 @@ import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "
 
 import {
   tokyoNightDesktopThemeProjection,
-  tokyoNightPierreCssVariables,
 } from "./tokyo-night-theme.ts";
+import {
+  khalaEditorDesktopThemeProjection,
+  khalaEditorPierreCssVariables,
+} from "./khala-editor-theme.ts";
 import {
   ideReviewIntent,
   type IdeReviewIntent,
@@ -117,27 +120,31 @@ export const PierreReviewProjectionResultSchema = Schema.TaggedUnion({
 }).annotate({ identifier: "PierreReviewProjectionResult" });
 export type PierreReviewProjectionResult = typeof PierreReviewProjectionResultSchema.Type;
 
-let tokyoNightRegistered = false;
+let ownedThemesRegistered = false;
 
-const registerOwnedTokyoNightTheme = (): void => {
-  if (tokyoNightRegistered) return;
-  tokyoNightRegistered = true;
-  const projection = tokyoNightDesktopThemeProjection;
-  registerCustomTheme(projection.pierre.themeName, async () => ({
-    name: projection.pierre.themeName,
-    type: "dark",
-    colors: {
-      "editor.background": projection.palette.background,
-      "editor.foreground": projection.palette.foreground,
-    },
-    tokenColors: projection.monaco.rules.map((rule) => ({
-      scope: [rule.token],
-      settings: {
-        foreground: rule.foreground,
-        ...(rule.fontStyle === "" ? {} : { fontStyle: rule.fontStyle }),
+const registerOwnedEditorThemes = (): void => {
+  if (ownedThemesRegistered) return;
+  ownedThemesRegistered = true;
+  for (const projection of [
+    khalaEditorDesktopThemeProjection,
+    tokyoNightDesktopThemeProjection,
+  ]) {
+    registerCustomTheme(projection.pierre.themeName, async () => ({
+      name: projection.pierre.themeName,
+      type: "dark",
+      colors: {
+        "editor.background": projection.palette.background,
+        "editor.foreground": projection.palette.foreground,
       },
-    })),
-  }));
+      tokenColors: projection.monaco.rules.map((rule) => ({
+        scope: [rule.token],
+        settings: {
+          foreground: rule.foreground,
+          ...(rule.fontStyle === "" ? {} : { fontStyle: rule.fontStyle }),
+        },
+      })),
+    }));
+  }
 };
 
 export const decodePierreDiffProjection = Schema.decodeUnknownSync(PierreDiffProjectionSchema);
@@ -184,9 +191,9 @@ export const PierreDiffAdapter = (
     onSelectionChange?: (selection: SelectedLineRange | null) => void;
   }>,
 ): ReactNode => {
-  registerOwnedTokyoNightTheme();
+  registerOwnedEditorThemes();
   const projection = decodePierreDiffProjection(props.projection);
-  const style = tokyoNightPierreCssVariables() as CSSProperties;
+  const style = khalaEditorPierreCssVariables() as CSSProperties;
   return (
     <PatchDiff<PierreDiffAnnotation>
       patch={projection.patch}
@@ -204,7 +211,7 @@ export const PierreDiffAdapter = (
       )}
       style={style}
       options={{
-        theme: tokyoNightDesktopThemeProjection.pierre.themeName,
+        theme: khalaEditorDesktopThemeProjection.pierre.themeName,
         themeType: "dark",
         diffStyle: projection.mode,
         collapsedContextThreshold: projection.contextLines,
@@ -269,7 +276,7 @@ export const PierreDiffCollectionAdapter = (
     onObservation?: (observation: PierreDiffScaleObservation) => void;
   }>,
 ): ReactNode => {
-  registerOwnedTokyoNightTheme();
+  registerOwnedEditorThemes();
   const projection = decodePierreDiffCollectionProjection(props.projection);
   const viewRef = useRef<CodeViewHandle<string>>(null);
   const items = useMemo(
@@ -305,13 +312,13 @@ export const PierreDiffCollectionAdapter = (
       disableWorkerPool
       style={
         {
-          ...tokyoNightPierreCssVariables(),
+          ...khalaEditorPierreCssVariables(),
           height: `${projection.viewportHeight}px`,
           overflow: "auto",
         } as CSSProperties
       }
       options={{
-        theme: tokyoNightDesktopThemeProjection.pierre.themeName,
+        theme: khalaEditorDesktopThemeProjection.pierre.themeName,
         themeType: "dark",
         diffStyle: projection.mode,
         collapsedContextThreshold: projection.contextLines,

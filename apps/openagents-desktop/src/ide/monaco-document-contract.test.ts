@@ -96,6 +96,8 @@ describe("IDE-03 schema-first Monaco document boundary", () => {
     expect(main).toContain('asset.startsWith("ide-editor/")')
     expect(runtime).toContain('inmemory://openagents/')
     expect(runtime).toContain('monaco.editor.defineTheme("openagents-tokyo-night"')
+    expect(runtime).toContain('monaco.editor.defineTheme("openagents-khala-editor"')
+    expect(runtime).toContain('monaco.editor.setTheme("openagents-khala-editor")')
     expect(runtime).toContain("onDidBlurEditorWidget")
     expect(runtime).toContain("modelEntry.vimState")
     expect(runtime.indexOf('event.ctrlKey && key.toLocaleLowerCase() === "v"'))

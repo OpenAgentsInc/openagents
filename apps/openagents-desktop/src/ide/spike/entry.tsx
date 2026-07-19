@@ -118,7 +118,7 @@ const snapshot = (
   schemaVersion: "openagents.desktop.ide-package-spike.v1",
   phase,
   cycle,
-  themeId: tokyoNightDesktopThemeProjection.id,
+  themeId: "tokyo-night",
   themeBeforeEditorPaint: true,
   monaco: {
     modelCount: monaco.editor.getModels().length,

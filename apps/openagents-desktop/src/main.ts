@@ -4976,9 +4976,9 @@ const createWindow = (): BrowserWindow => {
     minWidth: 480,
     minHeight: 480,
     fullscreen: false,
-    // Tokyo Night background — mechanically pinned by the startup contract so
+    // Khala editor background — mechanically pinned by the startup contract so
     // the native window and first HTML paint cannot flash another palette.
-    backgroundColor: "#1a1b26",
+    backgroundColor: "#05070d",
     show: false,
     title: desktopApplicationName,
     icon: desktopIconPath,
@@ -7842,7 +7842,7 @@ void app.whenReady().then(async () => {
         useContentSize: true,
         show: false,
         frame: false,
-        backgroundColor: "#1a1b26",
+        backgroundColor: "#05070d",
         webPreferences: {
           partition: "openagents-ide-package-spike-memory",
           offscreen: true,
@@ -8262,8 +8262,8 @@ void app.whenReady().then(async () => {
         useContentSize: true,
         show: false,
         frame: false,
-        // Tokyo Night background, same as createWindow.
-        backgroundColor: "#1a1b26",
+        // Khala editor background, same as createWindow.
+        backgroundColor: "#05070d",
         webPreferences: {
           partition: "openagents-visual-baseline-memory",
           offscreen: true,

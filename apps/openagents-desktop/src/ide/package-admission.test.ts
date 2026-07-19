@@ -13,6 +13,12 @@ import {
   DesktopThemeProjectionSchema,
   tokyoNightDesktopThemeProjection,
 } from "./tokyo-night-theme.ts";
+import { khalaEditorDesktopThemeProjection } from "./khala-editor-theme.ts";
+import {
+  defaultDesktopEditorThemeId,
+  desktopEditorThemeRegistry,
+  fallbackDesktopEditorThemeId,
+} from "./desktop-editor-themes.ts";
 import { IdeVimEngineDecisionSchema, ide01VimDecision } from "./vim-mode-contract.ts";
 
 const appRoot = path.resolve(import.meta.dirname, "../..");
@@ -109,42 +115,45 @@ describe("IDE-01 package admission", () => {
     ]);
   });
 
-  test("uses one safe Tokyo Night projection across IDE surfaces", () => {
-    expect(
-      Exit.isSuccess(
-        Schema.decodeUnknownExit(DesktopThemeProjectionSchema)(tokyoNightDesktopThemeProjection),
-      ),
-    ).toBe(true);
-    expect(tokyoNightDesktopThemeProjection.pierre.allowUnsafeCss).toBe(false);
-    expect(tokyoNightDesktopThemeProjection.pierre.allowRemoteTheme).toBe(false);
-    expect(tokyoNightDesktopThemeProjection.monaco.colors.editorBackground).toBe(
-      tokyoNightDesktopThemeProjection.effectNative.background,
-    );
-    expect(tokyoNightDesktopThemeProjection.terminal.background).toBe(
-      tokyoNightDesktopThemeProjection.effectNative.background,
-    );
-    for (const foreground of [
-      tokyoNightDesktopThemeProjection.palette.foreground,
-      tokyoNightDesktopThemeProjection.palette.foregroundMuted,
-      tokyoNightDesktopThemeProjection.palette.foregroundFaint,
-      tokyoNightDesktopThemeProjection.palette.blue,
-      tokyoNightDesktopThemeProjection.palette.red,
-      tokyoNightDesktopThemeProjection.palette.yellow,
-      tokyoNightDesktopThemeProjection.palette.green,
-    ]) {
+  test("uses a safe Khala default and retains Tokyo Night as the owned fallback", () => {
+    expect(defaultDesktopEditorThemeId).toBe("khala-editor");
+    expect(fallbackDesktopEditorThemeId).toBe("tokyo-night");
+    expect(Object.keys(desktopEditorThemeRegistry).sort()).toEqual(["khala-editor", "tokyo-night"]);
+    for (const projection of Object.values(desktopEditorThemeRegistry)) {
       expect(
-        contrast(foreground, tokyoNightDesktopThemeProjection.palette.background),
-      ).toBeGreaterThanOrEqual(4.5);
+        Exit.isSuccess(Schema.decodeUnknownExit(DesktopThemeProjectionSchema)(projection)),
+      ).toBe(true);
+      expect(projection.pierre.allowUnsafeCss).toBe(false);
+      expect(projection.pierre.allowRemoteTheme).toBe(false);
+      expect(projection.monaco.colors.editorBackground).toBe(projection.effectNative.background);
+      expect(projection.terminal.background).toBe(projection.effectNative.background);
+      for (const foreground of [
+        projection.palette.foreground,
+        projection.palette.foregroundMuted,
+        projection.palette.foregroundFaint,
+        projection.palette.blue,
+        projection.palette.red,
+        projection.palette.yellow,
+        projection.palette.green,
+      ]) {
+        expect(contrast(foreground, projection.palette.background)).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(Object.keys(projection.surfaces).sort()).toEqual([
+        "browser",
+        "debug",
+        "output",
+        "problems",
+        "proposal",
+        "review",
+        "status",
+      ]);
     }
-    expect(Object.keys(tokyoNightDesktopThemeProjection.surfaces).sort()).toEqual([
-      "browser",
-      "debug",
-      "output",
-      "problems",
-      "proposal",
-      "review",
-      "status",
-    ]);
+    expect(khalaEditorDesktopThemeProjection.palette.background).toBe("#05070d");
+    expect(khalaEditorDesktopThemeProjection.monaco.rules.map((rule) => rule.token)).toEqual(
+      tokyoNightDesktopThemeProjection.monaco.rules.map((rule) => rule.token),
+    );
+    expect(khalaEditorDesktopThemeProjection.monaco.rules.filter((rule) => rule.token !== "function"))
+      .toEqual(tokyoNightDesktopThemeProjection.monaco.rules.filter((rule) => rule.token !== "function"));
     const provenance = readFileSync(
       path.join(appRoot, "resources", "third-party", "tokyo-night", "PROVENANCE.md"),
       "utf8",
