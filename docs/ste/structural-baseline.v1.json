@@ -51,6 +51,16 @@
       "STE-5.1": 3,
       "STE-8.1": 34
     },
+    ".agents/skills/khala-fleet/SKILL.md": {
+      "STE-2.4": 1,
+      "STE-5.1": 1,
+      "STE-8.1": 1
+    },
+    ".agents/skills/promissory/SKILL.md": {
+      "STE-2.4": 10,
+      "STE-5.1": 6,
+      "STE-8.1": 10
+    },
     "CLAUDE.md": {
       "STE-8.1": 93,
       "STE-2.4": 135,
