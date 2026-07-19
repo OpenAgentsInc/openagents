@@ -13,6 +13,11 @@ import {
 const root = resolve(import.meta.dirname, "..");
 const check = process.argv.includes("--check");
 const refreshBaseline = process.argv.includes("--refresh-baseline");
+const refreshPaths = new Set(
+  process.argv
+    .filter((argument) => argument.startsWith("--refresh-path="))
+    .map((argument) => argument.slice("--refresh-path=".length)),
+);
 const config = readCheckerConfig(root);
 const overrides = JSON.parse(
   readFileSync(`${root}/docs/ste/profile-overrides.v1.json`, "utf8"),
@@ -53,10 +58,22 @@ const baseline = Object.fromEntries(
       const current = countDiagnostics(inspectStructure(profile.path, text, profile.ste_mode));
       return [
         profile.path,
-        refreshBaseline ? current : (previousBaseline[profile.path] ?? current),
+        refreshBaseline || refreshPaths.has(profile.path)
+          ? current
+          : (previousBaseline[profile.path] ?? current),
       ];
     }),
 );
+const migrationPaths = new Set(
+  profiles
+    .filter((profile) => profile.ste_status === "migration")
+    .map((profile) => profile.path),
+);
+for (const path of refreshPaths) {
+  if (!migrationPaths.has(path)) {
+    throw new Error(`STE baseline refresh path is not a migration file: ${path}`);
+  }
+}
 
 const ledger = `${JSON.stringify(
   {

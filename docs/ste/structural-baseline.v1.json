@@ -81,10 +81,10 @@
       "STE-9.1": 1
     },
     "INVARIANTS.md": {
-      "STE-2.4": 340,
-      "STE-5.1": 274,
-      "STE-8.1": 247,
-      "STE-8.2": 22
+      "STE-2.4": 346,
+      "STE-5.1": 277,
+      "STE-8.1": 253,
+      "STE-8.2": 23
     },
     "NEEDS_OWNER.md": {
       "STE-2.4": 23,
@@ -4599,9 +4599,9 @@
       "STE-8.1": 6
     },
     "docs/changelog/UNRELEASED.md": {
-      "STE-2.4": 10,
-      "STE-8.1": 10,
-      "STE-5.1": 3,
+      "STE-2.4": 13,
+      "STE-8.1": 14,
+      "STE-5.1": 6,
       "STE-3.6": 3
     },
     "docs/cleanup/2026-07-04-repo-wide-cleanup-and-sync-adoption-audit.md": {
@@ -4667,12 +4667,6 @@
       "STE-5.1": 5,
       "STE-2.4": 13,
       "STE-8.1": 15
-    },
-    "docs/cloud/INVARIANTS.md": {
-      "STE-2.4": 50,
-      "STE-8.1": 28,
-      "STE-5.1": 28,
-      "STE-8.2": 2
     },
     "docs/cloud/ISSUES.md": {
       "STE-2.4": 46,
@@ -6760,13 +6754,13 @@
     },
     "docs/ide/README.md": {
       "STE-8.1": 3,
-      "STE-5.1": 9,
+      "STE-5.1": 10,
       "STE-2.4": 3
     },
     "docs/ide/ROADMAP.md": {
-      "STE-8.1": 150,
-      "STE-2.4": 97,
-      "STE-5.1": 47
+      "STE-8.1": 153,
+      "STE-2.4": 99,
+      "STE-5.1": 48
     },
     "docs/incidents/2026-06-25-khala-500-completions-outage-aar.md": {
       "STE-8.1": 5,
@@ -11060,9 +11054,9 @@
       "STE-5.1": 1
     },
     "specs/IDE_ROADMAP_CROSSWALK.md": {
-      "STE-8.1": 63,
-      "STE-2.4": 27,
-      "STE-5.1": 32
+      "STE-8.1": 71,
+      "STE-2.4": 29,
+      "STE-5.1": 35
     },
     "specs/README.md": {
       "STE-8.1": 16,

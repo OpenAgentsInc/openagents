@@ -52,8 +52,13 @@ Run `pnpm run check:ste` before you commit a document change.
 The check uses the migration baseline for files in the `migration` state.
 It rejects a new structural defect.
 The normal ledger command keeps the prior baseline counts.
+
+### Baseline controls
+
 Only `generate:ste-baseline` replaces all baseline counts.
 Use that command only for an approved baseline reset or migration start.
+Use `--refresh-path=<path>` with the ledger generator for an approved file update.
+This option replaces the baseline only for the specified migration file.
 
 Run `pnpm run check:ste:strict -- <paths>` for converted documents.
 Strict mode does not use the migration baseline.
@@ -83,6 +88,10 @@ The checker does not decide if a sentence has one topic.
 It does not decide if a general noun group has more than three words.
 The STE inspector must make these decisions.
 
+A profile can accept a possible-defect rule after an identified review.
+This disposition is available only for the `-ing` and passive-voice rules.
+It cannot accept a sentence limit, semicolon, contraction, word-form, term, or profile defect.
+
 ## Review
 
 The author must confirm that the technical content is correct.
@@ -93,11 +102,18 @@ Create a new revision when a conversion changes stable document bytes.
 Keep the old revision as source data when another record identifies its bytes.
 Record a semantic comparison before the new revision becomes authoritative.
 
+### Semantic baseline
+
 The P1 control conversion has an additional semantic baseline.
 The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
 Run `pnpm run check:ste-control-semantics` after each control document change.
 This comparison does not prove semantic equality.
 The technical reviewer must also examine the change.
+
+### Semantic baseline update
+
+Use `--capture-path=<path>` with the semantic checker after an approved control update.
+This option replaces the semantic baseline only for the specified control file.
 
 ## Copyright
 

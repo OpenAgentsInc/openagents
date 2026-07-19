@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  applyScreeningReview,
   countDiagnostics,
   dictionaryWords,
   extractProse,
@@ -114,7 +115,7 @@ for (const path of selected) {
     errors.push(`${path}: STE-PROFILE: add the reviewer and review time`);
   if (profile.ste_mode === "source-data") continue;
   const text = readFileSync(`${root}/${path}`, "utf8");
-  const current = inspectStructure(path, text, profile.ste_mode);
+  const current = applyScreeningReview(inspectStructure(path, text, profile.ste_mode), profile);
   if (strict || profile.ste_status !== "migration") diagnostics.push(...current);
   else {
     const currentCounts = countDiagnostics(current);

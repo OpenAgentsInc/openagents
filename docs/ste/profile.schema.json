@@ -24,6 +24,11 @@
     "owner": { "type": "string", "minLength": 1 },
     "risk": { "enum": ["control", "high", "public", "active", "legacy", "source-data"] },
     "source": { "type": ["string", "null"] },
-    "replacement": { "type": ["string", "null"] }
+    "replacement": { "type": ["string", "null"] },
+    "ste_accepted_screening_rules": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["STE-2.4", "STE-3.6"] }
+    }
   }
 }

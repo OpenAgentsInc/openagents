@@ -36,6 +36,9 @@ const paths = [
   "docs/cloud/INVARIANTS.md",
   "packages/assurance-spec/starter-kit/AGENTS.md",
 ] as const;
+const capturePaths = process.argv
+  .filter((argument) => argument.startsWith("--capture-path="))
+  .map((argument) => argument.slice("--capture-path=".length));
 
 const collect = (text: string): ProtectedRecord => ({
   sourceSha256: createHash("sha256").update(text).digest("hex"),
@@ -54,10 +57,23 @@ const collect = (text: string): ProtectedRecord => ({
     .toSorted(),
 });
 
-if (process.argv.includes("--capture")) {
-  const files = Object.fromEntries(
-    paths.map((path) => [path, collect(readFileSync(`${root}/${path}`, "utf8"))]),
+if (process.argv.includes("--capture") || capturePaths.length > 0) {
+  const unknownPaths = capturePaths.filter(
+    (path) => !(paths as readonly string[]).includes(path),
   );
+  if (unknownPaths.length > 0) {
+    throw new Error(`Unknown STE semantic capture path: ${unknownPaths.join(", ")}`);
+  }
+  const selectedPaths = capturePaths.length > 0 ? capturePaths : paths;
+  const priorFiles = capturePaths.length > 0
+    ? (JSON.parse(readFileSync(baselinePath, "utf8")) as SemanticBaseline).files
+    : {};
+  const files = {
+    ...priorFiles,
+    ...Object.fromEntries(
+      selectedPaths.map((path) => [path, collect(readFileSync(`${root}/${path}`, "utf8"))]),
+    ),
+  };
   const output: SemanticBaseline = {
     schema: "openagents-ste-semantic-baseline-v1",
     note: "These token sets protect control-plane conversions. A passing comparison does not prove equal meaning.",
@@ -65,7 +81,7 @@ if (process.argv.includes("--capture")) {
   };
   writeFileSync(baselinePath, `${JSON.stringify(output, null, 2)}\n`);
   console.log(
-    `captured ${paths.length} control files in docs/ste/control-semantic-baseline.v1.json`,
+    `captured ${selectedPaths.length} control files in docs/ste/control-semantic-baseline.v1.json`,
   );
   process.exit(0);
 }

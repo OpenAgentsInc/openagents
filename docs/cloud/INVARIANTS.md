@@ -10,14 +10,14 @@ corresponding tests, models, or smoke checks.
 - Contributor Pylon remains in `apps/pylon` (public monorepo).
 - Managed Cloud implementation lives **in this monorepo** under `crates/oa-*`
   and `crates/openagents-cloud-contract` (migrated from private
-  `OpenAgentsInc/cloud`; see `docs/cloud/MIGRATION.md`).
+  `OpenAgentsInc/cloud`. See `docs/cloud/MIGRATION.md`).
 - Public schemas and redacted receipts are shared outward. Live fleet topology,
   Secret Manager material, placement credentials, and internal settlement
   secrets stay in runtime env / Secret Manager — never in tracked fixtures,
   logs, or docs.
 - The Worker (`apps/openagents.com`) owns non-money admission and public
   projection. Billing, credit, wallet, payout, payment, and settlement
-  authority are retired under VP-1; Cloud daemons must not recreate them.
+  authority are retired under VP-1. Cloud daemons must not recreate them.
 
 ### 2026-07-11 authority-wording boundary
 
@@ -25,7 +25,7 @@ The Vortex/Convex/private-Cloud/Treasury names removed from current Cloud docs
 were stale ownership labels, not executable policy. This reconciliation changes
 no schema, route, runtime decision, receipt, or deployment. Existing contract
 tests, Cloud smokes, and the production-cutover receipt remain the behavioral
-evidence; the superseded Convex bridge evaluation is retained as historical
+evidence. The superseded Convex bridge evaluation is retained as historical
 design context only.
 
 ## Wallet And Settlement
@@ -35,7 +35,7 @@ design context only.
   [`Node/pnpm/Vite Plus conversion contract`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
   Paid/credit-backed admission is disabled and must never be reinterpreted as
   free managed compute. Historical redacted receipts and private recovery
-  archives may remain read-only; they carry no execution authority. Any
+  archives may remain read-only. They carry no execution authority. Any
   revival requires a fresh owner-approved invariant and proof program, while
   the no-wallet workroom boundary below remains permanent.
 - Contributor-wallet mode is not the default for managed cloud nodes.
@@ -57,11 +57,13 @@ design context only.
   redemption is bound to one owner/session/attachment-generation/target plus a
   least-privilege permission set and bounded TTL. Owner-local and
   OpenAgents-managed targets enter through explicit class-matched adapters.
-  The broker retains refs and outcomes only; raw material may exist solely in
+  The broker retains refs and outcomes only. Raw material may exist solely in
   the injected vault-to-adapter callback. A destination generation receives a
+
   freshly authorized source-grant ref only after source revocation and target
   wipe. Replay, expiry, broker outage, target denial, or cleanup failure cannot
   mint or reactivate destination authority.
+
 - The enforcing fault oracle is
   `packages/portable-session-contract/src/capability-broker.test.ts`.
 - GitHub write tokens may enter a bounded Codex workroom through a short-lived
@@ -73,7 +75,7 @@ design context only.
 - A Codex coding run may commit and push its workspace changes back to the
   target repo/branch (`repository_clone_url` / `repository_ref`) before
   workspace teardown (cloud#96 git writeback). Writeback is gated on a write
-  token being present and the working tree having changes; runs without a token
+  token being present and the working tree having changes. Runs without a token
   perform no writeback. The token reaches `git push` only via the askpass helper
   and process environment. The emitted writeback event and `git-writeback.json`
   receipt are refs-only (commit sha + branch ref) and must never carry the
@@ -88,7 +90,7 @@ design context only.
 ## Node Lifecycle
 
 - Desired mode and observed status are distinct.
-- A managed node that cannot prove backend readiness must degrade or refuse; it
+- A managed node that cannot prove backend readiness must degrade or refuse. It
   must not advertise healthy capacity.
 - Update, rollback, and quarantine decisions must produce receipts or health
   events.
@@ -184,7 +186,7 @@ design context only.
   ready, retained movement refuses and must not substitute the fake lane.
 - The live retained guest accepts operations only through the fixed
   `/opt/agent/portable-session-control` binary. Arbitrary caller commands are
-  not part of the route. The guest controller must return public-safe receipts;
+  not part of the route. The guest controller must return public-safe receipts.
   host and TypeScript adapters reject raw credentials, paths, process/socket
   details, and topology before persistence or projection.
 
@@ -193,7 +195,7 @@ design context only.
 - Production readiness is an authenticated runtime fact, not configuration
   inference. `oa-codex-control` reports
   `openagents.agent_computer_readiness.v1` and `ready:true` only when its
-  effective provisioner is live; fake/non-KVM nodes report unavailable. Mobile
+  effective provisioner is live. Fake/non-KVM nodes report unavailable. Mobile
   target catalogs and admission gates must consume this proof before exposing
   or launching Agent Computer capacity.
 - A mobile `managed_cloud` turn is admitted only from a repository-bound
@@ -208,7 +210,7 @@ design context only.
   work-context `codexTurn` block) executes ONLY under a broker-redeemed,
   owner-scoped provider grant materialized into a per-turn scratch
   `CODEX_HOME` (`provider_credential_policy: broker_only`). A codex turn with
-  no materialized grant fails closed (`codex.provider_auth_required`); a
+  no materialized grant fails closed (`codex.provider_auth_required`). A
   reclaimed grant is never replayable
   (`canReplayCodexProviderGrantAfterReclaim` returns `false`).
 - The in-VM Codex execution fails closed at every stage with typed reasons.
@@ -240,10 +242,12 @@ design context only.
   This includes a Codex-lane row without the org-capacity provider.
   The skip can never widen into a metering bypass. Missing, unredeemed, revoked, cross-owner,
   wrong-account, or wrong-provider grant evidence is denied before token
-  insertion; authority-store failure is a typed 503.
+  insertion. Authority-store failure is a typed 503.
+
   Grant/account refs never
   enter the public token event. Compute lifecycle stays separately billed
   through `openagents.resource_usage_receipt.v1`.
+
 - Agent Computer receipt consumers independently require that same exact
   no-charge disposition for owner-subscription capacity.
   A `200` response fails the turn if it reports metering, omits the skip reason,
@@ -256,7 +260,7 @@ design context only.
   A lost-response retry with a fresh client ref returns the same token event.
   It inserts no second row, publishes no second public-counter delta, and reports
   `tokensServedDelta: 0`.
-- Subscription capacity is never resold (`subscriptionCapacityResale: false`);
+- Subscription capacity is never resold (`subscriptionCapacityResale: false`).
   these lanes serve only the owner the grant is scoped to.
 
 ## Portable Session Attachment To Agent Computer (PORT-03, #8748)
@@ -265,7 +269,7 @@ design context only.
   session.
   It never mints or rewrites session, thread, run, agent, parent-edge,
   transcript, or per-thread cursor identity.
-- Movement requires migration `0067`'s durable owner/session execution binding;
+- Movement requires migration `0067`'s durable owner/session execution binding.
   the target must preserve its exact run, repository, and pinned-base refs.
   Legacy unbound rows cannot move, and host paths never supply a fallback.
 - The Agent Computer may materialize and verify an exact secret-free
@@ -285,13 +289,13 @@ design context only.
 - A destination rejection or any pre-commit failure leaves no destination
   attachment authoritative, releases any newly issued destination grants,
   retains the source graph fenced, and records `recovery_required`. A lost
-  post-commit activation acknowledgement replays the same activation operation;
+  post-commit activation acknowledgement replays the same activation operation.
   it never creates another attachment or accepted parent/child turn.
 - The managed target's durable adapter records the exact operation bytes before
   each provisioner effect. The provisioner operation ref is byte-idempotent, so
   a restart may reconcile a pending effect but cannot change its session,
   attachment, generation, checkpoint, resource, or result. Stage remains
-  non-accepting; activation independently reads PORT-01 and refuses until the
+  non-accepting. Activation independently reads PORT-01 and refuses until the
   exact destination attachment is the current active generation.
 - Failback from a managed target uses the same adapter in source mode.
   Only its exact active generation may quiesce.
@@ -350,48 +354,55 @@ design context only.
   A placed run inherits the no-wallet VM or workroom boundary.
   `danger_full_access` is the explicit default sandbox inside that boundary.
   It is never an implicit escalation with broad host or cloud credentials.
-- Placement bindings and quota/metering records are refs-and-limits only. They
-  must not carry raw owner identity, raw customer cost, GCP project ids, instance
-  names, IP addresses, credentials, wallet material, bearer tokens, or private
-  topology markers.
+- Placement bindings and quota/metering records are refs-and-limits only.
+  They must not carry raw owner identity, raw customer cost, GCP project IDs,
+  instance names, IP addresses, or credentials.
+  They must not carry wallet material, bearer tokens, or private topology markers.
   The one permitted cost figure is the contract's modeled infrastructure
   billing input, `cost_input_microusd`.
   It is the cost-plus-10% figure on a `compute_usage` sub-record.
   It is never a customer's billed or settled amount.
 - Session/lease/TTL/idle caps come from
   `openagents.compute_quota_routing.v1` defaults unless fleet policy overrides
-  them; placement must honor those caps rather than minting unbounded leases.
+  them. Placement must honor those caps rather than mint unbounded leases.
 - A `cloud-gcp` placement must drive the
   `openagents.gce_capacity_class.v1` lease lifecycle
-  (acquire -> ready -> in_use -> release): provision a per-session VM, run the
-  Codex runner for the assignment, emit a refs-only
-  `openagents.resource_usage_receipt.v1`, then idempotently release the lease
-  and mint a cleanup receipt.
-- That GCE resource-usage receipt must carry a
-  `compute_usage` sub-record whose `vm_seconds` is the genuinely measured lease
-  wall-time (`release_at − acquire_at`, whole seconds, saturating at 0,
-  `metering_source = node_measured`) and whose `cost_input_microusd` is
-  `floor(vm_seconds × cost-plus-10% rate)` using the shared
-  `LaneCostModel`/`GCE_RAW_PER_VM_SEC_NANOUSD` markup (not a re-derived 1.10).
-- Because that rate is the GCP published list-price catalog rate rather than a
-  live GCP Billing export, `cost_input_basis` must be
-  `cost_plus_10pct_gcp_catalog`, never `cost_plus_10pct_gcp` (reserved for a live
-  metered Billing export) and never a fabricated "metered from billing API"
-  basis; `unavailable` requires a `null` cost. Failed acquire/readiness must
+  (acquire -> ready -> in_use -> release).
+  It must provision a per-session VM and run the Codex runner for the assignment.
+  It must emit a refs-only `openagents.resource_usage_receipt.v1`.
+  It must then release the lease idempotently and mint a cleanup receipt.
+- That GCE resource-usage receipt must carry a `compute_usage` sub-record.
+  Its `vm_seconds` value must be the measured lease wall-time.
+  The measurement is `release_at − acquire_at` in whole seconds and saturates at 0.
+  The receipt must contain `metering_source = node_measured`.
+
+  Its `cost_input_microusd` value must be `floor(vm_seconds × cost-plus-10% rate)`.
+  Use the shared `LaneCostModel` and `GCE_RAW_PER_VM_SEC_NANOUSD` markup.
+  Do not derive a new 1.10 value.
+
+- The rate is the GCP published list-price catalog rate, not a live GCP Billing export.
+  Thus, `cost_input_basis` must be `cost_plus_10pct_gcp_catalog`.
+  It must never be `cost_plus_10pct_gcp`, which is reserved for a live metered Billing export.
+  It must never use a fabricated "metered from billing API" basis.
+  `unavailable` requires a `null` cost. Failed acquire/readiness must
   degrade or refuse,
   never advertise a healthy VM.
-- Real GCP calls are gated behind config/ADC; a
+- Real GCP calls are gated behind config/ADC. A
   fake/dry-run provisioner backs unit tests and any no-cloud environment. The
   live provisioner drives real Compute Engine calls (via `gcloud`) only when
   Application Default Credentials and a configured raw project id are both
-  present; otherwise it must refuse so the caller falls back, and any failed
-  acquire or non-healthy readiness probe must tear down all partially created
-  resources (VM and firewall) before refusing — it must never leak a running
-  instance. Release must be idempotent, tolerate already-missing resources, and
+  present. Otherwise, it must refuse so the caller falls back.
+
+  A failed acquire or unhealthy probe must remove all partial resources before refusal.
+  These resources include the VM and firewall.
+  The provisioner must never leak a VM instance.
+
+  Release must be idempotent, tolerate absent resources, and
   verify via a label/name-filtered `instances list` that zero session VMs
-  remain (degrading loudly otherwise).
-- The live lane is opt-in via env and ADC;
-  the default provisioner is fake so no-cloud envs and unit tests never bill.
+  remain. It must report a clear defect if resources remain.
+
+- The live lane is opt-in via env and ADC.
+  The default provisioner is fake so no-cloud envs and unit tests never bill.
   Raw GCP project id / zone / instance name may be used only transiently at
   provisioning time and must never be retained.
   Lease projections and provision and cleanup receipts contain only references

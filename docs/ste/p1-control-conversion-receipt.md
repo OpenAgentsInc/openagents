@@ -8,9 +8,9 @@
 
 ## Result
 
-The first two P1 slices converted four control contracts and added four author templates.
-The structural checker reports no defects in these eight files.
-The protected semantic token check reports no change in the four contracts.
+The first three P1 slices converted five control contracts and added four author templates.
+The structural checker reports no defects in these nine files.
+The protected semantic token check reports no change in the five contracts.
 
 This receipt does not close P1.
 The other control documents remain in the migration state.
@@ -24,6 +24,15 @@ A tool result does not prove full STE conformance.
 | `docs/sol/CLAIM_PROTOCOL.md`                    | `c0aab92aa7ebf871d887df5a34b3324e8b794440da2195451901f14546bc2e82` | `153a608c4566fe25a3a599c883db31e52b77e95045d5eae9a8d94cb2bcbc35e3` | checked |
 | `packages/assurance-spec/starter-kit/AGENTS.md` | `c87d1623c41aadb7d46c23d4afbd2362b303622f25d3e0cf0c0bfeb7b7ec09ca` | `2a6cb07bee22d34f7d324a9ee6c9c2d8d524335e08d5feb1da5b80d6140ecaa5` | checked |
 | `specs/CONVENTIONS.md`                          | `c5a7da4b74c04bb98a30dc7152360ff252452c3a37f681274cbc62f51f19923b` | `ce8205c250d1f08daf6e0f9e50a983d1e944b8748dcdb82a575361a339e6aaec` | checked |
+| `docs/cloud/INVARIANTS.md`                      | `760ad950dc68cdc9a859d33c9cdd73bd296bcdf5c17d76d1509bfea1ce872b14` | `9350514b04bbee1eaf03b9a15c11951c110bc879e8ff0e973d916f060f007296` | checked |
+
+The cloud review accepted the `STE-2.4` possible defects.
+The reviewer confirmed that these forms are technical nouns or permitted modifiers in this contract.
+
+The P1 work reconciled five concurrent document changes from `main`.
+The ledger generator refreshed only the baseline for each specified migration file.
+The semantic checker refreshed only the root invariant baseline.
+This action did not reset the baseline for other files.
 
 ## Author templates
 

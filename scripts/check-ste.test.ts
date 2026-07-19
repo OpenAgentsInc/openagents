@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  applyScreeningReview,
   countDiagnostics,
   deriveProfile,
   dictionaryWords,
@@ -90,5 +91,24 @@ describe("STE profiles and glossary", () => {
       JSON.stringify({ steIssue: 9, entries: [{ permittedForms: ["use", "used"] }] }),
     );
     expect(dictionaryWords(path)).toEqual(new Set(["use", "used"]));
+  });
+});
+
+describe("STE screening review", () => {
+  test("accepts only a selected screening rule after an identified review", () => {
+    const profile = {
+      ...deriveProfile("docs/test.md", config),
+      ste_reviewer: "test-reviewer",
+      ste_reviewed_at: "2026-07-19T00:00:00Z",
+      ste_accepted_screening_rules: ["STE-2.4" as const],
+    };
+    const diagnostics = inspectStructure(
+      "docs/test.md",
+      "Routing is active; the route is controlled.",
+      "descriptive",
+    );
+    expect(applyScreeningReview(diagnostics, profile).map((item) => item.rule)).toEqual([
+      "STE-8.1",
+    ]);
   });
 });

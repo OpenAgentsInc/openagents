@@ -16,6 +16,7 @@ export interface SteProfile {
   readonly risk: "control" | "high" | "public" | "active" | "legacy" | "source-data";
   readonly source: string | null;
   readonly replacement: string | null;
+  readonly ste_accepted_screening_rules?: readonly ("STE-2.4" | "STE-3.6")[];
 }
 
 export interface SteDiagnostic {
@@ -282,6 +283,15 @@ export const countDiagnostics = (diagnostics: readonly SteDiagnostic[]): Structu
   const counts: Record<string, number> = {};
   for (const item of diagnostics) counts[item.rule] = (counts[item.rule] ?? 0) + 1;
   return counts;
+};
+
+export const applyScreeningReview = (
+  diagnostics: readonly SteDiagnostic[],
+  profile: SteProfile,
+): readonly SteDiagnostic[] => {
+  const accepted = new Set(profile.ste_accepted_screening_rules ?? []);
+  if (accepted.size === 0 || !profile.ste_reviewer || !profile.ste_reviewed_at) return diagnostics;
+  return diagnostics.filter((item) => !accepted.has(item.rule as "STE-2.4" | "STE-3.6"));
 };
 
 export const validateGlossary = (value: unknown): readonly string[] => {
