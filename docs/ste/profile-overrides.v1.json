@@ -17,6 +17,12 @@
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:36:00Z"
     },
+    "docs/sol/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:07:51Z",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/cloud/INVARIANTS.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
