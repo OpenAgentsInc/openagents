@@ -465,6 +465,67 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This is a release-evidence contract, not a new project, document, Git, language, editor, review, process, persistence, approval, or claim authority. It admits one exact packaged macOS arm64 artifact only after schema decoding, child-evidence ancestry, frozen budget comparison, chat-only zero-cost inspection, the existing Effect boundary oracle, rollback corpus, public-safety checks, and a deterministic non-overridable evaluator all pass. Every untested platform and every IDE-08+ capability remains explicitly unavailable.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_basic_ide_acceptance.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-acceptance.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-chat-only.json",
+        "docs/ide/2026-07-19-ide-07-basic-ide-acceptance.md",
+        "github:OpenAgentsInc/openagents#9022",
+      ],
+      oracles: [
+        {
+          description:
+            "Schema-decodes the exact artifact/SHA, seven child packets, all fifteen journey classes, frozen p50/p95/p99 budgets, one claimed target, five unavailable targets, architecture/custody checks, rollback target, later gaps, and non-overridable evaluator disposition.",
+          id: "openagents_desktop.ide_basic_ide_acceptance.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.test.ts",
+        },
+        {
+          description:
+            "Launches the real packaged application through LaunchServices with a supported file and proves Explorer, Tokyo Night Monaco, quick open, edit/recovery, Vim, split groups, Pierre review, both language tiers, Problems, Outline, offline private assets, root withholding, and zero Monaco resources after close.",
+          id: "openagents_desktop.ide_basic_ide_acceptance.packaged",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/scripts/ide-monaco-packaged-journey.ts",
+        },
+        {
+          description:
+            "Runs seven cold packaged chat-only launches and rejects any Monaco/Pierre/language/index surface, editor asset request, renderer worker, root leak, or surviving app process while recording shell-ready p50/p95/p99.",
+          id: "openagents_desktop.ide_basic_ide_acceptance.chat_only",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/scripts/ide-chat-only-packaged-journey.ts",
+        },
+        {
+          description:
+            "Independently recomputes the packaged app tree digest, checks receipt/SHA agreement and closed child issues, freezes IDE-00 comparison envelopes plus packet-owned budgets, reruns the authority oracle, rejects public-root leakage, and emits the only basic-IDE claim receipt.",
+          id: "openagents_desktop.ide_basic_ide_acceptance.release_oracle",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-basic-ide-acceptance.ts",
+        },
+      ],
+      productArea: "Desktop IDE release acceptance",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "The exact evaluated macOS arm64 artifact satisfies the daily-use OpenAgents basic IDE rung across Finder open, complete Explorer, Monaco editing/recovery, search/navigation, versioned Pierre review, generation-safe language intelligence, built-in Vim, keyboard/accessibility, offline failure truth, resource disposal, rollback, and chat-only zero-cost gates. This admits only OpenAgents basic IDE; IDE-08+ and every unevaluated platform remain visible gaps, and issue closure does not imply Zed quality, full IDE, Cursor parity, or epic owner acceptance.",
+      surface: "openagents-desktop",
+      verification:
+        "verify:ide-07 runs the complete Desktop test corpus, Effect boundary oracle, and deterministic artifact/evidence/budget evaluator after the exact packaged editor and seven-launch chat-only journeys have produced SHA-bound receipts.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",

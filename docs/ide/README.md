@@ -14,6 +14,7 @@ Canonical roadmap:
 
 Supporting evidence and architecture (not independent roadmaps):
 
+- [IDE-07 packaged daily-use basic IDE acceptance](./2026-07-19-ide-07-basic-ide-acceptance.md) — the exact-artifact/SHA contract, fifteen-journey matrix, frozen percentile/resource budgets, seven-launch chat-only zero-cost proof, custody/rollback oracle, platform limits, and narrow `OpenAgents basic IDE` claim boundary for issue `#9022`.
 - [IDE-03 delivery: Monaco, built-in Vim, and Tokyo Night](./2026-07-19-ide-03-monaco-vim-tokyo-night.md) — the authority map, opaque model lifecycle, built-in Vim boundary, theme projection, percentile/resource evidence, and packaged Finder/LaunchServices journey for issue `#9018`.
 - [OpenAgents Desktop basic IDE: VS Code outcomes with Monaco and Pierre](./2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md) — the detailed
   basic-editor component and adapter design; its packet order is superseded by

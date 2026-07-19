@@ -16,6 +16,8 @@ import { Schema } from "effect"
 
 import { IdeMonacoPackagedJourneyReceiptSchema } from "../src/ide/monaco-benchmark-contract.ts"
 import { IdeLanguagePackagedJourneyReceiptSchema } from "../src/ide/language-benchmark-contract.ts"
+import { IdeBasicIdePackagedJourneyReceiptSchema } from "../src/ide/basic-ide-acceptance-contract.ts"
+import { packagedArtifactTreeDigest } from "./ide-packaged-artifact.ts"
 
 const appRoot = path.resolve(import.meta.dirname, "..")
 const repositoryRoot = path.resolve(appRoot, "../..")
@@ -38,14 +40,19 @@ const packagedExecutable = packagedMacOsDirectory === undefined
 const packagedBinary = packagedMacOsDirectory === undefined || packagedExecutable === undefined
   ? null
   : path.join(packagedMacOsDirectory, packagedExecutable.name)
+const basicIdeAcceptance = process.env.OPENAGENTS_DESKTOP_IDE07_ACCEPTANCE === "1"
 const languageOnly = process.env.OPENAGENTS_DESKTOP_IDE06_LANGUAGE_ONLY === "1"
-const screenshotRef = languageOnly
-  ? "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.png"
-  : "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
+if (basicIdeAcceptance && languageOnly) throw new Error("IDE-06 and IDE-07 receipt modes are mutually exclusive")
+const screenshotRef = basicIdeAcceptance
+  ? "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.png"
+  : languageOnly
+    ? "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.png"
+    : "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
 const screenshotPath = path.join(repositoryRoot, screenshotRef)
 const receiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-03-packaged-journey.json")
 const workbenchReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-04-packaged-workbench.json")
 const languageReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-06-packaged-language.json")
+const basicIdeReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-07-packaged-basic-ide.json")
 const marker = "// IDE-03 packaged Monaco edit"
 const pathRef = "ide03.ts"
 
@@ -137,6 +144,7 @@ const main = async (): Promise<void> => {
     await enterFiles(page)
 
     const tree = page.locator('[data-oa-pierre-tree="true"]')
+    const explorerReady = await tree.isVisible()
     const primary = page.locator('.oa-react-monaco-pane[data-monaco-view="primary"]')
     if (await primary.locator('[data-monaco-phase="ready"]').count() === 0) {
       const target = tree.locator(`[data-item-path="${pathRef}"]`)
@@ -144,6 +152,8 @@ const main = async (): Promise<void> => {
       await target.click()
     }
     await primary.locator('[data-monaco-phase="ready"]').waitFor({ state: "visible", timeout: 30_000 })
+    const tokyoNightBeforeEditorReady = await primary.locator(".monaco-editor").evaluate(element =>
+      getComputedStyle(element).backgroundColor === "rgb(26, 27, 38)")
     const localTier = primary.locator('[data-language-tier="document-local"]')
     await localTier.waitFor({ state: "visible", timeout: 30_000 })
     try {
@@ -249,6 +259,22 @@ const main = async (): Promise<void> => {
         && resources.workerCount >= 1
     })
 
+    let reviewReady = !basicIdeAcceptance
+    if (basicIdeAcceptance) {
+      await page.getByRole("button", { name: "Close Files", exact: true }).click()
+      await page.locator('[data-react-workspace="chat"]').waitFor({ state: "visible", timeout: 10_000 })
+      await page.getByRole("button", { name: "Review", exact: true }).click()
+      const review = page.getByLabel("Review surface")
+      await review.waitFor({ state: "visible", timeout: 30_000 })
+      const changedFile = review.getByRole("button", { name: /ide03\.ts/ }).first()
+      await changedFile.waitFor({ state: "visible", timeout: 30_000 })
+      await changedFile.click()
+      await review.locator('[data-oa-pierre-review]').waitFor({ state: "visible", timeout: 30_000 })
+      await review.getByRole("button", { name: "Split", exact: true }).click()
+      await review.getByRole("button", { name: "More context", exact: true }).click()
+      reviewReady = await review.locator('[data-oa-pierre-review]').count() === 1
+    }
+
     await page.reload({ waitUntil: "domcontentloaded" })
     const recoveryReloaded = await recoveryContainsMarker(page)
 
@@ -287,7 +313,7 @@ const main = async (): Promise<void> => {
       resourcesAfterClose,
       screenshotRef,
     })
-    if (!languageOnly) writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
+    if (!languageOnly && !basicIdeAcceptance) writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
     const workbenchReceipt = {
       schemaVersion: "openagents.desktop.ide-workbench-packaged-journey.v1",
       capturedAt: new Date().toISOString(),
@@ -306,7 +332,7 @@ const main = async (): Promise<void> => {
     if (!previewOpened || !previewPinned || !recoveryReloaded || splitViews !== 2 || !rootWithheld) {
       throw new Error(`IDE-04 packaged workbench journey failed: ${JSON.stringify(workbenchReceipt)}`)
     }
-    if (!languageOnly) writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
+    if (!languageOnly && !basicIdeAcceptance) writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
     const languageReceipt = Schema.decodeUnknownSync(IdeLanguagePackagedJourneyReceiptSchema)({
       schemaVersion: "openagents.desktop.ide-language-packaged-journey.v1",
       capturedAt: new Date().toISOString(),
@@ -324,12 +350,43 @@ const main = async (): Promise<void> => {
       offlineLocalWorkers: offlinePrivateScheme,
       screenshotRef,
     })
-    writeFileSync(languageReceiptPath, `${JSON.stringify(languageReceipt, null, 2)}\n`, { mode: 0o600 })
-    if (!languageOnly) {
+    if (!basicIdeAcceptance) writeFileSync(languageReceiptPath, `${JSON.stringify(languageReceipt, null, 2)}\n`, { mode: 0o600 })
+    if (basicIdeAcceptance) {
+      const artifactTreeSha256 = packagedArtifactTreeDigest(packagedAppPath!).sha256
+      const basicIdeReceipt = Schema.decodeUnknownSync(IdeBasicIdePackagedJourneyReceiptSchema)({
+        schemaVersion: "openagents.desktop.ide-basic-ide-packaged-journey.v1",
+        capturedAt: new Date().toISOString(),
+        candidateCommitSha: receipt.commitSha,
+        artifactTreeSha256,
+        target: "darwin-arm64",
+        finderColdOpen: true,
+        tokyoNightBeforeEditorReady,
+        editorReady,
+        explorerReady,
+        quickOpenReady: previewOpened && previewPinned,
+        edited,
+        recoveryReloaded,
+        vimToggled,
+        splitViews,
+        reviewReady,
+        documentLocalWorkerReady: documentLocalTierReady,
+        projectLanguageReady: projectStatusText.includes("Project 6.0.3"),
+        problemsReady: problemsReceiptReady,
+        outlineReady,
+        offlinePrivateScheme,
+        rootWithheld,
+        legacyTextareaAbsent,
+        resourcesAfterClose,
+        screenshotRef,
+      })
+      writeFileSync(basicIdeReceiptPath, `${JSON.stringify(basicIdeReceipt, null, 2)}\n`, { mode: 0o600 })
+      process.stdout.write(`[openagents-desktop] IDE-07 packaged basic IDE journey: ${basicIdeReceiptPath}\n`)
+    }
+    if (!languageOnly && !basicIdeAcceptance) {
       process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
       process.stdout.write(`[openagents-desktop] IDE-04 packaged workbench journey: ${workbenchReceiptPath}\n`)
     }
-    process.stdout.write(`[openagents-desktop] IDE-06 packaged language journey: ${languageReceiptPath}\n`)
+    if (!basicIdeAcceptance) process.stdout.write(`[openagents-desktop] IDE-06 packaged language journey: ${languageReceiptPath}\n`)
   } finally {
     await browser?.close()
     if (launchedApplicationPid !== null) {

@@ -567,6 +567,12 @@ journeys with stale-result rejection and process-restart recovery.
 
 ### IDE-07 — Accept the daily-use basic IDE
 
+The schema-first exact-artifact gate, packaged editor/chat-only journeys,
+frozen percentile/resource evaluator, custody audit, rollback binding, target
+limits, and claim boundary are implemented in
+[the IDE-07 acceptance dossier](2026-07-19-ide-07-basic-ide-acceptance.md).
+The packet is not accepted until its exact candidate receipts decode and pass.
+
 Run packaged journeys for Finder cold open, large/multi-root Explorer, rapid
 file switching, split dirty recovery, conflict, search, navigation, Git review,
 language bursts, Vim on/off, keyboard-only use, VoiceOver/screen reader,

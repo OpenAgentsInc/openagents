@@ -706,6 +706,10 @@ const visualBaselineProbe = process.env.OPENAGENTS_DESKTOP_VISUAL_BASELINE_PROBE
 // accepted only by the automation launcher and never changes an ordinary app
 // window or the production renderer entry.
 const idePackageSpikeProbe = process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE === "1"
+// IDE-07: keep the packaged React chat shell on the same deterministic fixture
+// wiring as IDE-00 while an external oracle observes its resource graph. This
+// changes no production launch; unlike broad smoke it owns no scripted flow.
+const ideBasicAcceptanceChatOnlyProbe = process.env.OPENAGENTS_DESKTOP_IDE07_CHAT_ONLY_PROOF === "1"
 if (visualBaselineProbe) {
   // Deterministic rasterization: software rendering plus a forced device
   // scale of 1 keeps captured pixels stable across GPUs and Retina scales.
@@ -716,7 +720,8 @@ if (visualBaselineProbe) {
   )
 }
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
-  fullAutoRestartProbe !== null || fullAutoControlProbe || visualBaselineProbe || idePackageSpikeProbe
+  fullAutoRestartProbe !== null || fullAutoControlProbe || visualBaselineProbe || idePackageSpikeProbe ||
+  ideBasicAcceptanceChatOnlyProbe
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -8345,7 +8350,7 @@ void app.whenReady().then(async () => {
   // Register the smoke driver before any readiness await. `did-finish-load`
   // may fire while persistence/provider initialization is in flight; a late
   // listener would miss the one-shot event and report a false timeout.
-  if (smokeMode && !startupMarksMode) runSmoke(window)
+  if (smokeMode && !startupMarksMode && !ideBasicAcceptanceChatOnlyProbe) runSmoke(window)
   const rendererReady = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("renderer_ready_timeout")), 30_000)
     window.webContents.once("did-finish-load", () => { clearTimeout(timer); resolve(new Date().toISOString()) })
