@@ -15,10 +15,10 @@
  *      AND a `turn.finished` with finishReason !== "error".
  *   3. Print PASS (with the reply text) or FAIL (with the terminal reason).
  *
- * The per-minute Cloud Run cron (`runHostedRuntimeTurnDispatchForEnv`) answers
- * the queued turn; nothing else is needed server-side. This is GATED on creds
- * (it does nothing in CI without them) and is wired as an opt-in nightly step
- * (docs/qa/khala-code-nightly-matrix.md).
+ * The accepted `runtime.startTurn` schedules an immediate post-commit hosted
+ * dispatcher wake. The per-minute Cloud Run cron remains recovery only. This
+ * is GATED on creds (it does nothing in CI without them) and is wired as an
+ * opt-in nightly step (docs/qa/khala-code-nightly-matrix.md).
  *
  * Creds: ~/work/.secrets/khala-maestro.env (gitignored, NEVER committed):
  *   KHALA_MAESTRO_TOKEN       — seeded AgentFlampy agent bearer token
@@ -215,7 +215,7 @@ const main = async () => {
     protocolVersion: 1,
     schemaVersion: 1,
   })
-  console.log('[hosted-chat-e2e-smoke] queued; polling for the assistant reply (cron answers within ~1 min)...')
+  console.log('[hosted-chat-e2e-smoke] accepted; polling for the assistant reply...')
 
   const deadline = Date.now() + TIMEOUT_MS
   while (Date.now() < deadline) {
