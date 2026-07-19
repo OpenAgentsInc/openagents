@@ -83,6 +83,13 @@ describe("CUT-26 macOS artifact contract", () => {
       "deb",
       "rpm",
     ]);
+    const appImageMaker = readFileSync(
+      path.join(root, "scripts", "maker-appimage.ts"),
+      "utf8",
+    );
+    expect(appImageMaker).toContain("extraMetadata: { desktopName: this.config.appId }");
+    expect(appImageMaker).toContain("syncDesktopName: true");
+    expect(appImageMaker).toContain("icon: this.config.icon");
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };

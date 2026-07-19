@@ -7,6 +7,7 @@ export type MakerAppImageConfig = Readonly<{
   artifactName: string;
   appId: string;
   executableName: string;
+  icon: string;
   productName: string;
   startupWmClass: string;
 }>;
@@ -33,9 +34,12 @@ export class MakerAppImage extends MakerBase<MakerAppImageConfig> {
       productName: this.config.productName,
       executableName: this.config.executableName,
       artifactName: this.config.artifactName,
+      extraMetadata: { desktopName: this.config.appId },
       directories: { output },
       linux: {
         category: "Development",
+        icon: this.config.icon,
+        syncDesktopName: true,
         desktop: { entry: { StartupWMClass: this.config.startupWmClass } },
         target: ["AppImage"],
       },

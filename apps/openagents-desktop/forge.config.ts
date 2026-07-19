@@ -552,6 +552,7 @@ const config: ForgeConfig = {
           artifactName: releaseSetArtifactName(descriptor, ".AppImage"),
           appId: activeProductIdentity.appId,
           executableName: activeProductIdentity.executableName,
+          icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
           productName: activeProductIdentity.displayName,
           startupWmClass: activeProductIdentity.startupWmClass,
         };
