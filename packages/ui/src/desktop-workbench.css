@@ -3843,6 +3843,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 /* The command PREVIEW in a card heading is a shell command — keep it mono
- * (the base rule sets `font: inherit`, which would fall back to the sans
+ * (the base rule uses the inherited font, which would fall back to the sans
  * heading face). */
 .oa-react-event-heading code { font-family: var(--oa-font-mono); }

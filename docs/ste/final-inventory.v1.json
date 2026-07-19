@@ -16294,7 +16294,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "de4b96b41ea42ad8b9f44b575d0cbf61795caae603fd0cb28ea25384a71e3a05",
+      "sha256": "14fccd4955f4516f4dcdaf1c2bd43a2b4ef7685136ed465a19ecce2aaaa1dfbf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46340,7 +46340,7 @@
     },
     {
       "path": "packages/assure-repo/README.md",
-      "sha256": "4d5df429745c7af12af282d7c07e4725c19f348f2f4c9627efe95a7ea5e67bc0",
+      "sha256": "a06be4ad2c29c3d417cafd4fd6360e00e19f4931cb1b679490df58e278cf2da2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -20,7 +20,7 @@ for the program overview and the generated artifact.
   registries, tracked test files, and Rust in-tree tests.
 - `grade.ts` — AR-1 obligation grading over the inventory (mapped / designed /
   observed / accepted / inconclusive / out-of-scope, kept as independent
-  facts; never emits observed/accepted) plus the program-area coverage report.
+  facts and never emits observed/accepted) plus the program-area coverage report.
 - `false-green.ts` — AR-2 heuristic classifier over test sources (coverage
   theater / round-up / mocked seam) with a string-aware test-block scanner.
   Emits candidate leads, never findings.
