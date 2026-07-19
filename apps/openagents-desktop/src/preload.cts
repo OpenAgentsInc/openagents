@@ -131,6 +131,14 @@ import {
   decodeIdeCursorSnapshot,
   emptyIdeCursorSnapshot,
 } from "./ide/cursor-contract.ts"
+import {
+  DesktopIdeManagedSandboxCommandChannel,
+  DesktopIdeManagedSandboxSnapshotChannel,
+  decodeIdeManagedSandboxCommand,
+  decodeIdeManagedSandboxCommandResult,
+  decodeIdeManagedSandboxSnapshot,
+  emptyIdeManagedSandboxSnapshot,
+} from "./ide/managed-sandbox-contract.ts"
 import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
@@ -455,6 +463,30 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         reason: "unavailable",
         message: "The IDE cursor host returned an invalid result.",
         snapshot: emptyIdeCursorSnapshot(),
+      }
+    },
+  },
+  ideManagedSandbox: {
+    snapshot: async () => decodeIdeManagedSandboxSnapshot(
+      await ipcRenderer.invoke(DesktopIdeManagedSandboxSnapshotChannel),
+    ) ?? emptyIdeManagedSandboxSnapshot(),
+    command: async (value: unknown) => {
+      const command = decodeIdeManagedSandboxCommand(value)
+      if (command === null) {
+        return {
+          _tag: "Refused",
+          reason: "invalid_input",
+          message: "The managed-sandbox command is invalid.",
+          snapshot: emptyIdeManagedSandboxSnapshot(),
+        }
+      }
+      return decodeIdeManagedSandboxCommandResult(
+        await ipcRenderer.invoke(DesktopIdeManagedSandboxCommandChannel, command),
+      ) ?? {
+        _tag: "Refused",
+        reason: "invalid_response",
+        message: "The managed-sandbox response is invalid.",
+        snapshot: emptyIdeManagedSandboxSnapshot(),
       }
     },
   },

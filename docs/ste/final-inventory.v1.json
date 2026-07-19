@@ -26534,6 +26534,28 @@
       }
     },
     {
+      "path": "docs/ide/2026-07-19-sbx-06-managed-ide-placement.md",
+      "sha256": "526e827f077a4a368a33ead308896d42e2a7ad0cc8242dcc72e08c25d0ed3285",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/ide/README.md",
       "sha256": "c484ac7a539901a66778f989515e15a630f0e4379f832156bb9174fd94f99161",
       "reason": "Final review of a converted document",
@@ -26557,7 +26579,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
+      "sha256": "d3506d7a4ff10bcd3a112b4ea867461bba9e8fe94873f0d7564ff37a019d736b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39893,7 +39915,7 @@
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
-      "sha256": "a7fecc957983d018947b403b73be9981a86542ff92adf07c398a4f47df06ece0",
+      "sha256": "b7378967228191418e97902694d4c3c1bbe0ff41cc0d74e3820f77c23e087e71",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48668,11 +48690,12 @@
     {
       "path": "specs/openagents/assure-repo-codebase-verification.product-spec.md",
       "sha256": "79025c32b66535c86e603267d616664536ddac9a495a1f25069e89d3458b3737",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -48680,7 +48703,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -48769,7 +48795,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "0ffef46cb4e5d1e89ebd22c647c156807a774c83b58b40b1235f18b5bab1d830",
+      "sha256": "bcb8adf135621eb24ea2e4e7623b3b93f3676dba5524c89c8741aa0e5a25d0c8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

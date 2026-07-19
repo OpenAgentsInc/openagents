@@ -465,7 +465,15 @@ or observations exist today.
     "technique": "projection_loss_conformance"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/ide/managed-sandbox-contract.ts",
+      "apps/openagents-desktop/src/ide/managed-sandbox-service.ts",
+      "apps/openagents-desktop/src/ide/managed-sandbox.test.ts",
+      "apps/openagents-desktop/src/renderer/ide/managed-sandbox.ts",
+      "apps/openagents-desktop/src/renderer/react-managed-sandbox-surface.test.tsx",
+      "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+      "docs/sol/evidence/2026-07-19-sbx06-managed-ide-placement.json"
+    ],
     "criterion_refs": [
       "MSB-AC-11"
     ],
@@ -476,7 +484,7 @@ or observations exist today.
     "title": "Assure MSB-AC-11",
     "activation_gate": "GATE-SBX-RUNTIME",
     "domains": ["consumer_contract", "identity", "security"],
-    "environment_refs": ["ENV-SBX-STAGED-RUNTIME", "ENV-SBX-CROSS-SURFACE-LIVE"],
+    "environment_refs": ["ENV-SBX-LOCAL-CONTRACT", "ENV-SBX-STAGED-RUNTIME", "ENV-SBX-CROSS-SURFACE-LIVE"],
     "evidence": {
       "proof_rung": "desktop_integration",
       "required_kinds": ["identity_continuity_trace", "placement_trace", "renderer_boundary_scan"]

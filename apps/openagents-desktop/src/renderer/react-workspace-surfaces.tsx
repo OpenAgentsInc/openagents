@@ -22,6 +22,7 @@ import {
   languageResultFor,
   monacoProjectLanguageProjection,
 } from "../ide/language-workbench-contract.ts"
+import "./react-managed-sandbox-surface.css"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -106,6 +107,66 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
           : pierrePaths.length === 0 ? <p>No indexed workspace files.</p>
             : projection === null ? <p role="alert">The path index projection is unavailable.</p>
               : <PierreWorkspaceTree projection={projection} onIntent={onExplorerIntent} />}
+    </div>
+  </section>
+}
+
+const managedSandboxIsolationLabel = (isolation: "gce_vm" | "firecracker_microvm"): string =>
+  isolation === "gce_vm" ? "GCE VM" : "Firecracker microVM"
+
+export const ManagedSandboxPlacement = ({ state, report }: {
+  readonly state: DesktopShellState
+  readonly report: IntentReporter
+}): ReactElement => {
+  const snapshot = state.managedSandbox
+  const admission = snapshot.admission
+  const resource = snapshot.resource
+  const target = resource?.target ?? (admission._tag === "Available" ? admission.target : null)
+  const imageDigest = resource?.imageDigest ?? (admission._tag === "Available" ? admission.imageDigest : null)
+  const profileRef = resource?.profileRef ?? (admission._tag === "Available" ? admission.profileRef : null)
+  const lease = resource?.lease ?? (admission._tag === "Available" ? admission.lease : null)
+  const budget = resource?.budget ?? (admission._tag === "Available" ? admission.budget : null)
+  const capabilities = resource?.capabilities ?? (admission._tag === "Available" ? admission.requestedCapabilities : [])
+  const lifecycle = resource?.facts.lifecycle ?? "uncreated"
+  const attached = state.agentCode.attachment !== null
+  const hasResource = resource !== null && resource.facts.lifecycle !== "deleted"
+  const canCreate = admission._tag === "Available" && attached && !hasResource
+  const canStop = resource !== null && ["ready", "idle", "running", "failed", "recovery_required"].includes(resource.facts.lifecycle)
+  const canResume = resource?.facts.lifecycle === "stopped"
+  const canInterrupt = resource?.facts.lifecycle === "running" && snapshot.turn !== null && ["pending", "running"].includes(snapshot.turn.status)
+  const canDelete = resource !== null && !["deleting", "deleted"].includes(resource.facts.lifecycle)
+  const unavailable = admission._tag === "Unavailable"
+  const custody = resource?.target.dataPosture ?? (admission._tag === "Available" ? admission.custody : null)
+  const maxCost = budget === null ? null : `$${(budget.maxCostMicros / 1_000_000).toFixed(2)} max`
+  return <section className="oa-managed-sandbox-placement" aria-label="OpenAgents-managed placement" data-state={lifecycle}>
+    <div className="oa-managed-sandbox-primary">
+      <span className="oa-managed-sandbox-mark" aria-hidden="true"><Monitor /></span>
+      <div>
+        <strong>OpenAgents-managed placement</strong>
+        <span>{unavailable ? admission.reason : target === null ? "Admission available; placement not created." : `${managedSandboxIsolationLabel(target.isolation)} · ${target.region}`}</span>
+      </div>
+      <span className="oa-managed-sandbox-lifecycle">{lifecycle.replaceAll("_", " ")}</span>
+    </div>
+    <dl className="oa-managed-sandbox-facts">
+      <div><dt>Target</dt><dd>{target === null ? "Unavailable" : `${target.provider} / ${managedSandboxIsolationLabel(target.isolation)}`}</dd></div>
+      <div><dt>Image</dt><dd title={imageDigest ?? undefined}>{imageDigest === null ? "—" : `${imageDigest.slice(0, 19)}…`}</dd></div>
+      <div><dt>Profile</dt><dd>{profileRef ?? "—"}</dd></div>
+      <div><dt>Custody</dt><dd>{custody?.replaceAll("_", " ") ?? "—"}</dd></div>
+      <div><dt>Signal</dt><dd>{snapshot.freshness} · {snapshot.latencyClass.replaceAll("_", " ")}</dd></div>
+      <div><dt>Generation</dt><dd>{resource === null ? "—" : `${resource.resourceGeneration} / v${resource.version}`}</dd></div>
+      <div><dt>Lease</dt><dd>{lease === null ? "—" : `${lease.state} · ${new Date(lease.expiresAt).toLocaleString()}`}</dd></div>
+      <div><dt>Cost cap</dt><dd>{maxCost ?? "—"}</dd></div>
+      <div className="oa-managed-sandbox-capabilities"><dt>Capabilities</dt><dd>{capabilities.length === 0 ? "None admitted" : capabilities.map(capability => `${capability.kind}:${capability.state}`).join(" · ")}</dd></div>
+    </dl>
+    <div className="oa-managed-sandbox-actions">
+      <Button size="sm" variant="ghost" onClick={() => dispatch(report, "DesktopManagedSandboxAdmissionRefreshed")}><RefreshCw aria-hidden="true" />Refresh</Button>
+      <Button size="sm" disabled={!canCreate} onClick={() => dispatch(report, "DesktopManagedSandboxCreateRequested")}>Create</Button>
+      <Button size="sm" variant="outline" disabled={!hasResource || !attached} onClick={() => dispatch(report, "DesktopManagedSandboxInspectRequested")}>Inspect</Button>
+      <Button size="sm" variant="outline" disabled={!canStop || !attached} onClick={() => dispatch(report, "DesktopManagedSandboxStopRequested")}>Stop</Button>
+      <Button size="sm" variant="outline" disabled={!canResume || !attached} onClick={() => dispatch(report, "DesktopManagedSandboxResumeRequested")}>Resume</Button>
+      <Button size="sm" variant="outline" disabled={!canInterrupt || !attached} onClick={() => dispatch(report, "DesktopManagedSandboxInterruptRequested")}>Interrupt</Button>
+      <Button size="sm" variant="ghost" disabled={!canDelete || !attached} onClick={() => dispatch(report, "DesktopManagedSandboxDeleteRequested")}>Delete</Button>
+      {state.managedSandboxNotice === null ? null : <span role="status" aria-live="polite">{state.managedSandboxNotice}</span>}
     </div>
   </section>
 }
@@ -204,6 +265,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
         <button aria-label={`Close ${item.pathRef}`} onClick={() => dispatch(report, "WorkspaceEditorTabCloseRequested", item.pathRef)} type="button"><X aria-hidden="true" /></button>
       </div>)}
     </div>
+    <ManagedSandboxPlacement state={state} report={report} />
     {editor.workbench.quickOpen.phase === "closed" ? null : <div className="oa-react-quick-open" role="dialog" aria-label="Quick Open">
       <div><Search aria-hidden="true" /><Input autoFocus aria-label="Search files by path" placeholder="Type a file name" value={quickQuery} onChange={event => { const query = event.currentTarget.value; setQuickQuery(query); dispatch(report, "WorkspaceEditorQuickOpenChanged", { query, paths }) }} /><Button size="icon-sm" variant="ghost" aria-label="Close Quick Open" onClick={() => dispatch(report, "WorkspaceEditorQuickOpenClosed")}><X aria-hidden="true" /></Button></div>
       <ol>{editor.workbench.quickOpen.results.slice(0, 12).map((result, index) => <li key={result.pathRef}><button aria-current={index === editor.workbench.quickOpen.activeIndex} onClick={() => { if (state.workspaceBrowser.grantRef !== null) dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: state.workspaceBrowser.grantRef, pathRef: result.pathRef, preview: true, ...(state.workspaceBrowser.pathIndexSnapshot === null ? {} : { source: "quick_open", identity: state.workspaceBrowser.pathIndexSnapshot.identity }) }); dispatch(report, "WorkspaceEditorQuickOpenClosed") }} type="button"><File aria-hidden="true" /><span>{result.pathRef}</span><small>{result.score}</small></button></li>)}</ol>

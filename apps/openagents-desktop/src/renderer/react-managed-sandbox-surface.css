@@ -1,0 +1,98 @@
+/* SBX-06 placement is one compact IDE status/control strip. It reuses the
+   Desktop token bridge and adds no theme, authority, or dashboard shell. */
+.oa-managed-sandbox-placement {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  border-block: 1px solid var(--en-color-borderSubtle);
+  background: color-mix(in srgb, var(--en-color-surfaceRaised) 68%, transparent);
+}
+
+.oa-managed-sandbox-primary,
+.oa-managed-sandbox-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-managed-sandbox-primary > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.oa-managed-sandbox-primary strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.oa-managed-sandbox-primary span,
+.oa-managed-sandbox-actions > span {
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+
+.oa-managed-sandbox-mark {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--en-color-accent);
+}
+
+.oa-managed-sandbox-mark svg {
+  width: 15px;
+  height: 15px;
+}
+
+.oa-managed-sandbox-lifecycle {
+  margin-inline-start: auto;
+  padding: 2px 7px;
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: 999px;
+  color: var(--en-color-textSecondary) !important;
+  text-transform: capitalize;
+}
+
+.oa-managed-sandbox-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: var(--en-spacing-1) var(--en-spacing-3);
+  margin: 0;
+}
+
+.oa-managed-sandbox-facts > div {
+  min-width: 0;
+}
+
+.oa-managed-sandbox-facts dt {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.oa-managed-sandbox-facts dd {
+  overflow: hidden;
+  margin: 1px 0 0;
+  color: var(--en-color-textSecondary);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-managed-sandbox-capabilities {
+  grid-column: span 2;
+}
+
+.oa-managed-sandbox-actions {
+  flex-wrap: wrap;
+}
+
+.oa-managed-sandbox-actions > span {
+  flex: 1 1 240px;
+}

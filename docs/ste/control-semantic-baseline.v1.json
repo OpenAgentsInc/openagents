@@ -8976,7 +8976,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "sourceSha256": "0ffef46cb4e5d1e89ebd22c647c156807a774c83b58b40b1235f18b5bab1d830",
+      "sourceSha256": "bcb8adf135621eb24ea2e4e7623b3b93f3676dba5524c89c8741aa0e5a25d0c8",
       "normativeKeywords": [],
       "inlineCode": [
         "501\\ncapability_not_implemented",
@@ -9089,7 +9089,9 @@
         "19",
         "19",
         "19",
+        "19",
         "2",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",

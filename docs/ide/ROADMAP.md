@@ -373,7 +373,7 @@ The post-basic-IDE implementation program is epic
 | [SBX-03 #9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | implemented the default-off `/v1` Box compatibility adapter and exact SDK local/loopback HTTP conformance without a second IDE or lifecycle authority |
 | [SBX-04 #9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | implemented structural Codex/Claude turns, ordered runtime events, terminal receipts, and exact interrupt. IDE consumption waits for SBX-06 and the live SBX-09 gate |
 | [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | implemented root-confined files, bounded process-tree commands, content-addressed artifacts, quotas, and public-safe receipts behind the default-off private guest route |
-| [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | next supplies the managed target consumed by IDE-13 #9041 and IDE-17 #9045 after IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 |
+| [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | implemented the default-off, schema-decoded managed placement component and visible create/inspect/interrupt/stop/resume/delete projection consumed later by IDE-13 #9041 and IDE-17 #9045. It does not claim their broader exits or SBX-09 live acceptance |
 | [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority, they do not create client-local runtime models |
 | [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |
 | [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | defers checkpoint/fork/private desktop until Phase 1 is accepted and their distinct semantics pass |
@@ -955,8 +955,10 @@ IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm
 candidate. It preserved the TypeScript-only project-language limit, every
 IDE-09..19 gap, and the epic's separate owner-acceptance boundary.
 
-IDE-08 is implemented and closed with its exact evidence record. The next
-packet is IDE-09: add Cursor-class completion, next-edit prediction, inline
+IDE-08 is implemented and closed with its exact evidence record. SBX-06 has
+also landed the default-off managed placement component without bypassing
+IDE-10, IDE-12, IDE-13, IDE-17, or SBX-09. The next IDE packet is IDE-09: add
+Cursor-class completion, next-edit prediction, inline
 ask/edit/generate, selection transforms, and fast multi-file editing on the
 existing exact proposal graph, with selected/effective runtime, latency,
 cost/usage, fallback, custody, and quality disclosure. IDE-10 may proceed only
@@ -965,6 +967,6 @@ mutation authority into Monaco, xterm, a harness, or a native helper.
 
 In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with
-its contract freeze and durable lifecycle authority. Its runtime packets may
-mature beneath the IDE, but SBX-06 cannot bypass IDE-08/10/12, and no managed
-placement claim may bypass SBX-09 live acceptance.
+its contract freeze, durable lifecycle authority, runtime/guest components,
+and Desktop placement consumer. SBX-07 is next for the Sarah and Desktop
+broker. No managed placement release claim may bypass SBX-09 live acceptance.

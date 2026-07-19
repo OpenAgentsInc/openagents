@@ -517,6 +517,9 @@ importers:
       '@openagentsinc/khala-sync-client':
         specifier: workspace:*
         version: link:../../packages/khala-sync-client
+      '@openagentsinc/managed-sandbox-contract':
+        specifier: workspace:*
+        version: link:../../packages/managed-sandbox-contract
       '@openagentsinc/product-spec':
         specifier: workspace:*
         version: link:../../packages/product-spec

@@ -474,6 +474,15 @@ import {
 } from "./ide/cursor-service.ts"
 import { makeIdeCursorWorkspaceAuthority } from "./ide/cursor-workspace-authority.ts"
 import {
+  DesktopIdeManagedSandboxCommandChannel,
+  DesktopIdeManagedSandboxSnapshotChannel,
+  emptyIdeManagedSandboxSnapshot,
+} from "./ide/managed-sandbox-contract.ts"
+import {
+  openIdeManagedSandboxHost,
+  type IdeManagedSandboxHost,
+} from "./ide/managed-sandbox-host.ts"
+import {
   DesktopWorkspaceLanguageCancelChannel,
   DesktopWorkspaceLanguageRequestChannel,
   DesktopWorkspaceLanguageStopChannel,
@@ -1766,7 +1775,6 @@ const disposeIdeAgentCodeHost = (): void => {
   ideAgentCodeHostEntry = null
   if (entry !== null) void entry.host.then(host => host.dispose())
 }
-
 const ideCursorFixtureQuery = (): IdeCursorClaudeQuery => ({ prompt, options }) => {
   const parsed = JSON.parse(prompt) as Readonly<{
     intent?: Readonly<{ _tag?: string }>
@@ -2016,6 +2024,56 @@ const currentIdeCursorHost = (requestedAccountRef: string | null = null): Promis
 const disposeIdeCursorHost = (): void => {
   const entry = ideCursorHostEntry
   ideCursorHostEntry = null
+  if (entry !== null) void entry.host.then(host => host.dispose())
+}
+
+let ideManagedSandboxHostEntry: Readonly<{
+  agentHost: IdeAgentCodeHost
+  ownerRef: string | null
+  credentialRef: string | null
+  host: Promise<IdeManagedSandboxHost>
+}> | null = null
+let ideManagedSandboxHostTransition: Promise<void> = Promise.resolve()
+const currentIdeManagedSandboxHost = (): Promise<IdeManagedSandboxHost | null> => {
+  const result = ideManagedSandboxHostTransition.then(async () => {
+    const agentHost = await currentIdeAgentCodeHost()
+    if (agentHost === null) return null
+    const credential = desktopSessionVault?.load() ?? null
+    const ownerRef = credential?.ownerUserId ?? null
+    const credentialRef = credential === null
+      ? null
+      : createHash("sha256").update(credential.accessToken).digest("hex")
+    if (
+      ideManagedSandboxHostEntry?.agentHost === agentHost &&
+      ideManagedSandboxHostEntry.ownerRef === ownerRef &&
+      ideManagedSandboxHostEntry.credentialRef === credentialRef
+    ) return ideManagedSandboxHostEntry.host
+    const previous = ideManagedSandboxHostEntry
+    ideManagedSandboxHostEntry = null
+    if (previous !== null) await (await previous.host).dispose()
+    const workspace = hostLifecycle.workspace()
+    if (workspace === null) return null
+    const rootDigest = createHash("sha256").update(workspace.summary().root).digest("hex")
+    const host = openIdeManagedSandboxHost({
+      enabled: process.env.OPENAGENTS_DESKTOP_MANAGED_SANDBOX === "1",
+      credential: () => desktopSessionVault?.load() ?? null,
+      baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
+      agentCodeHost: agentHost,
+      persistencePath: path.join(
+        app.getPath("userData"),
+        "ide-managed-sandbox",
+        `${rootDigest}.json`,
+      ),
+    })
+    ideManagedSandboxHostEntry = { agentHost, ownerRef, credentialRef, host }
+    return host
+  })
+  ideManagedSandboxHostTransition = result.then(() => undefined, () => undefined)
+  return result
+}
+const disposeIdeManagedSandboxHost = (): void => {
+  const entry = ideManagedSandboxHostEntry
+  ideManagedSandboxHostEntry = null
   if (entry !== null) void entry.host.then(host => host.dispose())
 }
 const workspaceSearchOwnerRef = (webContentsId: number): string =>
@@ -2432,6 +2490,29 @@ ipcMain.handle(DesktopIdeCursorCommandChannel, async (event, value: unknown) => 
       snapshot: emptyIdeCursorSnapshot(),
     }
   }
+})
+ipcMain.handle(DesktopIdeManagedSandboxSnapshotChannel, async (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return emptyIdeManagedSandboxSnapshot()
+  return (await currentIdeManagedSandboxHost())?.snapshot() ?? emptyIdeManagedSandboxSnapshot()
+})
+ipcMain.handle(DesktopIdeManagedSandboxCommandChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return {
+      _tag: "Refused",
+      reason: "gateway_unavailable",
+      message: "The managed-sandbox request did not come from the trusted Desktop renderer.",
+      snapshot: emptyIdeManagedSandboxSnapshot(),
+    }
+  }
+  const host = await currentIdeManagedSandboxHost()
+  return host === null
+    ? {
+        _tag: "Refused",
+        reason: "unattached",
+        message: "Choose an admitted coding workspace before using managed placement.",
+        snapshot: emptyIdeManagedSandboxSnapshot(),
+      }
+    : host.command(value)
 })
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)
@@ -8852,6 +8933,7 @@ app.on("before-quit", () => {
   localTurnFlushers.clear()
   workspaceSearchRegistry.dispose()
   disposeIdeCursorHost()
+  disposeIdeManagedSandboxHost()
   disposeIdeAgentCodeHost()
   terminalHost.dispose()
   hostLifecycle.dispose()

@@ -93,6 +93,7 @@
     "@openagentsinc/grok-harness": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/product-spec": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",

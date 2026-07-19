@@ -415,13 +415,18 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
             (name === "ide-path-index.ts" && ownedIdePathIndexImports.has(specifier)) ||
             (name === "monaco-editor-host.tsx" && ownedMonacoHostImports.has(specifier)) ||
             (name === "workspace-editor.ts" && ownedWorkspaceEditorImports.has(specifier)) ||
-            (name === "boot.ts" && (specifier === "./ide/agent-code.ts" || specifier === "./ide/cursor.ts")) ||
+            (name === "boot.ts" && (
+              specifier === "./ide/agent-code.ts" ||
+              specifier === "./ide/cursor.ts" ||
+              specifier === "./ide/managed-sandbox.ts")) ||
             ((name === "git-panel.ts" || name === "shell.ts") && specifier === "../ide/review-contract.ts") ||
             (name === "shell.ts" && (
               specifier === "../ide/agent-code-contract.ts" ||
+              specifier === "../ide/managed-sandbox-contract.ts" ||
               specifier === "../ide/project-contract.ts" ||
               specifier === "./ide/agent-code.ts" ||
-              specifier === "./ide/cursor.ts")) ||
+              specifier === "./ide/cursor.ts" ||
+              specifier === "./ide/managed-sandbox.ts")) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||

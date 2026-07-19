@@ -160,6 +160,11 @@ import {
   unavailableIdeCursorRendererHost,
   type IdeCursorRendererHost,
 } from "./ide/cursor.ts"
+import {
+  loadIdeManagedSandboxRendererSnapshot,
+  unavailableIdeManagedSandboxRendererHost,
+  type IdeManagedSandboxRendererHost,
+} from "./ide/managed-sandbox.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -199,6 +204,10 @@ type DesktopBridge = Readonly<{
     command?: (value: unknown) => Promise<unknown>
   }>
   ideCursor?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+  }>
+  ideManagedSandbox?: Readonly<{
     snapshot?: () => Promise<unknown>
     command?: (value: unknown) => Promise<unknown>
   }>
@@ -440,6 +449,11 @@ const ideAgentCodeRendererHost: IdeAgentCodeRendererHost = {
 const ideCursorRendererHost: IdeCursorRendererHost = {
   snapshot: () => readBridge()?.ideCursor?.snapshot?.() ?? unavailableIdeCursorRendererHost.snapshot(),
   command: value => readBridge()?.ideCursor?.command?.(value) ?? unavailableIdeCursorRendererHost.command(value),
+}
+
+const ideManagedSandboxRendererHost: IdeManagedSandboxRendererHost = {
+  snapshot: () => readBridge()?.ideManagedSandbox?.snapshot?.() ?? unavailableIdeManagedSandboxRendererHost.snapshot(),
+  command: value => readBridge()?.ideManagedSandbox?.command?.(value) ?? unavailableIdeManagedSandboxRendererHost.command(value),
 }
 
 /**
@@ -746,10 +760,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const initialIdeCursor = yield* Effect.promise(() =>
       loadIdeCursorRendererSnapshot(ideCursorRendererHost).catch(() =>
         loadIdeCursorRendererSnapshot(unavailableIdeCursorRendererHost)))
+    const initialManagedSandbox = yield* Effect.promise(() =>
+      loadIdeManagedSandboxRendererSnapshot(ideManagedSandboxRendererHost).catch(() =>
+        loadIdeManagedSandboxRendererSnapshot(unavailableIdeManagedSandboxRendererHost)))
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       agentCode: initialAgentCode,
       ideCursor: { ...current.ideCursor, snapshot: initialIdeCursor },
+      managedSandbox: initialManagedSandbox,
     }))
     let cursorInvalidationOrdinal = 0
     yield* Effect.forkScoped(Stream.runForEach(SubscriptionRef.changes(state), latest => {
@@ -1337,7 +1355,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       } satisfies AcpProviderSettingsBridge, {
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
-      }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost),
+      }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost, ideManagedSandboxRendererHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

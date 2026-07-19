@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx06_ide_placement_component.v1",
+  "capturedAt": "2026-07-19T20:40:00Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9027",
+  "proofRung": "deterministic_desktop_consumer_component",
+  "component": {
+    "schema": "openagents.desktop.ide-managed-sandbox.v1",
+    "defaultEnabled": false,
+    "provider": "google_cloud",
+    "supportedIsolation": ["gce_vm", "firecracker_microvm"],
+    "networkPosture": "deny_all",
+    "rendererCredentialCount": 0,
+    "rendererRawRootCount": 0,
+    "rendererGenericCloudClientCount": 0,
+    "rendererBoxSdkCount": 0
+  },
+  "identity": {
+    "projectRefPreserved": true,
+    "rootRefPreserved": true,
+    "worktreeRefPreserved": true,
+    "sessionRefPreserved": true,
+    "agentAttachmentRefPreserved": true,
+    "workUnitRefStableAcrossGenerations": true,
+    "staleAttachmentRefusedBeforeMutation": true,
+    "targetSubstitutionRefused": true
+  },
+  "surface": {
+    "targetVisible": true,
+    "imageAndProfileVisible": true,
+    "custodyVisible": true,
+    "freshnessAndLatencyVisible": true,
+    "generationVisible": true,
+    "leaseVisible": true,
+    "costCapVisible": true,
+    "capabilityStateVisible": true,
+    "lifecycleVisible": true,
+    "typedControls": ["create", "inspect", "interrupt", "stop", "resume", "delete"]
+  },
+  "proof": {
+    "managedServiceAndHostTestsPassed": 5,
+    "managedPlacementSurfaceTestsPassed": 1,
+    "scopedDesktopRegressionTestsPassed": 100,
+    "desktopTypecheckPassed": true,
+    "ideBoundaryScanPassed": true,
+    "defaultOffNetworkCalls": 0,
+    "bearerPresentOnlyInMainHeader": true,
+    "bearerAbsentFromRequestBody": true,
+    "bearerAbsentFromRendererProjection": true
+  },
+  "fullDesktopSuite": {
+    "passing": 2690,
+    "skipped": 39,
+    "baselineFailures": 6,
+    "scopedFailures": 0,
+    "note": "The six failures are existing main-branch drift in ProductSpec skill digests, MVP evidence digests/projections, and revision-4 assurance prose; none touches an SBX-06 changed path."
+  },
+  "limitations": [
+    "The Desktop HTTP gateway is default-off and its authenticated Worker broker is owned by SBX-07.",
+    "This packet supplies the managed target consumed by IDE-13 and IDE-17; it does not claim their broader acceptance exits.",
+    "No live GCP resource was created and no production deployment or feature flag was changed.",
+    "SBX-09 remains the only packaged Desktop, live GCP, isolation, cleanup, cost, rollback, and rollout gate."
+  ]
+}

@@ -97,7 +97,7 @@ or cleanup truth.
 | SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                  |
 | SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | complete, default-off driver component accepted        |
 | SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | complete, default-off guest I/O component accepted     |
-| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started                                            |
+| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | complete, default-off Desktop consumer component accepted |
 | SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | not started                                            |
 | SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                            |
 | SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                            |
@@ -142,6 +142,10 @@ process, or IDE-12 worktree/delivery contracts. The current P0 IDE-07 daily-
 use gate remains independent and is not delayed or promoted by this program.
 The canonical post-basic-IDE epic is #9035. SBX-06 supplies the managed target
 consumed by IDE-13 #9041 and IDE-17 #9045 without claiming their broader exits.
+The implemented SBX-06 component retains the exact IDE-08 attachment and
+projects native managed lifecycle truth through main-owned, schema-decoded
+Desktop IPC. Its authenticated Worker endpoints land in SBX-07 and its live
+packaged acceptance remains gated by SBX-09.
 
 ### Sarah
 

@@ -172,6 +172,16 @@ import {
   type IdeCursorRendererHost,
   type IdeCursorRendererState,
 } from "./ide/cursor.ts"
+import {
+  emptyIdeManagedSandboxSnapshot,
+  type IdeManagedSandboxCommand,
+  type IdeManagedSandboxSnapshot,
+} from "../ide/managed-sandbox-contract.ts"
+import {
+  executeIdeManagedSandboxRendererCommand,
+  unavailableIdeManagedSandboxRendererHost,
+  type IdeManagedSandboxRendererHost,
+} from "./ide/managed-sandbox.ts"
 import { DesktopWorkspacePathRefSchema } from "../workspace-contract.ts"
 import {
   emptyWorkspaceBrowserState,
@@ -563,6 +573,10 @@ export type DesktopShellState = Readonly<{
   agentCodeNotice: string | null
   /** Decoded Cursor-class AI-editing projection and exact active request. */
   ideCursor: IdeCursorRendererState
+  /** Main-owned OpenAgents-managed placement projection for this exact agent attachment. */
+  managedSandbox: IdeManagedSandboxSnapshot
+  /** Public-safe disposition from the latest managed-placement command. */
+  managedSandboxNotice: string | null
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
@@ -690,6 +704,8 @@ export const initialDesktopShellState = (
   agentContextTrayOpen: false,
   agentCodeNotice: null,
   ideCursor: emptyIdeCursorRendererState(),
+  managedSandbox: emptyIdeManagedSandboxSnapshot(),
+  managedSandboxNotice: null,
   commandPaletteOpen: false,
   commandNotice: null,
   commandBindings: null,
@@ -777,6 +793,13 @@ export const DesktopEditorFileAttached = defineIntent("DesktopEditorFileAttached
 export const DesktopFileContextRemoved = defineIntent("DesktopFileContextRemoved", Schema.Null)
 export const DesktopAgentContextTrayToggled = defineIntent("DesktopAgentContextTrayToggled", Schema.Null)
 export const DesktopAgentCodeRefreshed = defineIntent("DesktopAgentCodeRefreshed", Schema.Null)
+export const DesktopManagedSandboxAdmissionRefreshed = defineIntent("DesktopManagedSandboxAdmissionRefreshed", Schema.Null)
+export const DesktopManagedSandboxCreateRequested = defineIntent("DesktopManagedSandboxCreateRequested", Schema.Null)
+export const DesktopManagedSandboxInspectRequested = defineIntent("DesktopManagedSandboxInspectRequested", Schema.Null)
+export const DesktopManagedSandboxStopRequested = defineIntent("DesktopManagedSandboxStopRequested", Schema.Null)
+export const DesktopManagedSandboxResumeRequested = defineIntent("DesktopManagedSandboxResumeRequested", Schema.Null)
+export const DesktopManagedSandboxInterruptRequested = defineIntent("DesktopManagedSandboxInterruptRequested", Schema.Null)
+export const DesktopManagedSandboxDeleteRequested = defineIntent("DesktopManagedSandboxDeleteRequested", Schema.Null)
 export const DesktopAgentProposalSelected = defineIntent("DesktopAgentProposalSelected", Schema.String)
 export const DesktopAgentProposalDecisionRequested = defineIntent("DesktopAgentProposalDecisionRequested", Schema.Struct({
   proposalRef: Schema.String,
@@ -993,6 +1016,13 @@ export const desktopShellIntents = [
   DesktopFileContextRemoved,
   DesktopAgentContextTrayToggled,
   DesktopAgentCodeRefreshed,
+  DesktopManagedSandboxAdmissionRefreshed,
+  DesktopManagedSandboxCreateRequested,
+  DesktopManagedSandboxInspectRequested,
+  DesktopManagedSandboxStopRequested,
+  DesktopManagedSandboxResumeRequested,
+  DesktopManagedSandboxInterruptRequested,
+  DesktopManagedSandboxDeleteRequested,
   DesktopAgentProposalSelected,
   DesktopAgentProposalDecisionRequested,
   DesktopAgentProposalApplyRequested,
@@ -2199,12 +2229,15 @@ export const makeDesktopShellHandlers = (
   agentCodeHost: IdeAgentCodeRendererHost = unavailableIdeAgentCodeRendererHost,
   // IDE-09 host is appended to preserve every historical positional caller.
   ideCursorHost: IdeCursorRendererHost = unavailableIdeCursorRendererHost,
+  // SBX-06 host is appended to preserve every historical positional caller.
+  managedSandboxHost: IdeManagedSandboxRendererHost = unavailableIdeManagedSandboxRendererHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
   let selectionRevision = 0
   let renameRevision = 0
   let agentDecisionOrdinal = 0
+  let managedSandboxCommandOrdinal = 0
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
     SubscriptionRef.make<DesktopNavigationHistory>(initialDesktopNavigationHistory(initialNavigation)),
@@ -2335,6 +2368,41 @@ export const makeDesktopShellHandlers = (
     }
     yield* SubscriptionRef.update(state, latest => ({ ...latest, agentCode: snapshot, agentCodeNotice: notice }))
   })
+  const publishManagedSandboxResult = (
+    result: Awaited<ReturnType<typeof executeIdeManagedSandboxRendererCommand>>,
+  ) => SubscriptionRef.update(state, current => ({
+    ...current,
+    managedSandbox: result.snapshot,
+    managedSandboxNotice: result._tag === "Succeeded" ? null : result.message,
+  }))
+  const managedSandboxEnvelope = (): Readonly<{
+    requestRef: string
+    idempotencyRef: string
+    requestedAt: ReturnType<typeof IdeTimestampSchema.make>
+  }> => {
+    const ordinal = ++managedSandboxCommandOrdinal
+    const requestedAt = IdeTimestampSchema.make(new Date().toISOString())
+    return {
+      requestRef: `ide.managed-sandbox.request.${requestedAt}.${ordinal}`,
+      idempotencyRef: `ide.managed-sandbox.idempotency.${requestedAt}.${ordinal}`,
+      requestedAt,
+    }
+  }
+  const runManagedSandboxCommand = (
+    build: (current: DesktopShellState) => IdeManagedSandboxCommand | null,
+    missingMessage: string,
+  ) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const command = build(current)
+    if (command === null) {
+      yield* SubscriptionRef.update(state, latest => ({ ...latest, managedSandboxNotice: missingMessage }))
+      return
+    }
+    const result = yield* Effect.promise(() => executeIdeManagedSandboxRendererCommand(managedSandboxHost, command))
+    yield* publishManagedSandboxResult(result)
+  })
+  const sandboxRefFor = (current: DesktopShellState): string | null =>
+    current.managedSandbox.binding?.sandboxRef ?? current.managedSandbox.resource?.sandboxRef ?? null
   const assembleAgentContextForAttachedFile = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     const assembly = yield* Effect.promise(() => assembleActiveFileAgentManifest(current, new Date().toISOString()).then(
@@ -3430,6 +3498,59 @@ export const makeDesktopShellHandlers = (
   DesktopAgentContextTrayToggled: () =>
     SubscriptionRef.update(state, current => ({ ...current, agentContextTrayOpen: !current.agentContextTrayOpen })),
   DesktopAgentCodeRefreshed: () => refreshAgentCode,
+  DesktopManagedSandboxAdmissionRefreshed: () => runManagedSandboxCommand(
+    () => ({ _tag: "RefreshAdmission", ...managedSandboxEnvelope() }),
+    "Managed placement admission could not be refreshed.",
+  ),
+  DesktopManagedSandboxCreateRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    if (attachment === null) return null
+    return {
+      _tag: "Create",
+      ...managedSandboxEnvelope(),
+      expectedAttachment: attachment,
+      workUnitRef: `work-unit.desktop.${attachment.projectRef.slice(-120)}`,
+    }
+  }, "Attach an exact agent workspace before creating managed placement."),
+  DesktopManagedSandboxInspectRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    const sandboxRef = sandboxRefFor(current)
+    return attachment === null || sandboxRef === null ? null : {
+      _tag: "Inspect", ...managedSandboxEnvelope(), expectedAttachment: attachment, sandboxRef,
+    }
+  }, "No exact attached managed sandbox is available to inspect."),
+  DesktopManagedSandboxStopRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    const sandboxRef = sandboxRefFor(current)
+    return attachment === null || sandboxRef === null ? null : {
+      _tag: "Stop", ...managedSandboxEnvelope(), expectedAttachment: attachment, sandboxRef,
+      reasonRef: "owner.ide-managed-sandbox.stop",
+    }
+  }, "No exact attached managed sandbox is available to stop."),
+  DesktopManagedSandboxResumeRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    const sandboxRef = sandboxRefFor(current)
+    return attachment === null || sandboxRef === null ? null : {
+      _tag: "Resume", ...managedSandboxEnvelope(), expectedAttachment: attachment, sandboxRef,
+    }
+  }, "No exact attached managed sandbox is available to resume."),
+  DesktopManagedSandboxInterruptRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    const sandboxRef = sandboxRefFor(current)
+    const turnRef = current.managedSandbox.turn?.turnRef ?? null
+    return attachment === null || sandboxRef === null || turnRef === null ? null : {
+      _tag: "Interrupt", ...managedSandboxEnvelope(), expectedAttachment: attachment, sandboxRef, turnRef,
+      reasonRef: "owner.ide-managed-sandbox.interrupt",
+    }
+  }, "No running managed turn is available to interrupt."),
+  DesktopManagedSandboxDeleteRequested: () => runManagedSandboxCommand(current => {
+    const attachment = current.agentCode.attachment
+    const sandboxRef = sandboxRefFor(current)
+    return attachment === null || sandboxRef === null ? null : {
+      _tag: "Delete", ...managedSandboxEnvelope(), expectedAttachment: attachment, sandboxRef,
+      reasonRef: "owner.ide-managed-sandbox.delete",
+    }
+  }, "No exact attached managed sandbox is available to delete."),
   DesktopAgentProposalSelected: proposalRef => selectAgentProposal(proposalRef),
   DesktopAgentProposalDecisionRequested: ({ proposalRef, disposition, operationRefs }) =>
     decideAgentProposal(proposalRef, disposition, operationRefs),

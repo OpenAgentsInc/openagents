@@ -85,6 +85,7 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
     path.join(ideRoot, "agent-code-contract.ts"),
     path.join(ideRoot, "cursor-contract.ts"),
     path.join(ideRoot, "cursor-benchmark-contract.ts"),
+    path.join(ideRoot, "managed-sandbox-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
@@ -94,13 +95,16 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
   ]);
 
   for (const file of contracts) {
-    addMatches(
-      violations,
-      file,
-      "schema-derived-contract-types",
-      /^export\s+(?:type|interface)\s+\w+(?![^=]*=\s*typeof\s+\w+(?:Schema)?\.Type)/u,
-      "Persisted/wire contract types must derive from an Effect Schema Type.",
-    );
+    const lines = readFileSync(file, "utf8").split("\n");
+    lines.forEach((line, index) => {
+      if (!isHandMirroredBoundaryDeclaration(`${line} ${lines[index + 1] ?? ""}`)) return;
+      violations.push({
+        file: relative(file),
+        line: index + 1,
+        rule: "schema-derived-contract-types",
+        detail: "Persisted/wire contract types must derive from an Effect Schema Type.",
+      });
+    });
     addMatches(
       violations,
       file,
@@ -153,6 +157,26 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         line: 1,
         rule,
         detail: `Required Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+
+  const managedSandboxServicePath = path.join(ideRoot, "managed-sandbox-service.ts");
+  const managedSandboxService = readFileSync(managedSandboxServicePath, "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "managed-sandbox-context-service"],
+    ["Layer.effect", "managed-sandbox-layer-effect"],
+    ["Effect.fn", "managed-sandbox-named-effect-functions"],
+    ["Schema.TaggedErrorClass", "managed-sandbox-typed-expected-errors"],
+    ["Effect.addFinalizer", "managed-sandbox-scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "managed-sandbox-boundary-decode"],
+  ] as const) {
+    if (!managedSandboxService.includes(needle)) {
+      violations.push({
+        file: relative(managedSandboxServicePath),
+        line: 1,
+        rule,
+        detail: `Required managed-sandbox Effect service primitive is missing: ${needle}.`,
       });
     }
   }
@@ -295,6 +319,38 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
           line: 1,
           rule: "agent-renderer-projection-only",
           detail: `Agent renderer projection acquired forbidden authority through ${forbidden}.`,
+        });
+      }
+    }
+  }
+
+  const managedSandboxRendererFiles = [
+    path.join(ideRoot, "managed-sandbox-contract.ts"),
+    path.join(appRoot, "src", "renderer", "ide", "managed-sandbox.ts"),
+    path.join(appRoot, "src", "renderer", "react-workspace-surfaces.tsx"),
+  ];
+  for (const file of managedSandboxRendererFiles) {
+    const source = readFileSync(file, "utf8");
+    for (const forbidden of [
+      'from "node:',
+      'from "electron"',
+      "workspace-service",
+      "accessToken",
+      "refreshToken",
+      "authorization",
+      "Bearer ",
+      "absolutePath",
+      "rootPath",
+      "gcloud",
+      "@google-cloud",
+      "box-sdk",
+    ]) {
+      if (source.includes(forbidden)) {
+        violations.push({
+          file: relative(file),
+          line: 1,
+          rule: "managed-sandbox-renderer-projection-only",
+          detail: `Managed-sandbox renderer projection acquired forbidden authority through ${forbidden}.`,
         });
       }
     }
