@@ -6,6 +6,12 @@
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:36:00Z"
     },
+    "docs/afteraction/2026-07-19-codex-desktop-git-review-oom-incident-afteraction.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/forensic-review-20260719",
+      "ste_reviewed_at": "2026-07-19T17:54:47Z"
+    },
     "docs/sol/CLAIM_PROTOCOL.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",

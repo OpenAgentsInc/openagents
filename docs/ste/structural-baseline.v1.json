@@ -6746,6 +6746,12 @@
       "STE-5.1": 3,
       "STE-8.2": 1
     },
+    "docs/ide/2026-07-19-ide-08-agent-native-code-graph.md": {
+      "STE-8.1": 54,
+      "STE-5.1": 8,
+      "STE-2.4": 34,
+      "STE-8.2": 1
+    },
     "docs/ide/2026-07-19-khala-editor-theme-owner-work-packet.md": {
       "STE-2.4": 3,
       "STE-5.1": 1,
