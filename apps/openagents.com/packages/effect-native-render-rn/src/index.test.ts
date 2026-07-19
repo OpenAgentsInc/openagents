@@ -368,9 +368,12 @@ describe("React Native renderer host boundaries", () => {
     ;(element.props.onScrollToIndexFailed as (failure: unknown) => void)({ index: 1 })
 
     expect(element.props.maintainVisibleContentPosition).toEqual({ minIndexForVisible: 0 })
-    expect(calls).toContainEqual(["index", { animated: true, index: 1, viewPosition: 1 }])
+    expect(calls).toContainEqual(["index", { animated: false, index: 1, viewPosition: 1 }])
     expect(calls).toContainEqual(["end", { animated: false }])
-    expect(calls).toContainEqual(["end", { animated: true }])
+    expect(calls.filter(([kind]) => kind === "end")).toEqual([
+      ["end", { animated: false }],
+      ["end", { animated: false }],
+    ])
     expect(pinned).toEqual([false, true])
   })
 

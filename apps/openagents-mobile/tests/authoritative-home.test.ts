@@ -762,7 +762,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     } })
     const initial = JSON.stringify(renderContentView(program.initialState))
     expect(initial).toContain("Send queues a follow-up after this exact running turn")
-    expect(initial).toContain('"placeholder":"Queue a follow-up"')
+    expect(initial).toContain('"placeholder":"Continue conversation"')
     expect(initial).toContain('"name":"RuntimeTurnStopConfirmationRequested"')
 
     program.khala.requestStopConfirmation("run.foreign")
@@ -868,7 +868,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const content = JSON.stringify(renderContentView(state))
     expect(content).toContain('"label":"Queued follow-up"')
     expect(content).toContain("Admitted · delivery and promotion pending")
-    expect(content).toContain('"placeholder":"Queue a follow-up"')
+    expect(content).toContain('"placeholder":"Continue conversation"')
   })
 
   test("renders grouped pending questions and resolves only after the confirmed decision", async () => {

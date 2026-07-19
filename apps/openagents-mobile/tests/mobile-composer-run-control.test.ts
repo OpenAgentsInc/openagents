@@ -20,7 +20,7 @@ describe("T3M-B2.3a mobile active-run composer admission", () => {
     expect(queued).toMatchObject({
       active: true,
       badge: "Starting",
-      placeholder: "Draft while this turn starts",
+      placeholder: "Continue conversation",
       stopAvailable: true,
     })
     expect(queued.detail).toContain("exact queued turn")
@@ -33,7 +33,7 @@ describe("T3M-B2.3a mobile active-run composer admission", () => {
     })
     expect(running).toMatchObject({
       badge: "Running",
-      placeholder: "Queue a follow-up",
+      placeholder: "Continue conversation",
       submitLabel: "Queue follow-up",
     })
     expect(running.detail).toContain("after this exact running turn")

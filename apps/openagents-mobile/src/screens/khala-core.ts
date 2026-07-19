@@ -401,47 +401,29 @@ const runtimeControlViews = (
   )]
 }
 
-const compactRuntimeStatusViews = (
-  state: KhalaState,
-  assistantLabel: string,
-): ReadonlyArray<View> => {
+const compactRuntimeStatusViews = (state: KhalaState): ReadonlyArray<View> => {
   const turn = state.runtimeTurn
-  if (turn === null || (turn.status !== "queued" && turn.status !== "running" &&
-      turn.status !== "waiting_for_input")) return []
-  const work = state.entries.find(entry => entry.work?.runRef === turn.runRef)?.work
+  if (turn === null || turn.status === "completed" || turn.status === "canceled") return []
   const status = state.runtimeControlSubmittingAction === "cancel"
-    ? `Stopping ${assistantLabel}…`
-    : turn.status === "queued"
-      ? `Starting ${assistantLabel}…`
-      : turn.status === "waiting_for_input"
-        ? `${assistantLabel} is waiting for you`
-        : `${assistantLabel} is thinking…`
-  const detail = turn.status === "queued"
-    ? "Waiting for the hosted runtime"
+    ? "Stopping…"
     : turn.status === "waiting_for_input"
-      ? work?.identityLabel ?? "OpenAgents hosted runtime"
-      : work === undefined
-        ? "Connecting to the hosted runtime"
-        : `Generating with ${work.identityLabel}`
+      ? "Waiting for your reply"
+      : turn.status === "failed"
+        ? "Couldn't get a reply. Please try again."
+        : "Thinking…"
   return [Stack({
     key: "assistant-runtime-status",
     direction: "column",
     gap: "0.5",
     style: { width: "full" },
-    a11y: { role: "region", label: `${status} ${detail}` },
+    a11y: { role: "region", label: status },
   }, [
     Text({
       key: "assistant-runtime-status-label",
       content: status,
       variant: "caption",
-      color: "accent",
+      color: turn.status === "failed" ? "danger" : "textMuted",
       weight: "medium",
-    }),
-    Text({
-      key: "assistant-runtime-status-identity",
-      content: detail,
-      variant: "caption",
-      color: "textMuted",
     }),
   ])]
 }
@@ -1129,7 +1111,7 @@ export const renderKhalaSurface = (
         : []),
       ...(compactRuntime === null
         ? []
-        : compactRuntimeStatusViews(state, compactRuntime.assistantLabel)),
+        : compactRuntimeStatusViews(state)),
       ...(compactRuntime === null
         ? []
         : assistantSpeechControlViews(compactRuntime.speech ?? null, accessibility)),

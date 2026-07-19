@@ -1,5 +1,6 @@
 import {
   FleetRunAuthorityError,
+  RUNTIME_START_TURN_MUTATOR_NAME,
   type FleetRunAuthorityRepositoryShape,
   type FleetSteeringExchangeRepositoryShape,
   makeFleetRunAuthorityRepository,
@@ -12148,11 +12149,24 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // MutationResult values in a 200 PushResponse — never a queue-blocking
     // 4xx (SPEC §2.4).
     path: '/api/sync/push',
-    handler: (request, env, ctx) =>
-      handleKhalaSyncPush(
-        request,
-        khalaSyncRouteWiring.makePushDeps(request, env, ctx),
-      ),
+    handler: (request, env, ctx) => {
+      const pushDependencies = khalaSyncRouteWiring.makePushDeps(request, env, ctx)
+      return handleKhalaSyncPush(request, {
+        ...pushDependencies,
+        onPushAccepted: ({ request: pushRequest, response }) => {
+          const admittedStartTurn = response.results.some(result =>
+            result.status === 'applied' &&
+            pushRequest.mutations.some(mutation =>
+              mutation.mutationId === result.mutationId &&
+              mutation.name === RUNTIME_START_TURN_MUTATOR_NAME,
+            ),
+          )
+          if (admittedStartTurn) {
+            ctx.waitUntil(runHostedRuntimeTurnDispatchForEnv(env))
+          }
+        },
+      })
+    },
   },
   {
     // Khala Sync catch-up log (KS-4.3, #8296): authenticated offset-

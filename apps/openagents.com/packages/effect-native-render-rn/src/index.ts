@@ -4048,7 +4048,7 @@ const renderTranscript = (
       ref: (value: NativeListHandle | null) => {
         listHandle = value
         if (value !== null && scrollTargetIndex >= 0) {
-          value.scrollToIndex?.({ animated: true, index: scrollTargetIndex, viewPosition: 1 })
+          value.scrollToIndex?.({ animated: false, index: scrollTargetIndex, viewPosition: 1 })
         }
       },
       keyExtractor: (message: { readonly key: string }) => message.key,
@@ -4081,11 +4081,11 @@ const renderTranscript = (
         const index = typeof failure.index === "number" ? failure.index : scrollTargetIndex
         if (index < 0) return
         if (index >= view.messages.length - 1) {
-          listHandle?.scrollToEnd?.({ animated: true })
+          listHandle?.scrollToEnd?.({ animated: false })
           return
         }
         const estimated = typeof view.estimatedItemSize === "number" ? view.estimatedItemSize : 180
-        listHandle?.scrollToOffset?.({ animated: true, offset: Math.max(0, index * estimated) })
+        listHandle?.scrollToOffset?.({ animated: false, offset: Math.max(0, index * estimated) })
       },
       renderItem: ({ item: message }: {
         readonly item: {

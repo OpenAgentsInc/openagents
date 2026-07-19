@@ -58,7 +58,7 @@ export const projectMobileComposerRunAdmission = (input: Readonly<{
     active,
     badge,
     detail,
-    placeholder: turn.status === "queued" ? "Draft while this turn starts" : "Queue a follow-up",
+    placeholder: "Continue conversation",
     submitLabel: "Queue follow-up",
     stopAvailable: input.controlAvailable && input.submittingAction === null,
     stopping,

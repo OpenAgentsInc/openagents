@@ -179,7 +179,7 @@ describe(`contract ${contractId}`, () => {
     expect((await Effect.runPromise(lastState(program))).activeThreadRef).toBe(thread.threadRef);
   });
 
-  test("keeps a submitted Sarah turn pinned to the newest message while the keyboard contracts", async () => {
+  test("jumps to a submitted Sarah message without trapping manual scrolling", async () => {
     let finish: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined;
     const host: MobileConversationHost = {
       listThreads: async () => [recentThread],
@@ -209,8 +209,8 @@ describe(`contract ${contractId}`, () => {
       false,
     ) as Effect.Effect<unknown>);
     const contracted = await Effect.runPromise(lastState(program));
-    expect(contracted.khala.transcriptPinned).toBe(true);
-    expect(contracted.khala.transcriptScrollToKey).toBe("pending-mobile-1");
+    expect(contracted.khala.transcriptPinned).toBe(false);
+    expect(contracted.khala.transcriptScrollToKey).toBeNull();
 
     finish?.({ ok: true, thread: recentThread });
     await Effect.runPromise(Effect.yieldNow);
@@ -272,6 +272,7 @@ describe(`contract ${contractId}`, () => {
     }));
 
     expect(view).toContain("Visible Sarah reply");
+    expect(view).toContain("Couldn't get a reply. Please try again.");
     expect(view).toContain("Listen · AI-generated voice");
     expect(view).toContain("SarahSpeechRequested");
     expect(view).not.toContain("Internal runtime detail");
@@ -374,8 +375,10 @@ describe(`contract ${contractId}`, () => {
       },
     }));
 
-    expect(view).toContain("Sarah is thinking…");
-    expect(view).toContain("Generating with Gemma 4 31B · Google AI Studio");
+    expect(view).toContain("Thinking…");
+    expect(view).not.toContain("Sarah is thinking…");
+    expect(view).not.toContain("Generating with Gemma 4 31B · Google AI Studio");
+    expect(view).not.toContain("hosted runtime");
     expect(view).not.toContain("OpenAgents · hosted runtime · 1 activity");
     expect(view).not.toContain('"scrollToKey":"work:run.sarah.gemma"');
     expect(view).toContain('"onStop"');

@@ -4617,15 +4617,6 @@ export const makeHomeHandlers = (
       }),
     [TranscriptPinnedChanged]: (pinned: boolean) =>
       SubscriptionRef.update(state, current => {
-        const turn = current.khala.runtimeTurn
-        const sarahTurnActive = current.sarah !== null &&
-          current.activeThreadRef === current.sarah.threadRef &&
-          (current.khala.pending || turn?.status === "queued" ||
-            turn?.status === "running" || turn?.status === "waiting_for_input")
-        // Keyboard/layout contraction can emit `false` immediately after the
-        // owner submits. Keep Sarah at the live edge until that turn settles;
-        // otherwise both the new user message and reply land below the screen.
-        if (!pinned && sarahTurnActive) return current
         return {
           ...current,
           khala: {

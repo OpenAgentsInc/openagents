@@ -94,6 +94,7 @@ const run = (
     binding?: { connectionString: string } | undefined
     client?: KhalaSyncPushSqlClient
     engine?: ExecutePushFn
+    onPushAccepted?: Parameters<typeof handleKhalaSyncPush>[1]["onPushAccepted"]
   }> = {},
 ) =>
   Effect.runPromise(
@@ -110,6 +111,7 @@ const run = (
           : { connectionString: FAKE_CONNECTION_STRING },
       executePush: input.engine ?? okEngine(),
       makeSqlClient: async () => input.client ?? makeFakeClient().client,
+      onPushAccepted: input.onPushAccepted,
       registry,
     }),
   )
@@ -208,6 +210,43 @@ describe('handleKhalaSyncPush', () => {
     expect(captured.input?.request.mutations).toHaveLength(1)
     expect(captured.input?.sql).toBe(fake.client.sql)
     expect(fake.endedCount()).toBe(1)
+  })
+
+  test('notifies an immediate dispatcher once after an accepted durable push', async () => {
+    const accepted: Array<{
+      readonly mutationName: string
+      readonly resultStatus: string
+      readonly userId: string
+    }> = []
+    const response = await run({
+      userId: 'user-42',
+      onPushAccepted: input => {
+        accepted.push({
+          mutationName: String(input.request.mutations[0]?.name),
+          resultStatus: input.response.results[0]?.status ?? 'missing',
+          userId: input.userId,
+        })
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect(accepted).toEqual([{
+      mutationName: 'sync.debugEcho',
+      resultStatus: 'applied',
+      userId: 'user-42',
+    }])
+  })
+
+  test('keeps an accepted push successful when its best-effort wake-up throws', async () => {
+    const response = await run({
+      onPushAccepted: () => {
+        throw new Error('scheduler unavailable')
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect((await response.json()) as Record<string, unknown>)
+      .toMatchObject({ lastMutationId: 1 })
   })
 
   test('client-group/user mismatch is a whole-request 403 unauthorized_scope', async () => {

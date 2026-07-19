@@ -276,6 +276,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   owner email. A deterministic Sarah-shaped thread ref and a historical
   authority receipt remain necessary evidence but never substitute for that
   current identity check.
+- An admitted `runtime.startTurn` mutation schedules the server-owned hosted
+  dispatcher immediately after the durable push commits. The once-per-minute
+  scheduled drain is recovery only and must never be the primary mobile-chat
+  latency path. A failed wake-up cannot roll back or misreport the durable
+  mutation; the recovery drain may safely claim it later.
 - Sarah mobile speech is an explicit, delivery-only projection of one already
   visible completed assistant message. The control renders only in the
   authenticated owner's admitted Sarah thread, and the server independently

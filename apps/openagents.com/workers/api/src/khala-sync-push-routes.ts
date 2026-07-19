@@ -103,6 +103,16 @@ export type KhalaSyncPushDependencies = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   /** Injectable engine seam for route tests. Default: the real engine. */
   executePush?: ExecutePushFn | undefined
+  /**
+   * Fail-soft post-commit notification. Production uses this to wake
+   * server-owned runtime dispatch immediately after an admitted start-turn
+   * mutation; the scheduled drain remains recovery only.
+   */
+  onPushAccepted?: ((input: Readonly<{
+    request: PushRequest
+    response: PushResponse
+    userId: string
+  }>) => void) | undefined
 }>
 
 const syncErrorResponse = (
@@ -246,6 +256,17 @@ export const handleKhalaSyncPush = (
         sql: client.sql,
         userId: actor.userId,
       })
+      try {
+        deps.onPushAccepted?.({
+          request: pushRequest,
+          response,
+          userId: actor.userId,
+        })
+      } catch {
+        // The push is already durable. A wake-up notification must never
+        // turn an admitted mutation into an apparent client failure; the
+        // scheduled drain will recover it if notification scheduling fails.
+      }
       return noStoreJsonResponse(encodePushResponse(response))
     } catch (error) {
       if (error instanceof KhalaSyncClientStateMismatchError) {
