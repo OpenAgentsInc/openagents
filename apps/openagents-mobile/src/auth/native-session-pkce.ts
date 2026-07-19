@@ -40,7 +40,7 @@ export type AuthRequestLike = Readonly<{
   codeVerifier?: string
   promptAsync: (
     discovery: typeof OPENAGENTS_MOBILE_OPENAUTH_DISCOVERY,
-    options: Readonly<{ preferEphemeralSession: true }>,
+    options: Readonly<{ preferEphemeralSession: false }>,
   ) => Promise<AuthSessionResult>
 }>
 
@@ -127,7 +127,9 @@ export const signInNativeSession = async (input: Readonly<{
   try {
     const request = await (input.createAuthRequest ?? createNativeAuthRequest)()
     const result = await request.promptAsync(OPENAGENTS_MOBILE_OPENAUTH_DISCOVERY, {
-      preferEphemeralSession: true,
+      // Reuse the owner's system GitHub login. The OpenAgents access and
+      // refresh tokens still stay exclusively in this app's SecureStore.
+      preferEphemeralSession: false,
     })
     if (result.type === "cancel" || result.type === "dismiss") {
       return { state: "cancelled" }

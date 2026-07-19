@@ -2295,7 +2295,10 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `openagents-khala-mobile`, provider GitHub, authorization code, PKCE S256,
   and canonical redirect `openagents://auth`. One imperative AuthRequest owns
   callback state validation and its verifier; an error result is never
-  exchanged. Explicit sign-out must obtain a server response proving both
+  exchanged. The system authentication session may reuse the owner's existing
+  GitHub login so an app update or repeated sign-in does not demand credentials
+  again; OpenAgents access and refresh tokens still live only in the app's
+  SecureStore. Explicit sign-out must obtain a server response proving both
   access and refresh revocation before the local SecureStore record is cleared.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, connection-pool saturation, secrets locations) are in

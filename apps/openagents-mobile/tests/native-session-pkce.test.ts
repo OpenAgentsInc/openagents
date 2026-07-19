@@ -87,7 +87,7 @@ describe("contract openagents_mobile.session.pkce_sign_in_sign_out.v1", () => {
     expect(created).toBe(1)
     expect(promptCalls).toEqual([{
       discovery: OPENAGENTS_MOBILE_OPENAUTH_DISCOVERY,
-      options: { preferEphemeralSession: true },
+      options: { preferEphemeralSession: false },
     }])
     expect(exchangeCalls).toEqual([{
       config: {

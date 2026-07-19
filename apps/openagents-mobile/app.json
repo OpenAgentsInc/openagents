@@ -20,7 +20,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "121"
+      "buildNumber": "122"
     },
     "android": {
       "package": "com.openagents.app"
