@@ -104,30 +104,24 @@ const gitIgnoredPathRefs = (root: string, refs: ReadonlyArray<string>): Set<stri
     timeout: 10_000,
   })
   if (repositoryProbe.status !== 0) return new Set()
-  const ignored = new Set<string>()
-  const classify = (candidates: ReadonlyArray<string>): void => {
-    if (candidates.length === 0) return
-    const result = spawnSync("git", ["check-ignore", "--no-index", "--", ...candidates], {
-      cwd: root,
-      env: workspaceGitEnvironment(),
-      stdio: "ignore",
-      timeout: 10_000,
-    })
-    if (result.status === 1) return
-    if (result.status !== 0) {
-      for (const candidate of candidates) ignored.add(candidate)
-      return
-    }
-    if (candidates.length === 1) {
-      ignored.add(candidates[0]!)
-      return
-    }
-    const midpoint = Math.ceil(candidates.length / 2)
-    classify(candidates.slice(0, midpoint))
-    classify(candidates.slice(midpoint))
-  }
-  classify(refs)
-  return ignored
+  if (refs.length === 0) return new Set()
+  // Git treats a leading ':' as pathspec magic even after `--`. Prefix each
+  // relative ref with `./` and use the NUL-delimited stdin protocol so a valid
+  // workspace entry such as `:-` cannot make classification fail and collapse
+  // every sibling into an empty tree. A genuine classifier failure remains
+  // fail-closed: no possibly ignored entry is projected.
+  const result = spawnSync("git", ["check-ignore", "--no-index", "-z", "--stdin"], {
+    cwd: root,
+    env: workspaceGitEnvironment(),
+    input: Buffer.from(`${refs.map(candidate => `./${candidate}`).join("\0")}\0`),
+    encoding: "buffer",
+    maxBuffer: 8_000_000,
+    timeout: 10_000,
+  })
+  if (result.status === 1) return new Set()
+  if (result.status !== 0 || !Buffer.isBuffer(result.stdout)) return new Set(refs)
+  return new Set(result.stdout.toString("utf8").split("\0").flatMap(candidate =>
+    candidate === "" ? [] : [candidate.startsWith("./") ? candidate.slice(2) : candidate]))
 }
 
 const safeDirectoryEntries = (

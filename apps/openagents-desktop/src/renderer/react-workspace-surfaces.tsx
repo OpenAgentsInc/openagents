@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type ReactElement } from "react"
-import { ArrowLeft, ArrowRight, Camera, ChevronDown, ChevronRight, CircleStop, ExternalLink, File, FileDiff, Folder, FolderOpen, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Search, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement } from "react"
+import { ArrowLeft, ArrowRight, Camera, CircleStop, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Search, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
 
 import { Button } from "#components/ui/button"
 import { Input } from "#components/ui/input"
+import { PierreWorkspaceTree, pierreWorkspacePaths } from "./ide/pierre-tree-adapter.tsx"
 import type { DesktopShellState } from "./shell.ts"
-import { visibleWorkspaceRows } from "./workspace-browser.ts"
 import { workspaceEditorTabDirty } from "./workspace-editor.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
@@ -35,7 +35,7 @@ const tablistKey = (
 
 const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const browser = state.workspaceBrowser
-  const projection = useMemo(() => visibleWorkspaceRows(browser), [browser])
+  const pierrePaths = pierreWorkspacePaths(browser)
   const searchMatches = browser.searchPage?.state === "available" ? browser.searchPage.matches : []
   const openEntry = (pathRef: string, kind: "file" | "directory"): void => {
     dispatch(report, "WorkspaceBrowserEntrySelected", pathRef)
@@ -55,24 +55,17 @@ const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; r
     <div className="oa-react-files-search-modes" aria-label="Search mode">
       {(["path", "content"] as const).map(mode => <button aria-pressed={browser.searchMode === mode} key={mode} onClick={() => dispatch(report, "WorkspaceBrowserSearchModeSelected", mode)} type="button">{mode === "path" ? "Names" : "Contents"}</button>)}
     </div>
-    <div className="oa-react-files-tree-scroll" role="tree">
-      {browser.phase === "loading" ? <p role="status">Loading workspace files…</p>
+    <div className={`oa-react-files-tree-scroll${browser.phase === "ready" && browser.query.trim() === "" && pierrePaths.length > 0 ? " oa-react-files-tree-scroll--pierre" : ""}`}>
+      {browser.phase === "idle" ? <p role="status">Preparing workspace files…</p>
+        : browser.phase === "loading" ? <p role="status">Loading workspace files…</p>
         : browser.phase === "unavailable" ? <p role="alert">{browser.reason ?? "Workspace files are unavailable."}</p>
         : browser.searchState === "searching" ? <p role="status">Searching…</p>
         : browser.query.trim() !== "" && browser.searchPage !== null
           ? searchMatches.length === 0 ? <p>No matches.</p> : searchMatches.map(match => <button className="oa-react-file-search-result" key={`${match.pathRef}:${match.line ?? ""}`} onClick={() => openEntry(match.pathRef, "file")} type="button">
               <File aria-hidden="true" /><span><strong>{match.pathRef}</strong>{match.preview === null ? null : <small>{match.line === null ? "" : `Line ${match.line} · `}{match.preview}</small>}</span>
             </button>)
-          : projection.rows.length === 0 ? <p>No workspace files.</p> : projection.rows.map(({ entry, depth }) => {
-              const expanded = browser.expandedRefs.includes(entry.pathRef)
-              return <button aria-level={depth + 1} aria-selected={browser.selectedRef === entry.pathRef} className="oa-react-file-tree-row" key={entry.pathRef}
-                onClick={() => openEntry(entry.pathRef, entry.kind)} role="treeitem" style={{ "--oa-tree-depth": depth } as CSSProperties} type="button">
-                {entry.kind === "directory" ? expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" /> : <span aria-hidden="true" />}
-                {entry.kind === "directory" ? expanded ? <FolderOpen aria-hidden="true" /> : <Folder aria-hidden="true" /> : <File aria-hidden="true" />}
-                <span>{entry.name}</span>{entry.sizeBytes === null ? null : <small>{entry.sizeBytes.toLocaleString()} B</small>}
-              </button>
-            })}
-      {projection.truncated ? <p>Showing the first 500 entries.</p> : null}
+          : pierrePaths.length === 0 ? <p>No workspace files.</p>
+            : <PierreWorkspaceTree browser={browser} onActivate={({ pathRef, kind }) => openEntry(pathRef, kind)} />}
     </div>
   </aside>
 }

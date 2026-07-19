@@ -367,6 +367,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const reactHostImport =
       /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/;
     const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench";
+    const ownedPierreAdapterImport = "./ide/pierre-tree-adapter.tsx";
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
       specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!));
@@ -374,7 +375,9 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
         expect(
           sharedOrSibling.test(specifier) ||
             (reactHostFiles.has(name) &&
-              (reactHostImport.test(specifier) || specifier === sharedReactWorkbenchImport)),
+              (reactHostImport.test(specifier) ||
+                specifier === sharedReactWorkbenchImport ||
+                (name === "react-workspace-surfaces.tsx" && specifier === ownedPierreAdapterImport))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }

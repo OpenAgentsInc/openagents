@@ -45,8 +45,10 @@ The first deliverable is deliberately narrower than Editor mode: **Command-E**
 on macOS (**Control-E** elsewhere) toggles the existing Files tree for the
 current selected coding session/worktree in the existing right sidebar. This
 uses the grant-scoped workspace browser and current surface manager already in
-Desktop. It does not wait for Monaco, Pierre, the new path index, or maximized
-Editor composition.
+Desktop. It does not wait for Monaco, the new whole-workspace path index, or
+maximized Editor composition. The minimum audited Pierre adapter is pulled
+forward so the quick Files surface is a real navigable tree rather than a
+temporary hand-rendered list.
 
 The ordered implementation ledger is:
 
@@ -56,12 +58,19 @@ The ordered implementation ledger is:
 2. [#9007](https://github.com/OpenAgentsInc/openagents/issues/9007) wires the
    effective shortcut to the mounted right sidebar, proves current-worktree
    scope and toggle behavior, and records the packaged verification boundary.
+3. [#9008](https://github.com/OpenAgentsInc/openagents/issues/9008) fixes
+   literal Git-ignore classification for arbitrary valid filenames, replaces
+   the temporary list with the pinned Pierre Trees projection, and proves a
+   non-empty root, directory expansion, and document open in packaged Electron.
 
-Implementation status: #9006 and #9007 have landed the contract, typed toggle,
-effective-binding guard, mounted current-worktree tree, and packaged proof packet.
+Implementation status: #9006 and #9007 landed the contract, typed toggle, and
+mounted current-worktree surface. #9008 upgrades that surface to the real
+Pierre tree and closes the empty-tree regression exposed by a leading-colon
+filename in the owner's working directory.
 
 This quick-files slice is a prerequisite interaction rung, not a substitute
-for IDE-00 through IDE-07. The larger plan continues after the two issues land.
+for IDE-00 through IDE-07. IDE-02 still owns the complete indexed, watched,
+scale-tested explorer rather than duplicating the quick-files adapter.
 
 ## Exact evidence pins
 
@@ -79,6 +88,8 @@ License boundary:
   as a package rather than copying the workbench.
 - Pierre trees and diffs are Apache-2.0 at the pinned revision. The packaged
   Desktop application must carry the required licenses and the trees NOTICE.
+  The #9008 package-boundary oracle pins Trees exactly, confines the import to
+  the owned adapter, and verifies the installed license and NOTICE closure.
 - No direct dependency on private `@pierre/path-store` is permitted. It is an
   implementation detail inlined into the public tree build.
 
@@ -747,7 +758,8 @@ Work:
 - add typed chunked `workspaceTreeIndex` host/IPC/state flow;
 - share ignore/secret/symlink policy with existing tree/search;
 - add epoch invalidation, cancellation, overflow rescan, and scale fixtures;
-- replace the React custom tree with `PierreWorkspaceTree`;
+- extend the #9008 `PierreWorkspaceTree` adapter from admitted paged refs to
+  the complete indexed and watched repository projection;
 - connect selection/open, reveal, refresh, Git decorations, and safe context
   actions;
 - preserve compact-panel and maximized-Editor layout state.

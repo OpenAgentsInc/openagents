@@ -544,6 +544,27 @@ describe("Desktop bounded workspace service", () => {
     }).state).toBe("unavailable")
   })
 
+  test("keeps literal leading-colon filenames from emptying their workspace siblings", () => {
+    if (process.platform === "win32") return
+    const root = makeRoot()
+    runGitFixture(root, ["init", "--quiet"])
+    writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n")
+    writeFileSync(path.join(root, ":-"), "literal pathspec-shaped filename")
+    writeFileSync(path.join(root, "README.md"), "visible")
+    writeFileSync(path.join(root, "ignored.txt"), "hidden")
+
+    const page = workspaceTreePage({
+      root,
+      grantRef: "workspace.grant.literal-pathspec",
+      directoryRef: "",
+    })
+
+    expect(page.state === "available" ? page.entries.map(entry => entry.pathRef) : []).toEqual([
+      ":-",
+      "README.md",
+    ])
+  })
+
   test("bounds path/content search and withholds binary, secret, ignored, and raw-root data", () => {
     const root = makeRoot()
     runGitFixture(root, ["init", "--quiet"])

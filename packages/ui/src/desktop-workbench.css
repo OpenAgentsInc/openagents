@@ -1019,9 +1019,33 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-files-search-modes button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
 
 .oa-react-files-tree-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 4px; }
+.oa-react-files-tree-scroll--pierre { overflow: hidden; padding: 0; }
+.oa-react-pierre-tree {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  --trees-bg-override: transparent;
+  --trees-bg-muted-override: var(--en-color-surfaceRaised);
+  --trees-fg-override: var(--en-color-textSecondary);
+  --trees-fg-muted-override: var(--en-color-textMuted);
+  --trees-accent-override: var(--en-color-accent);
+  --trees-border-color-override: var(--en-color-borderSubtle);
+  --trees-focus-ring-color-override: var(--en-color-focus);
+  --trees-selected-fg-override: var(--en-color-textPrimary);
+  --trees-selected-bg-override: var(--en-color-stateSelected);
+  --trees-selected-focused-border-color-override: var(--en-color-focus);
+  --trees-font-family-override: var(--oa-font-sans);
+  --trees-font-size-override: 11px;
+  --trees-border-radius-override: var(--en-radius-sm);
+  --trees-item-margin-x-override: 4px;
+  --trees-item-padding-x-override: 5px;
+  --trees-level-gap-override: 12px;
+  --trees-file-icon-color-default: var(--en-color-textMuted);
+}
 .oa-react-files-tree-scroll > p,
 .oa-react-changed-files > p { margin: var(--en-spacing-3); color: var(--en-color-textMuted); font-size: 11px; }
-.oa-react-file-tree-row,
 .oa-react-file-search-result,
 .oa-react-changed-files > button {
   display: flex;
@@ -1038,17 +1062,10 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   text-align: left;
   cursor: pointer;
 }
-.oa-react-file-tree-row { padding-left: calc(6px + var(--oa-tree-depth) * 13px); }
-.oa-react-file-tree-row:hover,
 .oa-react-file-search-result:hover,
 .oa-react-changed-files > button:hover { color: var(--en-color-textPrimary); background: var(--en-color-stateHover); }
-.oa-react-file-tree-row[aria-selected="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
-.oa-react-file-tree-row > svg,
-.oa-react-file-tree-row > span[aria-hidden="true"] { width: 13px; height: 13px; flex: 0 0 13px; }
-.oa-react-file-tree-row > span:not([aria-hidden]),
 .oa-react-file-search-result strong,
 .oa-react-changed-files strong { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-file-tree-row small,
 .oa-react-file-search-result small,
 .oa-react-changed-files small { color: var(--en-color-textMuted); font-size: 9px; }
 .oa-react-file-search-result > svg { width: 13px; height: 13px; flex: 0 0 auto; }

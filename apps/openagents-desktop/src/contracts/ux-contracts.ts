@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.2",
+    version: "2026-07-18.3",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -4930,11 +4930,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "In OpenAgents Desktop, Command-E toggles the tree of the current working directory in the right sidebar.",
         authorityBoundary:
-          "The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It toggles only the existing right-side Files presentation for the currently selected coding session and its already-admitted WorkContext: closed opens Files, active Files closes, and another active workbench surface yields focus to Files without losing its tab. The shortcut, palette row, and visible controls converge on typed Desktop command and workspace intents. This adds no renderer filesystem access, absolute-root disclosure, ambient cwd inference, Git/process authority, Monaco/Pierre dependency, or new workspace grant.",
+          "The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It toggles only the existing right-side Files presentation for the currently selected coding session and its already-admitted WorkContext: closed opens Files, active Files closes, and another active workbench surface yields focus to Files without losing its tab. The shortcut, palette row, and visible controls converge on typed Desktop command and workspace intents. The owned Pierre adapter projects only canonical relative refs already admitted by Desktop state; Pierre receives no bridge, filesystem, absolute root, grant, Git/process authority, rename/drag-and-drop authority, or ambient cwd. This adds no Monaco dependency or new workspace grant.",
         evidenceRefs: [
           "docs/ide/2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md",
           "github:OpenAgentsInc/openagents#9006",
           "github:OpenAgentsInc/openagents#9007",
+          "github:OpenAgentsInc/openagents#9008",
         ],
         oracles: [
           {
@@ -4959,7 +4960,23 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "dom",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "Proves a typed request opens and closes the mounted Files right sidebar while retaining the selected coding-session grant projection.",
+              "Proves a typed request opens and closes the mounted Files right sidebar, renders the admitted relative paths through the real Pierre shadow tree, expands a directory, opens its child through typed Desktop intents, and retains the selected coding-session grant projection.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.pierre_boundary",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/pierre-tree-package.test.ts",
+            description:
+              "Pins the audited Pierre Trees beta, confines package imports to the owned adapter, rejects the private path store and unsafe CSS, and proves the installed Apache license/NOTICE remain in the package closure.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.literal_paths",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/workspace-service.test.ts",
+            description:
+              "Proves Git ignore classification passes arbitrary admitted relative filenames through NUL-delimited stdin as literal paths, so a valid leading-colon name cannot erase the visible workspace tree.",
           },
           {
             id: "openagents_desktop.workspace.files_sidebar_command_toggle.effective_binding",
@@ -4975,11 +4992,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the current-worktree Files projection opens in the right sidebar, and repeats the chord to close it.",
+              "The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the real Pierre tree renders non-empty relative root entries, expands a directory, opens a text document, withholds the absolute root, and repeats the chord to close Files.",
           },
         ],
         verification:
-          "Issues #9006 and #9007 land the registry, guarded effective-binding matcher, Effect intent/request state, mounted right-sidebar transition, current-worktree boundary proof, and built Electron open/close smoke in the normal Desktop verification gate.",
+          "Issues #9006 through #9008 land the registry, guarded effective-binding matcher, Effect intent/request state, mounted right-sidebar transition, literal-path ignore classification, audited Pierre projection, current-worktree boundary proof, and built Electron expand/open/close smoke in the normal Desktop verification gate.",
       },
     ],
   };

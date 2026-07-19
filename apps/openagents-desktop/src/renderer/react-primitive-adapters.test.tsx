@@ -28,6 +28,9 @@ const installDom = () => {
     window,
     document: window.document,
     navigator: window.navigator,
+    CSS: window.CSS,
+    CSSStyleSheet: window.CSSStyleSheet,
+    customElements: window.customElements,
     Node: window.Node,
     Text: window.Text,
     Document: window.Document,
@@ -35,10 +38,16 @@ const installDom = () => {
     DOMRect: DOMRectStub,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
+    HTMLButtonElement: window.HTMLButtonElement,
     HTMLDivElement: window.HTMLDivElement,
     HTMLInputElement: window.HTMLInputElement,
+    HTMLStyleElement: window.HTMLStyleElement,
+    HTMLTemplateElement: window.HTMLTemplateElement,
     HTMLTextAreaElement: window.HTMLTextAreaElement,
+    SVGElement: window.SVGElement,
+    ShadowRoot: window.ShadowRoot,
     Event: window.Event,
+    FocusEvent: window.FocusEvent,
     InputEvent: window.InputEvent,
     CompositionEvent: window.CompositionEvent,
     KeyboardEvent: window.KeyboardEvent,
@@ -914,10 +923,44 @@ describe("React workbench shell", () => {
     }
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={filesState} report={report} />)
-    expect(container.querySelector('[aria-label="Workspace files"]')?.textContent).toContain("srcREADME.md")
+    const pierreTree = container.querySelector<HTMLElement>('[data-oa-pierre-tree="true"]')
+    await act(settle)
+    const treePaths = [...(pierreTree?.shadowRoot?.querySelectorAll<HTMLElement>('[data-item-path]:not([data-file-tree-sticky-row="true"])') ?? [])]
+      .map(row => row.dataset.itemPath)
+    expect(treePaths).toEqual(["src/", "README.md"])
     expect(container.querySelector('[aria-label="Editor for src/app.ts"]')).not.toBeNull()
-    await interact(() => (container.querySelector('[role="treeitem"][aria-selected="false"]') as HTMLButtonElement).click())
+    await interact(() => (pierreTree?.shadowRoot?.querySelector('[data-item-path="src/"]') as HTMLButtonElement).click())
     expect(received).toContainEqual({ name: "WorkspaceBrowserTreeToggled", payload: "src" })
+    const expandedFilesState: DesktopShellState = {
+      ...filesState,
+      workspaceBrowser: {
+        ...filesState.workspaceBrowser,
+        expandedRefs: ["src"],
+        pages: {
+          ...filesState.workspaceBrowser.pages,
+          src: {
+            state: "available",
+            grantRef: "grant-1",
+            directoryRef: "src",
+            entries: [
+              { name: "index.ts", pathRef: "src/index.ts", kind: "file", expandable: false, sizeBytes: 24, revisionRef: "revision-index" },
+            ],
+            nextOffset: null,
+            cache: { key: "cache-src", epoch: 1, freshness: "current" },
+          },
+        },
+      },
+    }
+    await render(root, <WorkbenchShell state={expandedFilesState} report={report} />)
+    await act(settle)
+    const expandedTree = container.querySelector<HTMLElement>('[data-oa-pierre-tree="true"]')
+    const expandedSrcRow = expandedTree?.shadowRoot?.querySelector('[data-item-path="src/"]') as HTMLButtonElement
+    const indexRow = expandedTree?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]') as HTMLButtonElement
+    expect(indexRow).not.toBeNull()
+    await interact(() => indexRow.click())
+    expect(received).toContainEqual({ name: "WorkspaceEditorOpenRequested", payload: { grantRef: "grant-1", pathRef: "src/index.ts" } })
+    await interact(() => expandedSrcRow.click())
+    expect(expandedTree?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]')).toBeNull()
 
     const status = { ok: true as const, op: "status" as const, branch: "main", upstream: "origin/main", detached: false, ahead: 0, behind: 0, staged: [{ path: "src/app.ts", status: "modified" as const }], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1" }
     const reviewState: DesktopShellState = {

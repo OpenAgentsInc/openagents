@@ -2236,7 +2236,17 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   session's admitted WorkContext. The toggle may retain bounded renderer-local
   surface layout, but it cannot infer an ambient cwd, disclose the selected
   absolute root, create another workspace grant, or bypass the typed workspace
-  browser/open path.
+  browser/open path. Files renders through `@pierre/trees` only behind the
+  owned renderer adapter, which receives canonical relative refs already
+  admitted by main-owned workspace state; Pierre receives no bridge,
+  filesystem, root, grant, Git/process, rename, or drag-and-drop authority.
+  Git ignore classification sends relative refs as NUL-delimited literal
+  stdin paths and fails closed on classifier failure, so arbitrary valid names
+  cannot be reinterpreted as pathspec magic or erase the admitted tree. The
+  adapter/package boundary and literal-path regression are enforced by
+  `apps/openagents-desktop/tests/pierre-tree-package.test.ts`,
+  `apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.test.ts`, and
+  `apps/openagents-desktop/tests/workspace-service.test.ts`.
 - Rich coding drafts use `@openagentsinc/composer-state`; apps must not create a
   second editor/attachment state machine. The private
   `openagents.coding_composer_draft.v1` snapshot carries only stable context and

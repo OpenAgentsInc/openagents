@@ -6978,17 +6978,43 @@ const smokeCmdEOpenFiles = `(async () => {
     cancelable: true,
   }))
   const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[aria-label="Files surface"]') === null) {
+  let tree = null
+  while (Date.now() < deadline) {
+    tree = document.querySelector('[data-oa-pierre-tree="true"]')
+    if (tree !== null &&
+      tree.shadowRoot?.querySelector('[data-item-path="sessions/"]') !== null &&
+      tree.shadowRoot?.querySelector('[data-item-path="session_index.jsonl"]') !== null) break
     await wait(50)
   }
   const selected = document.querySelector('[role="tab"][aria-selected="true"]')
-  const tree = document.querySelector('[aria-label="Workspace files"]')
+  const rootPaths = [...(tree?.shadowRoot?.querySelectorAll('[data-item-path]:not([data-file-tree-sticky-row="true"])') ?? [])]
+    .map((row) => row.getAttribute("data-item-path"))
+  tree?.shadowRoot?.querySelector('[data-item-path="sessions/"]')?.click()
+  while (Date.now() < deadline &&
+    (tree === null || tree.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') === null)) {
+    await wait(50)
+  }
+  tree?.shadowRoot?.querySelector('[data-item-path="session_index.jsonl"]')?.click()
+  while (Date.now() < deadline && document.querySelector('[aria-label="Editor for session_index.jsonl"]') === null) {
+    await wait(50)
+  }
+  const shadowText = tree?.shadowRoot?.textContent ?? ""
   return {
     ok: document.querySelector('[aria-label="Files surface"]') !== null &&
-      tree !== null && (selected?.textContent ?? "").includes("Files") &&
+      tree?.tagName === "FILE-TREE-CONTAINER" &&
+      rootPaths.includes("sessions/") && rootPaths.includes("session_index.jsonl") &&
+      tree.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') !== null &&
+      document.querySelector('[aria-label="Editor for session_index.jsonl"]') !== null &&
+      !shadowText.includes(String(workingDirectory ?? "__no_workspace__")) &&
+      (selected?.textContent ?? "").includes("Files") &&
       typeof codingCatalog?.selectedSessionRef === "string",
     selected: selected?.textContent ?? null,
     tree: tree !== null,
+    pierre: tree?.tagName === "FILE-TREE-CONTAINER",
+    rootPaths,
+    expandedChild: tree?.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') !== null,
+    documentOpened: document.querySelector('[aria-label="Editor for session_index.jsonl"]') !== null,
+    absoluteRootWithheld: !shadowText.includes(String(workingDirectory ?? "__no_workspace__")),
     catalogSelected: codingCatalog?.selectedSessionRef ?? null,
     effectiveBindings: filesBinding?.effectiveBindings ?? null,
     bindingConflict: filesBinding?.conflict ?? null,

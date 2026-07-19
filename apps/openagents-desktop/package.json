@@ -67,6 +67,7 @@
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/ui": "workspace:*",
+    "@pierre/trees": "1.0.0-beta.5",
     "@shadcn/react": "^0.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
