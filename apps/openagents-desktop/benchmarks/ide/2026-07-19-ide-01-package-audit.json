@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "openagents.desktop.ide-package-audit.v1",
+  "capturedAt": "2026-07-19T07:11:14.165Z",
+  "commitSha": "ed0ca607b2c7b6c4ef8d5b57bcaf4de1d5e9c02f",
+  "packages": [
+    {
+      "packageName": "monaco-editor",
+      "version": "0.55.1",
+      "license": "MIT",
+      "sourceCommit": "516f350bdaf7a82f6731bd128a9ec86a6e5fa47d",
+      "registryIntegrity": "sha512-jz4x+TJNFHwHtwuV9vA9rMujcZRb0CEilTEwG2rRSpe/A7Jdkuj8xPKttCgOh+v/lkHy7HsZ64oj+q3xoAFl9A==",
+      "installedPackageBytes": 72635377,
+      "directRuntimeDependencies": 2
+    },
+    {
+      "packageName": "@pierre/diffs",
+      "version": "1.2.12",
+      "license": "Apache-2.0",
+      "sourceCommit": "9466c467ae6fc03501b6bca74c12f717d70293a7",
+      "registryIntegrity": "sha512-pY/gmgWL03WnagqCyCnBi3QtRXUv4hCIY6FYqd5b1ZGaoI6a4Bsji8j+yRl2RfzPh/8Hf19rCl1GE80G6a1cLQ==",
+      "installedPackageBytes": 5232264,
+      "directRuntimeDependencies": 7
+    }
+  ],
+  "bundles": {
+    "normalBootJavaScriptBytes": 1890299,
+    "normalBootCssBytes": 1513383,
+    "fixtureRuntimeBytes": 25559382,
+    "fixtureSourceMapBytes": 59577055,
+    "fixtureAssetCount": 813,
+    "fixtureEntryJavaScriptBytes": 4545528,
+    "workerBytes": 10192739,
+    "workers": [
+      {
+        "label": "editor.worker",
+        "file": "assets/editor.worker-DQJwLooG.js",
+        "bytes": 280079
+      },
+      {
+        "label": "json.worker",
+        "file": "assets/json.worker-DR52qCex.js",
+        "bytes": 409338
+      },
+      {
+        "label": "css.worker",
+        "file": "assets/css.worker-BKx7BC4h.js",
+        "bytes": 1054767
+      },
+      {
+        "label": "html.worker",
+        "file": "assets/html.worker-ChRLLxCa.js",
+        "bytes": 719706
+      },
+      {
+        "label": "ts.worker",
+        "file": "assets/ts.worker-Cqvg7802.js",
+        "bytes": 6895271
+      },
+      {
+        "label": "worker",
+        "file": "assets/worker-B-7DaSZk.js",
+        "bytes": 833578
+      }
+    ]
+  },
+  "runtime": {
+    "developmentLoadP95Milliseconds": 534,
+    "asarLoadP95Milliseconds": 466,
+    "developmentWorkingSetP95Bytes": 1205010432,
+    "asarWorkingSetP95Bytes": 910065664,
+    "developmentRendererWorkingSetP95Bytes": 404226048,
+    "asarRendererWorkingSetP95Bytes": 391004160,
+    "ide00ChatFirstPaintP95Milliseconds": 547.22,
+    "ide01ChatFirstPaintP95Milliseconds": 588.02
+  },
+  "gates": {
+    "normalBootContainsEditorCode": false,
+    "fixtureBuildIsOptIn": true,
+    "restrictiveCspHasWorkerSelf": true,
+    "restrictiveCspHasUnsafeEval": false,
+    "fixtureHasManifest": true,
+    "attributedJavaScriptAssets": 404,
+    "unattributedJavaScriptAssets": [
+      "assets/rolldown-runtime-QTnfLwEv.js"
+    ]
+  },
+  "findings": [
+    "The ordinary renderer entry has zero Monaco/Pierre markers and exactly the pre-admission boot/CSS byte shape; the admission fixture is an explicit build-only graph.",
+    "The fixture source-map closure is retained only for package attribution and is not shipped by the ordinary Desktop build.",
+    "Pierre's public root export causes Vite to emit the complete Shiki language/theme catalog. It is lazy and offline, but IDE-05 must narrow or budget this closure before production release.",
+    "The sole JavaScript asset without its own source map is Vite's generated rolldown runtime; every package/module chunk and worker has an attributable map.",
+    "Monaco and Pierre are projections only. Their adapters receive no workspace grant, file authority, Git mutation, approval, persistence, or receipt capability."
+  ]
+}

@@ -1,0 +1,792 @@
+{
+  "schemaVersion": "openagents.desktop.ide-package-spike-matrix.v1",
+  "capturedAt": "2026-07-19T07:11:13.592Z",
+  "commitSha": "ed0ca607b2c7b6c4ef8d5b57bcaf4de1d5e9c02f",
+  "development": {
+    "schemaVersion": "openagents.desktop.ide-package-spike-probe.v1",
+    "layout": "development",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "electronVersion": "43.1.0",
+    "cycles": [
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 0,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 0,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 534,
+        "disposeMilliseconds": 26,
+        "processWorkingSetBytes": 1083113472,
+        "rendererWorkingSetBytes": 354418688
+      },
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 1,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 1,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 252,
+        "disposeMilliseconds": 15,
+        "processWorkingSetBytes": 1205010432,
+        "rendererWorkingSetBytes": 385794048
+      },
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 255,
+        "disposeMilliseconds": 13,
+        "processWorkingSetBytes": 1197146112,
+        "rendererWorkingSetBytes": 404226048
+      }
+    ],
+    "expectedFailure": {
+      "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+      "phase": "expected_failure",
+      "cycle": 3,
+      "themeId": "tokyo-night",
+      "themeBeforeEditorPaint": true,
+      "monaco": {
+        "modelCount": 0,
+        "editorsCreated": 0,
+        "languageWorkersReady": [
+          "editor",
+          "json",
+          "css",
+          "html"
+        ],
+        "failureLabel": "injected-typescript-worker-failure"
+      },
+      "pierre": {
+        "rendered": false,
+        "unified": false,
+        "split": false,
+        "annotation": false,
+        "selectedRange": false,
+        "workerInitialized": false,
+        "virtualized": true,
+        "scaleItems": 200,
+        "renderedScaleItems": 5
+      },
+      "resources": {
+        "activeWorkers": 0,
+        "createdWorkers": 6,
+        "externalUrls": [],
+        "loadedUrls": [
+          "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+          "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+          "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+          "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+          "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+          "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+          "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+          "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+          "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+          "openagents-app://renderer/ide-package-spike/index.html?cycle=3&failWorker=typescript"
+        ]
+      },
+      "domNodes": 23
+    }
+  },
+  "asar": {
+    "schemaVersion": "openagents.desktop.ide-package-spike-probe.v1",
+    "layout": "asar",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "electronVersion": "43.1.0",
+    "cycles": [
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 0,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 0,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 466,
+        "disposeMilliseconds": 16,
+        "processWorkingSetBytes": 814612480,
+        "rendererWorkingSetBytes": 347750400
+      },
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 1,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 1,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 248,
+        "disposeMilliseconds": 20,
+        "processWorkingSetBytes": 910065664,
+        "rendererWorkingSetBytes": 376782848
+      },
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 115
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 249,
+        "disposeMilliseconds": 21,
+        "processWorkingSetBytes": 884637696,
+        "rendererWorkingSetBytes": 391004160
+      }
+    ],
+    "expectedFailure": {
+      "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+      "phase": "expected_failure",
+      "cycle": 3,
+      "themeId": "tokyo-night",
+      "themeBeforeEditorPaint": true,
+      "monaco": {
+        "modelCount": 0,
+        "editorsCreated": 0,
+        "languageWorkersReady": [
+          "editor",
+          "json",
+          "css",
+          "html"
+        ],
+        "failureLabel": "injected-typescript-worker-failure"
+      },
+      "pierre": {
+        "rendered": false,
+        "unified": false,
+        "split": false,
+        "annotation": false,
+        "selectedRange": false,
+        "workerInitialized": false,
+        "virtualized": true,
+        "scaleItems": 200,
+        "renderedScaleItems": 5
+      },
+      "resources": {
+        "activeWorkers": 0,
+        "createdWorkers": 6,
+        "externalUrls": [],
+        "loadedUrls": [
+          "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+          "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
+          "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
+          "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
+          "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
+          "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
+          "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
+          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+          "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+          "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+          "openagents-app://renderer/ide-package-spike/index.html?cycle=3&failWorker=typescript"
+        ]
+      },
+      "domNodes": 23
+    }
+  },
+  "assertions": [
+    "Development and ASAR layouts each complete three create/dispose cycles.",
+    "Monaco editor, JSON, CSS, HTML, and TypeScript workers initialize from private-scheme assets.",
+    "Pierre renders unified/split diffs, a controlled selection, an annotation, and its worker pool.",
+    "Pierre CodeView virtualizes a 200-file review collection rather than mounting every file.",
+    "Every observed request stays on openagents-app:; the fixture requires no network.",
+    "Every disposal reaches zero Monaco models and zero tracked workers.",
+    "An injected TypeScript-worker construction failure disposes every model and tracked worker."
+  ]
+}

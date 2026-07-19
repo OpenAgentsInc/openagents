@@ -166,6 +166,38 @@ export const buildDesktop = async (): Promise<string> => {
         },
       },
     })
+    if (process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE_BUILD === "1") {
+      // IDE-01's admission fixture is a separate, opt-in ESM graph. It proves
+      // Monaco/Pierre workers and package assets without shipping the fixture
+      // or placing an editor module on the ordinary chat-only boot path.
+      const idePackageSpikeRoot = path.join(appRoot, "src", "ide", "spike")
+      await viteBuild({
+        configFile: false,
+        mode: "production",
+        root: idePackageSpikeRoot,
+        base: "./",
+        plugins: desktopRendererPlugins(),
+        resolve: desktopRendererResolve,
+        define: {
+          "process.env.NODE_ENV": JSON.stringify("production"),
+        },
+        build: {
+          outDir: path.join(dist, "renderer", "ide-package-spike"),
+          emptyOutDir: true,
+          minify: BUILD_MINIFY,
+          reportCompressedSize: false,
+          sourcemap: true,
+          manifest: "manifest.json",
+          rollupOptions: {
+            output: {
+              entryFileNames: "assets/[name]-[hash].js",
+              chunkFileNames: "assets/[name]-[hash].js",
+              assetFileNames: "assets/[name]-[hash][extname]",
+            },
+          },
+        },
+      })
+    }
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV
     else process.env.NODE_ENV = previousNodeEnv
@@ -208,5 +240,5 @@ export const buildDesktop = async (): Promise<string> => {
 
 if (Runtime.isMain(import.meta.url)) {
   await buildDesktop()
-  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, built-in skills, native voice helper)")
+  console.log("[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, optional IDE package fixture, built-in skills, native voice helper)")
 }

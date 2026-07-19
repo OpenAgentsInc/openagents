@@ -58,6 +58,7 @@ protocol.registerSchemesAsPrivileged([{
   privileges: {
     standard: true,
     secure: true,
+    corsEnabled: true,
     codeCache: true,
     supportFetchAPI: true,
   },
@@ -567,6 +568,27 @@ const rendererAssetContentTypes = new Map([
   ["boot.js", "text/javascript; charset=utf-8"],
   ["app.css", "text/css; charset=utf-8"],
 ] as const)
+const idePackageSpikeContentTypes = new Map([
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".css", "text/css; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".map", "application/json; charset=utf-8"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".ttf", "font/ttf"],
+  [".svg", "image/svg+xml"],
+] as const)
+const resolveRendererAsset = (asset: string): Readonly<{ path: string; contentType: string }> | null => {
+  const fixedType = rendererAssetContentTypes.get(asset as "index.html" | "boot.js" | "app.css")
+  const fixtureAsset = asset.startsWith("ide-package-spike/") && /^ide-package-spike\/[A-Za-z0-9._/-]+$/u.test(asset)
+  const contentType = fixedType ?? (fixtureAsset ? idePackageSpikeContentTypes.get(path.extname(asset) as ".html" | ".js" | ".css" | ".json" | ".map" | ".woff" | ".woff2" | ".ttf" | ".svg") : undefined)
+  if (contentType === undefined) return null
+  const root = path.resolve(rendererRoot)
+  const resolved = path.resolve(root, ...asset.split("/"))
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) return null
+  return { path: resolved, contentType }
+}
 const desktopDevServerUrl = (() => {
   if (app.isPackaged) return null
   const raw = process.env.OPENAGENTS_DESKTOP_DEV_SERVER_URL?.trim()
@@ -587,12 +609,16 @@ const installDesktopRendererProtocol = (target: Session): void => {
         bypassCustomProtocolHandlers: true,
       })
     }
-    const contentType = rendererAssetContentTypes.get(asset as "index.html" | "boot.js" | "app.css")
-    if (contentType === undefined) return new Response("Not found", { status: 404 })
-    return new Response(readFileSync(path.join(rendererRoot, asset)), {
-      status: 200,
-      headers: { "content-type": contentType, "cache-control": "no-store" },
-    })
+    const resolved = resolveRendererAsset(asset)
+    if (resolved === null) return new Response("Not found", { status: 404 })
+    try {
+      return new Response(readFileSync(resolved.path), {
+        status: 200,
+        headers: { "content-type": resolved.contentType, "cache-control": "no-store" },
+      })
+    } catch {
+      return new Response("Not found", { status: 404 })
+    }
   })
 }
 const smokeFixtureSourceRoot = app.isPackaged
@@ -657,6 +683,10 @@ const acpReleaseProofMode = process.env.OPENAGENTS_DESKTOP_ACP_RELEASE_PROOF ===
 // (renderer `?visualBaseline=<name>`) and `webContents.capturePage` writes
 // PNG receipts into OPENAGENTS_DESKTOP_VISUAL_BASELINE_SHOTS, then exits.
 const visualBaselineProbe = process.env.OPENAGENTS_DESKTOP_VISUAL_BASELINE_PROBE === "1"
+// IDE-01: real sandbox/custom-protocol package-admission fixture. The flag is
+// accepted only by the automation launcher and never changes an ordinary app
+// window or the production renderer entry.
+const idePackageSpikeProbe = process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE === "1"
 if (visualBaselineProbe) {
   // Deterministic rasterization: software rendering plus a forced device
   // scale of 1 keeps captured pixels stable across GPUs and Retina scales.
@@ -667,7 +697,7 @@ if (visualBaselineProbe) {
   )
 }
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1" || startupMarksMode || localTurnRestartProbe !== null ||
-  fullAutoRestartProbe !== null || fullAutoControlProbe || visualBaselineProbe
+  fullAutoRestartProbe !== null || fullAutoControlProbe || visualBaselineProbe || idePackageSpikeProbe
 const reactSmokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE_REACT === "1"
 const liveProofDriverMode = process.env.OPENAGENTS_DESKTOP_LIVE_PROOF === "1"
 const mvpProofDriverMode = process.env.OPENAGENTS_DESKTOP_MVP_PROOF === "1"
@@ -7706,6 +7736,133 @@ void app.whenReady().then(async () => {
   if (process.platform === "darwin") {
     if (hiddenAutomationMode) app.dock?.hide()
     else app.dock?.setIcon(desktopIconPath)
+  }
+  if (idePackageSpikeProbe) {
+    try {
+      const window = new BrowserWindow({
+        width: 1_280,
+        height: 720,
+        useContentSize: true,
+        show: false,
+        frame: false,
+        backgroundColor: "#1a1b26",
+        webPreferences: {
+          partition: "openagents-ide-package-spike-memory",
+          offscreen: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          nodeIntegrationInSubFrames: false,
+          sandbox: true,
+          webviewTag: false,
+          webSecurity: true,
+          spellcheck: false,
+          backgroundThrottling: false,
+        },
+      })
+      installDesktopRendererProtocol(window.webContents.session)
+      const requestedUrls = new Set<string>()
+      window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+        requestedUrls.add(details.url)
+        callback({})
+      })
+      const withObservedRequests = (snapshot: Record<string, unknown>): Record<string, unknown> => {
+        const urls = [...requestedUrls].sort()
+        const externalUrls = urls.filter((url) => {
+          try {
+            return new URL(url).protocol !== `${DesktopRendererScheme}:`
+          } catch {
+            return true
+          }
+        })
+        return {
+          ...snapshot,
+          resources: {
+            ...(snapshot.resources as Record<string, unknown> | undefined),
+            loadedUrls: urls,
+            externalUrls,
+          },
+        }
+      }
+      const waitForSnapshot = async (expectedPhase: string): Promise<Record<string, unknown>> => {
+        const deadline = Date.now() + 60_000
+        while (Date.now() < deadline) {
+          const error = (await window.webContents.executeJavaScript("document.documentElement.dataset.oaIdePackageSpikeError ?? null")) as string | null
+          if (error !== null) throw new Error(error)
+          const result = (await window.webContents.executeJavaScript("globalThis.__oaIdePackageSpike ?? null")) as Record<string, unknown> | null
+          if (result?.phase === expectedPhase) return result
+          await new Promise((resolve) => setTimeout(resolve, 50))
+        }
+        throw new Error(`IDE package fixture did not reach ${expectedPhase}`)
+      }
+      const processWorkingSetBytes = (): Readonly<{ total: number; renderer: number }> => {
+        const metrics = app.getAppMetrics()
+        return {
+          total: metrics.reduce((total, metric) => total + metric.memory.workingSetSize * 1_024, 0),
+          renderer: metrics.filter((metric) => metric.type === "Tab").reduce((total, metric) => total + metric.memory.workingSetSize * 1_024, 0),
+        }
+      }
+      const cycles: Array<
+        Readonly<{
+          ready: Record<string, unknown>
+          disposed: Record<string, unknown>
+          loadMilliseconds: number
+          disposeMilliseconds: number
+          processWorkingSetBytes: number
+          rendererWorkingSetBytes: number
+        }>
+      > = []
+      for (let cycle = 0; cycle < 3; cycle += 1) {
+        requestedUrls.clear()
+        const loadStartedAt = Date.now()
+        await window.loadURL(`${desktopRendererEntryUrl.replace("index.html", "ide-package-spike/index.html")}?cycle=${cycle}`)
+        const ready = withObservedRequests(await waitForSnapshot("ready"))
+        const loadMilliseconds = Date.now() - loadStartedAt
+        const readyWorkingSet = processWorkingSetBytes()
+        const screenshotPath = process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_SCREENSHOT_PATH
+        if (cycle === 0 && screenshotPath !== undefined && path.isAbsolute(screenshotPath) && path.basename(screenshotPath) === "2026-07-19-ide-01-tokyo-night.png") {
+          const image = await window.webContents.capturePage()
+          writeFileSync(screenshotPath, image.toPNG(), { mode: 0o600 })
+        }
+        const disposeStartedAt = Date.now()
+        const disposedSnapshot = (await window.webContents.executeJavaScript("globalThis.__oaDisposeIdePackageSpike()")) as Record<string, unknown>
+        const disposeMilliseconds = Date.now() - disposeStartedAt
+        const disposed = withObservedRequests(disposedSnapshot)
+        if (disposed.phase !== "disposed") throw new Error(`fixture cycle ${cycle} did not dispose`)
+        const resources = disposed.resources as Record<string, unknown> | undefined
+        const monaco = disposed.monaco as Record<string, unknown> | undefined
+        if (resources?.activeWorkers !== 0 || monaco?.modelCount !== 0) {
+          throw new Error(`fixture cycle ${cycle} leaked workers or Monaco models`)
+        }
+        cycles.push({
+          ready,
+          disposed,
+          loadMilliseconds,
+          disposeMilliseconds,
+          processWorkingSetBytes: readyWorkingSet.total,
+          rendererWorkingSetBytes: readyWorkingSet.renderer,
+        })
+      }
+      requestedUrls.clear()
+      await window.loadURL(`${desktopRendererEntryUrl.replace("index.html", "ide-package-spike/index.html")}?cycle=3&failWorker=typescript`)
+      const expectedFailure = withObservedRequests(await waitForSnapshot("expected_failure"))
+      const receipt = {
+        schemaVersion: "openagents.desktop.ide-package-spike-probe.v1",
+        layout: process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_LAYOUT === "asar" ? "asar" : "development",
+        platform: process.platform,
+        architecture: process.arch,
+        electronVersion: process.versions.electron,
+        cycles,
+        expectedFailure,
+      }
+      console.log(`[openagents-desktop ide-package-spike] ${JSON.stringify(receipt)}`)
+      window.destroy()
+      app.exit(0)
+      return
+    } catch (error) {
+      console.error("[openagents-desktop ide-package-spike] probe failed", error instanceof Error ? error.message : String(error))
+      app.exit(1)
+      return
+    }
   }
   if (app.isPackaged) app.setAsDefaultProtocolClient("openagents")
   desktopCommandBindings = openDesktopCommandBindingStore(

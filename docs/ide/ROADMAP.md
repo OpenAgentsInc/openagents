@@ -58,13 +58,13 @@ including its 2026-07-18 full local-persistence audit. The parity contract is
 
 The sources have different jobs:
 
-| Source | What OpenAgents takes | What OpenAgents does not take |
-| --- | --- | --- |
-| Zed | one coherent project/document/language/Git/terminal/agent graph; agent context and code evidence as native IDE concepts | GPUI, a Rust application core, or Zed's editor implementation |
-| VS Code | Monaco; focused URI, language, LSP, terminal, debug, and behavior-test lessons | a Code-OSS fork, Explorer/workbench internals, or trusted extension host |
-| Pierre | focused React tree and diff kernels, theming seams, virtualized review UX | filesystem, Git, document, mutation, session, or policy authority |
-| Cursor | the complete capability breadth users now expect and the concrete local-data failure modes to avoid | closed custody, cloud-only inference, plaintext auth in a general state DB, hidden uploads, or fragmented erasure |
-| OpenAgents | Effect-owned authority, existing workspace/document/Git/agent services, portable sessions, exact model identity, approvals, receipts, and public-safe projections | duplicated state graphs or UI claims unsupported by current evidence |
+| Source     | What OpenAgents takes                                                                                                                                             | What OpenAgents does not take                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Zed        | one coherent project/document/language/Git/terminal/agent graph; agent context and code evidence as native IDE concepts                                           | GPUI, a Rust application core, or Zed's editor implementation                                                     |
+| VS Code    | Monaco; focused URI, language, LSP, terminal, debug, and behavior-test lessons                                                                                    | a Code-OSS fork, Explorer/workbench internals, or trusted extension host                                          |
+| Pierre     | focused React tree and diff kernels, theming seams, virtualized review UX                                                                                         | filesystem, Git, document, mutation, session, or policy authority                                                 |
+| Cursor     | the complete capability breadth users now expect and the concrete local-data failure modes to avoid                                                               | closed custody, cloud-only inference, plaintext auth in a general state DB, hidden uploads, or fragmented erasure |
+| OpenAgents | Effect-owned authority, existing workspace/document/Git/agent services, portable sessions, exact model identity, approvals, receipts, and public-safe projections | duplicated state graphs or UI claims unsupported by current evidence                                              |
 
 ## Where the product is now
 
@@ -93,21 +93,21 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 ### Current gaps that this roadmap must not euphemize
 
-| Surface | Current truth | First packet that closes the core gap |
-| --- | --- | --- |
-| source editor | ordinary React surface renders a controlled `<textarea>` | IDE-03 |
-| Effect Native editor seam | compatibility renderer installs `makeStubCodeEditorDriver()` | IDE-03 |
-| repository tree | Pierre is shipped, but it projects only currently loaded pages rather than a complete generation-fenced path index | IDE-02 |
-| review | custom hunk renderer; no `@pierre/diffs` dependency | IDE-05 |
-| themes | one fixed Khala dark theme; no runtime theme choice | IDE-01/03 make Tokyo Night the one initial theme |
-| Vim | no built-in mode or setting | IDE-01/03 |
-| language intelligence | no project tsserver/LSP lifecycle or Problems graph | IDE-06 |
-| terminal screen | typed child-process terminal exists; no admitted xterm/PTY projection | IDE-10 |
-| tasks/tests/debug | useful substrate is fragmented; no one project evidence graph | IDE-10/11 |
-| integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph | IDE-00 onward |
-| agent-to-code loop | no inspectable context manifest plus version-bound proposal/review/apply/backlink loop in the editor | IDE-08 |
-| inline AI editing | no completion, next-edit, inline transform, or editor-native multi-file apply | IDE-09 |
-| full Cursor parity | the ProductSpec ledger is a target, not a release fact | IDE-19 |
+| Surface                     | Current truth                                                                                                                 | First packet that closes the core gap      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| source editor               | ordinary React surface renders a controlled `<textarea>`                                                                      | IDE-03                                     |
+| Effect Native editor seam   | compatibility renderer installs `makeStubCodeEditorDriver()`                                                                  | IDE-03                                     |
+| repository tree             | Pierre is shipped, but it projects only currently loaded pages rather than a complete generation-fenced path index            | IDE-02                                     |
+| review                      | `@pierre/diffs@1.2.12` and a projection-only virtualized adapter are admitted; production still uses the custom hunk renderer | IDE-05                                     |
+| themes                      | one owned Tokyo Night projection is admitted; production workbench still renders the fixed Khala theme                        | IDE-03 mounts Tokyo Night from first paint |
+| Vim                         | the complete first-party public-Monaco fallback contract is selected; no runtime key controller or setting is mounted         | IDE-03                                     |
+| language intelligence       | no project tsserver/LSP lifecycle or Problems graph                                                                           | IDE-06                                     |
+| terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
+| tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
+| integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
+| agent-to-code loop          | no inspectable context manifest plus version-bound proposal/review/apply/backlink loop in the editor                          | IDE-08                                     |
+| inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
+| full Cursor parity          | the ProductSpec ledger is a target, not a release fact                                                                        | IDE-19                                     |
 
 The already-landed Files/Finder work is **foundation**, not IDE parity. It must
 stay green while the temporary editor and partial projections are replaced.
@@ -315,28 +315,28 @@ Zed's GPUI editor. Do not add a Rust IDE database or application service.
 
 ## Dependency-ordered delivery map
 
-| Packet | Outcome | Depends on | Release rung |
-| --- | --- | --- | --- |
-| IDE-00 | contracts, identities, baseline, behavior corpus | landed Files foundation | foundation |
-| IDE-01 | package, Tokyo Night, Vim, worker, packaging spikes | IDE-00 | foundation |
-| IDE-02 | complete generation-fenced Pierre path index | IDE-00/01 | daily editor |
-| IDE-03 | real Monaco lifecycle, Tokyo Night, built-in Vim | IDE-00/01 | daily editor |
-| IDE-04 | navigation, groups/splits, settings, keymaps, file operations | IDE-02/03 | daily editor |
-| IDE-05 | Pierre review, compare, conflicts, checkpoints | IDE-03/04 | daily editor |
-| IDE-06 | language intelligence, symbols, Problems | IDE-03/04 | daily editor |
-| IDE-07 | packaged daily-editor quality gate | IDE-02–06 | basic IDE accepted |
-| IDE-08 | agent context, proposals, backlinks, post-apply evidence | IDE-05/06/07 | agent IDE |
-| IDE-09 | completion, next edit, inline/multi-file AI editing | IDE-06/08 | agent IDE |
-| IDE-10 | xterm, PTY, tasks, tests, Output | IDE-07 | integrated IDE |
-| IDE-11 | debug/DAP | IDE-06/10 | integrated IDE |
-| IDE-12 | safe SCM mutation, worktrees, delivery | IDE-05/07/10 | integrated IDE |
-| IDE-13 | local/remote project capability symmetry | IDE-08/10/12 | portable IDE |
-| IDE-14 | mobile review, web supervision, public code share | IDE-08/12/13 | portable IDE |
-| IDE-15 | isolated extensions and component ABI | IDE-07/10/11 | ecosystem |
-| IDE-16 | browser, preview, design, screenshot, computer use | IDE-08/10/15 | ecosystem |
-| IDE-17 | Agents Window, side chats, best-of-N, background agents, automations | IDE-08/12/13/16 | agent platform |
-| IDE-18 | data lifecycle, migration, enterprise, distribution, complete accessibility | IDE-13–17 | parity candidate |
-| IDE-19 | maintained Cursor ledger closure and owner acceptance | every required packet | full parity gate |
+| Packet | Outcome                                                                     | Depends on              | Release rung       |
+| ------ | --------------------------------------------------------------------------- | ----------------------- | ------------------ |
+| IDE-00 | contracts, identities, baseline, behavior corpus                            | landed Files foundation | foundation         |
+| IDE-01 | package, Tokyo Night, Vim, worker, packaging spikes                         | IDE-00                  | foundation         |
+| IDE-02 | complete generation-fenced Pierre path index                                | IDE-00/01               | daily editor       |
+| IDE-03 | real Monaco lifecycle, Tokyo Night, built-in Vim                            | IDE-00/01               | daily editor       |
+| IDE-04 | navigation, groups/splits, settings, keymaps, file operations               | IDE-02/03               | daily editor       |
+| IDE-05 | Pierre review, compare, conflicts, checkpoints                              | IDE-03/04               | daily editor       |
+| IDE-06 | language intelligence, symbols, Problems                                    | IDE-03/04               | daily editor       |
+| IDE-07 | packaged daily-editor quality gate                                          | IDE-02–06               | basic IDE accepted |
+| IDE-08 | agent context, proposals, backlinks, post-apply evidence                    | IDE-05/06/07            | agent IDE          |
+| IDE-09 | completion, next edit, inline/multi-file AI editing                         | IDE-06/08               | agent IDE          |
+| IDE-10 | xterm, PTY, tasks, tests, Output                                            | IDE-07                  | integrated IDE     |
+| IDE-11 | debug/DAP                                                                   | IDE-06/10               | integrated IDE     |
+| IDE-12 | safe SCM mutation, worktrees, delivery                                      | IDE-05/07/10            | integrated IDE     |
+| IDE-13 | local/remote project capability symmetry                                    | IDE-08/10/12            | portable IDE       |
+| IDE-14 | mobile review, web supervision, public code share                           | IDE-08/12/13            | portable IDE       |
+| IDE-15 | isolated extensions and component ABI                                       | IDE-07/10/11            | ecosystem          |
+| IDE-16 | browser, preview, design, screenshot, computer use                          | IDE-08/10/15            | ecosystem          |
+| IDE-17 | Agents Window, side chats, best-of-N, background agents, automations        | IDE-08/12/13/16         | agent platform     |
+| IDE-18 | data lifecycle, migration, enterprise, distribution, complete accessibility | IDE-13–17               | parity candidate   |
+| IDE-19 | maintained Cursor ledger closure and owner acceptance                       | every required packet   | full parity gate   |
 
 Packets are small review and acceptance boundaries, not an instruction to land
 the entire program in one change.
@@ -418,6 +418,35 @@ the TypeScript search/index/watch path before proposing any Rust replacement.
 Exit: exact pins, licenses, bundle sizes, worker strategy, rollback plan,
 compatibility matrix, and packaged fixtures are recorded. No package has gained
 filesystem, document, process, Git, policy, or persistence authority.
+
+#### IDE-01 implementation receipt
+
+Issue [#9016](https://github.com/OpenAgentsInc/openagents/issues/9016) is the
+exact delivery receipt. The full decision and measurement record is
+[`2026-07-19-ide-01-package-admission.md`](2026-07-19-ide-01-package-admission.md).
+The admitted result is intentionally narrow:
+
+- exact `monaco-editor@0.55.1` and `@pierre/diffs@1.2.12` pins with immutable
+  upstream/registry identity, licenses, transitive costs, compatibility,
+  disposal, rollback, and explicit no-authority audits;
+- real development and ASAR Electron probes for editor/JSON/CSS/HTML/TypeScript
+  and Pierre workers, restrictive CSP/offline loading, three create/dispose
+  cycles, injected worker failure, zero tracked leaks, both diff modes,
+  controlled selection/annotation, and a 200-file virtualized review;
+- an opt-in attribution fixture excluded from ordinary builds, with normal
+  boot, lazy closure, worker, source-map, startup, and renderer-memory receipts;
+- rejection of both evaluated Vim packages and selection of the 32-capability
+  app-owned public-Monaco `VimModeController` contract, still unimplemented;
+- one provenance-pinned, contrast-adjusted Tokyo Night projection plus a real
+  Electron visual fixture, still not mounted in the production workbench;
+- a 10,000-file TypeScript index/watch benchmark that meets every written p95
+  gate and rejects speculative Rust placement.
+
+Behavior contract `openagents_desktop.ide_package_admission.v1` and the
+schema-decoded receipts under `apps/openagents-desktop/benchmarks/ide/` guard
+the result. This is package/runtime foundation only. It does not satisfy the
+Explorer, production Monaco/Vim/theme, review, language, daily-use basic-IDE,
+Zed-quality, or Cursor-parity gates owned by IDE-02 onward.
 
 ### IDE-02 — Complete Explorer over the Pierre tree
 
@@ -709,40 +738,40 @@ evidence.
 This matrix prevents the IDE packets from narrowing “parity” to editor widgets.
 It maps every required Cursor family to its main closure packets.
 
-| Cursor capability family | Current OpenAgents footing | Closure packets |
-| --- | --- | --- |
-| product shells | agent-first Desktop exists; classic Editor is partial | IDE-03/04/07/17 |
-| editor core | typed file/recovery substrate and Pierre tree; textarea, partial navigation | IDE-02–07/10–12/18 |
-| AI editing | harness editing exists outside a complete editor-native loop | IDE-08/09 |
-| repository intelligence | bounded path/content search; no complete symbol/semantic custody stack | IDE-02/06/09/18 |
-| conversations | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18 |
-| agent modes | agent runtime/mode substrate exists; integrated policy/result UX incomplete | IDE-08/17 |
-| agent tools | broad typed tool substrate; IDE/browser/computer integration incomplete | IDE-08/10/12/16 |
-| parallel agency | Full Auto/subagent/worktree foundations exist; IDE comparison/fan-in incomplete | IDE-12/17 |
-| recovery and memory | thread/document recovery exists in pieces; one inspectable lifecycle is incomplete | IDE-03/05/08/18 |
-| background and cloud agents | portable/fleet foundations exist; project-capability symmetry is incomplete | IDE-13/17 |
-| automations | Full Auto foundation exists; full trigger/review IDE integration is incomplete | IDE-17 |
-| remote control | cross-surface contracts exist; complete project review/continuation is incomplete | IDE-13/14/17 |
-| CLI and protocols | strong typed runtime/CLI substrate; one IDE command graph and project evidence remain | IDE-08/10/13/17 |
-| extensibility | skills/MCP/plugins substrate exists; isolated editor ABI and marketplace lifecycle remain | IDE-15/18 |
-| browser and design | preview/browser substrate exists; integrated design/computer-use contract remains | IDE-16 |
-| sharing and review links | trust/share substrate exists; code-evidence bundle and review journeys remain | IDE-14 |
-| models and accounts | multi-harness/provider/account system is a strength; editor intelligence disclosure remains | IDE-09/17 |
-| teams and enterprise | policy/receipt foundations exist; editor bundles/admin/platform proof remain | IDE-15/18 |
-| security and privacy | explicit authority/sandbox/receipt laws are stronger; IDE-wide data-flow proof remains | every packet, IDE-18 gate |
-| distribution | packaged Desktop exists; complete platform/editor/update matrix remains | IDE-01/07/18 |
-| data lifecycle | typed stores exist but not one complete inspect/export/delete product | IDE-18 |
-| quality and accessibility | strong guarantees and tests exist; full IDE matrix and broader themes remain | IDE-07/18 |
+| Cursor capability family    | Current OpenAgents footing                                                                       | Closure packets           |
+| --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
+| product shells              | agent-first Desktop exists; classic Editor is partial                                            | IDE-03/04/07/17           |
+| editor core                 | typed file/recovery substrate and Pierre tree; textarea, partial navigation                      | IDE-02–07/10–12/18        |
+| AI editing                  | harness editing exists outside a complete editor-native loop                                     | IDE-08/09                 |
+| repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
+| conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
+| agent modes                 | agent runtime/mode substrate exists; integrated policy/result UX incomplete                      | IDE-08/17                 |
+| agent tools                 | broad typed tool substrate; IDE/browser/computer integration incomplete                          | IDE-08/10/12/16           |
+| parallel agency             | Full Auto/subagent/worktree foundations exist; IDE comparison/fan-in incomplete                  | IDE-12/17                 |
+| recovery and memory         | thread/document recovery exists in pieces; one inspectable lifecycle is incomplete               | IDE-03/05/08/18           |
+| background and cloud agents | portable/fleet foundations exist; project-capability symmetry is incomplete                      | IDE-13/17                 |
+| automations                 | Full Auto foundation exists; full trigger/review IDE integration is incomplete                   | IDE-17                    |
+| remote control              | cross-surface contracts exist; complete project review/continuation is incomplete                | IDE-13/14/17              |
+| CLI and protocols           | strong typed runtime/CLI substrate; one IDE command graph and project evidence remain            | IDE-08/10/13/17           |
+| extensibility               | skills/MCP/plugins substrate exists; isolated editor ABI and marketplace lifecycle remain        | IDE-15/18                 |
+| browser and design          | preview/browser substrate exists; integrated design/computer-use contract remains                | IDE-16                    |
+| sharing and review links    | trust/share substrate exists; code-evidence bundle and review journeys remain                    | IDE-14                    |
+| models and accounts         | multi-harness/provider/account system is a strength; editor intelligence disclosure remains      | IDE-09/17                 |
+| teams and enterprise        | policy/receipt foundations exist; editor bundles/admin/platform proof remain                     | IDE-15/18                 |
+| security and privacy        | explicit authority/sandbox/receipt laws are stronger; IDE-wide data-flow proof remains           | every packet, IDE-18 gate |
+| distribution                | packaged Desktop exists; complete platform/editor/update matrix remains                          | IDE-01/07/18              |
+| data lifecycle              | typed stores exist but not one complete inspect/export/delete product                            | IDE-18                    |
+| quality and accessibility   | strong guarantees and tests exist; full IDE matrix and broader themes remain                     | IDE-07/18                 |
 
 ## Release rungs and names
 
-| Rung | Minimum completed packets | Honest release language |
-| --- | --- | --- |
-| Files foundation | already landed | “Files mode” / “editor-first file open” |
-| Daily-use basic IDE | IDE-00–07 | “OpenAgents basic IDE” |
-| Agent IDE | IDE-08–12 | “integrated OpenAgents agent IDE” after its journeys pass |
-| Portable IDE platform | IDE-13–18 | “Cursor-parity candidate” only |
-| Full parity | IDE-19 plus ProductSpec owner/promise gate | “Cursor parity” / “full parity” |
+| Rung                  | Minimum completed packets                  | Honest release language                                   |
+| --------------------- | ------------------------------------------ | --------------------------------------------------------- |
+| Files foundation      | already landed                             | “Files mode” / “editor-first file open”                   |
+| Daily-use basic IDE   | IDE-00–07                                  | “OpenAgents basic IDE”                                    |
+| Agent IDE             | IDE-08–12                                  | “integrated OpenAgents agent IDE” after its journeys pass |
+| Portable IDE platform | IDE-13–18                                  | “Cursor-parity candidate” only                            |
+| Full parity           | IDE-19 plus ProductSpec owner/promise gate | “Cursor parity” / “full parity”                           |
 
 No rung is allowed to hide the next rung's gaps.
 
@@ -800,10 +829,10 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-After IDE-00's exact issue receipt lands, the next admitted implementation work
-is IDE-01, followed by IDE-02 and IDE-03 only after their shared package,
-project, document, and theme contracts are fixed. The first visible destination
-is deliberately narrow:
+After IDE-00 and IDE-01's exact issue receipts, the next admitted implementation
+work is IDE-02, followed by IDE-03 over the now-fixed package, project,
+document, theme, and Vim contracts. The first visible destination remains
+deliberately narrow:
 
 1. preserve the current Command-E/Finder/Pierre Files behavior;
 2. replace the main-region textarea with one canonical Monaco controller;

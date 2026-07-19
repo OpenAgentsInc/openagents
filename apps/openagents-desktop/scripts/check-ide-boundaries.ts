@@ -59,6 +59,10 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
     path.join(ideRoot, "project-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
+  const widgetProjectionFiles = new Set([
+    path.join(ideRoot, "pierre-diffs-adapter.tsx"),
+    path.join(ideRoot, "spike", "entry.tsx"),
+  ]);
 
   for (const file of contracts) {
     addMatches(
@@ -85,13 +89,15 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
       /\bas\s+(?:any|unknown)\b/u,
       "IDE authority code may not recover type safety through unchecked casts.",
     );
-    addMatches(
-      violations,
-      file,
-      "no-widget-authority",
-      /from\s+["'](?:monaco-editor|@pierre\/)/u,
-      "Monaco and Pierre are projections/adapters and cannot enter the authoritative IDE domain.",
-    );
+    if (!widgetProjectionFiles.has(file)) {
+      addMatches(
+        violations,
+        file,
+        "no-widget-authority",
+        /from\s+["'](?:monaco-editor|@pierre\/)/u,
+        "Monaco and Pierre imports are allowed only in the named projection adapter and contained admission fixture.",
+      );
+    }
   }
 
   const projectContract = path.join(ideRoot, "project-contract.ts");

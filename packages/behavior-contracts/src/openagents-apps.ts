@@ -75,6 +75,71 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This admits exact Monaco and Pierre Diffs artifacts plus an owned Tokyo Night data projection and a first-party public-Monaco Vim contract. It does not make a widget canonical for files, grants, Git, processes, approvals, persistence, proposals, or receipts; it does not ship the opt-in admission fixture on the ordinary renderer path; and it does not claim the IDE-02 through IDE-07 production integrations.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_package_admission.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/package-admission.ts",
+        "apps/openagents-desktop/src/ide/package-admission.test.ts",
+        "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+        "apps/openagents-desktop/src/ide/tokyo-night-theme.ts",
+        "apps/openagents-desktop/src/ide/vim-mode-contract.ts",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-audit.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-typescript-index.json",
+        "docs/ide/2026-07-19-ide-01-package-admission.md",
+        "github:OpenAgentsInc/openagents#9016",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes every package/Vim/theme/projection decision, proves exact production pins, rejects both evaluated third-party Vim adapters, keeps authority fields outside the Pierre projection, checks Tokyo Night accessibility/provenance, and validates all generated receipts.",
+          id: "openagents_desktop.ide_package_admission.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/package-admission.test.ts",
+        },
+        {
+          description:
+            "Builds an isolated ESM graph and runs real Electron against development and ASAR layouts for three create/dispose cycles plus an injected worker failure; all Monaco language workers and the Pierre worker stay offline on the private scheme and teardown reaches zero tracked workers/models.",
+          id: "openagents_desktop.ide_package_admission.package_smoke",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-package-spike-smoke.ts",
+        },
+        {
+          description:
+            "Measures normal boot, lazy fixture, source-map, package, and worker bytes; proves the fixture graph is opt-in, ordinary boot has no editor package markers, CSP has worker-src self and no unsafe-eval, and package/module chunks remain attributable.",
+          id: "openagents_desktop.ide_package_admission.bundle_audit",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-package-audit.ts",
+        },
+        {
+          description:
+            "Measures a TypeScript path index on 10,000 files across initial scan, indexed query, 1,000-event churn, and real watcher latency, enforcing explicit p95 budgets and recording why speculative Rust placement is rejected until evidence crosses a written gate.",
+          id: "openagents_desktop.ide_package_admission.typescript_index",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-typescript-index-benchmark.ts",
+        },
+      ],
+      productArea: "Desktop IDE package and runtime admission",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "The Desktop IDE admits exact, attributable Monaco and Pierre Diffs packages only behind replaceable projection adapters; workers load offline under restrictive CSP in development and ASAR layouts, disposal and failure paths leak no tracked runtime state, Tokyo Night projects from one owned accessible token source, Vim is an off-by-default complete first-party contract, and TypeScript remains the project-index placement until measured evidence justifies Rust.",
+      surface: "openagents-desktop",
+      verification:
+        "The Desktop test sweep runs the admission contract. ide:package-spike, ide:package-audit, and ide:typescript-index-benchmark regenerate schema-decoded public-safe receipts; the ordinary build excludes the opt-in package fixture and its large attribution-only source-map/catalog closure.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",
