@@ -66,6 +66,10 @@ export const rootTestTargets: readonly CheckTarget[] = [
     name: "ui-velocity-receipt",
     command: ["pnpm", "exec", "vp", "test", "--run", "scripts/ui-velocity-receipt.test.ts"],
   },
+  {
+    name: "assure-repo",
+    command: ["pnpm", "exec", "vp", "test", "--run", "packages/assure-repo/test"],
+  },
 ];
 
 export const rootComponentTargets: Readonly<
@@ -90,6 +94,7 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   },
   { name: "sol-docs", command: ["pnpm", "run", "check:sol-docs"] },
   { name: "sol-doc-tests", command: ["pnpm", "run", "test:sol-docs"] },
+  { name: "assure-repo", command: ["pnpm", "run", "check:assure-repo"] },
   { name: "ste", command: ["pnpm", "run", "check:ste:all"] },
   { name: "ste-control-semantics", command: ["pnpm", "run", "check:ste-control-semantics"] },
   { name: "ste-tests", command: ["pnpm", "run", "test:ste"] },

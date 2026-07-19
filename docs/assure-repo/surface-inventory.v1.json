@@ -1,0 +1,2362 @@
+{
+  "schemaVersion": "1",
+  "repository": "OpenAgentsInc/openagents",
+  "sourceDigest": "sha256:9583b26975256e417e447d04d7be16ae76c4a85c322aeb2ef8c295ae588f9d31",
+  "surfaces": [
+    {
+      "id": "app:@openagentsinc/acceptance-runner",
+      "kind": "app",
+      "owningPath": "apps/acceptance-runner",
+      "title": "@openagentsinc/acceptance-runner",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/acceptance-runner (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/ai-sdk-harness-poc",
+      "kind": "app",
+      "owningPath": "apps/ai-sdk-harness-poc",
+      "title": "@openagentsinc/ai-sdk-harness-poc",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "reference-only",
+        "note": "policy: reference-only"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/aiur",
+      "kind": "app",
+      "owningPath": "apps/aiur",
+      "title": "@openagentsinc/aiur",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/aiur (16 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/electron-ai-sdk-test",
+      "kind": "app",
+      "owningPath": "apps/electron-ai-sdk-test",
+      "title": "@openagentsinc/electron-ai-sdk-test",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "reference-only",
+        "note": "policy: reference-only"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/forum",
+      "kind": "app",
+      "owningPath": "apps/forum",
+      "title": "@openagentsinc/forum",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/forum (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/khala-capture",
+      "kind": "app",
+      "owningPath": "apps/khala-capture",
+      "title": "@openagentsinc/khala-capture",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/khala-capture (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/khala-live-hub",
+      "kind": "app",
+      "owningPath": "apps/khala-live-hub",
+      "title": "@openagentsinc/khala-live-hub",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/khala-live-hub (4 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.credit_balance.change_delivers_live.v1"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/oa-queue-worker",
+      "kind": "app",
+      "owningPath": "apps/oa-queue-worker",
+      "title": "@openagentsinc/oa-queue-worker",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/oa-queue-worker (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/oa-updates",
+      "kind": "app",
+      "owningPath": "apps/oa-updates",
+      "title": "@openagentsinc/oa-updates",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/oa-updates (28 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/openagents-audio",
+      "kind": "app",
+      "owningPath": "apps/openagents-audio",
+      "title": "@openagentsinc/openagents-audio",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents-audio (8 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/openagents-audio-edge",
+      "kind": "app",
+      "owningPath": "apps/openagents-audio-edge",
+      "title": "@openagentsinc/openagents-audio-edge",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/openagents-com",
+      "kind": "app",
+      "owningPath": "apps/openagents.com",
+      "title": "@openagentsinc/openagents-com",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com (1050 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.credentials.brokered_scm_helper.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.dispatch.budget_caps_enforced.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.event_ledger_handled_gateway_redacted.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.event_ledger_owner_scoped_private.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.slack_event_ledger_ingest.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.forum_trigger_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.github_mention_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.hosted_chat.send_yields_assistant_reply.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "lead_gen_agent.drafting_only_toolset.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "lead_gen_agent.no_send_without_approval_receipt.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.session.loopback_pkce_policy.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.sarah_owner_orchestrator.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.session.recovered_validation_rotation.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_decision_receipts.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_empty_state_account_identity.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_owner_scoped_engagement.v1"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/openagents-desktop",
+      "kind": "app",
+      "owningPath": "apps/openagents-desktop",
+      "title": "@openagentsinc/openagents-desktop",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents-desktop (286 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.client.native_conversation_continuity.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.full_auto_dedicated_launcher.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.full_auto_play_pause_stop_lifecycle.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.full_auto_read_only_run_view.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_agent_native_code_graph.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_basic_ide_acceptance.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_complete_path_index.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_daily_workbench.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_generation_safe_language.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_monaco_document_runtime.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_package_admission.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_project_generation_fencing.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.ide_versioned_pierre_review.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.working_indicator_continuous_motion.v1"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/openagents-mobile",
+      "kind": "app",
+      "owningPath": "apps/openagents-mobile",
+      "title": "@openagentsinc/openagents-mobile",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents-mobile (58 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.chat.authoritative_sync_mode.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.chat.post_auth_live_upgrade.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.minerals_sheet_user_dismiss_only.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.sarah_owner_orchestrator.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.sarah_text_surface.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.session.pkce_sign_in_sign_out.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.session.recovered_validation_rotation.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.session.secure_store_custody.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.sync.host_owned_expo_sqlite.v1"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/pylon",
+      "kind": "app",
+      "owningPath": "apps/pylon",
+      "title": "@openagentsinc/pylon",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/pylon (297 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.claude.owner_local_execution_authority.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.credentials.brokered_scm_helper.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.dispatch.lane_account_breaker.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.fleet.supervisor_scope_and_publication_order.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.warm_dispatch.prebuilt_baseline_cache.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.warm_dispatch.prepared_worktree_cache.v1"
+        }
+      ]
+    },
+    {
+      "id": "app:@openagentsinc/qa-runner",
+      "kind": "app",
+      "owningPath": "apps/qa-runner",
+      "title": "@openagentsinc/qa-runner",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/qa-runner (53 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "crate:oa-cloud-run-bridge",
+      "kind": "crate",
+      "owningPath": "crates/oa-cloud-run-bridge",
+      "title": "oa-cloud-run-bridge",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/oa-cloud-run-bridge (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "crate:oa-codex-control",
+      "kind": "crate",
+      "owningPath": "crates/oa-codex-control",
+      "title": "oa-codex-control",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/oa-codex-control (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "crate:oa-desktop-audio",
+      "kind": "crate",
+      "owningPath": "crates/oa-desktop-audio",
+      "title": "oa-desktop-audio",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/oa-desktop-audio (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "crate:oa-node",
+      "kind": "crate",
+      "owningPath": "crates/oa-node",
+      "title": "oa-node",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/oa-node (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "crate:oa-workroomd",
+      "kind": "crate",
+      "owningPath": "crates/oa-workroomd",
+      "title": "oa-workroomd",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/oa-workroomd (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "crate:openagents-cloud-contract",
+      "kind": "crate",
+      "owningPath": "crates/openagents-cloud-contract",
+      "title": "openagents-cloud-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "crates/openagents-cloud-contract (cargo test --workspace)"
+        }
+      ]
+    },
+    {
+      "id": "document:AGENTS.md",
+      "kind": "document",
+      "owningPath": "AGENTS.md",
+      "title": "AGENTS.md",
+      "derivation": "annotated",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      }
+    },
+    {
+      "id": "document:CLAUDE.md",
+      "kind": "document",
+      "owningPath": "CLAUDE.md",
+      "title": "CLAUDE.md",
+      "derivation": "annotated",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      }
+    },
+    {
+      "id": "document:INVARIANTS.md",
+      "kind": "document",
+      "owningPath": "INVARIANTS.md",
+      "title": "INVARIANTS.md",
+      "derivation": "annotated",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      }
+    },
+    {
+      "id": "document:docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md",
+      "kind": "document",
+      "owningPath": "docs/fable/2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md",
+      "title": "2026-07-15-full-auto-repo-intent-to-dispatch-loop.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+      "kind": "document",
+      "owningPath": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
+      "title": "openagents-codex-workroom-mvp.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+      "kind": "document",
+      "owningPath": "docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+      "title": "openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md",
+      "kind": "document",
+      "owningPath": "docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md",
+      "title": "openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:docs/sol/MASTER_ROADMAP.md",
+      "kind": "document",
+      "owningPath": "docs/sol/MASTER_ROADMAP.md",
+      "title": "MASTER_ROADMAP.md",
+      "derivation": "annotated",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      }
+    },
+    {
+      "id": "document:packages/assurance-spec/fixtures/agent-run/workspace/subject.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/assurance-spec/fixtures/agent-run/workspace/subject.product-spec.md",
+      "title": "subject.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md",
+      "title": "example.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-applies-to.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/malformed-applies-to.product-spec.md",
+      "title": "malformed-applies-to.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-related-artifact.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/malformed-related-artifact.product-spec.md",
+      "title": "malformed-related-artifact.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-spec-dependency.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/malformed-spec-dependency.product-spec.md",
+      "title": "malformed-spec-dependency.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/missing-frontmatter.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/missing-frontmatter.product-spec.md",
+      "title": "missing-frontmatter.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/missing-required-section.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/missing-required-section.product-spec.md",
+      "title": "missing-required-section.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/invalid/unsupported-version.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/invalid/unsupported-version.product-spec.md",
+      "title": "unsupported-version.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/minimal.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/minimal.product-spec.md",
+      "title": "minimal.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-ai-evals.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-ai-evals.product-spec.md",
+      "title": "with-ai-evals.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-custom-section.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-custom-section.product-spec.md",
+      "title": "with-custom-section.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-fenced-heading.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-fenced-heading.product-spec.md",
+      "title": "with-fenced-heading.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-provisional-success-metric.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-provisional-success-metric.product-spec.md",
+      "title": "with-provisional-success-metric.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-spec-dependency.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-spec-dependency.product-spec.md",
+      "title": "with-spec-dependency.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-structured-scope-and-metrics.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-structured-scope-and-metrics.product-spec.md",
+      "title": "with-structured-scope-and-metrics.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-traceability.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-traceability.product-spec.md",
+      "title": "with-traceability.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/conformance/valid/with-user-experience.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/conformance/valid/with-user-experience.product-spec.md",
+      "title": "with-user-experience.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/openagents/evidence-edit-after.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/openagents/evidence-edit-after.product-spec.md",
+      "title": "evidence-edit-after.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/openagents/evidence-edit-before.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/openagents/evidence-edit-before.product-spec.md",
+      "title": "evidence-edit-before.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/openagents/invalid-bad-metric.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/openagents/invalid-bad-metric.product-spec.md",
+      "title": "invalid-bad-metric.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/openagents/legacy-rev6-mvp.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/openagents/legacy-rev6-mvp.product-spec.md",
+      "title": "legacy-rev6-mvp.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:packages/product-spec/fixtures/openagents/valid-extended.product-spec.md",
+      "kind": "document",
+      "owningPath": "packages/product-spec/fixtures/openagents/valid-extended.product-spec.md",
+      "title": "valid-extended.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/desktop/desktop-trust-complete-workbench.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/desktop/desktop-trust-complete-workbench.product-spec.md",
+      "title": "desktop-trust-complete-workbench.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/desktop/full-auto.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/desktop/full-auto.product-spec.md",
+      "title": "full-auto.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/desktop/full-auto.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/mobile/mobile-any-host-fleet-controller.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/mobile/mobile-any-host-fleet-controller.product-spec.md",
+      "title": "mobile-any-host-fleet-controller.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/assure-repo-codebase-verification.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/assure-repo-codebase-verification.product-spec.md",
+      "title": "assure-repo-codebase-verification.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/authority-delegation.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/authority-delegation.product-spec.md",
+      "title": "authority-delegation.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/cursor-capability-parity.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/cursor-capability-parity.product-spec.md",
+      "title": "cursor-capability-parity.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/openagents/cursor-capability-parity.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/fast-follow.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/fast-follow.product-spec.md",
+      "title": "fast-follow.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/managed-agent-sandboxes.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/managed-agent-sandboxes.product-spec.md",
+      "title": "managed-agent-sandboxes.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/openagents/managed-agent-sandboxes.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/portable-coding-sessions.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/portable-coding-sessions.product-spec.md",
+      "title": "portable-coding-sessions.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/openagents/sarah-owner-orchestrator.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
+      "title": "sarah-owner-orchestrator.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/openagents/sarah-owner-orchestrator.assurance-spec.md"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/web/openagents-com-sales-landing.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/web/openagents-com-sales-landing.product-spec.md",
+      "title": "openagents-com-sales-landing.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "document:specs/web/openagents-com-trust-surface.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/web/openagents-com-trust-surface.product-spec.md",
+      "title": "openagents-com-trust-surface.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ]
+    },
+    {
+      "id": "package:@effect-native/core",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-core",
+      "title": "@effect-native/core",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@effect-native/gallery",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-gallery",
+      "title": "@effect-native/gallery",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@effect-native/khala-ui",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-khala-ui",
+      "title": "@effect-native/khala-ui",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@effect-native/render-canvas",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-render-canvas",
+      "title": "@effect-native/render-canvas",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@effect-native/render-dom",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-render-dom",
+      "title": "@effect-native/render-dom",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/effect-native-render-dom (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@effect-native/render-rn",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-render-rn",
+      "title": "@effect-native/render-rn",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/effect-native-render-rn (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@effect-native/tokens",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/effect-native-tokens",
+      "title": "@effect-native/tokens",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/agent-client-protocol",
+      "kind": "package",
+      "owningPath": "packages/agent-client-protocol",
+      "title": "@openagentsinc/agent-client-protocol",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-client-protocol (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/agent-client-protocol-conformance",
+      "kind": "package",
+      "owningPath": "packages/agent-client-protocol-conformance",
+      "title": "@openagentsinc/agent-client-protocol-conformance",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-client-protocol-conformance (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/agent-client-runtime-bridge",
+      "kind": "package",
+      "owningPath": "packages/agent-client-runtime-bridge",
+      "title": "@openagentsinc/agent-client-runtime-bridge",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-client-runtime-bridge (7 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/agent-readiness",
+      "kind": "package",
+      "owningPath": "packages/agent-readiness",
+      "title": "@openagentsinc/agent-readiness",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-readiness (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/agent-runtime-schema",
+      "kind": "package",
+      "owningPath": "packages/agent-runtime-schema",
+      "title": "@openagentsinc/agent-runtime-schema",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-runtime-schema (10 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.slack_event_ledger_ingest.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.forum_trigger_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.github_mention_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/agent-stdio-transport",
+      "kind": "package",
+      "owningPath": "packages/agent-stdio-transport",
+      "title": "@openagentsinc/agent-stdio-transport",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-stdio-transport (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/ai-sdk-sandbox-local",
+      "kind": "package",
+      "owningPath": "packages/ai-sdk-sandbox-local",
+      "title": "@openagentsinc/ai-sdk-sandbox-local",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/ai-sdk-sandbox-local (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/ai-sdk-sandbox-openagents",
+      "kind": "package",
+      "owningPath": "packages/ai-sdk-sandbox-openagents",
+      "title": "@openagentsinc/ai-sdk-sandbox-openagents",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/ai-sdk-sandbox-openagents (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/arbiter-effect",
+      "kind": "package",
+      "owningPath": "packages/arbiter-effect",
+      "title": "@openagentsinc/arbiter-effect",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/arbiter-effect (3 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/assurance-spec",
+      "kind": "package",
+      "owningPath": "packages/assurance-spec",
+      "title": "@openagentsinc/assurance-spec",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/assurance-spec (17 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/atif",
+      "kind": "package",
+      "owningPath": "packages/atif",
+      "title": "@openagentsinc/atif",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/atif (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/audio-contract",
+      "kind": "package",
+      "owningPath": "packages/audio-contract",
+      "title": "@openagentsinc/audio-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/audio-contract (4 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_voice.capture_egress_retention_truth.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_voice.command_outcome_receipt_authority.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_voice.mute_and_stop_fail_closed.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_voice.replay_delivery_only.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_voice.retention_requires_policy_receipt.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/authority",
+      "kind": "package",
+      "owningPath": "packages/authority",
+      "title": "@openagentsinc/authority",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/authority (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/autopilot-control-protocol",
+      "kind": "package",
+      "owningPath": "packages/autopilot-control-protocol",
+      "title": "@openagentsinc/autopilot-control-protocol",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/autopilot-control-protocol (117 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/behavior-contracts",
+      "kind": "package",
+      "owningPath": "packages/behavior-contracts",
+      "title": "@openagentsinc/behavior-contracts",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/behavior-contracts (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/blueprint-contracts",
+      "kind": "package",
+      "owningPath": "packages/blueprint-contracts",
+      "title": "@openagentsinc/blueprint-contracts",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/blueprint-contracts (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/cloud-contract",
+      "kind": "package",
+      "owningPath": "packages/cloud-contract",
+      "title": "@openagentsinc/cloud-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/cloud-contract (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/codex-app-server-protocol",
+      "kind": "package",
+      "owningPath": "packages/codex-app-server-protocol",
+      "title": "@openagentsinc/codex-app-server-protocol",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/codex-app-server-protocol (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/composer-state",
+      "kind": "package",
+      "owningPath": "packages/composer-state",
+      "title": "@openagentsinc/composer-state",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/composer-state (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/connector-sidecar",
+      "kind": "package",
+      "owningPath": "packages/connector-sidecar",
+      "title": "@openagentsinc/connector-sidecar",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/connector-sidecar (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/cursor-agent-runtime",
+      "kind": "package",
+      "owningPath": "packages/cursor-agent-runtime",
+      "title": "@openagentsinc/cursor-agent-runtime",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/cursor-agent-runtime (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/durable-stream",
+      "kind": "package",
+      "owningPath": "packages/durable-stream",
+      "title": "@openagentsinc/durable-stream",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/durable-stream (4 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/effect-boundary",
+      "kind": "package",
+      "owningPath": "packages/effect-boundary",
+      "title": "@openagentsinc/effect-boundary",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/effect-boundary (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/effect-start",
+      "kind": "package",
+      "owningPath": "packages/effect-start",
+      "title": "@openagentsinc/effect-start",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/effect-start (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/email-templates",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/email-templates",
+      "title": "@openagentsinc/email-templates",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/email-templates (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/environment-auth",
+      "kind": "package",
+      "owningPath": "packages/environment-auth",
+      "title": "@openagentsinc/environment-auth",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/environment-auth (3 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/fast-follow-spec",
+      "kind": "package",
+      "owningPath": "packages/fast-follow-spec",
+      "title": "@openagentsinc/fast-follow-spec",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/fast-follow-spec (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/forge-protocol",
+      "kind": "package",
+      "owningPath": "packages/forge-protocol",
+      "title": "@openagentsinc/forge-protocol",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/forge-protocol (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/grok-harness",
+      "kind": "package",
+      "owningPath": "packages/grok-harness",
+      "title": "@openagentsinc/grok-harness",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/grok-harness (8 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/harness-conformance",
+      "kind": "package",
+      "owningPath": "packages/harness-conformance",
+      "title": "@openagentsinc/harness-conformance",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/harness-conformance (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/input-bindings",
+      "kind": "package",
+      "owningPath": "packages/input-bindings",
+      "title": "@openagentsinc/input-bindings",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/input-bindings (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-ai-sdk-core",
+      "kind": "package",
+      "owningPath": "packages/khala-ai-sdk-core",
+      "title": "@openagentsinc/khala-ai-sdk-core",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-ai-sdk-core (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-fleet-intents",
+      "kind": "package",
+      "owningPath": "packages/khala-fleet-intents",
+      "title": "@openagentsinc/khala-fleet-intents",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-fleet-intents (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-qa-harness",
+      "kind": "package",
+      "owningPath": "packages/khala-qa-harness",
+      "title": "@openagentsinc/khala-qa-harness",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-qa-harness (15 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-sync",
+      "kind": "package",
+      "owningPath": "packages/khala-sync",
+      "title": "@openagentsinc/khala-sync",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-sync (19 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-sync-client",
+      "kind": "package",
+      "owningPath": "packages/khala-sync-client",
+      "title": "@openagentsinc/khala-sync-client",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-sync-client (32 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.access.revocation_clears_synced_state.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.client.confirmed_agent_timeline.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.client.offline_pushes_queue_honestly.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.client.staleness_never_fabricated.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-sync-db-collection",
+      "kind": "package",
+      "owningPath": "packages/khala-sync-db-collection",
+      "title": "@openagentsinc/khala-sync-db-collection",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-sync-db-collection (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-sync-server",
+      "kind": "package",
+      "owningPath": "packages/khala-sync-server",
+      "title": "@openagentsinc/khala-sync-server",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-sync-server (61 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.push.validation_never_blocks_queue.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/khala-tools",
+      "kind": "package",
+      "owningPath": "packages/khala-tools",
+      "title": "@openagentsinc/khala-tools",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/khala-tools (22 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/managed-sandbox-contract",
+      "kind": "package",
+      "owningPath": "packages/managed-sandbox-contract",
+      "title": "@openagentsinc/managed-sandbox-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/managed-sandbox-contract (4 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/mcp-contract",
+      "kind": "package",
+      "owningPath": "packages/mcp-contract",
+      "title": "@openagentsinc/mcp-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/mcp-contract (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/mullet-schema",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/mullet-schema",
+      "title": "@openagentsinc/mullet-schema",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/mullet-schema (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/mullet-sim",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/mullet-sim",
+      "title": "@openagentsinc/mullet-sim",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/mullet-sim (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/nip90",
+      "kind": "package",
+      "owningPath": "packages/nip90",
+      "title": "@openagentsinc/nip90",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/nip90 (4 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/oa-infra",
+      "kind": "package",
+      "owningPath": "packages/oa-infra",
+      "title": "@openagentsinc/oa-infra",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/oa-infra (5 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/openagents-com-start",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/apps/start",
+      "title": "@openagentsinc/openagents-com-start",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/apps/start (58 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_decision_receipts.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_empty_state_account_identity.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_owner_scoped_engagement.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/oxlint-plugin-openagents",
+      "kind": "package",
+      "owningPath": "packages/oxlint-plugin-openagents",
+      "title": "@openagentsinc/oxlint-plugin-openagents",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/oxlint-plugin-openagents (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/pipeline-signals",
+      "kind": "package",
+      "owningPath": "packages/pipeline-signals",
+      "title": "@openagentsinc/pipeline-signals",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/pipeline-signals (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/portable-session-contract",
+      "kind": "package",
+      "owningPath": "packages/portable-session-contract",
+      "title": "@openagentsinc/portable-session-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/portable-session-contract (2 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_apps.portable_session_contract_freeze.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_cloud.brokered_session_secrets.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/postgres-runtime",
+      "kind": "package",
+      "owningPath": "packages/postgres-runtime",
+      "title": "@openagentsinc/postgres-runtime",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/probe-runtime",
+      "kind": "package",
+      "owningPath": "packages/probe/packages/runtime",
+      "title": "@openagentsinc/probe-runtime",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/probe/packages/runtime (74 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/product-spec",
+      "kind": "package",
+      "owningPath": "packages/product-spec",
+      "title": "@openagentsinc/product-spec",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/product-spec (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/provider-account-schema",
+      "kind": "package",
+      "owningPath": "packages/provider-account-schema",
+      "title": "@openagentsinc/provider-account-schema",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/provider-account-schema (2 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/public-activity-timeline",
+      "kind": "package",
+      "owningPath": "packages/public-activity-timeline",
+      "title": "@openagentsinc/public-activity-timeline",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/public-activity-timeline (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/pylon-core",
+      "kind": "package",
+      "owningPath": "packages/pylon-core",
+      "title": "@openagentsinc/pylon-core",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/pylon-core (17 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.claude.owner_local_execution_authority.v1"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/pylon-runtime",
+      "kind": "package",
+      "owningPath": "apps/pylon/packages/runtime",
+      "title": "@openagentsinc/pylon-runtime",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/pylon/packages/runtime (42 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/qa-swarm-contract",
+      "kind": "package",
+      "owningPath": "packages/qa-swarm-contract",
+      "title": "@openagentsinc/qa-swarm-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/qa-swarm-contract (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/reactor-contracts",
+      "kind": "package",
+      "owningPath": "packages/reactor-contracts",
+      "title": "@openagentsinc/reactor-contracts",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/reactor-contracts (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/runtime-platform",
+      "kind": "package",
+      "owningPath": "packages/runtime-platform",
+      "title": "@openagentsinc/runtime-platform",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "no tracked test files and no bound behavior contract"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/sarah",
+      "kind": "package",
+      "owningPath": "packages/sarah",
+      "title": "@openagentsinc/sarah",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/sarah (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/sqlite-runtime",
+      "kind": "package",
+      "owningPath": "packages/sqlite-runtime",
+      "title": "@openagentsinc/sqlite-runtime",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/sqlite-runtime (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/sync-client",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/sync-client",
+      "title": "@openagentsinc/sync-client",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/sync-client (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/sync-schema",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/sync-schema",
+      "title": "@openagentsinc/sync-schema",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/sync-schema (3 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/sync-worker",
+      "kind": "package",
+      "owningPath": "apps/openagents.com/packages/sync-worker",
+      "title": "@openagentsinc/sync-worker",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/packages/sync-worker (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/tassadar-executor",
+      "kind": "package",
+      "owningPath": "packages/tassadar-executor",
+      "title": "@openagentsinc/tassadar-executor",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/tassadar-executor (7 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/ui",
+      "kind": "package",
+      "owningPath": "packages/ui",
+      "title": "@openagentsinc/ui",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/ui (8 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/world-client",
+      "kind": "package",
+      "owningPath": "packages/world-client",
+      "title": "@openagentsinc/world-client",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/world-client (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@openagentsinc/world-contract",
+      "kind": "package",
+      "owningPath": "packages/world-contract",
+      "title": "@openagentsinc/world-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/world-contract (1 tracked test file)"
+        }
+      ]
+    },
+    {
+      "id": "package:@types/openagents-platform",
+      "kind": "package",
+      "owningPath": "types/openagents-platform",
+      "title": "@types/openagents-platform",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "config-only",
+        "note": "policy: config-only"
+      }
+    },
+    {
+      "id": "package:@types/vite-plus-matchers",
+      "kind": "package",
+      "owningPath": "types/vite-plus-matchers",
+      "title": "@types/vite-plus-matchers",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "config-only",
+        "note": "policy: config-only"
+      }
+    },
+    {
+      "id": "package:probe",
+      "kind": "package",
+      "owningPath": "packages/probe",
+      "title": "probe",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/probe (74 tracked test files)"
+        }
+      ]
+    },
+    {
+      "id": "public-endpoint:exact-route-registry",
+      "kind": "public-endpoint",
+      "owningPath": "apps/openagents.com/workers/api/src/index.ts",
+      "title": "Cloud Run monolith exact route registry",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/workers/api/src/worker-exact-routes.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "public-endpoint:openapi",
+      "kind": "public-endpoint",
+      "owningPath": "apps/openagents.com/workers/api/src/openagents-openapi-routes.ts",
+      "title": "Public OpenAPI manifest and routes",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/workers/api/src/openagents-openapi-routes.test.ts"
+        }
+      ]
+    },
+    {
+      "id": "release-pipeline:changelog",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run changelog",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:pack",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run pack",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:qa:nightly",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run qa:nightly",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:release",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:release:communicate",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release:communicate",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:release:feedback",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release:feedback",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:release:github",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release:github",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "release-pipeline:release:impact",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release:impact",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      }
+    },
+    {
+      "id": "worker:@openagentsinc/api-worker",
+      "kind": "worker",
+      "owningPath": "apps/openagents.com/workers/api",
+      "title": "@openagentsinc/api-worker",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/openagents.com/workers/api (957 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.credentials.brokered_scm_helper.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.dispatch.budget_caps_enforced.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.event_ledger_handled_gateway_redacted.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.event_ledger_owner_scoped_private.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.inbox.slack_event_ledger_ingest.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.forum_trigger_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.integrations.github_mention_callback.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "khala_sync.hosted_chat.send_yields_assistant_reply.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "lead_gen_agent.drafting_only_toolset.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "lead_gen_agent.no_send_without_approval_receipt.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.session.loopback_pkce_policy.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.sarah_owner_orchestrator.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.session.recovered_validation_rotation.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_decision_receipts.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.portal_owner_scoped_engagement.v1"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalSurfaces": 153,
+    "byKind": {
+      "app": 16,
+      "crate": 6,
+      "document": 42,
+      "package": 78,
+      "public-endpoint": 2,
+      "release-pipeline": 8,
+      "worker": 1
+    },
+    "withOracle": 129,
+    "unverified": 24,
+    "byUnverifiedReason": {
+      "config-only": 2,
+      "no-oracle-authored": 20,
+      "reference-only": 2
+    },
+    "byObligationState": {},
+    "coverageNotes": [
+      "AR-0 rev 1 enumerates surfaces at package/app/worker/crate/public-endpoint/release-pipeline/document granularity derived from the workspace, Cargo, contract, and product-spec graphs.",
+      "CLI entrypoints are covered by their owning package surface rather than counted separately.",
+      "Individual HTTP routes, Electron IPC channels, and per-endpoint contracts are represented by their owning worker/app/public-endpoint surface, not yet subdivided; fine-grained route/IPC enumeration is a bounded follow-up.",
+      "Obligation grading (state field) is populated by AR-1 #9057; drift oracles for governed documents by AR-4 #9060; standing verdicts by AR-3 #9059."
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "unverifiedReasonOverrides": {
+    "package:@types/openagents-platform": "config-only",
+    "package:@types/vite-plus-matchers": "config-only",
+    "app:@openagentsinc/ai-sdk-harness-poc": "reference-only",
+    "app:@openagentsinc/electron-ai-sdk-test": "reference-only"
+  },
+  "governedDocuments": ["AGENTS.md", "CLAUDE.md", "INVARIANTS.md", "docs/sol/MASTER_ROADMAP.md"],
+  "outOfScope": {}
+}

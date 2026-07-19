@@ -1,0 +1,33 @@
+{
+  "name": "@openagentsinc/assure-repo",
+  "version": "0.1.0",
+  "private": false,
+  "bin": {
+    "assure-repo": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/assurance-spec": "workspace:*",
+    "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/product-spec": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}
