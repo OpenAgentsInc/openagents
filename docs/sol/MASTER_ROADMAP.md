@@ -3,13 +3,14 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-19
-- Revision: 122
+- Revision: 123
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program,
   #8978/#8979 are its remaining assurance/release chain. Managed-sandbox epic
   #9023 is P1 parallel from SBX-00 #9029 without bypassing Full Auto, IDE
   dependencies, or SBX-09. Distribution #8913, Amp/T3 ledgers, and live
-  defects retain their independent gates
+  defects retain their independent gates. ASSURE-REPO epic #9055 (#9056-#9060)
+  is owner-admitted 2026-07-19 as a parallel repo-verification program
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -17,32 +18,16 @@
 - Issue-source index: [`issues/README.md`](./issues/README.md)
 - Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed, the
   one-time ordered migration is complete and maintained by the generated
-  manifest/freshness guard.
-  SOL-DOC-04 [#8726](https://github.com/OpenAgentsInc/openagents/issues/8726)
-  compacted this authority from 2,189 to 557 lines at `6bfe97fddb` without
-  changing product proof. SOL-DOC-05
-  [#8727](https://github.com/OpenAgentsInc/openagents/issues/8727) indexed
-  receipts and classified every checked-in issue source at `991f908b6b`.
-  SOL-DOC-06 [#8728](https://github.com/OpenAgentsInc/openagents/issues/8728)
-  extracted the compact greenfield/Sarah-removal decision, live falsifiers,
-  and exact July 9 archive manifest at `6e8b55b86e`. SOL-DOC-07
-  [#8729](https://github.com/OpenAgentsInc/openagents/issues/8729) archived
-  exact bytes to Backroom first (`dec8ae52`), removed the nine source paths at
-  `b62ad88136`, and closed the bidirectional receipt at Backroom `b9645456` and
-  OpenAgents `c608527eda`. SOL-DOC-08
-  [#8730](https://github.com/OpenAgentsInc/openagents/issues/8730) landed the
-  offline/live freshness guard, pinned product-issue snapshot, and regression
-  suite at `1e46778733`. SOL-DOC-09
-  [#8731](https://github.com/OpenAgentsInc/openagents/issues/8731) generated
-  the 92-document disposition manifest, receipted the bounded clean-reader
-  path, and pinned the next exact archive candidate at `7f1bc65e4a`.
-  SOL-DOC-10 [#8742](https://github.com/OpenAgentsInc/openagents/issues/8742)
-  archived that exact diary to Backroom first (`9c710a93`), removed its product
-  source at `03135f5d61`, and closed the bidirectional receipt at Backroom
-  `d7993ef5` and OpenAgents `a2e3b64f3b`. SOL-DOC-11
-  [#8743](https://github.com/OpenAgentsInc/openagents/issues/8743) proved every
-  P0–P6 exit, deletion/retention test, verification row, and first-pass success
-  measure at `9ae6f9e837`. No additional one-time cleanup issue remains. See the
+  manifest/freshness guard. Receipts: SOL-DOC-04 #8726 authority compaction
+  `6bfe97fddb`, SOL-DOC-05 #8727 receipt/issue-source index `991f908b6b`,
+  SOL-DOC-06 #8728 decision/falsifier/manifest extraction `6e8b55b86e`,
+  SOL-DOC-07 #8729 archive-first removal `b62ad88136` with Backroom
+  `dec8ae52`/`b9645456` and OpenAgents `c608527eda`, SOL-DOC-08 #8730
+  freshness guard and pinned snapshot `1e46778733`, SOL-DOC-09 #8731
+  92-document disposition manifest `7f1bc65e4a`, SOL-DOC-10 #8742 diary
+  archive `03135f5d61` with Backroom `9c710a93`/`d7993ef5` and OpenAgents
+  `a2e3b64f3b`, SOL-DOC-11 #8743 P0-P6 exit proof `9ae6f9e837`. No additional
+  one-time cleanup issue remains. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns product direction, durable gates, issue projection, and dependency
@@ -570,11 +555,12 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program              | Open issues                                                                               | Owning plan                                           |
-| -------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Basic IDE closure    | #9014                                                                                     | `docs/ide/ROADMAP.md`                                 |
-| Managed sandboxes    | #9023, #9024, #9025, #9026, #9027, #9028, #9029, #9030, #9031, #9032, #9033, #9034        | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
-| Agent IDE and parity | #9035, #9036, #9037, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                 |
+| Program              | Open issues                                                                | Owning plan                                           |
+| -------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Basic IDE closure    | #9014                                                                      | `docs/ide/ROADMAP.md`                                 |
+| Managed sandboxes    | #9023, #9027, #9030, #9031, #9032, #9033                                   | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
+| Agent IDE and parity | #9035, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                 |
+| ASSURE-REPO          | #9055, #9056, #9057, #9058, #9059, #9060                                   | `specs/openagents/assure-repo-codebase-verification.product-spec.md` |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and
@@ -620,6 +606,16 @@ following issues and accepted ledgers remain exact successor authority:
 8. Keep #8984 and any supported security, privacy, data-loss,
    accessibility, outage, or compatibility defect independently claimable,
    a failing completion gate or first-run path blocks its affected proof rung.
+9. Start ASSURE-REPO #9055 at AR-0 #9056 and AR-2 #9058 while Full Auto
+   remains P0. The program maps and grades repo verification. It does not
+   create a second completion gate, weaken an oracle, self-admit, flip a
+   promise, or make a public claim. AR-1 #9057 follows the inventory. AR-3
+   #9059 runs honestly-labeled degraded before IDE-10 #9038, reaches full
+   fidelity after IDE-10 plus SBX-06 #9027, and follows #8978. AR-4 #9060
+   rides the document-check path. Owning intent:
+   `specs/openagents/assure-repo-codebase-verification.product-spec.md`
+   @ spec_revision: 1, owner-admitted 2026-07-19 from the Verifiable
+   Software essay Addendum III.
 
 Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
 AssuranceSpec distribution remain accepted infrastructure. They are not the

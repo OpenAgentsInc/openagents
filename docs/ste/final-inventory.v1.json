@@ -23403,7 +23403,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-some-simple-economics-of-agi-deepdive.md",
-      "sha256": "3ac338ae2fc2c1f21e29afa5e079b10e593ed4b38f2564d22d4376749d80e25f",
+      "sha256": "d10b918b540106abc458432f3ac8fdcd2d564d77885f6055bd19bf113a774a9e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -23425,7 +23425,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "0e64d2731bc696a9b046abe7a35414d3abbb1558c0ffc30d292e7645581214f9",
+      "sha256": "b158642a1c21923675700b65b860606a60a704bb2ecb7366ff1a85894f3c987a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39963,7 +39963,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "7f4b8aebd6ff2f568c8113b358aa5a83aa0aa4f3a32d5c0bb2a3c623dfafccb8",
+      "sha256": "46176570c2b8e16458b370152c8c3663c07a2b6f9fb64b9743c8a41f692bdb98",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40044,7 +40044,7 @@
     },
     {
       "path": "docs/sol/issues/README.md",
-      "sha256": "ee810f3fb4f058d4dc07db099a2845a135221ad3ac6936115f45d6e8830d189a",
+      "sha256": "75affc66105f1d17e4e7700a87bf8fb1edbd508d995866bcc107edadf46374a0",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -48663,6 +48663,24 @@
         "source": "Formal model source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "specs/openagents/assure-repo-codebase-verification.product-spec.md",
+      "sha256": "79025c32b66535c86e603267d616664536ddac9a495a1f25069e89d3458b3737",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

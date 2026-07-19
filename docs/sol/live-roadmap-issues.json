@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-19T15:04:16.557Z",
+  "generatedAt": "2026-07-19T20:44:46.295Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -42,53 +42,6 @@
     },
     {
       "labels": [
-        "events",
-        "type:feature",
-        "codex",
-        "runtime",
-        "cloud-boundary",
-        "claude",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9024,
-      "state": "OPEN",
-      "title": "SBX-04 — Run long-lived Codex and Claude work with prompt truth, events, and interrupt",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9024"
-    },
-    {
-      "labels": [
-        "api",
-        "backend",
-        "type:feature",
-        "effect",
-        "test-harness",
-        "cloud-boundary",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9025,
-      "state": "OPEN",
-      "title": "SBX-03 — Serve the admitted Box v1 facade and pass the unmodified TypeScript SDK",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9025"
-    },
-    {
-      "labels": [
-        "backend",
-        "type:feature",
-        "area:security",
-        "receipts",
-        "cloud-boundary",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9026,
-      "state": "OPEN",
-      "title": "SBX-05 — Add bounded files, commands, artifacts, quotas, and sandbox hardening",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9026"
-    },
-    {
-      "labels": [
         "type:feature",
         "effect",
         "owner:desktop",
@@ -101,37 +54,6 @@
       "state": "OPEN",
       "title": "SBX-06 — Integrate managed sandboxes into the OpenAgents IDE project and agent graphs",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/9027"
-    },
-    {
-      "labels": [
-        "type:feature",
-        "area:infra",
-        "rust",
-        "gcp",
-        "deployment",
-        "cloud-boundary",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9028,
-      "state": "OPEN",
-      "title": "SBX-02 — Add the real GCP managed-sandbox runtime layer and image admission",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9028"
-    },
-    {
-      "labels": [
-        "effect",
-        "owner:contracts-docs",
-        "gcp",
-        "cloud-boundary",
-        "type:schema",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9029,
-      "state": "OPEN",
-      "title": "SBX-00 — Freeze managed-sandbox, Box compatibility, authority, and assurance contracts",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9029"
     },
     {
       "labels": [
@@ -196,21 +118,6 @@
     },
     {
       "labels": [
-        "backend",
-        "type:feature",
-        "effect",
-        "area:data",
-        "cloud-boundary",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9034,
-      "state": "OPEN",
-      "title": "SBX-01 — Implement durable sandbox lifecycle authority and generation-fenced store",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9034"
-    },
-    {
-      "labels": [
         "master-task",
         "type:feature",
         "priority:P0",
@@ -224,40 +131,6 @@
       "state": "OPEN",
       "title": "EPIC — IDE-08–IDE-19: ship the agent IDE, portable platform, and Cursor parity",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/9035"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "area:testing",
-        "area:protocol",
-        "owner:desktop",
-        "desktop",
-        "roadmap:sol"
-      ],
-      "number": 9036,
-      "state": "OPEN",
-      "title": "IDE-08 — Make agents native to the code graph with inspectable context and version-bound proposals",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9036"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "area:testing",
-        "area:protocol",
-        "owner:desktop",
-        "desktop",
-        "roadmap:sol"
-      ],
-      "number": 9037,
-      "state": "OPEN",
-      "title": "IDE-09 — Add Cursor-class AI editing with disclosed effective models and version-bound edits",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9037"
     },
     {
       "labels": [
@@ -443,6 +316,78 @@
       "state": "OPEN",
       "title": "IDE-19 — Close and continuously maintain evidence-backed Cursor parity",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/9047"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9055,
+      "state": "OPEN",
+      "title": "EPIC — ASSURE-REPO: programmatic verification of the OpenAgents codebase surface",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9055"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9056,
+      "state": "OPEN",
+      "title": "AR-0 — Generate the typed repo surface inventory with loss accounting",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9056"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9057,
+      "state": "OPEN",
+      "title": "AR-1 — Grade assurance obligations over the surface inventory",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9057"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9058,
+      "state": "OPEN",
+      "title": "AR-2 — Audit existing suites for false greens and extend mutation evidence",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9058"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9059,
+      "state": "OPEN",
+      "title": "AR-3 — Run the standing repo verification sweep as a Full Auto lane",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9059"
+    },
+    {
+      "labels": [
+        "qa",
+        "type:feature",
+        "area:testing",
+        "roadmap:sol"
+      ],
+      "number": 9060,
+      "state": "OPEN",
+      "title": "AR-4 — Add drift oracles for the repository's own claims",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9060"
     }
   ]
 }

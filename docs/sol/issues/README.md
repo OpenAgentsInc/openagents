@@ -30,11 +30,13 @@ dispatch authority.
 ## Live issues represented by an owning plan
 
 - [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) represents basic-IDE parent
-  #9014 and agent-IDE/parity epic and packets #9035, #9036, #9037, #9038,
-  #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, and #9047.
+  #9014 and agent-IDE/parity epic and packets #9035, #9038, #9039, #9040,
+  #9041, #9042, #9043, #9044, #9045, #9046, and #9047.
 - [`Managed agent sandboxes accepted plan`](../2026-07-19-managed-agent-sandboxes-accepted-plan.md)
-  represents epic and packets #9023, #9024, #9025, #9026, #9027, #9028,
-  #9029, #9030, #9031, #9032, #9033, and #9034.
+  represents epic and packets #9023, #9027, #9030, #9031, #9032, and #9033.
+- [`ASSURE-REPO ProductSpec`](../../../specs/openagents/assure-repo-codebase-verification.product-spec.md)
+  represents epic and packets #9055, #9056, #9057, #9058, #9059, and #9060,
+  owner-admitted 2026-07-19 from the Verifiable Software essay Addendum III.
 
 The Node/pnpm/Vite Plus program and all folded leaves are closed evidence.
 
