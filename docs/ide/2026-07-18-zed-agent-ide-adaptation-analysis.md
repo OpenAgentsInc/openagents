@@ -20,6 +20,11 @@ than making Zed the component stack:
   diff presentation components behind an owned adapter.
 - Effect Native, Effect services, the generated engine protocol, and the
   Electron main process remain the OpenAgents control plane.
+- The exact runtime split is not “Rust backend.” Effect/TypeScript owns the
+  complete project/document/language/Git/agent/policy/persistence graph; Rust
+  is limited to supervised, process-opaque PTY/containment and empirically
+  justified native kernels, as specified in the companion
+  [`Effect and Rust architecture`](./2026-07-18-zed-quality-ide-effect-rust-architecture.md).
 - Cursor remains a product-breadth floor, and VS Code remains a useful
   behavior/protocol comparison, but neither supplies Zed's unusually coherent
   answer to how an agent and an IDE should share a project.
@@ -350,6 +355,45 @@ Each service is scoped to an exact `IdeProjectRef`; attachment revocation or
 generation change invalidates the whole composed layer. This gives the user
 Zed-like coherence while preserving OpenAgents' typed process and authority
 boundaries.
+
+### 4.4 Exact Effect/TypeScript versus Rust boundary
+
+The source language of Zed is not a recommendation to put the OpenAgents IDE
+core in Rust. The controlling rule comes from
+`docs/fable/2026-07-17-effect-vs-rust-architecture-analysis.md`: typed
+coordination belongs in Effect; OS enforcement and hard real-time native
+mechanics belong in a supervised Rust helper.
+
+Effect/TypeScript therefore owns:
+
+- every project, root, file, document, service, worktree, session, proposal,
+  task, terminal, debug, and receipt identity;
+- capability lifecycle, placement, policy, admission, commands, persistence,
+  recovery, export/delete, Sync, mobile/web projection, and public sharing;
+- Monaco/Pierre/xterm adapters and the LSP, tsserver, DAP, Git, harness, task,
+  search, and extension supervisors;
+- canonical Effect Schemas and generation of JSON Schema, fixtures, and any
+  Rust protocol types.
+
+Rust may own only:
+
+- PTY handles, process groups, resize/signal, and bounded byte transport;
+- OS containment compilation and enforced spawn;
+- optional local-inference or other measured native kernels;
+- file watch/index/search only if the Effect/Node implementation misses
+  ratified p99, memory, or correctness gates after optimization.
+
+A Rust helper is a child process, never FFI/N-API linked into the application.
+It holds no provider credentials, project or conversation database, policy,
+approval, command, or receipt authority. Effect supervises it through a
+versioned, bounded, generation-fenced stdio or local-socket contract. Helper
+absence fails closed for required containment and degrades honestly for an
+optional performance kernel. The helper reports native facts; Effect decides,
+stores, projects, and signs them.
+
+An external LSP server, DAP adapter, formatter, or harness may itself be
+written in Rust without becoming part of this Rust architecture. It remains a
+runtime supervised behind the Effect-owned project capability interface.
 
 ## 5. One document truth plane for humans and agents
 
@@ -1124,7 +1168,11 @@ apply, and selectable retrieval/indexing under explicit data policy.
 ### Phase 5 — deeper IDE capability
 
 Add tasks, terminal, debug, outline, richer excerpt views, remote placement,
-worktree lifecycle, and separately admitted Git mutation.
+worktree lifecycle, and separately admitted Git mutation. Terminal uses an
+Effect-owned session/task service and xterm projection over a separately
+admitted process-opaque Rust PTY/containment helper; debug and language clients
+remain Effect/TypeScript even when the supervised adapter binary is written in
+another language.
 
 ### Phase 6 — optional collaboration and extensions
 
@@ -1248,6 +1296,8 @@ signed/notarized, real-provider, and owner-real evidence remain distinct.
    next-edit intelligence after the basic IDE packets.
 8. Share typed project evidence with mobile/web while retaining their explicit
    no-full-editor/no-execution boundaries.
+9. Keep the authoritative IDE in Effect/TypeScript; use Rust only for bounded
+   authority-free PTY/containment or benchmark-admitted native helpers.
 
 ### Still needs an admitted implementation decision
 
@@ -1261,6 +1311,10 @@ signed/notarized, real-provider, and owner-real evidence remain distinct.
 - worktree creation/archive retention and recovery policy;
 - performance budgets after baseline measurement;
 - collaboration consistency model and extension component ABI.
+
+The language boundary itself is not open: the companion Effect/Rust decision
+fixes ownership now. Only the necessity, protocol, and reversal test of a
+particular future native helper remain packet-level decisions.
 
 ## 23. Source map
 
@@ -1316,4 +1370,5 @@ That is the useful meaning of “take Zed.” It is not a Rust port and not a sk
 It is an IDE whose human, agents, tools, and remote controllers all know which
 project, file, version, capability, proposal, and receipt they are talking
 about—without any of them acquiring more authority merely because they share
-those facts.
+those facts. The full capability and process split is consolidated in
+[`Zed-quality OpenAgents IDE: Effect and Rust architecture`](./2026-07-18-zed-quality-ide-effect-rust-architecture.md).

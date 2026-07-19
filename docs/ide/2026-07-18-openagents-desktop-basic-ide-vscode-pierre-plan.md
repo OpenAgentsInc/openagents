@@ -39,6 +39,13 @@ This is not a VS Code fork. It is VS Code-level basic workflow parity built from
 a stock editor engine, Pierre's focused projection libraries, and OpenAgents'
 typed authority plane.
 
+The exact language/process ownership is fixed by the companion
+[`Zed-quality Effect and Rust architecture`](./2026-07-18-zed-quality-ide-effect-rust-architecture.md):
+Effect/TypeScript owns the project, document, language, Git, task, agent,
+policy, persistence, and projection graph. Rust is not the IDE backend; it is
+limited to supervised authority-free PTY/containment and benchmark-admitted
+native helpers.
+
 ## Owner-directed first delivery: Command-E Files sidebar
 
 The first deliverable is deliberately narrower than Editor mode: **Command-E**
@@ -292,14 +299,21 @@ accessibility before treating the beta as accepted.
 
 ```mermaid
 flowchart LR
-  subgraph Main["Electron main process - authority"]
+  subgraph Main["Electron main / utility - Effect authority"]
     Grant["Workspace grant"]
     FS["Workspace service\nread/write/watch/search/index"]
     Git["Git service\nstatus/diff/mutations"]
     LSP["Future language-server host"]
+    Terminal["Future terminal/task host"]
     Grant --> FS
     Grant --> Git
     Grant --> LSP
+    Grant --> Terminal
+  end
+
+  subgraph Native["Process-opaque Rust helpers"]
+    PTY["PTY / process-group primitive"]
+    Sandbox["OS containment / spawn"]
   end
 
   subgraph State["Effect Native application state"]
@@ -328,6 +342,9 @@ flowchart LR
   Tree -->|"typed intents"| State
   Monaco -->|"typed edits, selection, save request"| State
   Diffs -->|"navigation / annotation intents"| State
+  FS -. "supervises when admitted" .-> Sandbox
+  LSP -. "supervises when admitted" .-> Sandbox
+  Terminal -. "supervises through terminal contract" .-> PTY
 ```
 
 ### Authority rules
@@ -346,6 +363,28 @@ flowchart LR
    capabilities. Monaco commands may request them; Monaco does not launch them.
 7. Theme input is resolved from Effect Native/OpenAgents tokens. Untrusted
    theme JSON or Pierre `unsafeCSS` never enters a trusted renderer unchecked.
+
+### Effect/TypeScript and Rust ownership
+
+The basic editor requires no new Rust core. Effect/TypeScript owns the
+workspace grant and path index, document revisions and recovery, Monaco/Pierre
+adapters, LSP/tsserver client, Git evidence, commands, state, persistence, and
+receipts. A language server or formatter may be an external binary in any
+language, but its lifecycle and results remain an Effect project capability.
+
+When Terminal lands, Effect owns terminal identity, cwd/environment admission,
+retention, command routing, reconnect policy, and projection; xterm owns screen
+emulation; a bounded Rust helper owns only the PTY handle, process group,
+resize/signal, and byte transport. Required containment is another supervised
+Rust helper boundary. No native helper holds a root grant, credential,
+conversation, approval, policy, database, or receipt key.
+
+File watching, indexing, content search, Git, parsing, LSP, and DAP remain
+Effect/Node implementations or supervised external processes by default. They
+move to a new Rust helper only after IDE-00 ratifies a cross-platform benchmark
+and reversal test, the TypeScript path misses it after optimization, and a
+separate packet admits the smallest authority-free protocol. This prevents
+“Zed uses Rust” from becoming an architectural reason to grow a Rust IDE core.
 
 ## Editor mode product shape
 
@@ -735,6 +774,9 @@ Work:
 - update `INVARIANTS.md` for the app-owned Monaco/Pierre React adapter files,
   path-index projection, and the distinction between canonical document state
   and adapter-local edit mechanics;
+- freeze the Effect/TypeScript-versus-Rust ownership table, generated
+  cross-language fixture rule, helper failure behavior, and per-helper
+  necessity/reversal test before admitting any native IDE crate;
 - pin package versions, source commits, licenses, and rollback boundary.
 
 Acceptance:

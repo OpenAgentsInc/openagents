@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -27,6 +27,8 @@ tool_metadata:
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the phone-as-remote-control doctrine with exactly-one-outcome command resolution over intermittent connectivity (255); supervision-before-authoring sequencing (253-notes); the overnight-fleet morning-review journey as the anchor use case (246, 250, 255); fleet capacity shown as quantities with evidence-gated readiness inherited from the Desktop Fleet laws (250); per-message effective-identity metadata on mobile (250, 251-notes); UI-first operations — enrollment, visibility, and policy as screens and buttons, never CLI runbooks (255); no desktop token on the phone and no cloud-canonical transcripts (255); counters, earnings, and referral accruals as receipted projections whose public claims follow promise-registry states (243, 244, 245)."
   openagents_revision_4_note: "Rev 4 makes Cursor mobile and Remote Control breadth a floor: launch and supervise local or background/cloud sessions, voice, notifications/live status, search/history, changes and artifacts, and workstation handback, while retaining the stronger any-host, no-credential, exactly-once command, portable-session, and receipt laws."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness strictly as safe remote supervision. Mobile may select only released compatible harness bundles/adaptation policies exposed by the host, and projects a run's base/effective bundle digests, adaptation state, frozen bank-snapshot ref, effective execution tuple, candidate/release state, and redacted receipts. It never receives raw experiences, prompts, transcripts, tool output, embeddings, retrieval queries or scores, secrets, credentials, or paths; never runs retrieval/optimization; and cannot mutate the bank, edit modules, promote candidates, or expand run authority."
+  openagents_revision_6_note: "Rev 6 adds the mobile projection needed for a Zed-quality Desktop IDE: exact generation-bound project/worktree/file/document/proposal/evidence vocabulary; safe multi-root tree, file/symbol/search, Problems, diffs, test/task/artifact evidence, review/comment and Desktop handoff; and explicit stale/unavailable truth. Mobile remains a controller, not a Monaco/LSP/PTY/Git/native-helper host, and general code editing stays cut. Adds AC-21 through AC-24 and SM-9."
+  openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -92,6 +94,9 @@ in:
   - Display effective execution identity on mobile exactly as on Desktop: every message's metadata shows the observed effective model, provider, and account, never an inference from the requested brand.
   - Treat the portable session as the stable object: a session moves owner-local to managed cloud and back through quiesce, checkpoint, detach, attach, resume, and failback verbs, with exclusive attachment generations so exactly one host executes, secret-free checkpoints, and source-cleanup receipts.
   - Ship the workbench mode graph, supervision-first: Attention, Recent, Repositories, and Hosts entry points; per-session Thread, Files, Changes, Terminal, Preview, and Artifacts modes; routes and sheets on phone, list-plus-detail-plus-inspector on tablet, from one adaptive app.
+  - Project the Zed-quality IDE graph safely: multi-root project/worktree display identity, bounded relative-ref Files tree, quick file and symbol lookup, workspace-search results, Problems, changed files, version-bound proposal diffs, comments, test/task outcomes, artifacts, and bounded syntax-highlighted excerpts all carry exact attachment/document/service/evidence generations and explicit stale, omitted, cached, degraded, revoked, or unavailable state.
+  - Make every code/evidence object continuable: Open on Desktop carries only opaque session/project/file/range/proposal/evidence refs; Desktop reauthorizes and resolves the current generation, while a missing historical generation opens a snapshot/diff or explicit unavailable state instead of a guessed current line.
+  - Keep bounded review and mutation distinct. Mobile can inspect, comment, approve/reject where policy permits, rerun, and issue a small staged edit only through the existing exactly-once command/outcome path with a base generation, explicit preview, conflict refusal, and post-image receipt; it never turns review text or a screen projection into direct filesystem mutation.
   - Provide a durable per-environment offline outbox built on durable admission: commands queued with client-chosen idempotent IDs, admission acknowledged before the UI shows accepted, explicit steer-versus-queue choice surfaced, and the queue visible, editable, and cancellable.
   - Ship attention as a product: an inbox where actionable items (approvals, questions, blockers) are pinned and never collapse; privacy-generic push payloads that revalidate at open and deep-link to the exact session; lock-screen presence for running work; share targets and quick actions as controller citizens; notification state is never completion authority.
   - Render the complete agent-graph projection with the same typed density rules as Desktop: full roster, live child lifecycle, drill-down into child transcripts, explicit gap accounting.
@@ -108,6 +113,7 @@ out:
   - Notification state is never completion authority; only durable outcomes and receipts complete an action in the UI.
   - Mobile authoring of ProductSpecs and full workroom authoring flows are deferred; supervision precedes authoring on this surface, per the multiplayer contract's explicit exclusion.
   - No raw MemoHarness experience or pattern content, prompt/transcript/tool output, embedding, retrieval query or private score, secret, credential, filesystem path, experience-bank mutation, optimization start, module editing, candidate verification/promotion, or cross-tenant retrieval on mobile.
+  - No Monaco, language-server/tsserver/DAP host, Git or shell process, PTY, Rust native helper, unsaved-buffer/undo-stack custody, raw terminal stream, or general project editor on mobile; Files, Problems, Terminal, and Debug are bounded host projections and controls only.
 cut:
   - CUT-MOB-01: Pixel-streaming remote desktop is cut; the phone renders typed projections, not screen mirrors.
   - CUT-MOB-02: General on-phone code editing is cut to bounded review comments and small staged edits; full editing remains a desktop concern.
@@ -158,6 +164,14 @@ cut:
   criterion: When MemoHarness state crosses the mobile boundary, schema decoding rejects any payload carrying raw experiences, pattern content, prompts, transcripts, tool output, embeddings, retrieval queries or private scores, secrets, credentials, or filesystem paths; the phone exposes no command to mutate a bank, start optimization, edit modules, verify or promote a candidate, or change run authority.
 - id: AC-20
   criterion: When a MemoHarness-enabled run ends, the attention inbox retrieves a bounded report containing safe base/effective bundle and adaptation receipt refs plus candidate/release follow-up state, while private source evidence remains dereferenceable only through an owner-authorized higher-trust surface.
+- id: AC-21
+  criterion: When a project has multiple roots, diagnostics, changed files, proposals, tests, tasks, artifacts, and child-agent work, mobile can browse and search the safe bounded projections, open file/symbol/Problem/diff/evidence detail, and see exact attachment/document/service generations plus stale, cached, omitted, degraded, revoked, or unavailable truth without receiving a raw root or unselected repository content.
+- id: AC-22
+  criterion: When a user taps Open on Desktop from a file range, Problem, proposal hunk, test failure, artifact, or agent backlink, the continuation carries only opaque safe refs, Desktop reauthorizes and resolves the current project generation, and missing historical state opens an exact snapshot/diff or explicit unavailable result rather than a guessed current line or new session.
+- id: AC-23
+  criterion: When mobile comments, approves, rejects, reruns, or submits an admitted small staged edit, the action uses the same exactly-once outbox and typed command as other controls, binds the exact base generation, previews the effect, refuses conflict, and completes only from a durable outcome and post-image receipt; the app exposes no general editor or direct filesystem mutation path.
+- id: AC-24
+  criterion: When Files, Problems, Terminal, task/test, or debug evidence is viewed on mobile, schema and capability audits prove the phone hosts no Monaco, LSP/tsserver/DAP, Git/shell process, PTY, Rust helper, raw environment, unsaved-buffer/undo custody, or raw terminal stream; host execution and private state remain on the authoritative target.
 ```
 
 ## Success Metrics
@@ -208,6 +222,11 @@ cut:
   target: "100%"
   target_status: committed
   window: every release candidate and rolling 30-day dogfood
+- id: SM-9
+  metric: mobile_project_review_and_desktop_continuation_journeys_resolving_exact_safe_generations
+  target: "100% across the maintained Zed-quality mobile projection corpus"
+  target_status: committed
+  window: every release candidate
 ```
 
 ## Solution
@@ -233,6 +252,14 @@ service freezes the bank snapshot, retrieves, adapts, compiles terminal
 experiences, optimizes, stores private evidence, and resolves Blueprint
 release state. The phone neither reproduces that control plane nor receives
 its private working set.
+
+The IDE projection follows the same rule. Shared Effect Schema DTOs expose
+only safe project/root/file/document/proposal/evidence refs and bounded
+tree/search/symbol/Problem/diff/test/task/artifact content. The authoritative
+host owns Monaco, document recovery, language/Git/task/debug services,
+external runtimes, and any Rust PTY/containment helper. Mobile keeps no shadow
+IDE database: it renders typed snapshots, sends exactly-once commands, and
+hands opaque refs back to Desktop for fresh authorization and resolution.
 
 ## Strategic Positioning
 
@@ -264,6 +291,10 @@ position no one else can copy without rebuilding their custody model.
 - A convenient harness inspector could accidentally become a private-memory
   exfiltration or remote self-promotion surface; the shared safe-projection
   schema and absence of bank/optimizer/promotion commands are hard boundaries.
+- A rich Files/Changes projection can drift into a fragile phone IDE or leak
+  source by convenience. The safe-field schema, content bounds, explicit
+  omission/staleness, no-native-runtime rule, and Desktop handoff remain
+  release gates.
 
 ## Open Questions
 
@@ -305,6 +336,8 @@ position no one else can copy without rebuilding their custody model.
 - Portable-session intent: `specs/openagents/portable-coding-sessions.product-spec.md`
 - MemoHarness and Blueprint integration authority:
   `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
+- Zed-quality IDE projection and Effect/Rust boundary:
+  `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
 
 ## Owner Gates
 

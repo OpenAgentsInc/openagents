@@ -25,6 +25,10 @@ Use VS Code as OpenAgents' main **TypeScript package donor** and a detailed
 
 The practical outcome is a normal TypeScript/Electron application that uses
 the best extracted VS Code kernels without becoming a VS Code distribution.
+The companion
+[`Zed-quality Effect and Rust architecture`](./2026-07-18-zed-quality-ide-effect-rust-architecture.md)
+fixes the process boundary: the authoritative IDE remains Effect/TypeScript;
+Rust is a supervised native rind, not a competing backend.
 
 ## What this analysis changes
 
@@ -144,6 +148,22 @@ Being TypeScript is not sufficient. The relevant questions are:
 - Can it remain a projection/helper while OpenAgents owns identity and state?
 - Can it pass the existing Electron CSP, ASAR, signing, offline, and six-target
   release matrix?
+
+### Effect/TypeScript versus Rust is an authority split
+
+All focused packages in this analysis live beneath Effect-owned services.
+Effect/TypeScript owns project and document state, language and debug clients,
+Git/search/task orchestration, commands, policy, persistence, recovery, and
+mobile/web projections. Monaco, Pierre, xterm, language-service libraries, and
+VS Code protocol packages are replaceable mechanics.
+
+Rust owns only process-opaque native primitives: PTY/process-group operations,
+OS containment/spawn, optional local inference, or a watcher/index/search
+kernel admitted after a measured TypeScript failure. No Rust module is linked
+into the renderer or Effect host, and no helper owns a root grant, provider
+credential, session, approval, policy, database, or receipt. Effect Schema is
+the contract source; generated cross-language fixtures make drift a build
+failure.
 
 ## Recommended TypeScript package portfolio
 
@@ -380,14 +400,21 @@ server and avoids porting VS Code's TypeScript extension.
 The Effect Native core already documents a typed Terminal Host pattern beside
 CodeEditor. When Terminal becomes admitted:
 
-- Electron main/utility owns PTY creation, cwd, environment, process group,
-  resize, signal, exit, reconnect, and sandbox policy;
+- Electron main/utility Effect services own terminal identity, cwd/environment
+  admission, reconnect, retention, commands, and sandbox policy;
+- a process-opaque Rust helper owns the PTY handle, process group,
+  resize/signal, exit observation, and bounded byte transport;
 - xterm owns screen emulation, selection, accessibility projection, scrollback,
   and renderer mechanics;
 - the app command registry owns open/split/clear/find/copy/paste actions;
 - session/project/worktree identity binds every terminal;
 - output and any serialized screen state have explicit bounds and retention;
 - xterm serialize never substitutes for process/session recovery.
+
+The Rust helper is a supervised child behind a versioned generated protocol,
+not an N-API module or terminal backend with application state. Its absence or
+crash produces a typed fail-closed/degraded terminal outcome; Effect remains
+the only owner of run/session history and receipts.
 
 VS Code's 87 xterm call sites show the surrounding product is much larger than
 the package. Do not copy its terminal contributions. Use them as a behavioral
@@ -708,4 +735,5 @@ that prevent needless reinvention: URI/LSP primitives, focused language
 services, xterm when Terminal is ready, Ripgrep only if it wins the benchmark,
 and DAP only when debugging is real. Everything else in VS Code should remain
 an exact behavior/test reference translated into OpenAgents' own typed
-TypeScript architecture.
+Effect/TypeScript architecture, with Rust reserved for the separately proven
+native rind.

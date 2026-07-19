@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop: Trust-Complete Coding Workbench"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -26,6 +26,8 @@ tool_metadata:
   openagents_revision_3_note: "Rev 3 elevates Full Auto to the roadmap-defining flagship per the episode-256 draft transcript (owner: an AFK-reliable multi-account multi-provider autonomous mode is 'important enough of an unserved need to build the whole short-term roadmap of the company around'). Full Auto becomes a dedicated run mode launched beside New Session (lightning action, one-time objective/workspace/provider-policy setup, full-screen read-only run view, explicit Play/Pause/Stop, no composer while running — 'steering is not Full Auto'); adds automatic model/account/provider failover on limits (the overnight Fable-limit halt is the named incumbent failure), same-thread cross-provider handoff with end-to-end acceptance proof (the live Claude-error -> Codex-continues-same-chat moment), active-run thread retention (the five-thread cache eviction root cause), and the run -> bounded report -> transcript analysis -> replayable fixture iteration loop. Also folds in back-catalog direction from episodes 200-237: the episode-206 Guidance Module lineage (between-turn decision engine with shared state/budget/environment, confidence-gated actions, hard guardrails over soft guidance, budget-bound autonomy); episode-237 clearing-layer doctrine (scoped-in-advance done, rubric grading, dereferenceable receipts, draft/verified/reviewed/bonded confidence tiers); episode-225 account-visibility peeves (at-a-glance identity, rate-limit burn-down, API-key fallback); episode-204 don't-break-userspace; episode-227 one-click full data export; the one-app cockpit/earning thesis deferred to its own contract."
   openagents_revision_4_note: "Rev 4 makes complete Cursor-class capability parity explicit rather than assuming trust advantages compensate for missing breadth. It binds the exhaustive parity ledger, restores editor depth, computer use, voice, automation, remote/background, marketplace, light/high-contrast themes, and agent-first/classic workbench outcomes to scope, and requires an unbundled harness/model/provider/placement/index architecture with inspectable local and remote data lifecycle."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness as the optimization layer for the already-unbundled harness plane. Desktop owns released six-dimension HarnessPolicyBundle selection, run-start adaptation from a frozen private experience-bank snapshot, selected-versus-effective provenance, adaptation receipts, private experience-bank lifecycle controls, and candidate/shadow/production release states. It forbids per-turn self-modification, current-run evaluation leakage, authority expansion, raw-memory projection to mobile/web, and candidate self-promotion. The Effect application/control plane owns schemas, retrieval, optimization, policy, storage, and release; Rust remains an isolated native-helper boundary for containment, PTY, and local-inference primitives only."
+  openagents_revision_6_note: "Rev 6 turns the prior editor capability nouns into a Zed-quality integrated IDE contract. One generation-fenced Effect project graph now binds multi-root worktrees, documents, language, Git, terminals/tasks/debug, agents, proposals, evidence, local/remote placement, recovery, mobile/web continuation, and public code-share projections. Monaco, Pierre, xterm, and focused VS Code packages remain replaceable mechanics. Effect/TypeScript owns every identity, policy, state machine, database, projection, and receipt; Rust is limited to process-opaque authority-free PTY/containment and benchmark-admitted native kernels behind generated contracts and reversal tests. Adds AC-39 through AC-47 and SM-17 through SM-18."
+  openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -93,6 +95,15 @@ than recreating Cursor's closed bundle or cloud-canonical custody.
 in:
   - Satisfy `specs/openagents/cursor-capability-parity.product-spec.md` as the exhaustive breadth contract: every current Cursor capability is present, admitted, or visibly tracked as a gap, and no trust advantage excuses a missing user outcome.
   - Ship two complete densities over one canonical state graph: a classic coding workbench with editor, files, symbols, search, diagnostics, source control, diff, terminal, preview, extensions, settings, themes, and keymaps; and an agent-first operations window optimized for concurrent sessions, plans, worktrees, subagents, attention, and review.
+  - Meet a Zed-quality integrated-IDE bar rather than assembling adjacent widgets: one generation-fenced `IdeProjectRef` graph owns multi-root projects, roots, files, documents, capability lifecycles, worktrees, language results, Git evidence, terminals/tasks/debug, agent attachments, proposals, persistence, and safe cross-surface projections; every tree, editor, search, symbol, diagnostic, hunk, test, terminal, and agent backlink resolves through that graph.
+  - Keep file opening editor-first and provider-independent: Finder/Open With, Explorer activation, quick open, workspace search, Problems, symbols, Git hunks, recent restore, and agent backlinks target the primary main-region Monaco document immediately, while chat, provider, Git, index, LSP, and remote hydration continue asynchronously; refusal or unsupported content renders a typed editor state in that same region, never a small side pane or no-op.
+  - Deliver complete document behavior: stable opaque document identity, multi-view editor groups and splits, preview/pin/reorder/reopen, multi-cursor and native editing, find/replace and navigation, encoding/BOM/EOL/large/binary/read-only truth, atomic save/save-all, explicit autosave, external-change conflict, dirty close, hot-exit recovery, and generation-bound stale refusal or an explicit rebase flow.
+  - Treat language intelligence as a project capability with visible lifecycle and placement. Monaco-local workers, tsserver, and LSP may provide different evidence tiers, but diagnostics, completion, hover, definitions, references, document/workspace symbols, rename, formatting, code actions, semantic tokens, inlay hints, folds, Problems, Outline, breadcrumbs, and excerpt views carry exact document/service generations, cancellation, supersession, restart, and unsupported/degraded truth.
+  - Make terminal, tasks, tests, output, and debug first-class project evidence: xterm is the screen projection; named tasks, problem matchers, test discovery/results, DAP breakpoints/launch/attach/stack/variables, logs, and terminal sessions bind exact project/worktree/runtime generations and become agent-usable evidence under declared retention and disclosure policy.
+  - Make the agent/code loop native to the IDE: a session attaches to an exact project without gaining implicit authority; the context tray discloses selected files/ranges/symbols/diagnostics/changes/rules/skills/retrieval reasons and provider destination; agents produce version-bound proposals rather than mutating Monaco; Pierre review supports safe file/hunk accept/reject/apply/undo; code and turns backlink; post-apply diagnostics/tests/format/Git/delivery attach as evidence.
+  - Keep local and remote projects behind the same typed capability interface and stable project/file identities. Effective placement, component version, attachment generation, latency class, cached-versus-live evidence, disconnection, revocation, incompatibility, and recovery are explicit; Desktop never silently uploads a project, downloads a helper, changes custody, or substitutes a managed capability.
+  - Use Effect/TypeScript as the authoritative IDE and control plane: it owns project/document/language/Git/terminal/task/debug/agent identities, commands, policy, admission, persistence, recovery, placement, projections, export/delete, and receipts; Monaco, Pierre, xterm, LSP/tsserver/DAP/Git/harness processes, and focused VS Code packages remain supervised mechanics behind Effect-owned services.
+  - Limit Rust to separately admitted process-opaque helpers for OS containment, PTY/process-group byte mechanics, optional local inference, and only benchmark-proven native kernels. Helpers receive generated versioned bounded contracts, no project/session/policy/credential/database/receipt authority, fail closed for required enforcement, degrade honestly when optional, and carry explicit necessity and reversal tests; file/index/search/Git/LSP/DAP remain Effect/Node or supervised external-process paths by default.
   - Match Cursor-class AI editing and repository intelligence: low-latency completion and next-edit prediction, inline ask/edit/generate, multi-file apply/review/undo, explicit file/symbol/path/docs/web context, and hybrid local lexical/symbol/path search plus selectable local or remote semantic embeddings with visible scope, freshness, custody, cost, export, rebuild, and deletion.
   - Unbundle workbench/editor, harness runtime, model/provider, execution placement, sync/relay, and persistence/indexing so each can be replaced independently without changing canonical session identity; support owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider execution where the selected capability permits it.
   - Make MemoHarness a first-class optimization layer over that replaceable harness plane: a released, content-addressed `HarnessPolicyBundle` independently versions its six dimension policies (context assembly, tool interaction, generation control, orchestration, memory management, and output processing) and declares compatibility with engine protocol, provider/model/toolset, execution profile, and evaluator versions; experience construction, global optimization, pattern extraction/selection, and per-case adaptation remain separate typed pipeline components around the bundle.
@@ -243,6 +254,24 @@ cut:
   criterion: When an adapted harness executes, its authority manifest is identical to the base run's authority manifest for workspace, placement, provider/account candidates, tools, approvals, guardrails, budgets, done condition, and external effects; any proposed delta outside the admitted harness-module schema refuses before dispatch with a typed reason.
 - id: AC-38
   criterion: When Desktop projects MemoHarness state to mobile, web, exports, or public receipts, the projection is explicit-field allowlisted and may include safe digests, release state, compatibility, adaptation status, and redacted receipt refs, but never raw experiences, prompts, transcript text, tool output, embeddings, retrieval queries, private scores, secrets, or filesystem paths.
+- id: AC-39
+  criterion: When a supported source file is opened from Finder, Explorer, quick open, search, Problems, symbols, Git, recent restore, or an agent backlink, every route resolves the same current project/file/document identity and makes a real editable Monaco document primary in the main workspace before chat, provider, index, Git, LSP, or remote hydration completes; failure renders a typed editor state there rather than a side-pane fallback or no-op.
+- id: AC-40
+  criterion: When two projects or worktrees contain the same relative path, their Monaco models, dirty recovery, diagnostics, search/symbol results, Git evidence, terminals, tasks, breakpoints, agent context, proposals, and navigation history remain separated by exact project/root/attachment/document/service generations across rapid switching and restart.
+- id: AC-41
+  criterion: When a document is edited, viewed in splits, renamed, externally changed, deleted, revoked, saved, closed dirty, or recovered after forced termination, one Effect-owned document state reports encoding, EOL, disk revision, generation, dirty/conflict/recovery status and prevents silent overwrite; Monaco mechanics never become the only unsaved copy or filesystem authority.
+- id: AC-42
+  criterion: When Monaco-local, tsserver, LSP, task, test, or DAP capabilities start, stop, crash, reconnect, move, or return late results, the UI and agent tools show the exact available/degraded/unavailable evidence tier and effective placement, reject stale generations, honor cancellation and bounds, and never present a missing provider as a working feature.
+- id: AC-43
+  criterion: When an agent receives code context and proposes a single- or multi-file edit, the user can inspect the exact disclosure manifest and effective runtime, review version-bound changes in Pierre, accept or reject at supported granularity, apply or undo through canonical authority, and inspect post-apply diagnostics, tests, Git, and delivery facts; a changed base refuses or enters an explicit rebase flow rather than guessing line positions.
+- id: AC-44
+  criterion: When a terminal or task starts, Effect owns its project/worktree/session identity, environment and cwd admission, retention, commands, recovery policy, and receipts; xterm owns screen mechanics; a process-opaque Rust helper owns only PTY/process-group/resize/signal/byte mechanics; helper absence, incompatibility, crash, or stale generation produces a typed fail-closed or degraded result without leaking authority or replaying a mutating command.
+- id: AC-45
+  criterion: When the same project capability is fulfilled locally, on an owner-managed host, or on an admitted managed target, the command and result shapes stay identical while effective placement, version, latency, custody, freshness, and attachment generation remain visible; connectivity loss, revocation, or incompatibility never causes silent project upload, helper installation, placement change, or managed fallback.
+- id: AC-46
+  criterion: When Desktop hands a file, range, diagnostic, proposal, test, artifact, or run to mobile, web supervision, or a public share compiler, the projection uses opaque generation-bound safe refs and an explicit allowlist; Desktop reauthorizes every continuation, and no raw root, environment, credential, private context, terminal, embedding, or unselected repository content crosses the boundary.
+- id: AC-47
+  criterion: When an IDE implementation proposes Rust beyond PTY or required containment, its admission evidence names the missed cross-platform Effect/Node budget, optimized baseline, smallest authority-free protocol, failure behavior, generated conformance fixtures, and reversal threshold; without that evidence the capability remains in Effect/TypeScript or a supervised external process.
 ```
 
 ## Success Metrics
@@ -335,6 +364,16 @@ cut:
   target: "0"
   target_status: committed
   window: continuously
+- id: SM-17
+  metric: zed_quality_integrated_ide_journeys_completed_without_another_editor
+  target: "100% across the maintained project/edit/language/git/terminal/task/debug/agent-review corpus before a Zed-quality or full-IDE claim"
+  target_status: committed
+  window: every release candidate and rolling 30-day dogfood
+- id: SM-18
+  metric: authoritative_ide_state_or_policy_classes_owned_by_rust_helpers_or_renderer_packages
+  target: "0"
+  target_status: committed
+  window: continuously and every architecture/release audit
 ```
 
 ## Solution
@@ -376,6 +415,18 @@ run compiler may create a new experience only after the run can no longer be
 influenced by it. Rust is reserved for isolated native containment, PTY, or
 local-inference helpers behind generated Effect-owned contracts; it does not
 own a parallel MemoHarness daemon, database, policy engine, or release path.
+
+The IDE follows the same kernel-and-rind law. A scoped Effect
+`IdeProjectService` composes project identity, worktree snapshots, documents,
+search/index, language, Git, terminal/task/debug, agent context/proposals,
+persistence, placement, and safe projection services. Monaco, Pierre, xterm,
+focused VS Code protocol/language packages, Git, LSP/tsserver/DAP, and harnesses
+are replaceable mechanics around that graph. A Rust child may hold an OS PTY or
+compile/enforce a containment profile, but it cannot hold the project graph,
+document journal, session store, policy, credential, approval, or receipt key.
+Effect Schema is the source for any cross-language contract; absence or drift
+fails closed, and optional native acceleration must be removable without
+changing canonical identities.
 
 ## Strategic Positioning
 
@@ -427,6 +478,14 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   immutable effective bundle are release-blocking invariants.
 - Optimization creates a false-green shortcut if candidates can self-promote;
   held-out evidence and an independent Blueprint release gate are mandatory.
+- Monaco, Pierre, language servers, terminals, and agent adapters can create
+  accidental parallel state owners unless every result is fenced by the one
+  Effect project/document generation graph and every package remains behind an
+  owned adapter.
+- A premature “Rust backend” would duplicate the project and persistence
+  planes, weaken Effect Schema authority, and make cross-surface behavior
+  harder to prove. Native helpers therefore require empirical necessity,
+  authority-free contracts, failure semantics, and reversal tests.
 
 ## Open Questions
 
@@ -455,6 +514,13 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   `specs/openagents/cursor-capability-parity.product-spec.md`
 - Cursor product and local-state evidence:
   `docs/teardowns/2026-07-11-cursor-product-teardown.md`
+- Canonical Zed-quality IDE and Effect/Rust split:
+  `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
+- Zed integrated agent-IDE adaptation:
+  `docs/ide/2026-07-18-zed-agent-ide-adaptation-analysis.md`
+- Monaco/Pierre plan and VS Code package analysis:
+  `docs/ide/2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md`
+  and `docs/ide/2026-07-18-vscode-typescript-reuse-analysis.md`
 
 - Roadmap reconciliation and AC-by-AC gap crosswalk:
   `docs/sol/MASTER_ROADMAP.md` revision 119 and

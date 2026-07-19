@@ -31,6 +31,15 @@ proof; the parity spec prevents stronger trust architecture from being used as
 an excuse for missing capability. It does not claim the capabilities have
 shipped or replace roadmap, assurance, acceptance, or release authority.
 
+Revision 2 of that parity contract and revision 6 of the Desktop workbench
+contract define the IDE bar as Zed-quality integration over one generation-
+fenced project/evidence graph. The canonical implementation boundary lives in
+[Zed-quality IDE Effect/Rust architecture](../docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md):
+Effect/TypeScript owns application authority and persistence; Rust is limited
+to supervised authority-free native helpers. Mobile receives bounded review
+projections, and web/public links receive allowlisted verifiable code-share
+bundles without editor or execution authority.
+
 ```sh
 node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs
 ```

@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "openagents.com: Public Trust Surface and Remote Supervision Client"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -27,6 +27,8 @@ tool_metadata:
   openagents_revision_2_note: "Rev 2 folds in founder-stated direction from transcripts 238-255: the Khala public API surface with self-serve keys and per-request routing disclosure (242, 243, 244); the live tokens-served counter law — realtime, strictly monotonic, converging exactly to the ledger sum, with internal dogfood demand distinguishable from external demand (243); the /stats page with per-day token history and model-family mix (244); agents.md as the standing agent front door and the Forum as the agent community surface (238, 244); the seller path — run a Pylon — and the live money loop rendered legibly (238, 247); refer-once-earn-forever referral attribution on homepage, landing pages, and sites, with the affiliate program and sell-in-public revenue graphs (239, 247); Observer at openagents.com/observer with shareable CONFIRMED/REFUTED QA run views, videos, and exact accounting (252); /trace/{uuid} as the reusable public evidence grammar and the proof-first project board direction (252-notes, 253-notes); trace visibility tiers with pay-for-privacy and free-tier data-policy candor (242, 243, 245); benchmark publications as receipts-not-vibes with cost-per-accepted-outcome and latency percentiles (243); pricing as a thin margin over BYO tokens plus premium bulk services (255); the Verse visualization direction (240, 241, 243)."
   openagents_revision_4_note: "Rev 4 binds Cursor web/cloud-agent and Remote Control parity: start and supervise background work, search history, review changes and artifacts, intervene, rerun, and hand back to Desktop across optional local, owner-managed, or managed placement, without making the browser or cloud the canonical runtime or transcript owner."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness where web has legitimate authority: public verification and safe remote projection. Benchmark and comparison claims must bind provider, model, harness bundle, toolset, evaluator, environment, static/global/adapted class, and cache state. The trust ledger verifies harness release, adaptation, promotion, and rollback receipts; the data-flow matrix discloses experience capture, storage, retention, retrieval/training eligibility, deletion, and visibility. The browser may select only released compatible bundles/policies for remote launch and never receives raw bank contents, runs retrieval/optimization, mutates modules, promotes candidates, or gains execution authority."
+  openagents_revision_6_note: "Rev 6 specifies the web projection for a Zed-quality IDE and the public code-share link contract. Signed-in supervision gains safe project tree/search/Problems/diff/proposal/test/task/artifact evidence. A versioned CodeShareBundle provides audience-scoped or deliberate public snapshot/live review with manifest verification, omissions/staleness, expiry/revocation/access audit, noindex-by-default public policy, and Desktop continuation, while excluding host paths, secrets, environments, raw terminals, private context/retrieval data, unselected repository content, and all mutation authority. Adds AC-22 through AC-28 and SM-10."
+  openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
 
@@ -76,6 +78,11 @@ in:
   - Present the thread as a durable, addressable, cross-surface work object: stable IDs and URLs, search across text, file, repository, author, and date, cross-references between threads, and remote control — while local-first custody holds and the web renders synced typed facts, never becoming the canonical transcript authority.
   - Make every visibility transition explicit and receipted: changing a thread or trace from private to shared shows the exact before and after audiences, requires confirmation, and records a receipt; no silent visibility expansion on workspace join, no ambiguous unlisted state, and an irreversible-copy warning before any public disclosure.
   - Ship remote supervision parity: an attention inbox, fleet and agent-graph views, approvals, questions, steer-and-queue controls, and continuation links that hand a session to Desktop or mobile without forking identity, history, or authority — deepening the same work rather than starting another chat.
+  - Project the Zed-quality IDE safely for signed-in supervision: bounded multi-root tree, file/symbol/search, Problems, changed files, version-bound proposals/diffs, test/task outcomes, artifacts, bounded logs/excerpts, and code-to-agent causal links carry exact attachment/document/service/evidence generations, effective placement, staleness, omissions, and cached/degraded/unavailable truth without giving the browser a project process or raw root.
+  - Ship a first-class `CodeShareBundle` for deliberate code-work sharing, rendered initially as a typed code-evidence variant of the retained `/trace/{uuid}` grammar rather than a new top-level product route or second transcript surface. Each immutable revision names snapshot-versus-bounded-live mode, audience, creator, created/expiry/revoked times, safe session/project/run refs, an allowlisted tree subset, bounded syntax-highlighted excerpts, diffs/proposals/checkpoints/commits, Problems, tests/tasks, artifacts, bounded logs, agent causal links, effective runtime facts, receipt refs, content/evidence digests, omissions, staleness, and verifier metadata.
+  - Make share visibility precise: private is default; named authenticated audiences, organization/team policy, expiring link access, and deliberate public publication are distinct receipted states. Public publication warns that copied content cannot be revoked, defaults to `noindex` until separately made discoverable, supports revocation of future access and access auditing, and never treats an unlisted URL as privacy.
+  - Compile every share through a structural allowlist and source policy before publication. Absolute roots, filesystem topology outside selected display refs, environment variables, credentials, secrets, ignored/private files, raw terminals, raw prompts/transcripts/provider events, private context manifests, embeddings, retrieval queries/scores, private harness evidence, unselected repository content, and mutable capability tokens are forbidden; truncation and omitted counts are visible rather than silently dropped.
+  - Let recipients verify and continue safely: a downloadable manifest proves every displayed item belongs to the same bundle revision and evidence generation; stable anchors cover files/ranges/hunks/Problems/tests/artifacts/agent turns; Open on Desktop carries only opaque refs and Desktop reauthorizes the current generation; a share page never exposes workspace, terminal, Git, model, harness, browser, or mutation authority.
   - Serve the Khala public API surface: the free OpenAI-compatible endpoint with self-serve keys, clear free-tier limits, and per-request routing disclosure — which backend model and orchestration path produced each response, with token counts — so routing is inspectable per message.
   - Publish live counters as ledger projections: the tokens-served counter updates in realtime, is strictly monotonic, never double-counts or moves backward, and converges exactly to the sum of exact receipted usage rows; internal dogfood demand is distinguishable from external demand so the surface never implies traction it does not have.
   - Publish /stats as the network's public instrument panel: total and per-day (non-cumulative) token history, model-family mix, and the verified-work counters of the live money loop.
@@ -109,10 +116,12 @@ out:
   - No lock-in: one-click complete data export is a standing capability, and once a public surface works for users or agents it keeps working (don't-break-userspace binds the web surface too).
   - Pays-you economics copy (plugin royalties, trace monetization, paid free-tier usage) renders only per the promise registry's recorded states; planned promises are presented as planned.
   - No raw private experiences or patterns, prompts, transcript text, provider tool output, embeddings, retrieval queries or private scores, secrets, credentials, or filesystem paths in public-safe MemoHarness projections; no browser-side experience-bank mutation, retrieval/optimization execution, module editing, candidate self-verification/promotion, or authority expansion.
+  - No Monaco, LSP/tsserver/DAP, Git/shell process, PTY, Rust helper, unsaved-buffer/undo custody, raw terminal stream, or general code editor in signed-in supervision or public shares; every IDE fact is a bounded host-produced projection.
 cut:
   - CUT-WEB-01: Public thread discovery feeds and leaderboards are cut; threads are shared deliberately or not at all.
   - CUT-WEB-02: An in-browser IDE or editor surface is cut; the web workbench is supervision and review, not editing.
   - CUT-WEB-03: A separate marketing microsite stack is cut; the trust ledger, the counters, and the product are the marketing.
+  - CUT-WEB-04: Mutable public sandboxes, runnable terminals, edit/apply buttons, raw-repository mirrors, and unlisted-as-private links are cut from code shares; a later interactive cloud IDE would require a separate ProductSpec and authority model.
 ```
 
 ## Acceptance Criteria
@@ -160,6 +169,20 @@ cut:
   criterion: When the data-flow matrix covers a MemoHarness-enabled work unit, it separately states terminal experience compilation, metadata and evidence destinations, snapshot scope and consent, retrieval versus training eligibility, retention, visibility, export, deletion/tombstone behavior, and any released aggregate cross-workspace use, and those statements match audited behavior.
 - id: AC-21
   criterion: When a user launches work from web with Advanced harness controls, the target supplies only released compatible bundles and admitted adaptation policies, the browser submits immutable refs through the ordinary typed command path, and the target may fail closed before run creation; the browser never performs retrieval/adaptation or gains workspace execution authority.
+- id: AC-22
+  criterion: When a signed-in user supervises a coding session, the browser can inspect the safe bounded project tree, file/symbol/search results, Problems, changed files, proposal diffs, tests/tasks, artifacts, logs/excerpts, and code-to-agent links with exact attachment/document/service/evidence generations, placement, staleness, omissions, and cached/degraded/unavailable truth, while hosting no project process, raw root, or IDE database.
+- id: AC-23
+  criterion: When a user creates a code share, the compiler emits one immutable versioned CodeShareBundle whose allowlisted manifest binds snapshot or bounded-live mode, audience, selected tree/excerpts/diffs/proposals/checkpoints/commits/Problems/tests/tasks/artifacts/logs/agent links/runtime facts/receipts, content and evidence digests, omissions, staleness, creation/expiry/revocation, and verifier metadata before a URL is issued.
+- id: AC-24
+  criterion: When a private share changes to a named audience, expiring link, organization audience, or public state, the UI shows exact before/after readers and data, records a visibility receipt, warns that public copies cannot be revoked, keeps public pages noindex until separately made discoverable, and never labels an unlisted URL private.
+- id: AC-25
+  criterion: When any code share is compiled or fetched, structural redaction and forbidden-material tests prove it contains no absolute root, excluded topology, environment, credential, secret, ignored/private file, raw terminal, raw prompt/transcript/provider event, private context manifest, embedding, retrieval query/score, private harness evidence, unselected repository content, or mutable capability token; omitted and truncated content is counted visibly.
+- id: AC-26
+  criterion: When a recipient downloads the share manifest, every displayed anchor and artifact verifies against the same bundle revision and evidence generation; stale bounded-live updates are labeled, and an unavailable or failed verification never renders as current or verified.
+- id: AC-27
+  criterion: When a recipient selects Open on Desktop from a shared file/range/hunk/Problem/test/artifact/agent link, the URL carries only opaque safe refs, Desktop reauthorizes and resolves the current generation, and a missing historical generation opens an exact snapshot/diff or explicit unavailable state without granting the browser or link any workspace authority.
+- id: AC-28
+  criterion: When a share expires or is revoked, future access converges to a non-disclosing unavailable response and records the revocation while retained access-audit and public-copy limitations remain explicit; the share page has no edit, apply, Git, terminal, model, harness, browser-control, or other mutation path before or after revocation.
 ```
 
 ## Success Metrics
@@ -216,6 +239,11 @@ cut:
   target: "100%"
   target_status: committed
   window: continuously
+- id: SM-10
+  metric: code_share_bundle_revisions_passing_manifest_integrity_redaction_audience_and_zero_authority_gates
+  target: "100%"
+  target_status: committed
+  window: every publication and continuously for bounded-live shares
 ```
 
 ## Solution
@@ -244,6 +272,16 @@ private retrieval, Cloud SQL metadata, private Cloud Storage evidence,
 adaptation, terminal experience compilation, optimization, and release
 resolution. Browser commands can name released refs but cannot acquire those
 services' data or authority.
+
+IDE supervision and sharing use another safe Effect projection, never an
+in-browser IDE. The authoritative host compiles generation-bound project,
+document, language, Git, task/test, proposal, artifact, and agent evidence into
+bounded DTOs. For deliberate sharing, a server-side Effect service validates a
+versioned `CodeShareBundle`, strips forbidden material structurally, stores
+only the allowed manifest/artifacts, enforces audience/expiry/revocation, and
+serves verification metadata. Monaco, LSP, Git, PTY, external runtimes, and
+Rust helpers remain on the authoritative host. Desktop continuation treats
+share refs as requests to reauthorize, not capabilities.
 
 ## Strategic Positioning
 
@@ -294,6 +332,11 @@ dividends — rather than pooling value at the top.
 - Trust-ledger lineage can accidentally disclose private retrieval evidence;
   public receipt schemas must verify digests and decisions while keeping raw
   experiences, embeddings, queries, and scores private.
+- Code shares can become accidental repository mirrors, secret leaks, or
+  remote execution URLs if selection and authority are implicit. Immutable
+  allowlisted manifests, structural forbidden-material scans, bounded content,
+  precise audiences, noindex-by-default publication, revocation, access audit,
+  and zero mutation commands are release-blocking.
 
 ## Open Questions
 
@@ -307,6 +350,9 @@ dividends — rather than pooling value at the top.
   projects to a general offering?
 - Which MemoHarness aggregate patterns, if any, may be public artifacts, and
   what privacy evidence is required before their release?
+- Should the initial code-share default be immutable snapshot only, with
+  bounded-live shares admitted later after revocation, staleness, and audit
+  behavior are proven under concurrent project generations?
 
 ## Related Artifacts
 
@@ -314,6 +360,8 @@ dividends — rather than pooling value at the top.
   `specs/openagents/cursor-capability-parity.product-spec.md`
 - Cursor product and local-state evidence:
   `docs/teardowns/2026-07-11-cursor-product-teardown.md`
+- Zed-quality IDE projection, public share contract, and Effect/Rust boundary:
+  `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
 
 - Roadmap reconciliation and AC-by-AC gap crosswalk:
   `docs/sol/MASTER_ROADMAP.md` revision 119 and
@@ -362,6 +410,10 @@ dividends — rather than pooling value at the top.
   bound to promise-registry state.
 - The proof-first public project board route is an owner gate before it
   ships.
+- Initial public CodeShareBundle publication, discoverability defaults,
+  maximum content/retention bounds, and any organization-wide share default
+  require owner and privacy review; private per-object sharing never silently
+  inherits a broader workspace default.
 
 ## Receipts
 
@@ -370,9 +422,10 @@ receipts, model/usage routing receipts, release-manifest verification
 results, receipt-verification endpoint results, continuation-handoff records,
 counter-reconciliation attestations, referral-attribution records, verified-
 work payout receipts, public-safe HarnessAdaptationReceipts, harness release/
-promotion/rollback receipts, and QA/assurance run receipts behind shareable
-run views. This section plans kinds; evidence lives in the receipt systems,
-not in this spec.
+promotion/rollback receipts, immutable CodeShareBundle compilation and
+verification records, code-share visibility/expiry/revocation/access-audit
+records, and QA/assurance run receipts behind shareable run views. This
+section plans kinds; evidence lives in the receipt systems, not in this spec.
 
 ## Promise Links
 

@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Cursor-Class Capability Parity and Beyond"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00.000Z"
 updated_at: "2026-07-18T00:00:00.000Z"
@@ -30,6 +30,8 @@ tool_metadata:
   openagents_fast_follow_source: "FASTFOLLOW.md source-cursor and its exact pinned source revision"
   openagents_parity_rule: "Every user-observable Cursor capability needs an implemented, admitted, or explicitly owner-dispositioned OpenAgents row; trust advantages do not excuse capability loss."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md, specs/openagents/portable-coding-sessions.product-spec.md, specs/openagents/fast-follow.product-spec.md"
+  openagents_revision_2_note: "Rev 2 defines full IDE parity as Zed-quality integration, not a checklist of adjacent Cursor features. It adds one generation-fenced project/document/language/Git/terminal/task/debug/agent evidence graph, editor-first cold open, version-bound proposals and backlinks, local/remote symmetry, and review-quality public code-share bundles. It fixes the implementation split: Effect/TypeScript owns all application authority and persistence; Rust is limited to process-opaque PTY/containment and benchmark-admitted native kernels behind generated contracts. Adds CP-AC-19 through CP-AC-23 and SM-7."
+  openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
 ---
 
 ## Problem
@@ -76,6 +78,9 @@ in:
   - Maintain an exact, release-gated Cursor capability ledger covering Desktop, mobile, web, CLI, remote, automation, extension, team, model, indexing, storage, security, and distribution surfaces; every observed capability has an evidence ref, target surface, implementation owner, acceptance ref, placement, data posture, and disposition.
   - Define parity as equivalent supported user outcomes and workflow depth, not copied code, identical visual design, or identical internal architecture; OpenAgents may exceed or safely reshape an interaction only when the original outcome remains available without material extra friction.
   - Ship both a complete coding workbench and an agent-first operations window, with one session and command system underneath rather than separate products or divergent transcript stores.
+  - Define complete coding-workbench parity as a Zed-quality integrated project graph, not the presence of editor widgets: multi-root/worktree identity, editor-first file opening, revisioned documents and recovery, language/navigation, Git/review, terminal/tasks/tests/debug, agent context/proposals/backlinks, persistence, and local/remote capability lifecycle share exact generation-fenced identities and evidence.
+  - Preserve the architecture split while reaching that breadth: Effect/TypeScript owns project, document, language, Git, terminal/task/debug, agent, command, policy, placement, persistence, recovery, export/delete, share, and receipt authority; Monaco, Pierre, xterm, focused VS Code packages, LSP/tsserver/DAP/Git/harness processes, and any Rust child are replaceable mechanics behind generated Effect-owned contracts.
+  - Admit Rust only as a process-opaque authority-free helper for PTY/process groups, OS containment/spawn, optional local inference, or a native kernel proven necessary by cross-platform benchmarks after TypeScript optimization. Every helper has bounded frames, generation fencing, failure semantics, conformance fixtures, and a reversal test; it never owns a project/session/policy/credential/database/receipt.
   - Match Cursor's editor intelligence, agent runtime, parallelism, context, browser/computer control, remote/background execution, automations, mobile/web supervision, CLI/protocol, ecosystem, enterprise administration, and platform distribution breadth described in the capability ledger below.
   - Unbundle six independently selectable planes: editor/workbench surface, agent harness, model/provider, execution placement, sync/relay, and persistence/indexing; no adapter may become the hidden owner of the canonical session, workspace, authority, or receipt graph.
   - Offer explicit execution placement per session or automation: owner-local, owner-managed remote host, OpenAgents-managed sandbox, or compatible audited provider; use of a managed server is optional except for capabilities whose selected placement inherently requires one, and the UI states that dependency before admission.
@@ -84,6 +89,7 @@ in:
   - Provide local-first repository understanding and optional remote semantic indexing with explicit corpus scope, ignore rules, freshness, embedding provider, retention, encryption, export, rebuild, and deletion controls; local lexical/path/symbol indexes remain useful when remote embeddings are disabled.
   - Inventory every durable local and remote datum the product creates, including chats, object graphs, search indexes, embeddings, snapshots, checkpoints, file manifests, terminal history, browser state, rules, skills, plugins, auth material, analytics, and caches, and expose per-category inspect, export, retention, reset, and deletion controls.
   - Preserve OpenAgents trust laws while reaching parity: typed commands, deny-by-default permissions, sandbox profiles, authority manifests, execution and delivery receipts, effective model truth, explicit network/data flows, no silent capability degradation, and evidence distinct from self-reported completion.
+  - Match shareable review outcomes without cloud-canonical custody: authenticated supervision links and deliberate public `CodeShareBundle` links can expose an allowlisted tree subset, bounded syntax-highlighted excerpts, diffs/proposals/checkpoints/commits, Problems, tests/tasks, artifacts, bounded logs, agent causal links, effective runtime facts, and receipt refs with exact snapshot/live mode, audience, expiry, revocation, staleness, omission, export, and verification metadata; they expose no mutation authority or excluded host/private state.
   - Track current Cursor releases continuously through Fast Follow; a newly evidenced Cursor capability creates a dated parity row and gap assessment rather than silently changing implementation authority.
 out:
   - No requirement to reproduce Cursor's proprietary source, branding, visual design, telemetry, cloud-canonical custody, opaque embedding service, credential format, or undocumented server behavior.
@@ -106,7 +112,7 @@ Fast Follow keeps the rows current.
 | Capability family           | Cursor-class outcome OpenAgents must cover                                                                                                                                                          | OpenAgents form and advantage                                                                                                                                        |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Product shells              | Classic project IDE plus a dedicated agent-first multi-session window, project/repository opening, recent work, settings, updates, and account entry                                                | One canonical session graph rendered as workbench, agents window, mobile, web, and terminal densities                                                                |
-| Editor core                 | Files, tabs, search, symbols, navigation, diagnostics, source control, diffs, terminal, keymaps, themes, settings, remote workspaces, and extension-driven language support                         | Stock, replaceable editor components over typed engine services; full dark/light/high-contrast and accessible themes                                                 |
+| Editor core                 | Files, tabs/splits, search, symbols, navigation, diagnostics, source control, diffs, terminal, tasks/tests/debug, keymaps, themes, settings, recovery, remote workspaces, and extension-driven language support | Zed-quality generation-fenced Effect project graph with Monaco/Pierre/xterm as replaceable mechanics; full dark/light/high-contrast and accessible themes             |
 | AI editing                  | Low-latency single- and multi-line completion, next-edit prediction, inline ask/edit/generate, selection transforms, fast multi-file apply, review, accept, reject, and undo                        | Model/provider-selectable editing with exact patch provenance, checkpoints, receipts, and local or managed execution                                                 |
 | Repository intelligence     | Codebase chat, semantic search, file/symbol/path context, explicit mentions, docs/web context, ignore rules, and continuously refreshed repository knowledge                                        | Hybrid local lexical/symbol/path index plus optional selectable embedding backends; visible scope, freshness, cost, custody, export, and deletion                    |
 | Conversation system         | Durable threads, side chats, branching, searchable past conversations, titles, attachments, mentions, reasoning, tool activity, usage, export, and deletion                                         | Host-independent session identity, complete object graph, honest gaps, full-text search, portable custody, no cloud-only canonical history                           |
@@ -120,6 +126,7 @@ Fast Follow keeps the rows current.
 | CLI and protocols           | Headless agent CLI, interactive terminal use, scripting/JSON output, session resume, CI use, and editor/agent protocol integration                                                                  | One typed protocol with full-screen, native-scrollback, and headless renderers; SDK and ACP/MCP-compatible bridges without a second authority path                   |
 | Extensibility               | Extensions, marketplace/discovery, plugins, skills, MCP servers, rules, commands, hooks, subagent definitions, team bundles, import/export, enable/disable, and updates                             | Signed provenance, permissions, isolation profiles, compatibility ledger, review, receipts, and support for open portable formats without trusted-process execution  |
 | Browser and design          | Embedded browser, DOM/screenshot context, browser automation, preview/dev server, responsive inspection, visual editing, design-to-code, and image workflows                                        | Partitioned browser/preview surfaces, explicit network profiles, receipted computer use, and optional specialized design harnesses                                   |
+| Sharing and review links    | Share conversations, background-agent outcomes, changed code, artifacts, and review state with collaborators from web                                                                              | Audience-scoped verifiable code-share bundles over selected tree/excerpt/diff/problem/test/artifact/agent evidence, with expiry/revocation and zero execution authority |
 | Models and accounts         | Broad first- and third-party model catalog, automatic/best routing, explicit model selection, multiple accounts, usage visibility, quotas, and team policy                                          | Better-model-by-default without lock-in: harness/model separation, local lanes, BYOK/subscriptions, honest effective identity, policy routing, and failover          |
 | Teams and enterprise        | Shared rules/plugins/skills, centralized settings, model/tool/network controls, privacy controls, SSO/SCIM-style identity, audit, billing/usage administration, and managed deployment              | Typed policy compilation, organization-scoped capability grants, exportable audit receipts, self-host/owner-managed options, and no admin-policy ambiguity           |
 | Security and privacy        | Sandbox, permission prompts, network controls, privacy modes, codebase indexing controls, secret handling, workspace trust, and update integrity                                                    | Requested-versus-effective enforcement, hermetic profiles, secret broker, explicit data-flow matrix, signed release sets, rollback, and fail-closed behavior         |
@@ -169,6 +176,16 @@ filesystems and processes; the session service owns durable identity and the
 canonical event graph; projection services render that graph into Desktop,
 web, mobile, terminal, and SDK shapes. Adapters can add native configuration
 without taking ownership of authority or history.
+
+The IDE implementation follows the kernel/rind split in the linked Zed-quality
+architecture. A scoped Effect project service composes multi-root identity,
+documents, search/index, language, Git, terminal/task/debug, agent context and
+proposals, persistence, placement, and safe projections. Monaco, Pierre,
+xterm, focused VS Code libraries, LSP/tsserver/DAP/Git, and harness processes
+remain replaceable. Rust child processes may supply OS PTY or containment
+facts, but never application state; optional native acceleration enters only
+after a measured cross-platform gate and can be removed without changing
+canonical project or session identity.
 
 The repository knowledge service has explicit tiers: always-available local
 path/text/symbol search; optional local embeddings where a compatible model is
@@ -257,6 +274,35 @@ move or adapter replacement cannot silently remove a supported workflow.
   provider failure, index corruption, and network-partition fault suites fail a
   parity claim when the equivalent workflow disappears, degrades silently, or
   fabricates completion.
+- **CP-AC-19:** The integrated-IDE corpus opens the same file from Finder,
+  Explorer, quick open, search, Problems, symbols, Git, and an agent backlink
+  into one current Monaco document; proves multi-root/worktree isolation,
+  dirty/conflict/restart recovery, language/navigation, Git/review,
+  terminal/tasks/tests/debug, and agent proposal/apply/undo without another
+  editor; and rejects every stale attachment/document/service generation.
+- **CP-AC-20:** A coding session can attach to an exact project, disclose a
+  generation-bound context manifest, receive a version-bound multi-file
+  proposal, review it in the same Changes/diff plane, apply or refuse it under
+  current authority, rerun diagnostics/tests, and backlink between code and
+  the creating turn without granting the harness direct editor authority.
+- **CP-AC-21:** Local, owner-managed, and admitted managed project-capability
+  journeys use identical command/result contracts and stable refs while
+  exposing effective placement, version, latency, freshness, custody, and
+  attachment generation; disconnect, revocation, or incompatibility never
+  silently uploads, installs, relocates, or substitutes a capability.
+- **CP-AC-22:** A public or audience-scoped code-share journey compiles an
+  allowlisted, verifiable bundle containing only selected tree/excerpt/diff/
+  proposal/problem/test/artifact/log/agent/receipt evidence; snapshot/live
+  mode, omission, staleness, expiry, revocation, access, and public-copy risk
+  are visible; and the page has no workspace, terminal, Git, model, or mutation
+  authority and leaks no root, environment, credential, secret, private
+  context, raw terminal, embedding, or unselected repository content.
+- **CP-AC-23:** An architecture audit finds every authoritative project,
+  document, language, Git, terminal/task/debug, agent, policy, persistence,
+  projection, and receipt class in Effect/TypeScript. Any Rust helper is a
+  process-opaque bounded primitive with generated conformance fixtures,
+  explicit failure behavior and reversal threshold, and no credential,
+  project/session/policy/database/receipt authority.
 
 ## Success Metrics
 
@@ -292,6 +338,11 @@ move or adapter replacement cannot silently remove a supported workflow.
   target: "100%"
   target_status: committed
   window: every migration run
+- id: SM-7
+  metric: zed_quality_integrated_ide_and_code_share_journeys_with_current_owner_accepted_evidence
+  target: "100% before a full IDE, Zed-quality, or Cursor-parity claim"
+  target_status: committed
+  window: every release candidate
 ```
 
 ## Risks
@@ -313,11 +364,26 @@ move or adapter replacement cannot silently remove a supported workflow.
   Import uses an allowlist and produces a complete disposition report.
 - “Better model” is not permanent architecture. Model quality remains a
   replaceable plane and is measured independently from product parity.
+- A package checklist can look like IDE parity while project, document,
+  language, Git, terminal, and agent states still diverge. The integrated
+  generation-fenced journey corpus, not dependency presence, is the gate.
+- Public code sharing can accidentally become path/content exfiltration or a
+  browser authority path. Bundle compilation is allowlisted, bounded,
+  audience-aware, verifiable, revocable, and mutation-free.
+- Choosing Rust because the reference IDE uses Rust would create a second
+  application core and cross-language drift. Native helpers require measured
+  necessity, generated contracts, authority-free state, and reversal tests.
 
 ## Related Artifacts
 
 - Cursor product and local-state evidence:
   `docs/teardowns/2026-07-11-cursor-product-teardown.md`
+- Zed-quality integrated IDE and Effect/Rust architecture:
+  `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
+- Zed agent-IDE adaptation, VS Code package reuse, and Monaco/Pierre plan:
+  `docs/ide/2026-07-18-zed-agent-ide-adaptation-analysis.md`,
+  `docs/ide/2026-07-18-vscode-typescript-reuse-analysis.md`, and
+  `docs/ide/2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md`
 - Fast Follow source and lessons: `FASTFOLLOW.md` (`source-cursor`)
 - Desktop surface contract:
   `specs/desktop/desktop-trust-complete-workbench.product-spec.md`

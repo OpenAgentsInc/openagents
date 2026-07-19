@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "Remote-first Portable Coding Sessions"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-12T00:00:00Z"
 updated_at: "2026-07-18T00:00:00Z"
@@ -22,7 +22,9 @@ tool_metadata:
   openagents_lane: "PORT-00 through PORT-08 (#8745-#8753)"
   openagents_assurance_level: "cross-host-authority"
   openagents_revision_2_note: "Rev 2 binds Cursor-class cloud/background-agent and Remote Control parity while preserving the stronger any-host session identity: managed infrastructure is optional, placement is explicit, and moving a session never creates a cloud-canonical duplicate."
+  openagents_revision_3_note: "Rev 3 binds portable sessions to the Zed-quality IDE project/evidence graph. Host-independent project/root/file/document/proposal/evidence refs and view hints can survive movement and drive exact Desktop/mobile/web continuation, while raw paths, PTYs, helper state, and implicit dirty-buffer migration remain excluded. Effect/TypeScript owns checkpoint, attachment, capability, projection, and recovery authority; Rust helpers are disposable host-local primitives."
   openagents_sibling_spec: "specs/openagents/cursor-capability-parity.product-spec.md"
+  openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
 ---
 
 ## Problem
@@ -50,6 +52,8 @@ in:
   - Cursor-class background-agent, cloud-agent, web, mobile Remote Control, CLI resume, and workstation handback outcomes over one portable identity
   - owner-minted host-independent coding-session and WorkContext identity
   - canonical nested agent graph with independent transcript and activity cursors
+  - host-independent `IdeProjectRef`, `ProjectRootRef`, `ProjectFileRef`, `DocumentSnapshotRef`, proposal, diagnostic, test, artifact, and receipt identities sufficient to reopen the same safe code/evidence object after movement without making a path or process identity portable
+  - generation-fenced project capability and view-continuation state: selected file/range, proposal/diff, Problems result, evidence item, and editor layout hints may move as non-authoritative refs; every destination reauthorizes and resolves them against its current attachment and document generations
   - one generation-fenced attachment covering the root and every descendant
   - content-addressed secret-free checkpoint and exact repository post-image
   - owner-local, owner-managed, OpenAgents-managed, and audited-provider targets
@@ -58,11 +62,13 @@ in:
   - typed stop, checkpoint, detach, attach, move, abort, resume, and failback commands
   - Effect Native mobile any-host control and persona-neutral voice modality
   - signed cross-host fault, update, rollback, failback, and reclaim dogfood
+  - one Effect/TypeScript portability plane for attachments, checkpoints, capability negotiation, dirty-document policy, persistence, projections, and receipts; Rust PTY/containment/index helpers and external LSP/harness processes remain disposable host-local state and are recreated only through destination admission
 out:
   - transparent migration of live process memory, PTYs, sockets, or provider hidden state
   - remote-desktop pixel streaming
   - direct vendor or SSH APIs in renderer and mobile code
   - public pooled access to an owner homelab
+  - implicit migration of unsaved buffers, undo stacks, editor models, terminal screen/process state, language-server caches, debug processes, or native-helper memory; a dirty document moves only through a separately admitted encrypted content-addressed document checkpoint with explicit conflict and disclosure policy
 cut:
   - copying provider auth homes, environment files, or credential caches between targets
   - silently lowering isolation, custody, provider, account, region, or data posture
@@ -106,6 +112,14 @@ editable input modality over those actions; text always remains available.
   mobile intervention, and return to Desktop under the same session refs; no
   journey creates a second cloud-canonical transcript or silently changes
   placement, custody, model, harness, or authority.
+- Project/file/document/proposal/evidence deep links survive a host move as
+  opaque safe refs, but the destination resolves them only after attachment,
+  project, document, and audience checks; stale or unavailable generations
+  open an explicit snapshot/diff/unavailable state rather than a current line.
+- PTYs, terminal screen/process state, LSP/tsserver/DAP processes and caches,
+  and Rust helper state never enter a portable checkpoint. A destination
+  negotiates compatible capabilities and starts fresh helpers under Effect
+  admission; cached evidence is labeled until new live generations arrive.
 
 ## Success Metrics
 
@@ -143,6 +157,22 @@ editable input modality over those actions; text always remains available.
 - A superficial Cursor Remote Control clone can preserve vendor-cloud lock-in.
   Placement disclosure and the local/owner-managed path are acceptance
   requirements, not later enterprise options.
+- Treating editor models, unsaved buffers, terminal screens, LSP caches, or
+  Rust-helper memory as portable state would silently turn checkpointing into
+  process migration and leak host-private data. Only explicitly admitted,
+  content-addressed project/document/evidence records cross hosts.
+
+## Solution
+
+The portable layer extends the canonical Effect project graph rather than
+serializing an IDE process. Effect Schema owns host-independent project/file/
+document/proposal/evidence refs, attachment generations, capability
+negotiation, checkpoints, destination admission, recovery, and safe mobile/web
+projections. A move transfers exact admitted content and causal identities,
+then the destination recreates its Monaco models, language/Git/task services,
+external harnesses, and any process-opaque Rust PTY/containment helpers under
+fresh local policy. UI selection and layout are hints; authority, dirty-buffer
+content, and native process state are never inferred from them.
 
 ## Owner Gates
 
