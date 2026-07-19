@@ -8,7 +8,10 @@ import {
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import type { OpenAgentsWorkerEnv } from './bindings'
-import { managedSandboxBoxV1RuntimeForEnv } from './managed-sandbox-box-v1-adapter'
+import {
+  isManagedSandboxRuntimeConfigured,
+  managedSandboxBoxV1RuntimeForEnv,
+} from './managed-sandbox-box-v1-adapter'
 import {
   BoxV1FacadeError,
   type BoxV1Principal,
@@ -107,6 +110,36 @@ const retryHeaders =
       'idempotency-key': `sdk-retry-${operation}`,
     },
   })
+
+describe('managed-sandbox runtime admission', () => {
+  const configured = {
+    KHALA_SYNC_DB: {},
+    OA_MANAGED_SANDBOX_CONTROL_URL:
+      'https://oa-managed-sandbox-bridge.example.test',
+    OA_MANAGED_SANDBOX_CONTROL_TOKEN: 'private-control-token',
+    OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY: 'k'.repeat(32),
+    OA_MANAGED_SANDBOX_IMAGE_DIGEST: `sha256:${'a'.repeat(64)}`,
+    OA_MANAGED_SANDBOX_PROFILE_DIGEST: `sha256:${'b'.repeat(64)}`,
+  } as unknown as OpenAgentsWorkerEnv
+
+  test('requires the complete dedicated live control binding', () => {
+    expect(isManagedSandboxRuntimeConfigured(configured)).toBe(true)
+    expect(
+      isManagedSandboxRuntimeConfigured({
+        ...configured,
+        OA_MANAGED_SANDBOX_CONTROL_URL: undefined,
+        OA_CLOUD_CONTROL_URL: 'https://generic-control.example.test',
+        OA_CLOUD_CONTROL_TOKEN: 'generic-control-token',
+      }),
+    ).toBe(false)
+    expect(
+      isManagedSandboxRuntimeConfigured({
+        ...configured,
+        OA_MANAGED_SANDBOX_PROFILE_DIGEST: 'sha256:mutable-profile-label',
+      }),
+    ).toBe(false)
+  })
+})
 
 const expectResponseError = async (
   promise: Promise<unknown>,
@@ -727,8 +760,8 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
     try {
       const runtime = await Effect.runPromise(
         managedSandboxBoxV1RuntimeForEnv({
-          OA_CLOUD_CONTROL_URL: 'https://control.test',
-          OA_CLOUD_CONTROL_TOKEN: 'private-test-bearer',
+          OA_MANAGED_SANDBOX_CONTROL_URL: 'https://control.test',
+          OA_MANAGED_SANDBOX_CONTROL_TOKEN: 'private-test-bearer',
         } as unknown as OpenAgentsWorkerEnv),
       )
       const result = await Effect.runPromise(
@@ -772,6 +805,136 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
         path: 'workspace/result.bin',
       })
       expect(JSON.stringify(capturedBody)).not.toContain('private-test-bearer')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test('binds lifecycle effects to the dedicated control plane and exact provider profile', async () => {
+    const harness = makeHandler()
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true, ttlSeconds: 900 } },
+        retryHeaders('sbx09-lifecycle-create'),
+      )
+    ).box.id
+    const resource = harness.authority.resources.get(boxId)
+    if (resource === undefined) throw new Error('expected managed sandbox')
+
+    const originalFetch = globalThis.fetch
+    let capturedUrl = ''
+    let capturedAuthorization = ''
+    let capturedBody: Record<string, unknown> = {}
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input)
+      capturedAuthorization =
+        new Headers(init?.headers).get('authorization') ?? ''
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(
+        JSON.stringify({
+          schemaVersion: 'openagents.managed_sandbox_runtime.v1',
+          receiptRef: 'receipt-ref://sha256/sbx09-live-create',
+          operationRef: 'command.sbx09.lifecycle.create',
+          action: 'create',
+          sandboxRef: resource.sandboxRef,
+          generation: 1,
+          phase: 'ready',
+          targetRef: 'target://openagents/google-cloud/managed-sandbox',
+          profileRef: resource.profileRef,
+          profileDigest: `sha256:${'d'.repeat(64)}`,
+          imageRef: `gce-image-ref://sha256/${resource.imageDigest.replace('sha256:', '')}`,
+          imageDigest: resource.imageDigest,
+          isolationClass: 'gce_vm',
+          networkPolicyRef:
+            'network-policy-ref://openagents/managed-sandbox/broker-only-v1',
+          controlIdentityRef:
+            'identity-ref://openagents/managed-sandbox/control',
+          guestIdentityRef:
+            'identity-ref://openagents/managed-sandbox/guest-none',
+          resourceRef: 'gce-instance-ref://sha256/sbx09',
+          firewallRef: 'gce-firewall-ref://sha256/sbx09',
+          diskRef: 'gce-disk-ref://sha256/sbx09',
+          providerKind: 'live_gce',
+          readinessObserved: true,
+          cleanupObserved: false,
+          measuredRunningMs: 100,
+          measuredCostMicrousd: 1,
+          sandboxBudgetMicrousd: resource.budget.maxCostMicros,
+          programBudgetMicrousd: 40_000,
+          emittedAtMs: Date.parse('2026-07-19T18:30:01.000Z'),
+          errorCode: null,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    try {
+      const runtime = await Effect.runPromise(
+        managedSandboxBoxV1RuntimeForEnv({
+          OA_CLOUD_CONTROL_URL: 'https://other-control.test',
+          OA_CLOUD_CONTROL_TOKEN: 'other-private-bearer',
+          OA_MANAGED_SANDBOX_CONTROL_URL: 'https://sandbox-control.test',
+          OA_MANAGED_SANDBOX_CONTROL_TOKEN: 'sandbox-private-bearer',
+          OA_MANAGED_SANDBOX_PROFILE_DIGEST: `sha256:${'d'.repeat(64)}`,
+        } as unknown as OpenAgentsWorkerEnv),
+      )
+      const outcome = await Effect.runPromise(
+        runtime.lifecycle!({
+          principal: boxV1TestPrincipal,
+          resource,
+          command: {
+            _tag: 'Create',
+            schema: 'openagents.managed_sandbox_command.v1',
+            commandRef: 'command.sbx09.lifecycle.create',
+            requestedByRef: boxV1TestPrincipal.actorRef,
+            ownerRef: resource.ownerRef,
+            tenantRef: resource.tenantRef,
+            idempotencyRef: 'idempotency.sbx09.lifecycle.create',
+            requestedAt: '2026-07-19T18:30:00.000Z',
+            workUnitRef: resource.workUnitRef,
+            attachmentRef: resource.attachmentRef,
+            target: resource.target,
+            imageDigest: resource.imageDigest,
+            profileRef: resource.profileRef,
+            lease: resource.lease,
+            budget: resource.budget,
+            requestedCapabilities: resource.capabilities,
+          },
+        }),
+      )
+      expect(outcome).toMatchObject({
+        phase: 'ready',
+        generation: 1,
+        readinessObserved: true,
+        measuredCostMicros: 1,
+      })
+      expect(capturedUrl).toBe(
+        'https://sandbox-control.test/v1/managed-sandbox/runtime/operations',
+      )
+      expect(capturedAuthorization).toBe('Bearer sandbox-private-bearer')
+      expect(capturedBody).toMatchObject({
+        operationRef: 'command.sbx09.lifecycle.create',
+        expectedGeneration: 0,
+        action: 'create',
+        ownerRef: resource.ownerRef,
+        sandboxRef: resource.sandboxRef,
+        profile: {
+          profileRef: resource.profileRef,
+          profileDigest: `sha256:${'d'.repeat(64)}`,
+          ttlMs: resource.lease.ttlSeconds * 1_000,
+          imageDigest: resource.imageDigest,
+          guestIdentityRef:
+            'identity-ref://openagents/managed-sandbox/guest-none',
+        },
+      })
+      expect(JSON.stringify(capturedBody)).not.toContain(
+        'sandbox-private-bearer',
+      )
     } finally {
       globalThis.fetch = originalFetch
     }

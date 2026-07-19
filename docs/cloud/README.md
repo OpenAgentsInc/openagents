@@ -11,7 +11,7 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
 | `crates/oa-codex-control` | HTTP control plane (placement, GCE capacity, Cloud-VM) |
 | `crates/oa-node` | Managed node daemon |
 | `crates/oa-workroomd` | Workroom sidecar |
-| `crates/oa-cloud-run-bridge` | Historical Cloud Run bridge — not new production paths |
+| `crates/oa-cloud-run-bridge` | Narrow bearer-gated Cloud Run edge. SBX-09 admits only `/v1/managed-sandbox/runtime/*` on its dedicated instance. |
 
 ## Related public surfaces
 
@@ -41,6 +41,14 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   defines its exact profile and live component harness. The
   [SBX-03 facade runbook](../../apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md)
   defines authentication, configuration, tests, and the default-off boundary.
+- [SBX-09 runtime provisioning](../../scripts/cloud/provision-managed-sandbox-runtime.sh)
+  builds the immutable Codex/Claude SDK guest image, deploys a dedicated
+  keyless control node and path-restricted bridge, and leaves Worker product
+  flags off for the independent live gate. The provider capability broker
+  keeps OpenAI and Vertex credentials in the Worker and gives a guest only a
+  short-lived owner/tenant/sandbox/generation/turn-scoped HMAC capability. The
+  image also carries the `openat2` file/artifact executor and network-isolated
+  command driver required for live Box SDK I/O.
 - [SBX-04 turn runtime](./bootstrap/SBX-04-managed-sandbox-turn-runtime.md) —
   implements the native Codex/Claude turn authority,
   ordered reconnect, exact-turn interrupt, and the private default-off guest

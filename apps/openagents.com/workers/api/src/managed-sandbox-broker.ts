@@ -15,6 +15,7 @@ import {
 import { Effect, Schema as S } from "effect";
 
 import {
+  type BoxV1LifecycleOutcome,
   type BoxV1NativeStore,
   type BoxV1Policy,
   type BoxV1Principal,
@@ -219,6 +220,73 @@ const materializeRuntimeEvents = (
     ),
   );
 
+const lifecycleEvent = (
+  resource: ManagedSandboxResource,
+  outcome: BoxV1LifecycleOutcome,
+  offset: number,
+  event: Readonly<Record<string, unknown>>,
+): Effect.Effect<ManagedSandboxEvent, BoxV1FacadeError> =>
+  digest(`${outcome.operationRef}\n${String(event._tag)}\n${offset}`).pipe(
+    Effect.flatMap((value) =>
+      decode(ManagedSandboxEventSchema, {
+        ...event,
+        schema: "openagents.managed_sandbox_event.v1",
+        eventRef: `event.sbx.lifecycle.${value.slice(0, 32)}`,
+        sandboxRef: resource.sandboxRef,
+        resourceGeneration: outcome.generation,
+        sequence: resource.lastEventSequence + offset + 1,
+        observedAt: outcome.observedAt,
+      }),
+    ),
+  );
+
+const materializeLifecycleEvents = (
+  resource: ManagedSandboxResource,
+  outcome: BoxV1LifecycleOutcome,
+): Effect.Effect<ReadonlyArray<ManagedSandboxEvent>, BoxV1FacadeError> =>
+  Effect.gen(function* () {
+    const reasonRef = `reason.${outcome.errorCode ?? "provider_operation_failed"}`;
+    let inputs: ReadonlyArray<Readonly<Record<string, unknown>>>;
+    switch (outcome.phase) {
+      case "ready":
+        inputs = [{ _tag: "GuestReady" }];
+        break;
+      case "stopped": {
+        const checkpoint = yield* digest(outcome.receiptRef);
+        inputs = [
+          { _tag: "FilesystemCheckpointed", checkpointDigest: `sha256:${checkpoint}` },
+          { _tag: "GuestStopped" },
+        ];
+        break;
+      }
+      case "deleted":
+        inputs = [{ _tag: "CleanupObserved" }];
+        break;
+      case "failed":
+        inputs = [
+          {
+            _tag: "OperationFailed",
+            operationRef: outcome.operationRef,
+            errorRef: reasonRef,
+          },
+        ];
+        break;
+      case "recovery_required":
+        inputs = [
+          {
+            _tag: "OperationFailed",
+            operationRef: outcome.operationRef,
+            errorRef: reasonRef,
+          },
+          { _tag: "RecoveryMarked", reasonRef },
+        ];
+        break;
+    }
+    return yield* Effect.forEach(inputs, (event, offset) =>
+      lifecycleEvent(resource, outcome, offset, event),
+    );
+  });
+
 export const makeManagedSandboxBroker = (
   input: Readonly<{
     principal: BoxV1Principal;
@@ -370,7 +438,37 @@ export const makeManagedSandboxBroker = (
       let turnReceipt: ManagedSandboxTurnReceipt | null = null;
       let events: ReadonlyArray<ManagedSandboxEvent> = [];
 
-      if (command._tag === "Dispatch") {
+      if (
+        ["Create", "Stop", "Resume", "Delete"].includes(command._tag) &&
+        reservation.status === "pending" &&
+        input.runtime.lifecycle !== undefined
+      ) {
+        const lifecycleCommand = command as Extract<
+          ManagedSandboxCommand,
+          { _tag: "Create" | "Stop" | "Resume" | "Delete" }
+        >;
+        const providerOutcome = yield* input.runtime.lifecycle({
+          principal: input.principal,
+          resource,
+          command: lifecycleCommand,
+        });
+        events = yield* materializeLifecycleEvents(resource, providerOutcome);
+        const succeeded = ["ready", "stopped", "deleted"].includes(providerOutcome.phase);
+        receipt = yield* input.store.settle({
+          ...scope,
+          sandboxRef: resource.sandboxRef,
+          commandRef: command.commandRef,
+          expectedResourceGeneration: resource.resourceGeneration,
+          events,
+          outcome: succeeded ? "succeeded" : "failed",
+          artifactRefs: [providerOutcome.receiptRef],
+          ...(providerOutcome.errorCode === null
+            ? {}
+            : { errorCode: `reason.${providerOutcome.errorCode}` }),
+          observedAt: providerOutcome.observedAt,
+        });
+        resource = yield* inspect(resource.sandboxRef);
+      } else if (command._tag === "Dispatch") {
         const prompt = options?.prompt;
         if (prompt === undefined || prompt.trim() === "" || prompt.length > 100_000) {
           return yield* invalid("dispatch requires a non-empty bounded prompt");

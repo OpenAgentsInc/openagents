@@ -189,7 +189,7 @@ fn managed_sandbox_create_request() -> Value {
             "isolationClass": "gce_vm",
             "imageRef": "gce-image-ref://sha256/contract",
             "imageDigest": format!("sha256:{}", "a".repeat(64)),
-            "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/deny-all-v1",
+            "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/broker-only-v1",
             "controlIdentityRef": "identity-ref://openagents/managed-sandbox/control",
             "guestIdentityRef": "identity-ref://openagents/managed-sandbox/guest-none",
             "ttlMs": 60_000,

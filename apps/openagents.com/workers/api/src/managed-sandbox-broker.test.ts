@@ -1,6 +1,8 @@
 import {
   ManagedSandboxCommandSchema,
   type ManagedSandboxCommand,
+  ManagedSandboxReceiptSchema,
+  ManagedSandboxResourceSchema,
 } from "@openagentsinc/managed-sandbox-contract";
 import type { ManagedSandboxCommandReservation } from "@openagentsinc/khala-sync-server";
 import { Effect, Schema as S } from "effect";
@@ -186,5 +188,131 @@ describe("native managed-sandbox broker", () => {
       code: "validation_failed",
     });
     expect(testbed.reserveCount()).toBe(0);
+  });
+
+  test("settles a live provider create through canonical readiness events and exact replay", async () => {
+    let resource: typeof ManagedSandboxResourceSchema.Type | undefined;
+    let reservation: ManagedSandboxCommandReservation | undefined;
+    let lifecycleCalls = 0;
+    let settlementEvents: ReadonlyArray<{ _tag: string }> = [];
+    const store = {
+      reservation: () => Effect.succeed(reservation),
+      reserve: ({ command, initialResource }: Parameters<BoxV1NativeStore["reserve"]>[0]) => {
+        if (initialResource === undefined) throw new Error("missing initial resource");
+        resource = S.decodeUnknownSync(ManagedSandboxResourceSchema)({
+          ...initialResource,
+          version: 1,
+          lastEventSequence: 1,
+        });
+        reservation = {
+          disposition: "reserved" as const,
+          status: "pending" as const,
+          command,
+          resource,
+        };
+        return Effect.succeed(reservation);
+      },
+      settle: (input: Parameters<BoxV1NativeStore["settle"]>[0]) => {
+        if (resource === undefined || reservation === undefined) throw new Error("not reserved");
+        settlementEvents = input.events;
+        resource = S.decodeUnknownSync(ManagedSandboxResourceSchema)({
+          ...resource,
+          version: 2,
+          lastEventSequence: 2,
+          facts: {
+            ...resource.facts,
+            lifecycle: "ready",
+            guestState: "present",
+            filesystemState: "attached",
+            ingressState: "broker_only",
+            acceptingWork: true,
+          },
+          updatedAt: input.observedAt,
+        });
+        const receipt = S.decodeUnknownSync(ManagedSandboxReceiptSchema)({
+          schema: "openagents.managed_sandbox_receipt.v1",
+          receiptRef: "receipt.native.live.create",
+          commandRef: reservation.command.commandRef,
+          sandboxRef: resource.sandboxRef,
+          ownerRef: resource.ownerRef,
+          tenantRef: resource.tenantRef,
+          resourceGeneration: resource.resourceGeneration,
+          version: resource.version,
+          outcome: input.outcome,
+          lifecycle: resource.facts.lifecycle,
+          eventRefs: input.events.map((event) => event.eventRef),
+          artifactRefs: input.artifactRefs ?? [],
+          observedAt: input.observedAt,
+        });
+        reservation = {
+          ...reservation,
+          disposition: "settled",
+          status: "settled",
+          resource,
+          receipt,
+        };
+        return Effect.succeed(receipt);
+      },
+      inspect: () => {
+        if (resource === undefined) throw new Error("not reserved");
+        return Effect.succeed(resource);
+      },
+    } as unknown as BoxV1NativeStore;
+    const runtime = {
+      ...unavailableBoxV1Runtime,
+      lifecycle: () => {
+        lifecycleCalls += 1;
+        return Effect.succeed({
+          operationRef: "command.native.create.fixture",
+          receiptRef: "receipt.provider.live.create",
+          action: "create" as const,
+          phase: "ready" as const,
+          generation: 1,
+          readinessObserved: true,
+          cleanupObserved: false,
+          measuredRunningMs: 10,
+          measuredCostMicros: 1,
+          errorCode: null,
+          observedAt: "2026-07-19T16:00:01.000Z",
+        });
+      },
+    };
+    const broker = makeManagedSandboxBroker({
+      principal: {
+        actorRef: "principal.desktop",
+        ownerRef: "owner.fixture",
+        tenantRef: "owner.fixture",
+        login: "Desktop",
+        email: null,
+      },
+      policy,
+      store,
+      runtime,
+      now: () => new Date(now),
+    });
+
+    const first = await Effect.runPromise(
+      broker.execute(createCommand(), { attachmentGeneration: 7 }),
+    );
+    const replay = await Effect.runPromise(
+      broker.execute(createCommand({ requestedAt: "2026-07-19T16:05:00.000Z" }), {
+        attachmentGeneration: 7,
+      }),
+    );
+
+    expect(first.resource.facts).toMatchObject({
+      lifecycle: "ready",
+      acceptingWork: true,
+      guestState: "present",
+    });
+    expect(first.receipt).toMatchObject({
+      outcome: "succeeded",
+      artifactRefs: ["receipt.provider.live.create"],
+    });
+    expect(settlementEvents).toMatchObject([
+      { _tag: "GuestReady", resourceGeneration: 1, sequence: 2 },
+    ]);
+    expect(replay.receipt).toEqual(first.receipt);
+    expect(lifecycleCalls).toBe(1);
   });
 });

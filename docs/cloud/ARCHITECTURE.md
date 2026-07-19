@@ -146,6 +146,20 @@ default-off control adapter. Root confinement, symlink proof, secret scans,
 quotas, process-tree closure, deny-all egress, and content-addressed artifact
 receipts remain below the facade.
 
+SBX-09 adds the live provider path without adding ambient guest egress. A
+generation-owned firewall allows only the private control broker. Deny-all
+rules cover every other ingress and egress path. The guest runs the pinned
+Codex or Claude Agent SDK from the admitted immutable image. It presents a
+short-lived signed capability to the private control relay, which forwards to
+an internal Worker route. The Worker rechecks native turn/capability authority
+and alone injects the OpenAI credential or Vertex access token. Provider
+credentials, Cloud identities, public IPs, and raw topology never enter the
+guest. Control restart recovers lifecycle journals from the host-mounted state
+root and turn events from the guest disk. Box file and artifact operations use
+Linux `openat2` beneath the guest workspace. Box commands run inside a second
+Bubblewrap network namespace, so the SDK-only provider broker path is not
+available to arbitrary guest commands.
+
 The facade is lossy compatibility only:
 native Effect Schema contracts, authorization, event cursors, private
 evidence, usage, cost, artifact, and cleanup receipts remain authoritative.

@@ -19026,7 +19026,7 @@
     },
     {
       "path": "docs/cloud/ARCHITECTURE.md",
-      "sha256": "e6002f72ac772b320f5331c9155fa43983e263e287d95c3d4f82ec892b55866e",
+      "sha256": "197ca69eccb49e7f74c86f0d41ca67811eda5646ab070f265f172edb4534a4d5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19070,7 +19070,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "7c9be383b0591956fd99897dac3d2710cc5a3e25f59f7c72de7ac41395c85eda",
+      "sha256": "5817ae164d215fd275a34c81f8eb47cc9d7b1f49643c453835eeb507dfb6eb81",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19131,7 +19131,7 @@
     },
     {
       "path": "docs/cloud/README.md",
-      "sha256": "daf15416ede7854ac420091fa8b527b0608e397bb0fe2996bfbf4ab68f8bb91a",
+      "sha256": "f7aee14892d1144bf90bb5284f7f3352088b95be02bc74c76adecb017be2f14f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19671,7 +19671,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "4413c41205879b34aa5011b185087c13da83447b1b6cc2a818251098aaf6eca6",
+      "sha256": "c707e504cbdb0327a624e6d866485b3e206164b572822ad79858e1fee8604806",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19715,7 +19715,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
-      "sha256": "39c432f6b07b9e7c5d930e11fc729f154b76028ee5f3869ec3db58def0895277",
+      "sha256": "2714d469c1eb83529f0b604c346957cbef882c60ccdcc5a5cd16e26848509659",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

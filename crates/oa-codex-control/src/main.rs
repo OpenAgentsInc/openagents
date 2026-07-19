@@ -441,7 +441,7 @@ struct GitHubWriteMaterialization {
 fn main() {
     if env::args().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "oa-codex-control\n\nUsage:\n  oa-codex-control --help\n  oa-codex-control --version\n  OA_CODEX_CONTROL_TOKEN=<token> OA_CODEX_AUTH_JSON_ROOT=<dir> OA_CODEX_GRANT_RESOLVE_URL=<url> OA_CODEX_RUNNER_GRANT_TOKEN=<token> oa-codex-control\n\nNeutral env vars (preferred) fall back to legacy OA_VORTEX_* when unset:\n  OA_CODEX_GRANT_RESOLVE_URL   <- OA_VORTEX_GRANT_RESOLVE_URL\n  OA_CODEX_RUNNER_GRANT_TOKEN  <- OA_VORTEX_CLOUD_RUNNER_GRANT_TOKEN\n  OA_CODEX_EVENT_INGEST_URL    <- OA_VORTEX_CODEX_INGEST_URL\n  OA_CODEX_EVENT_INGEST_TOKEN  <- OA_VORTEX_CODEX_INGEST_TOKEN\n"
+            "oa-codex-control\n\nUsage:\n  oa-codex-control --help\n  oa-codex-control --version\n  OA_CODEX_CONTROL_TOKEN=<token> OA_CODEX_AUTH_JSON_ROOT=<dir> OA_CODEX_GRANT_RESOLVE_URL=<url> OA_CODEX_RUNNER_GRANT_TOKEN=<token> oa-codex-control\n  OA_CODEX_CONTROL_TOKEN_FILE=/run/secrets/control-token OA_CODEX_AUTH_JSON_ROOT=<dir> oa-codex-control\n\nNeutral env vars (preferred) fall back to legacy OA_VORTEX_* when unset:\n  OA_CODEX_GRANT_RESOLVE_URL   <- OA_VORTEX_GRANT_RESOLVE_URL\n  OA_CODEX_RUNNER_GRANT_TOKEN  <- OA_VORTEX_CLOUD_RUNNER_GRANT_TOKEN\n  OA_CODEX_EVENT_INGEST_URL    <- OA_VORTEX_CODEX_INGEST_URL\n  OA_CODEX_EVENT_INGEST_TOKEN  <- OA_VORTEX_CODEX_INGEST_TOKEN\n"
         );
         return;
     }
@@ -491,7 +491,7 @@ fn main() {
 
 impl Config {
     fn from_env() -> Result<Self, String> {
-        let token = required_env("OA_CODEX_CONTROL_TOKEN")?;
+        let token = control_token_from_env()?;
         let auth_json_file = optional_env("OA_CODEX_AUTH_JSON_FILE").map(PathBuf::from);
         let auth_json_root = optional_env("OA_CODEX_AUTH_JSON_ROOT").map(PathBuf::from);
         if auth_json_file.is_none() && auth_json_root.is_none() {
@@ -5134,17 +5134,26 @@ fn event_ingest_url(base_url: &str, run_id: &str) -> String {
     )
 }
 
-fn required_env(name: &str) -> Result<String, String> {
-    env::var(name)
-        .map(|value| value.trim().to_string())
-        .map_err(|_| format!("missing required env {name}"))
-        .and_then(|value| {
-            if value.is_empty() {
-                Err(format!("missing required env {name}"))
-            } else {
-                Ok(value)
-            }
-        })
+fn control_token_from_env() -> Result<String, String> {
+    if let Some(token) = optional_env("OA_CODEX_CONTROL_TOKEN") {
+        return Ok(token);
+    }
+    let path = optional_env("OA_CODEX_CONTROL_TOKEN_FILE")
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            "missing OA_CODEX_CONTROL_TOKEN or OA_CODEX_CONTROL_TOKEN_FILE".to_string()
+        })?;
+    if !path.is_absolute() {
+        return Err("OA_CODEX_CONTROL_TOKEN_FILE must be absolute".to_string());
+    }
+    let token = fs::read_to_string(&path)
+        .map_err(|_| "failed to read OA_CODEX_CONTROL_TOKEN_FILE".to_string())?
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        return Err("OA_CODEX_CONTROL_TOKEN_FILE is empty".to_string());
+    }
+    Ok(token)
 }
 
 fn path_str(path: &Path) -> Result<&str, String> {

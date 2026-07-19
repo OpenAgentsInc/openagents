@@ -197,10 +197,32 @@ design context only.
   Capacity or quota pressure refuses the request and cannot select a
   substitute.
 - A GCE managed-sandbox workload has no external IP, guest service account,
-  OAuth scope, ingress rule, ambient provider home, or host path. Its egress is
-  deny-all. Only run-scoped capability refs pass admission. The control
-  component uses a metadata identity and refuses a downloadable service-
-  account key.
+  OAuth scope, ambient provider home, or host path. Network policy is
+  default-deny in both directions.
+- The only admitted ingress is control-identity SSH on port 22, and the only
+  admitted egress is the exact private
+  control-broker IP and port. Higher-priority per-sandbox allow rules sit above
+  explicit deny-all rules, all four rules are generation-owned and cleanup-
+  observed. The persistent control firewall admits broker traffic from the
+  shared managed-guest tag at priority 900 and denies every other source at
+  priority 1000. The control VM has no external IP. No public/provider
+  endpoint is reachable from the guest. Only run-scoped capability refs pass
+  admission.
+- Provider credentials remain in the Worker. After native turn admission, the
+  Worker mints one HMAC-signed capability. It binds actor, owner, tenant,
+  sandbox, generation, turn, and capability ref. It also binds provider,
+  requested/effective model, nonce, and expiry.
+- The private control proxy
+  relays that capability without learning or storing a provider credential.
+  Every provider request
+  rechecks the native resource, turn, active lease, generation, and capability.
+  The Worker then injects its OpenAI key or mints a Vertex access token.
+  Revoked, expired, cross-provider, stale-generation, or changed-model tokens
+  fail before a provider effect.
+- The control component uses a metadata identity and refuses a downloadable
+  service-account key. Its HTTP bearer is read from a root-only runtime file
+  fetched from Secret Manager. The dedicated deployment never writes the raw
+  bearer into instance metadata or tracked configuration.
 - Provider ownership and cleanup ownership are durable before effects.
   Readiness requires observed provider, guest-generation, image, address,
   identity, metadata, and network facts. Cleanup requires observed zero

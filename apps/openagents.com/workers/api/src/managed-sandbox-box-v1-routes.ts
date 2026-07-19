@@ -180,7 +180,31 @@ export type BoxV1NativeStore = Readonly<{
   }) => Effect.Effect<ManagedSandboxProjectionState, BoxV1FacadeError>
 }>
 
+export type BoxV1LifecycleOutcome = Readonly<{
+  operationRef: string
+  receiptRef: string
+  action: 'create' | 'stop' | 'resume' | 'delete'
+  phase: 'ready' | 'stopped' | 'failed' | 'recovery_required' | 'deleted'
+  generation: number
+  readinessObserved: boolean
+  cleanupObserved: boolean
+  measuredRunningMs: number
+  measuredCostMicros: number
+  errorCode: string | null
+  observedAt: string
+}>
+
 export type BoxV1Runtime = Readonly<{
+  lifecycle?:
+    | ((input: {
+        principal: BoxV1Principal
+        resource: ManagedSandboxResource
+        command: Extract<
+          ManagedSandboxCommand,
+          { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+        >
+      }) => Effect.Effect<BoxV1LifecycleOutcome, BoxV1FacadeError>)
+    | undefined
   dispatch: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource

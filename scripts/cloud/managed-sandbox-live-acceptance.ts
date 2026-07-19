@@ -207,7 +207,7 @@ async function guaranteedCleanup(): Promise<void> {
       if (!["stopped", "failed", "recovery_required", "deleting"].includes(phase)) {
         await operate("reconcile", generation);
       }
-      if (phase !== "deleted") await operate("delete", generation);
+      if (String(phase) !== "deleted") await operate("delete", generation);
     }
   } catch {
     try {
@@ -251,11 +251,25 @@ try {
 }
 
 const resourceSuffix = sha256(sandboxRef).slice(0, 20);
+const firewallNames = [
+  `oa-msb-egress-${resourceSuffix}`,
+  `oa-msb-broker-${resourceSuffix}`,
+  `oa-msb-ssh-${resourceSuffix}`,
+  `oa-msb-ingress-${resourceSuffix}`,
+];
 const residue = {
   compute: count("instances", `name=oa-msb-${resourceSuffix}`),
-  firewall: count("firewall-rules", `name=oa-msb-egress-${resourceSuffix}`),
+  firewall: firewallNames.reduce(
+    (total, name) => total + count("firewall-rules", `name=${name}`),
+    0,
+  ),
   scratch: count("disks", `name=oa-msb-${resourceSuffix}`),
-  ingress: 0,
+  ingress: firewallNames
+    .filter((name) => name.includes("-ssh-") || name.includes("-ingress-"))
+    .reduce(
+      (total, name) => total + count("firewall-rules", `name=${name}`),
+      0,
+    ),
   grants: 0,
 };
 if (Object.values(residue).some((value) => value !== 0)) {
