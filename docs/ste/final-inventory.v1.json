@@ -19652,11 +19652,12 @@
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
       "sha256": "39c432f6b07b9e7c5d930e11fc729f154b76028ee5f3869ec3db58def0895277",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -19664,7 +19665,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -23377,12 +23381,13 @@
     },
     {
       "path": "docs/fable/2026-07-19-some-simple-economics-of-agi-deepdive.md",
-      "sha256": "6367746371cbd4361f1a1c4d7d654feb78e9e88bc6cdf0eb94cd1608644f7834",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "3ac338ae2fc2c1f21e29afa5e079b10e593ed4b38f2564d22d4376749d80e25f",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -23390,17 +23395,21 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "093830083e451d5c11cdedb4d786bab4afb3a9ac2a06b519d97097c555da259f",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "8df9584469cf6fca47deea541352bfaa44b957d6a46102e970883f03cb63cc93",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -23408,7 +23417,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -26502,50 +26514,6 @@
     {
       "path": "docs/ide/README.md",
       "sha256": "c484ac7a539901a66778f989515e15a630f0e4379f832156bb9174fd94f99161",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "agent",
-        "ste_agent_compact_revision": "openagents-agent-compact-v1",
-        "ste_accepted_screening_rules": [
-          "STE-2.4",
-          "STE-3.6",
-          "STE-5.1",
-          "STE-8.2"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "docs/ide/ROADMAP.md",
-      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "agent",
-        "ste_agent_compact_revision": "openagents-agent-compact-v1",
-        "ste_accepted_screening_rules": [
-          "STE-2.4",
-          "STE-3.6",
-          "STE-5.1",
-          "STE-8.2"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "docs/ide/ROADMAP.md",
-      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -10,8 +10,8 @@ receipts.
 program (`docs/ide/`), the surface specs (`specs/desktop/`, `specs/mobile/`,
 `specs/web/`), and the Sol master roadmap.
 **Companion:** [`2026-07-19-some-simple-economics-of-agi-deepdive.md`](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
-— a standalone deep dive on Catalini, Hui & Wu's *Some Simple Economics of
-AGI* (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
+— a standalone deep dive on Catalini, Hui & Wu's _Some Simple Economics of
+AGI_ (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
 argument this essay builds on.
 
 ---
@@ -22,16 +22,16 @@ During a recording prep session earlier this month, an agent told the owner to
 run a `start` script. The script did not exist. The real one was called `dev`.
 Every neighboring word in the instruction was true — the directory, the tool,
 the framing — and the one load-bearing token was fiction. The after-action
-report named the failure class precisely: an *unverified operational
-directive*. A wrong schema fails to decode. A wrong import fails to typecheck.
+report named the failure class precisely: an _unverified operational
+directive_. A wrong schema fails to decode. A wrong import fails to typecheck.
 A wrong sentence to the owner has no compiler. It surfaces at the most
 expensive possible location: a human's attention.
 
 That small failure is the whole problem in miniature. The cost of producing
 software is collapsing — agents generate plausible code, plausible
 instructions, and plausible summaries at near-zero marginal cost. The cost of
-*verifying* those outputs remains stubbornly linear. This is the asymmetry
-Catalini, Hui, and Wu formalize in *Some Simple Economics of AGI* as the
+_verifying_ those outputs remains stubbornly linear. This is the asymmetry
+Catalini, Hui, and Wu formalize in _Some Simple Economics of AGI_ as the
 **Measurability Gap**: an exponentially falling cost to automate racing a
 biologically bottlenecked cost to verify, with hidden risk accumulating in
 the widening space between them (see the
@@ -64,8 +64,8 @@ of the last eleven build episodes and the specs behind them converge on a
 short, brutal taxonomy.
 
 **False greens.** A passing suite is not proof. The named modes: the test
-asserts the fixture; the test mirrors the implementation; the real seam is
-never exercised; coverage stands in for behavior; and everything rounds up —
+asserts the fixture, the test mirrors the implementation, the real seam is
+never exercised, coverage stands in for behavior, and everything rounds up —
 skipped, stale, flaky, and inconclusive results quietly vanish from the
 summary. Activity dressed up as evidence.
 
@@ -76,8 +76,8 @@ work is in question. A compaction summary is not evidence. Tool calls are
 attempts, not outcomes.
 
 **Silent substitution.** A UI chip said one model's name while a different
-model actually ran the turn, because the label reflected the *selected* brand
-rather than the *observed* execution. Identity must be observed, not asserted
+model actually ran the turn, because the label reflected the _selected_ brand
+rather than the _observed_ execution. Identity must be observed, not asserted
 — requested and effective are two different facts, and merging them into one
 indicator is the lie.
 
@@ -105,7 +105,7 @@ commitments.
 **1. Intent is typed and content-addressed.** Before implementation, the
 product states what it intends in a falsifiable form: a ProductSpec with
 acceptance criteria written as "when X, then Y." Before verification, a
-companion AssuranceSpec states how anyone would *know* — the oracle, the
+companion AssuranceSpec states how anyone would _know_ — the oracle, the
 falsifier, the environment, the evidence policy, and who is allowed to review.
 The AssuranceSpec binds to the ProductSpec's exact bytes by SHA-256 digest, so
 intent cannot drift out from under its proof silently: revise the spec and the
@@ -113,7 +113,7 @@ proof design goes stale until explicitly reconciled. The separation is the
 point. ProductSpec declares product intent. AssuranceSpec declares proof
 intent. Stating an outcome can never certify it.
 
-**2. Evidence is observed, not claimed.** After work happens, the *host*
+**2. Evidence is observed, not claimed.** After work happens, the _host_
 observes the results through its own authorities: diagnostics through the
 language service, repository state through the workspace service, delivery
 through actual Git evidence. A process saying "tests passed" or "pushed"
@@ -126,7 +126,7 @@ so.
 run leaves a pair of records: the authority manifest — what policy admitted —
 and the execution receipt — what containment actually enforced. Status lights
 derive only from decoded, fresh receipts. No receipt means no light. Absent or
-stale evidence renders as *unknown*, never as green. And the interface
+stale evidence renders as _unknown_, never as green. And the interface
 practices loss accounting: when history, identity, or evidence is missing, it
 says what was not observed instead of inventing completeness.
 
@@ -138,13 +138,13 @@ passing observation. An owner receipt is not independent admission. Sharing
 identity and evidence must never imply sharing privilege.
 
 **5. Whole failure classes are removed by construction.** When an incident
-happens, the response is not a patch and an apology; it is a set of gates that
+happens, the response is not a patch and an apology. It is a set of gates that
 make the category structurally unreachable. When a competitor's desktop app
 was killed by an unbounded repository scan in an unisolated worker, the
 after-action produced sixteen named controls — file limits, byte limits, queue
 limits, cancel fences, circuit breakers, process isolation, typed degradation,
 durable session state — each treated as a mandatory, testable release
-requirement. The claim was deliberately narrow: this *category* of error
+requirement. The claim was deliberately narrow: this _category_ of error
 becomes impossible in the new architecture, conditional on the named controls
 and the incident-scale evidence. Honest conditionality is part of the
 discipline. To have errors is fine: you have the error, you learn from it, you
@@ -171,20 +171,20 @@ file, document, language result, Git snapshot, agent attachment, proposal, and
 piece of evidence has a stable ref plus an explicit generation. No tree
 widget, LSP result, diff hunk, agent proposal, or deep link invents its own
 path or line-number identity. The editor (Monaco) and the review plane
-(Pierre) are deliberately admitted as *projections only* — they receive no
+(Pierre) are deliberately admitted as _projections only_ — they receive no
 filesystem, Git, mutation, or policy authority. Even the packages themselves
 went through admission: exact versions, registry integrity hashes, license
 audits, and explicit no-authority audits, with rollback and substitution tests
-required for every external library. The graph is the authority; the widgets
+required for every external library. The graph is the authority. The widgets
 paint it.
 
-**Agents propose; the project applies.** This is the load-bearing law for
+**Agents propose, and the project applies.** This is the load-bearing law for
 agentic change. A harness never mutates the editor and never guesses current
 line numbers. It submits a proposal bound to an exact base version, with
 SHA-256 equality checked between claimed and actual bytes. Reusing a ref for
 different content fails closed. There is no fuzzy apply. If the document moved
 on — if the human typed, if another agent's change landed — the stale base
-*refuses* rather than patching by position, and the system offers a typed
+_refuses_ rather than patching by position, and the system offers a typed
 rebase or a regenerated proposal. Apply itself is transactional: a retained
 checkpoint before, sequential execution through canonical authority, exact
 post-image digests after, and reverse-order rollback on any mid-transaction
@@ -194,7 +194,7 @@ success.
 **Disclosure is a manifest, not a vibe.** What did the agent actually see?
 The context tray answers exactly: eleven named source slots, each row showing
 inclusion or omission reason, selector, generation, freshness, byte and token
-cost, and truncation. Fixed budgets; over-budget items become explicit
+cost, and truncation. With fixed budgets, over-budget items become explicit
 omissions rather than silent expansion. Project attachment, instruction trust,
 context disclosure, and tool authority are four separate decisions that never
 collapse into one switch. Trusting a project does not grant all four.
@@ -210,11 +210,11 @@ typed tag that free-form labels cannot forge: renaming "HEAD" to "proposal"
 changes nothing about its authority.
 
 **Acceptance is a deterministic oracle.** The basic-IDE milestone was not
-declared; it was *decoded*. One exact application tree (named by SHA-256 over
+declared. It was _decoded_. One exact application tree (named by SHA-256 over
 360 files), one reachable `main` commit, one public-safe evidence bundle, and
 a deterministic repository oracle that recomputes facts from the artifact and
 exposes no producer override. The schema has no permissive `pending` or
-`warning` state; missing evidence fails decoding. And the oracle knows its own
+`warning` state. Missing evidence fails decoding. And the oracle knows its own
 bounds — it does not impersonate human owner acceptance, and the admitted
 claim is deliberately narrow. Parity is an acceptance result, not a package
 list: no parity claim from dependency presence, screenshots, or agent
@@ -223,23 +223,23 @@ self-report.
 **Even the founding requirement is a regression oracle.** The IDE program
 began with the simplest broken promise in the market: rival tools that cannot
 reliably open a file. So the base contract is blunt — open a file, and the
-file is visibly open in a real editor, immediately; no chat, provider, index,
+file is visibly open in a real editor, immediately. No chat, provider, index,
 or language-server hydration may hold the first paint hostage — and every
 packaged release journey re-proves it. A stated UX expectation lands verbatim
 in a typed behavior-contract registry with an executable oracle in the normal
 test sweep. A claim about how the product behaves cannot exist solely in
-prose; it must carry a test that can fail.
+prose. It must carry a test that can fail.
 
 For the developer, the net effect is that verification stops being a virtue
 and becomes a substrate. You do not remember to check whether the agent's diff
-still applies; stale bases refuse. You do not wonder what context leaked; the
-manifest says. You do not take "pushed" on faith; the Git evidence service
+still applies. Stale bases refuse. You do not wonder what context leaked. The
+manifest says. You do not take "pushed" on faith. The Git evidence service
 either shows the commit or shows `Unavailable`. The IDE is not an editor with
 an agent bolted on. It is a verification instrument that happens to edit text.
 
 ## V. Resilient under rapid agentic change
 
-The objection writes itself: doesn't all this ceremony slow you down? The
+The objection writes itself: does all this ceremony slow you down? The
 evidence from this repository says the opposite, and the strongest single
 sentence in the corpus says why:
 
@@ -256,13 +256,13 @@ fencing everywhere, so a hundred late results produce one committed fact and
 ninety-nine suppressed ones. The laws are not a tax on speed. The laws are
 what make the sprint short.
 
-The same structure is what lets agents change the software *while you are not
-watching*. Full Auto — press play and walk away — is only a sane product
+The same structure is what lets agents change the software _while you are not
+watching_. Full Auto — press play and walk away — is only a sane product
 because the run is a bounded, receipted object: an owner-bound routing policy
-whose failover happens only inside the human's grant; guardrails with a
+whose failover happens only inside the human's grant, guardrails with a
 non-overridable core that has no config surface at all, proven immune by
-test; exactly-once dispatch under a durable lease; a restart-survivable state
-machine with actor and reason attribution on every transition; and a
+test, exactly-once dispatch under a durable lease, a restart-survivable state
+machine with actor and reason attribution on every transition, and a
 "Completed" state the product refuses to present as verified truth, because
 provider prose cannot prove completion. A deterministic no-progress detector
 pauses durably instead of continuing blind. The overnight failure mode that
@@ -280,10 +280,10 @@ regression. The codebase can absorb a firehose of machine-generated change
 because the change never touches authority directly — it touches a proposal
 plane whose every transition is checked.
 
-There is a quieter benefit, too. When verification is structural, *trust
-compounds instead of depleting*. Each accepted outcome adds a receipt, a
+There is a quieter benefit, too. When verification is structural, _trust
+compounds instead of depleting_. Each accepted outcome adds a receipt, a
 behavior contract, an oracle to the standing suite. Legacy software rots as it
-grows because every change spends trust; verifiable software hardens as it
+grows because every change spends trust. Verifiable software hardens as it
 grows because every change deposits it.
 
 ## VI. The economics of proof
@@ -291,18 +291,18 @@ grows because every change deposits it.
 Why build all of this now? Because the verification gap is not just an
 engineering problem — it is the market.
 
-Generation cost is collapsing; verification cost is not. The gap between them
+Generation cost is collapsing. Verification cost is not. The gap between them
 is where value concentrates. When anyone can generate a plausible pull
 request, a plausible benchmark, or a plausible "all tests green," the scarce
 good is the ability to know which claims are true. The macro theory behind
-this is worked out in Catalini, Hui & Wu's *Some Simple Economics of AGI*:
-only the *verifiable share* of agentic output creates real economic capacity,
+this is worked out in Catalini, Hui & Wu's _Some Simple Economics of AGI_:
+only the _verifiable share_ of agentic output creates real economic capacity,
 while the unverified remainder circulates as "counterfeit utility" — output
 that passes every measurable proxy while silently violating unmeasured intent
-— and the market pays a measurable *provenance premium* for output whose
+— and the market pays a measurable _provenance premium_ for output whose
 process can be cheaply checked. Their policy levers — observability tooling
 (they name AI-powered IDEs explicitly), cryptographic provenance, and priced
-liability — map one-for-one onto the mechanisms described in this essay; the
+liability — map one-for-one onto the mechanisms described in this essay. The
 [companion deep dive](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
 draws the full correspondence. The atomic unit of the
 agent economy is not generated output. It is an accepted outcome with a
@@ -323,9 +323,9 @@ cohorts instead of blending into a marketing number. Live counters must
 reconcile to exact receipted rows, so an auditor summing the ledger arrives at
 the displayed value.
 
-And openness is not a licensing preference here; it is the verification
+And openness is not a licensing preference here. It is the verification
 strategy. One hundred percent of the shipped code is public, which means the
-claims about it are *checkable* — by users filing strict-form bugs, by
+claims about it are _checkable_ — by users filing strict-form bugs, by
 independent audits of green promises, by anyone reading the acceptance oracle.
 A public trust ledger is structurally hard for closed-custody vendors to copy,
 because their business models depend on the opacity it removes. When a closed
@@ -346,7 +346,7 @@ release authority, their unexecuted obligations are `INCONCLUSIVE`, and their
 own text says so in exactly those words. A designed oracle is not a passing
 observation. Reconciliation never converts `planned` into `implemented`.
 
-That candor is not a caveat appended to the thesis. It *is* the thesis. A
+That candor is not a caveat appended to the thesis. It _is_ the thesis. A
 system that could not distinguish its proven claims from its intended ones
 would have failed at the only thing it exists to do. The gap between what is
 specified and what is observed is tracked in the same typed machinery as
@@ -359,7 +359,7 @@ The pitch for most developer tools is capability: more completions, more
 context, more agents. The pitch here is different. Predictability is the
 feature. "When I open a file, it actually opens the file" is the feature. A
 green that means what it claims is the feature. In 2025 the differentiator was
-a feature list; in 2026 it is a trust and openness list, because the features
+a feature list. In 2026 it is a trust and openness list, because the features
 are now table stakes.
 
 The IDE is where this has to live, because the IDE is where claims are born.
