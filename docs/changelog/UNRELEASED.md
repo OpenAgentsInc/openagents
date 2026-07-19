@@ -5,6 +5,29 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Agents can review and safely apply exact code proposals (#9036)
+
+- issues: #9036
+- commits: 6883463cbe, fc29ee6df9, f8e423dc0d
+- contracts-specs: openagents.desktop.ide-agent-code.v1; Desktop agent editing invariant; IDE roadmap and crosswalk
+- invariants: agent context is inspectable and bounded; proposal apply is main-owned, generation-fenced, checkpointed, and independently evidenced
+- evidence: apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-acceptance.json; apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.json; docs/ide/2026-07-19-ide-08-agent-native-code-graph.md
+- lane: codex.ide08.20260719.aL9yNF
+
+Desktop agents can now attach to the exact project and worktree, show what
+context they included or withheld, and present version-bound file changes for
+review before anything touches disk. Owners can accept all or part of a
+proposal, apply it through the same workspace authority as manual edits,
+follow conversation-to-code links, inspect independent post-change evidence,
+and undo to a retained checkpoint.
+
+The implementation fails closed when files, generations, grants, or policies
+move; keeps private roots and file bytes out of public receipts; and treats
+tests, delivery, verification, and owner acceptance as separate observed facts
+rather than trusting an agent's completion text. The packaged macOS journey
+proved context disclosure, Pierre review, keyboard apply/undo, backlinks,
+evidence separation, and exact disk restoration on the recorded candidate.
+
 ## Linux AppImage updates retain a safe rollback image (#8921)
 
 - issues: #8921
