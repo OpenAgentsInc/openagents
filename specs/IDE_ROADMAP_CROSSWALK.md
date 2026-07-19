@@ -68,9 +68,9 @@ authorized to execute and cannot be used as release evidence.
 | IDE-01 — dependency/theme/Vim/native spikes       | Desktop AC-47..49, AC-52; Cursor CP-AC-23..25, CP-AC-27                                                                         | Desktop and Cursor proposed companions                                                                                     | License/package/worker/CSP/offline proof, Tokyo Night mapping, Vim engine decision/fallback, and Rust necessity/reversal evidence                                                                   |
 | IDE-02 — complete Pierre path index               | Desktop AC-39..40; Cursor CP-AC-19                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9017: complete generation-fenced tree behavior, cancellation/staleness, multi-root/worktree isolation, honest partial/degraded states, typed operations, accessibility, scale/resource and packaged-journey receipts; does not close the broader criteria |
 | IDE-03 — Monaco/Tokyo Night/Vim                   | Desktop AC-39..41, AC-48..51; Cursor CP-AC-19, CP-AC-24..26                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9018: opaque model/view lifecycle, Effect-owned draft/revision/recovery truth, fixed Tokyo Night, first-party persistent Vim, gap/resync fences, lazy private-scheme package, and resource/Finder receipts; does not close broader criteria |
-| IDE-04 — navigation/groups/settings/keymaps       | Desktop AC-11, AC-12, AC-39..41, AC-48; Cursor CP-AC-03, CP-AC-19, CP-AC-24                                                     | Desktop and Cursor proposed companions                                                                                     | One command graph, stable navigation and group state, typed setting precedence, and visible keybinding/Vim conflicts                                                                                |
-| IDE-05 — Pierre review classes                    | Desktop AC-5, AC-6, AC-41, AC-43; Cursor CP-AC-04, CP-AC-20                                                                     | Desktop and Cursor proposed companions                                                                                     | Versioned diff sources remain distinct; stale bases refuse; review/apply/undo uses canonical authority                                                                                              |
-| IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Document/service generations, cancellation, restart, placement/evidence tier, and unavailable truth are observable                                                                                  |
+| IDE-04 — navigation/groups/settings/keymaps       | Desktop AC-11, AC-12, AC-39..41, AC-48; Cursor CP-AC-03, CP-AC-19, CP-AC-24                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9019: one command graph, stable navigation/groups, bounded Quick Open, typed settings/keymaps and visible Vim precedence; broader criteria remain open                                |
+| IDE-05 — Pierre review classes                    | Desktop AC-5, AC-6, AC-41, AC-43; Cursor CP-AC-04, CP-AC-20                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9020: eight versioned diff classes remain distinct, stale bases refuse, Pierre stays projection-only, and mutation authority remains deferred to its owning packet                     |
+| IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9021: visible local/project tiers, full first TypeScript capability corpus, document/service generations, cancellation, supervised restart, placement/evidence, shared projections, and unavailable truth; IDE-07 still gates the rung |
 | IDE-07 — daily-use basic IDE gate                 | Desktop AC-39..42, AC-48..52; Cursor CP-AC-18..19, CP-AC-24..27                                                                 | Desktop and Cursor proposed companions                                                                                     | Packaged integrated corpus passes; release says only “daily-use basic IDE”; all later gaps stay visible                                                                                             |
 | IDE-08 — agent context/proposals/backlinks        | Desktop AC-17, AC-43; Cursor CP-AC-20                                                                                           | Desktop and Cursor proposed companions                                                                                     | Inspectable disclosure, exact proposal base, review/apply/undo receipts, post-apply evidence, and no harness editor authority                                                                       |
 | IDE-09 — AI completion/inline/multi-file editing  | Desktop AC-26, AC-28; Cursor CP-AC-04, CP-AC-12..13                                                                             | Desktop and Cursor proposed companions                                                                                     | Quality/latency corpus, exact effective model/harness/placement/data disclosure, and canonical accept/reject/undo                                                                                   |
@@ -163,6 +163,30 @@ use basic-IDE rung, or authorize Zed-quality or Cursor-parity language. The
 ProductSpec bytes and both AssuranceSpec exact subjects remain unchanged;
 therefore their revisions, digests, and `proposed` lifecycles are not rebound
 by this implementation receipt.
+
+### IDE-04 through IDE-06 implementation evidence
+
+IDE-04, IDE-05, and IDE-06 are implemented by the exact closing receipts in
+[#9019](https://github.com/OpenAgentsInc/openagents/issues/9019),
+[#9020](https://github.com/OpenAgentsInc/openagents/issues/9020), and
+[#9021](https://github.com/OpenAgentsInc/openagents/issues/9021). Their full
+records are:
+
+- `docs/ide/2026-07-19-ide-04-daily-workbench.md`;
+- `docs/ide/2026-07-19-ide-05-versioned-pierre-review.md`; and
+- `docs/ide/2026-07-19-ide-06-generation-safe-language.md`.
+
+IDE-06 adds the enforced behavior contract
+`openagents_desktop.ide_generation_safe_language.v1` and a real TypeScript
+6.0.3 worker receipt covering exact version/environment, p50/p95/p99 latency,
+100-request supersession, forced crash/restart generation advance, offline
+operation, and zero-worker/pending teardown. Its renderer projections remain
+root-redacted and apply edits only through exact canonical document authority.
+
+This implementation evidence does not change either AssuranceSpec from
+`proposed`, satisfy the complete Desktop AC-42 or Cursor parity criteria by
+itself, admit another language/LSP, or promote the Daily-use basic IDE rung.
+Only IDE-07's integrated packaged gate can close that first rung.
 
 ## Cross-surface defaults and non-authorities
 

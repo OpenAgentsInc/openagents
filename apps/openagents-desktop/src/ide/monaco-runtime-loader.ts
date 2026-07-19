@@ -7,6 +7,7 @@ import {
   IdeEditorSelectionSchema,
   IdeEditorViewRef,
   IdeMonacoDocumentEventSchema,
+  IdeMonacoModelVersion,
   IdeMonacoRuntimeResourceSnapshotSchema,
   IdeVimProjectionSchema,
   type IdeEditorSelection,
@@ -15,11 +16,17 @@ import {
   type IdeVimProjection,
 } from "./monaco-document-contract.ts"
 import { IdeMonacoEditorOptionsSchema } from "./workbench-contract.ts"
+import {
+  IdeMonacoLocalLanguageStateSchema,
+  IdeMonacoProjectLanguageProjectionSchema,
+  type IdeMonacoLocalLanguageState,
+} from "./language-contract.ts"
 
 export const IdeMonacoAttachInputSchema = Schema.Struct({
   documentRef: IdeDocumentRef,
   generation: IdeDocumentGeneration,
   sequence: IdeDocumentSequence,
+  documentVersion: IdeMonacoModelVersion,
   viewRef: IdeEditorViewRef,
   pathLabel: Schema.String.check(Schema.isMaxLength(320)),
   language: Schema.String.check(Schema.isMaxLength(80)),
@@ -31,6 +38,7 @@ export const IdeMonacoAttachInputSchema = Schema.Struct({
   vimEnabled: Schema.Boolean,
   editorOptions: IdeMonacoEditorOptionsSchema,
   readOnly: Schema.Boolean,
+  projectLanguage: Schema.NullOr(IdeMonacoProjectLanguageProjectionSchema),
 })
 export type IdeMonacoAttachInput = typeof IdeMonacoAttachInputSchema.Type
 
@@ -46,6 +54,7 @@ export interface IdeMonacoRuntime {
     input: IdeMonacoAttachInput,
     onEvent: (event: IdeMonacoDocumentEvent) => void,
     onVim: (projection: IdeVimProjection) => void,
+    onLocalLanguage: (state: IdeMonacoLocalLanguageState) => void,
   ) => IdeMonacoMountedView
   readonly resources: () => IdeMonacoRuntimeResourceSnapshot
   readonly dispose: () => void
@@ -158,3 +167,4 @@ export const ideMonacoRuntimeResources = (): IdeMonacoRuntimeResourceSnapshot =>
 export const decodeIdeMonacoAttachInput = Schema.decodeUnknownSync(IdeMonacoAttachInputSchema)
 export const decodeIdeMonacoDocumentEvent = Schema.decodeUnknownSync(IdeMonacoDocumentEventSchema)
 export const decodeIdeVimProjection = Schema.decodeUnknownSync(IdeVimProjectionSchema)
+export const decodeIdeMonacoLocalLanguageState = Schema.decodeUnknownSync(IdeMonacoLocalLanguageStateSchema)

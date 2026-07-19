@@ -57,7 +57,7 @@ describe("IDE-04 schema-first workbench contract", () => {
     const state = emptyIdeWorkbenchState()
     expect(state.outline._tag).toBe("Unavailable")
     expect(breadcrumbsForPath("src/ide/workbench.ts").map(item => item.label)).toEqual([
-      "Project", "src", "ide", "workbench.ts", "Symbols unavailable",
+      "Project", "src", "ide", "workbench.ts",
     ])
     expect(Schema.decodeUnknownSync(IdeWorkbenchStateSchema)(state)).toEqual(state)
   })

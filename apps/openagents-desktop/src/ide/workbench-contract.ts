@@ -185,11 +185,11 @@ export type IdeOutlineState = typeof IdeOutlineStateSchema.Type
 
 export const preLanguageIdeOutline = (): IdeOutlineState => IdeOutlineStateSchema.cases.Unavailable.make({
   reason: "language_service_not_admitted",
-  message: "Outline is waiting for the project language service in IDE-06.",
+  message: "No current project-language symbol receipt is available.",
 })
 
 export const IdeBreadcrumbSchema = Schema.Struct({
-  kind: Schema.Literals(["project", "root", "folder", "file", "symbol_unavailable"]),
+  kind: Schema.Literals(["project", "root", "folder", "file"]),
   label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   pathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
 })
@@ -205,7 +205,6 @@ export const breadcrumbsForPath = (pathRef: string): ReadonlyArray<IdeBreadcrumb
       label: parts[index]!,
       pathRef: DesktopWorkspacePathRefSchema.make(part),
     })),
-    IdeBreadcrumbSchema.make({ kind: "symbol_unavailable", label: "Symbols unavailable", pathRef: null }),
   ]
 }
 

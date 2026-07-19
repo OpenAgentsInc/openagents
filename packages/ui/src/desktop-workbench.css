@@ -3744,3 +3744,64 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-editor-outline { min-height: 28px; padding-inline: var(--en-spacing-3); color: var(--en-color-textMuted); border-bottom: 1px solid var(--en-color-borderSubtle); }
 .oa-react-editor-outline strong { color: var(--en-color-text); }
 .oa-react-files-create { padding: var(--en-spacing-2); }
+
+/* IDE-06: project-language evidence is dense workbench chrome, not a second
+   editor. Exact-generation results share Outline, Problems, breadcrumbs, and
+   Monaco while document-local worker truth stays visible in the status bar. */
+.oa-react-file-editor { display: flex; flex-direction: column; }
+.oa-react-file-tab-actions,
+.oa-react-file-tabs,
+.oa-react-editor-breadcrumbs,
+.oa-react-editor-toolbar,
+.oa-react-editor-settings,
+.oa-react-editor-save-as,
+.oa-react-editor-conflict,
+.oa-react-language-panel { flex: 0 0 auto; }
+.oa-react-editor-toolbar > div { overflow-x: auto; }
+.oa-react-language-status { max-width: 190px; overflow: hidden; padding-inline: 6px; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-language-status[data-language-service="ready"] { color: var(--en-color-success); }
+.oa-react-language-status:is([data-language-service="degraded"], [data-language-service="failed"]) { color: var(--en-color-warning); }
+.oa-react-editor-work-area { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-width: 0; min-height: 140px; flex: 1 1 auto; overflow: hidden; }
+.oa-react-editor-outline { display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-right: 1px solid var(--en-color-borderSubtle); border-bottom: 0; background: var(--en-color-surfaceSubtle); }
+.oa-react-editor-outline > header { display: grid; gap: 4px; padding: 6px; border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-editor-outline input { height: 24px; font-size: 10px; }
+.oa-react-editor-outline > p { margin: 8px; color: var(--en-color-textMuted); font-size: 10px; line-height: 1.4; }
+.oa-react-editor-outline ol,
+.oa-react-problems-list ol { min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.oa-react-editor-outline ol { flex: 1 1 auto; }
+.oa-react-editor-outline li button,
+.oa-react-problems-list li button { display: flex; width: 100%; min-width: 0; align-items: center; gap: 6px; border: 0; color: var(--en-color-textSecondary); background: transparent; font-size: 10px; text-align: left; }
+.oa-react-editor-outline li button { min-height: 24px; padding-block: 2px; padding-right: 6px; }
+.oa-react-editor-outline li button:is(:hover, :focus-visible),
+.oa-react-editor-outline li button[aria-current="true"],
+.oa-react-problems-list li button:is(:hover, :focus-visible),
+.oa-react-problems-list li button[aria-current="true"] { color: var(--en-color-textPrimary); outline: 1px solid var(--en-color-focusRing); outline-offset: -1px; background: var(--en-color-stateHover); }
+.oa-react-editor-outline li span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-editor-outline li small { color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-language-panel { min-height: 112px; max-height: min(220px, 30vh); overflow: hidden; border-top: 1px solid var(--en-color-borderStrong); background: var(--en-color-surface); }
+.oa-react-language-panel > header { display: flex; min-height: 27px; align-items: center; gap: 4px; padding-inline: 7px; border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-language-panel > header strong { margin-right: 4px; font-size: 10px; }
+.oa-react-language-panel > header button { min-height: 20px; padding: 1px 6px; border: 0; color: var(--en-color-textMuted); background: transparent; font-size: 9px; }
+.oa-react-language-panel > header button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
+.oa-react-language-panel > header span { margin-left: auto; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; }
+.oa-react-language-panel-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 34%); min-height: 0; height: calc(100% - 27px); }
+.oa-react-problems-list { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--en-color-borderSubtle); }
+.oa-react-problems-list > p { margin: 8px; color: var(--en-color-textMuted); font-size: 10px; }
+.oa-react-problems-list li button { min-height: 25px; padding: 3px 7px; }
+.oa-react-problems-list li b { width: 15px; flex: 0 0 auto; color: var(--en-color-danger); font-family: var(--oa-font-mono); font-size: 9px; }
+.oa-react-problems-list li span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-problems-list li small { color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; }
+.oa-react-language-actions { min-width: 0; min-height: 0; padding: 5px; overflow: auto; color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-language-actions form,
+.oa-react-language-edit-preview { display: flex; align-items: center; gap: 4px; }
+.oa-react-language-actions input { min-width: 80px; height: 24px; flex: 1 1 auto; font-size: 10px; }
+.oa-react-language-edit-preview { justify-content: space-between; padding-block: 4px; }
+.oa-react-language-actions > div:not(.oa-react-language-edit-preview) { display: grid; gap: 2px; padding-top: 4px; border-top: 1px solid var(--en-color-borderSubtle); }
+.oa-react-language-actions > div > button { overflow: hidden; padding: 2px 4px; border: 0; color: var(--en-color-textSecondary); background: transparent; font-family: var(--oa-font-mono); font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-language-actions > div > button:is(:hover, :focus-visible) { color: var(--en-color-textPrimary); outline: 1px solid var(--en-color-focusRing); background: var(--en-color-stateHover); }
+@media (max-width: 880px) {
+  .oa-react-editor-work-area { grid-template-columns: minmax(0, 1fr); }
+  .oa-react-editor-outline { display: none; }
+  .oa-react-language-panel-grid { grid-template-columns: minmax(0, 1fr); }
+  .oa-react-language-actions { display: none; }
+}

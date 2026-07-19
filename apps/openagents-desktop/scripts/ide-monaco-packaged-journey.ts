@@ -15,6 +15,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { Schema } from "effect"
 
 import { IdeMonacoPackagedJourneyReceiptSchema } from "../src/ide/monaco-benchmark-contract.ts"
+import { IdeLanguagePackagedJourneyReceiptSchema } from "../src/ide/language-benchmark-contract.ts"
 
 const appRoot = path.resolve(import.meta.dirname, "..")
 const repositoryRoot = path.resolve(appRoot, "../..")
@@ -41,6 +42,7 @@ const screenshotRef = "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-
 const screenshotPath = path.join(repositoryRoot, screenshotRef)
 const receiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-03-packaged-journey.json")
 const workbenchReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-04-packaged-workbench.json")
+const languageReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-06-packaged-language.json")
 const marker = "// IDE-03 packaged Monaco edit"
 const pathRef = "ide03.ts"
 
@@ -137,6 +139,24 @@ const main = async (): Promise<void> => {
       await target.click()
     }
     await primary.locator('[data-monaco-phase="ready"]').waitFor({ state: "visible", timeout: 30_000 })
+    const localTier = primary.locator('[data-language-tier="document-local"]')
+    await localTier.waitFor({ state: "visible", timeout: 30_000 })
+    await page.waitForFunction(() => document.querySelector('[data-language-tier="document-local"]')?.textContent?.includes("worker ready") === true, undefined, { timeout: 30_000 })
+    const projectStatus = page.locator('.oa-react-language-status[data-language-service="ready"]')
+    await projectStatus.waitFor({ state: "visible", timeout: 30_000 })
+    await page.waitForFunction(() => {
+      const value = document.querySelector('[data-language-tier="project-local"]')?.textContent ?? ""
+      return !value.includes("no current evidence")
+    }, undefined, { timeout: 30_000 })
+    const projectStatusText = await projectStatus.textContent() ?? ""
+    const projectServiceGeneration = Number.parseInt(projectStatusText.match(/generation\s+(\d+)/u)?.[1] ?? "0", 10)
+    const problemsReceipt = page.locator('.oa-react-language-panel > header > span')
+    await page.waitForFunction(() => {
+      const value = document.querySelector('.oa-react-language-panel > header > span')?.textContent ?? ""
+      return !value.includes("No current diagnostic receipt")
+    }, undefined, { timeout: 30_000 })
+    const outlineButtons = page.locator('.oa-react-editor-outline ol button')
+    await outlineButtons.first().waitFor({ state: "visible", timeout: 30_000 })
     const editorReady = await primary.getAttribute("aria-label") === `Editor for ${pathRef}`
     const legacyTextareaAbsent = await page.locator('.oa-react-editor-textarea, .oa-react-file-editor > textarea').count() === 0
     const rootWithheld = !(await page.locator('body').innerText()).includes(workspaceRoot)
@@ -252,8 +272,27 @@ const main = async (): Promise<void> => {
       throw new Error(`IDE-04 packaged workbench journey failed: ${JSON.stringify(workbenchReceipt)}`)
     }
     writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
+    const languageReceipt = Schema.decodeUnknownSync(IdeLanguagePackagedJourneyReceiptSchema)({
+      schemaVersion: "openagents.desktop.ide-language-packaged-journey.v1",
+      capturedAt: new Date().toISOString(),
+      commitSha: receipt.commitSha,
+      platform: process.platform,
+      architecture: process.arch,
+      packaged: true,
+      pathRef,
+      documentLocalTierReady: (await localTier.textContent() ?? "").includes("worker ready"),
+      projectTierReady: projectStatusText.includes("Project 6.0.3"),
+      projectServiceGeneration,
+      problemsReceiptReady: !((await problemsReceipt.textContent() ?? "").includes("No current diagnostic receipt")),
+      outlineReady: await outlineButtons.count() > 0,
+      rootWithheld,
+      offlineLocalWorkers: offlinePrivateScheme,
+      screenshotRef,
+    })
+    writeFileSync(languageReceiptPath, `${JSON.stringify(languageReceipt, null, 2)}\n`, { mode: 0o600 })
     process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
     process.stdout.write(`[openagents-desktop] IDE-04 packaged workbench journey: ${workbenchReceiptPath}\n`)
+    process.stdout.write(`[openagents-desktop] IDE-06 packaged language journey: ${languageReceiptPath}\n`)
   } finally {
     await browser?.close()
     if (launchedApplicationPid !== null) {

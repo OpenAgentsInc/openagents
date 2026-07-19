@@ -104,6 +104,17 @@ import {
   type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
+import {
+  DesktopWorkspaceLanguageCancelChannel,
+  DesktopWorkspaceLanguageRequestChannel,
+  DesktopWorkspaceLanguageStopChannel,
+  decodeIdeLanguageCancelResponse,
+  decodeIdeLanguageCancelRequest,
+  decodeIdeLanguageRequest,
+  decodeIdeLanguageRequestResponse,
+  decodeIdeLanguageStopResponse,
+  decodeIdeLanguageStopRequest,
+} from "./ide/language-contract.ts"
 import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
@@ -696,6 +707,27 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     if (request === null) return { state: "unavailable", reason: "invalid_ref", message: "The Save As request is invalid." }
     const response = await ipcRenderer.invoke(DesktopWorkspaceDocumentSaveAsChannel, request)
     return decodeWorkspaceDocumentResult(response) ?? { state: "unavailable", reason: "unavailable", message: "The Save As response is invalid." }
+  },
+  requestWorkspaceLanguage: async (value: unknown) => {
+    const request = decodeIdeLanguageRequest(value)
+    if (request === null) return null
+    return decodeIdeLanguageRequestResponse(
+      await ipcRenderer.invoke(DesktopWorkspaceLanguageRequestChannel, request),
+    )
+  },
+  cancelWorkspaceLanguage: async (value: unknown) => {
+    const request = decodeIdeLanguageCancelRequest(value)
+    if (request === null) return null
+    return decodeIdeLanguageCancelResponse(
+      await ipcRenderer.invoke(DesktopWorkspaceLanguageCancelChannel, request),
+    )
+  },
+  stopWorkspaceLanguage: async (value: unknown) => {
+    const request = decodeIdeLanguageStopRequest(value)
+    if (request === null) return null
+    return decodeIdeLanguageStopResponse(
+      await ipcRenderer.invoke(DesktopWorkspaceLanguageStopChannel, request),
+    )
   },
   refreshWorkspace: async (): Promise<boolean> =>
     (await ipcRenderer.invoke(DesktopWorkspaceRefreshChannel)) === true,

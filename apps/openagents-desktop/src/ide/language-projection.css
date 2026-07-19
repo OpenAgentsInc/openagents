@@ -1,0 +1,23 @@
+.oa-ide-project-inlay {
+  padding-inline: 3px;
+  color: #737aa2;
+  font-size: .88em;
+  font-style: italic;
+}
+
+.oa-ide-project-semantic-class,
+.oa-ide-project-semantic-interface,
+.oa-ide-project-semantic-typeParameter {
+  color: #2ac3de;
+}
+
+.oa-ide-project-semantic-function,
+.oa-ide-project-semantic-method {
+  color: #7aa2f7;
+}
+
+.oa-ide-project-semantic-parameter,
+.oa-ide-project-semantic-variable,
+.oa-ide-project-semantic-property {
+  color: #c0caf5;
+}

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "openagents.desktop.ide-language-benchmark.v1",
+  "issue": "IDE-06",
+  "generatedAt": "2026-07-19T13:45:01.640Z",
+  "runtime": {
+    "node": "v24.13.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "providerVersion": "6.0.3",
+    "executable": "typescript/lib/tsserverlibrary",
+    "placement": "project_local"
+  },
+  "corpus": {
+    "files": 151,
+    "sourceBytes": 21712,
+    "samples": 12,
+    "capabilitiesExercised": [
+      "diagnostics",
+      "completion",
+      "completion_resolve",
+      "hover",
+      "definition",
+      "declaration",
+      "type_definition",
+      "references",
+      "document_symbols",
+      "workspace_symbols",
+      "rename_preview",
+      "format_document",
+      "format_range",
+      "code_actions",
+      "semantic_tokens",
+      "inlay_hints",
+      "folding_ranges"
+    ]
+  },
+  "latency": {
+    "firstDiagnosticsMs": 200.012792,
+    "diagnostics": {
+      "p50Ms": 0.43579200000004903,
+      "p95Ms": 1.114291000000037,
+      "p99Ms": 1.114291000000037,
+      "maxMs": 1.718999999999994
+    },
+    "documentSymbols": {
+      "p50Ms": 0.38145900000000665,
+      "p95Ms": 0.7777080000000183,
+      "p99Ms": 0.7777080000000183,
+      "maxMs": 6.389374999999973
+    }
+  },
+  "cancellationFence": {
+    "scheduled": 100,
+    "committed": 1,
+    "superseded": 99
+  },
+  "restart": {
+    "crashObserved": true,
+    "recoveredServiceGeneration": 2,
+    "restartLatencyMs": 192.37650000000008
+  },
+  "resources": {
+    "workersStarted": 2,
+    "activeWorkersAfter": 0,
+    "pendingRequestsAfter": 0
+  },
+  "budgets": {
+    "firstDiagnosticsMs": 4000,
+    "diagnosticsP95Ms": 750,
+    "documentSymbolsP95Ms": 750,
+    "restartMs": 4000,
+    "passed": true
+  },
+  "offline": {
+    "remoteRequests": 0
+  }
+}

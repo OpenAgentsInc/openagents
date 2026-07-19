@@ -61,8 +61,10 @@ import {
 import {
   decodeWorkspaceEditorRecoverySnapshot,
   unavailableWorkspaceDocumentBridge,
+  unavailableWorkspaceLanguageBridge,
   workspaceEditorRecoverySnapshot,
   type WorkspaceDocumentBridge,
+  type WorkspaceLanguageBridge,
 } from "./workspace-editor.ts"
 import {
   desktopShellIntents,
@@ -211,6 +213,9 @@ type DesktopBridge = Readonly<{
   openWorkspaceDocument?: (value: unknown) => Promise<unknown>
   saveWorkspaceDocument?: (value: unknown) => Promise<unknown>
   saveWorkspaceDocumentAs?: (value: unknown) => Promise<unknown>
+  requestWorkspaceLanguage?: (value: unknown) => Promise<unknown>
+  cancelWorkspaceLanguage?: (value: unknown) => Promise<unknown>
+  stopWorkspaceLanguage?: (value: unknown) => Promise<unknown>
   refreshWorkspace?: () => Promise<unknown>
   workspaceSubscribe?: (listener: (change: DesktopWorkspaceChange) => void) => () => void
   codexAccounts?: () => Promise<unknown>
@@ -399,6 +404,12 @@ const workspaceDocumentBridge: WorkspaceDocumentBridge = {
   openWorkspaceDocument: (value) => readBridge()?.openWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.openWorkspaceDocument(value),
   saveWorkspaceDocument: (value) => readBridge()?.saveWorkspaceDocument?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocument(value),
   saveWorkspaceDocumentAs: (value) => readBridge()?.saveWorkspaceDocumentAs?.(value) ?? unavailableWorkspaceDocumentBridge.saveWorkspaceDocumentAs(value),
+}
+
+const workspaceLanguageBridge: WorkspaceLanguageBridge = {
+  requestWorkspaceLanguage: value => readBridge()?.requestWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.requestWorkspaceLanguage(value),
+  cancelWorkspaceLanguage: value => readBridge()?.cancelWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.cancelWorkspaceLanguage(value),
+  stopWorkspaceLanguage: value => readBridge()?.stopWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.stopWorkspaceLanguage(value),
 }
 
 /**
@@ -1211,6 +1222,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         },
         browser: workspaceBrowserBridge,
         documents: workspaceDocumentBridge,
+        language: workspaceLanguageBridge,
         recovery: {
           load: loadWorkspaceRecovery,
           save: saveWorkspaceRecovery,

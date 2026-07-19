@@ -442,6 +442,19 @@ import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { openAdmittedDesktopWorkspace } from "./desktop-workspace-admission.ts"
 import {
+  DesktopWorkspaceLanguageCancelChannel,
+  DesktopWorkspaceLanguageRequestChannel,
+  DesktopWorkspaceLanguageStopChannel,
+  IdeLanguageCancelResponseSchema,
+  IdeLanguageRequestResponseSchema,
+  IdeLanguageServiceSnapshotSchema,
+  IdeLanguageStopResponseSchema,
+  decodeIdeLanguageCancelRequest,
+  decodeIdeLanguageRequest,
+  decodeIdeLanguageStopRequest,
+} from "./ide/language-contract.ts"
+import { IdeLanguageServiceRefSchema } from "./ide/project-contract.ts"
+import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
   ProductSpecEditProposeChannel,
@@ -2026,6 +2039,51 @@ ipcMain.handle(DesktopWorkspaceDocumentSaveAsChannel, (event, value: unknown) =>
   return request === null || workspace === null
     ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before using Save As." }
     : workspace.saveDocumentAs(request)
+})
+ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
+  const request = decodeIdeLanguageRequest(value)
+  if (!isTrustedRuntimeGatewaySender(event) || request === null) return null
+  const workspace = hostLifecycle.workspace()
+  if (workspace === null || request.grantRef !== workspace.grantRef) {
+    return IdeLanguageRequestResponseSchema.cases.Rejected.make({
+      requestRef: request.requestRef,
+      reason: "project_stopped",
+      message: "Choose the matching workspace before requesting project language intelligence.",
+      service: IdeLanguageServiceSnapshotSchema.cases.Unconfigured.make({
+        serviceRef: IdeLanguageServiceRefSchema.make("ide.language-service.typescript"),
+      }),
+    })
+  }
+  return await workspace.languageRequest(request)
+})
+ipcMain.handle(DesktopWorkspaceLanguageCancelChannel, async (event, value: unknown) => {
+  const request = decodeIdeLanguageCancelRequest(value)
+  if (!isTrustedRuntimeGatewaySender(event) || request === null) return null
+  const workspace = hostLifecycle.workspace()
+  if (workspace === null || request.grantRef !== workspace.grantRef) {
+    return IdeLanguageCancelResponseSchema.make({
+      requestRef: request.requestRef,
+      acknowledged: false,
+    })
+  }
+  return await workspace.languageCancel(request)
+})
+ipcMain.handle(DesktopWorkspaceLanguageStopChannel, async (event, value: unknown) => {
+  const request = decodeIdeLanguageStopRequest(value)
+  if (!isTrustedRuntimeGatewaySender(event) || request === null) return null
+  const workspace = hostLifecycle.workspace()
+  if (workspace === null || request.grantRef !== workspace.grantRef) {
+    return IdeLanguageStopResponseSchema.make({
+      service: IdeLanguageServiceSnapshotSchema.cases.Stopped.make({
+        serviceRef: IdeLanguageServiceRefSchema.make("ide.language-service.typescript"),
+        reason: "project_stopped",
+        stoppedAt: new Date().toISOString(),
+        activeRequests: 0,
+        queuedRequests: 0,
+      }),
+    })
+  }
+  return await workspace.languageStop(request)
 })
 ipcMain.handle(DesktopWorkspaceRefreshChannel, event => {
   if (!isTrustedRuntimeGatewaySender(event)) return false

@@ -276,7 +276,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This contract owns daily workbench projection and orchestration only. The path index remains the source of admitted project/root/worktree identity; the document reducer remains canonical for bytes, dirty state, and recovery; the workspace service remains the only filesystem authority; Monaco receives validated display/options data only; and Pierre receives a bounded projection plus typed commands. Symbol results stay explicitly unavailable until IDE-06, Tokyo Night is the only admitted theme, and neither React nor these workbench schemas acquire roots, filesystem callbacks, process authority, or arbitrary Monaco contribution access.",
+        "This contract owns daily workbench projection and orchestration only. The path index remains the source of admitted project/root/worktree identity; the document reducer remains canonical for bytes, dirty state, and recovery; the workspace service remains the only filesystem authority; Monaco receives validated display/options data only; and Pierre receives a bounded projection plus typed commands. Symbol results are populated only by IDE-06 exact-generation receipts, Tokyo Night is the only admitted theme, and neither React nor these workbench schemas acquire roots, filesystem callbacks, process authority, or arbitrary Monaco contribution access.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_daily_workbench.v1",
       enforcementTier: "test-sweep",
@@ -399,6 +399,69 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       surface: "openagents-desktop",
       verification:
         "verify:ide-05 builds Desktop, emits and decodes the 500-file benchmark/teardown receipt, typechecks, runs review/project/Git/host/refusal/Pierre/DOM/accessibility/behavior/boundary suites, and checks IDE boundaries. The packaged offline journey renders the eight-source fixture corpus from the ASAR with Tokyo Night and no remote theme/code dependency before recording source-class and teardown evidence.",
+    },
+    {
+      authorityBoundary:
+        "This owns two explicit language tiers: lazy packaged Monaco workers provide document-local mechanics inside the replaceable editor island, while one Effect-owned project-local TypeScript service owns project intelligence, lifecycle, cancellation, restart, and exact evidence. The renderer receives only schema-decoded relative paths, opaque refs, generations, status, bounded items, and receipts; it never receives the root, process/worker handles, or language-service authority. Unsupported documents and chat-only sessions start no project language process. This does not admit cloud intelligence, embeddings, DAP, tasks, tests, or AI-generated edits.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_generation_safe_language.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/language-contract.ts",
+        "apps/openagents-desktop/src/ide/language-service.ts",
+        "apps/openagents-desktop/src/ide/language-utility-worker.ts",
+        "apps/openagents-desktop/src/ide/language-workbench-contract.ts",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json",
+        "docs/ide/2026-07-19-ide-06-generation-safe-language.md",
+        "github:OpenAgentsInc/openagents#9021",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes every first-corpus capability, tagged service/result/item/failure state, exact project/root/worktree/attachment/language/document/service generation, document-local versus project-local evidence tier, and root-redacted renderer projection.",
+          id: "openagents_desktop.ide_generation_safe_language.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/language-contract.test.ts",
+        },
+        {
+          description:
+            "Proves lazy startup, persistent project service, supersession, timeout, malformed response, stale-result stripping, supervised crash/restart generation advance, stop, and zero pending resources through typed Effect errors and service state.",
+          id: "openagents_desktop.ide_generation_safe_language.service",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/language-service.test.ts",
+        },
+        {
+          description:
+            "Runs the real bundled TypeScript 6.0.3 utility over 151 files, records first/warm diagnostics and document-symbol p50/p95/p99, schedules 100 superseding requests with exactly one commit, kills and recovers the provider at a new service generation, and stops with zero workers or pending requests.",
+          id: "openagents_desktop.ide_generation_safe_language.scale_restart",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-language-benchmark.ts",
+        },
+        {
+          description:
+            "The production workbench projects one exact receipt set into Monaco diagnostics/semantic styling/inlays/folds, Problems, Outline, breadcrumbs, definitions, references, rename/format/code-action previews, and canonical edit dispatch while explicitly labeling both language tiers and refusing older model versions.",
+          id: "openagents_desktop.ide_generation_safe_language.workbench",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/ide/language-workbench-contract.test.ts",
+        },
+      ],
+      productArea: "Desktop IDE language intelligence",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "Desktop has generation-safe local language intelligence with two visible tiers: lazy document-local Monaco JSON/CSS/HTML/TypeScript workers and a separately supervised Effect-owned project TypeScript service. The project tier preserves persistent language state, exact provider/version/placement and generation evidence, bounded queues/timeouts/cancellation/restart/teardown, the complete first capability corpus, shared Problems/Outline/breadcrumb/navigation/editor projections, and stale-result refusal; unsupported documents and non-IDE sessions pay zero project-process cost.",
+      surface: "openagents-desktop",
+      verification:
+        "verify:ide-06 rebuilds both worker tiers, emits the schema-decoded real-worker benchmark and restart receipt, typechecks, runs language/service/workbench/Monaco/editor/Electron/accessibility/behavior suites, and checks schema-first Effect and widget authority boundaries.",
     },
     {
       authorityBoundary:

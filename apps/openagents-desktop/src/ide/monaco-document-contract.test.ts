@@ -56,6 +56,7 @@ describe("IDE-03 schema-first Monaco document boundary", () => {
       documentRef,
       generation,
       sequence: IdeDocumentSequence.make(1),
+      documentVersion: IdeMonacoModelVersion.make(2),
       viewRef: IdeEditorViewRef.make("ide.view.schema.primary"),
       pathLabel: "src/schema.ts",
       language: "typescript",
@@ -67,6 +68,7 @@ describe("IDE-03 schema-first Monaco document boundary", () => {
       vimEnabled: false,
       editorOptions: resolveIdeMonacoEditorOptions(emptyIdeEditorSettings()),
       readOnly: false,
+      projectLanguage: null,
     })).toMatchObject({ documentRef, generation, language: "typescript" })
     const invalid = await Effect.runPromiseExit(Schema.decodeUnknownEffect(IdeMonacoDocumentEventSchema)({
       ...event,

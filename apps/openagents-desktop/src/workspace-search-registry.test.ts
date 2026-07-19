@@ -59,6 +59,10 @@ const fixtureWorkspace = (pending: Pending[]): DesktopWorkspaceService => ({
   save: () => ({ state: "unavailable", message: "unused" }),
   gitStatus: () => ({ state: "unavailable" }),
   gitDiff: () => ({ state: "unavailable", message: "unused" }),
+  languageRequest: async () => { throw new Error("unused") },
+  languageCancel: async () => { throw new Error("unused") },
+  languageStop: async () => { throw new Error("unused") },
+  languageSnapshot: async () => { throw new Error("unused") },
   dispose: () => undefined,
 })
 

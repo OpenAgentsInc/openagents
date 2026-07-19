@@ -24,6 +24,19 @@ import {
 } from "./workspace-search-host.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
+import {
+  makeWorkspaceLanguageHost,
+  type WorkspaceLanguageHost,
+} from "./ide/language-host.ts"
+import type {
+  IdeLanguageCancelRequest,
+  IdeLanguageCancelResponse,
+  IdeLanguageRequest,
+  IdeLanguageRequestResponse,
+  IdeLanguageServiceSnapshot,
+  IdeLanguageStopRequest,
+  IdeLanguageStopResponse,
+} from "./ide/language-contract.ts"
 
 const maxEntries = 120
 const maxBytes = 240_000
@@ -1141,6 +1154,10 @@ export type DesktopWorkspaceService = Readonly<{
   save: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => DesktopWorkspaceSaveResult
   gitStatus: () => DesktopWorkspaceGitStatus
   gitDiff: (requestedPath: string) => DesktopWorkspaceGitDiff
+  languageRequest: (input: IdeLanguageRequest) => Promise<IdeLanguageRequestResponse>
+  languageCancel: (input: IdeLanguageCancelRequest) => Promise<IdeLanguageCancelResponse>
+  languageStop: (input: IdeLanguageStopRequest) => Promise<IdeLanguageStopResponse>
+  languageSnapshot: () => Promise<IdeLanguageServiceSnapshot>
   dispose: () => void
 }>
 
@@ -1166,6 +1183,7 @@ export const openWorkspaceService = (
       onChange: (pathRef: string | null) => void,
     ) => Readonly<{ close: () => void }>
     searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
+    languageHostFactory?: (root: string, grantRef: string) => WorkspaceLanguageHost
     mutationIo?: WorkspaceMutationIo
     documentIo?: WorkspaceDocumentIo
     reveal?: (absolutePath: string) => Promise<boolean> | boolean
@@ -1178,6 +1196,10 @@ export const openWorkspaceService = (
     root,
     grantRef,
     desktopWorkerUrl(import.meta.url, "workspace-search-worker.js"),
+  )
+  const languageHost = options.languageHostFactory?.(root, grantRef) ?? makeWorkspaceLanguageHost(
+    root,
+    desktopWorkerUrl(import.meta.url, "language-utility-worker.js"),
   )
   let disposed = false
   let epoch = 0
@@ -1391,6 +1413,10 @@ export const openWorkspaceService = (
     gitDiff: requestedPath => disposed
       ? { state: "unavailable", message: "The selected workspace has been disposed." }
       : workspaceGitDiff(root, requestedPath),
+    languageRequest: input => languageHost.request(input),
+    languageCancel: input => languageHost.cancel(input),
+    languageStop: input => languageHost.stop(input),
+    languageSnapshot: () => languageHost.snapshot(),
     dispose: () => {
       if (disposed) return
       disposed = true
@@ -1399,6 +1425,7 @@ export const openWorkspaceService = (
       treeCache.clear()
       searchCache.clear()
       searchHost.dispose()
+      languageHost.dispose()
     },
   }
 }

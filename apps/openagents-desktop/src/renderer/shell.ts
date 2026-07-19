@@ -165,12 +165,14 @@ import {
   decodeWorkspaceEditorRecoverySnapshot,
   makeWorkspaceEditorHandlers,
   unavailableWorkspaceDocumentBridge,
+  unavailableWorkspaceLanguageBridge,
   workspaceEditorIntents,
   workspaceEditorRecoverySnapshot,
   workspaceEditorTabDirty,
   workspaceEditorView,
   withWorkspaceEditorRenamed,
   type WorkspaceDocumentBridge,
+  type WorkspaceLanguageBridge,
   type WorkspaceEditorRecoverySnapshot,
   type WorkspaceEditorState,
 } from "./workspace-editor.ts"
@@ -1837,6 +1839,7 @@ export type WorkspaceHost = Readonly<{
   workingDirectory?: () => Promise<string | null>
   browser?: WorkspaceBrowserBridge
   documents?: WorkspaceDocumentBridge
+  language?: WorkspaceLanguageBridge
   recovery?: Readonly<{
     load: (workspaceSessionRef: string) => unknown
     save?: (workspaceSessionRef: string, snapshot: WorkspaceEditorRecoverySnapshot) => void
@@ -2220,6 +2223,7 @@ export const makeDesktopShellHandlers = (
     {
       setVimEnabled: enabled => presentationHost.setEditorVimEnabled?.(enabled) ?? Promise.resolve(),
     },
+    workspaceHost.language ?? unavailableWorkspaceLanguageBridge,
   )
   const synchronizeWorkingDirectory = Effect.gen(function* () {
     const workingDirectory = yield* Effect.promise(

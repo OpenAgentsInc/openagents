@@ -45,10 +45,10 @@ import {
   makeIdeDocumentRef,
   type IdeMonacoDocumentEvent,
 } from "../ide/monaco-document-contract.ts"
-import { IdeEditorGroupRefSchema } from "../ide/project-contract.ts"
 import { IdePathIndexIdentitySchema, type IdePathIndexIdentity } from "../ide/path-index-contract.ts"
 import {
   IdeNavigationEntryRefSchema,
+  IdeOutlineStateSchema,
   IdeEditorSettingIdSchema,
   IdeEditorSettingOverrideSchema,
   IdeWorkbenchStateSchema,
@@ -66,6 +66,35 @@ import {
   type IdeEditorSettingOverride,
   type IdeWorkbenchState,
 } from "../ide/workbench-contract.ts"
+import {
+  IdeLanguageWorkbenchStateSchema,
+  emptyIdeLanguageWorkbenchState,
+  withLanguageProblemSelected,
+  withLanguageProblemsFilter,
+  withLanguageRequestStarted,
+  withLanguageResponse,
+  withLanguageSymbolSelected,
+} from "../ide/language-workbench-contract.ts"
+import {
+  IdeLanguageCapabilitySchema,
+  IdeLanguageRequestResponseSchema,
+  IdeLanguageRequestSchema,
+  IdeLanguageRequestRefSchema,
+  IdeLanguageItemRefSchema,
+  IdeLanguageResultRefSchema,
+  decodeIdeLanguageRequestResponse,
+  type IdeLanguageCapability,
+  type IdeLanguageRequest,
+} from "../ide/language-contract.ts"
+import {
+  IdeAttachmentGenerationSchema,
+  IdeEditorGroupRefSchema,
+  IdeFileRefSchema,
+  IdeLanguageGenerationSchema,
+  IdeProjectRefSchema,
+  IdeRootRefSchema,
+  IdeWorktreeRefSchema,
+} from "../ide/project-contract.ts"
 
 const maxTabs = 12
 const maxHistory = 100
@@ -111,6 +140,9 @@ export const WorkspaceEditorStateSchema = Schema.Struct({
   saveAsPathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
   closedPathRefs: Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(20)),
   workbench: IdeWorkbenchStateSchema,
+  language: IdeLanguageWorkbenchStateSchema,
+  languageIdentity: Schema.NullOr(IdePathIndexIdentitySchema),
+  languageGeneration: IdeLanguageGenerationSchema,
 }).annotate({ identifier: "WorkspaceEditorState" })
 export type WorkspaceEditorState = typeof WorkspaceEditorStateSchema.Type
 
@@ -128,7 +160,34 @@ export const emptyWorkspaceEditorState = (
   saveAsPathRef: null,
   closedPathRefs: [],
   workbench: emptyIdeWorkbenchState(),
+  language: emptyIdeLanguageWorkbenchState(),
+  languageIdentity: null,
+  languageGeneration: IdeLanguageGenerationSchema.make(1),
 })
+
+const sameLanguageIdentity = (
+  left: IdePathIndexIdentity | null,
+  right: IdePathIndexIdentity,
+): boolean => left !== null &&
+  left.projectRef === right.projectRef &&
+  left.rootRef === right.rootRef &&
+  left.worktreeRef === right.worktreeRef &&
+  left.attachmentRef === right.attachmentRef &&
+  left.attachmentGeneration === right.attachmentGeneration
+
+const withLanguageIdentity = (
+  state: WorkspaceEditorState,
+  identity: IdePathIndexIdentity | undefined,
+): WorkspaceEditorState => identity === undefined || sameLanguageIdentity(state.languageIdentity, identity)
+  ? state
+  : {
+      ...state,
+      languageIdentity: identity,
+      languageGeneration: state.languageIdentity === null
+        ? IdeLanguageGenerationSchema.make(1)
+        : IdeLanguageGenerationSchema.make(state.languageGeneration + 1),
+      language: emptyIdeLanguageWorkbenchState(),
+    }
 
 export const workspaceEditorTabDirty = (tab: WorkspaceEditorTab): boolean =>
   tab.document !== null && tab.draft !== tab.document.content
@@ -221,7 +280,38 @@ const syncWorkbenchGroups = (
 
 const withSynchronizedWorkbench = (state: WorkspaceEditorState): WorkspaceEditorState => ({
   ...state,
-  workbench: syncWorkbenchGroups(state.workbench, state.tabs, state.activePathRef, state.split),
+  workbench: {
+    ...syncWorkbenchGroups(state.workbench, state.tabs, state.activePathRef, state.split),
+    outline: (() => {
+      const tab = activeTab(state)
+      if (tab === null || tab.document === null || tab.documentRef === undefined || tab.generation === undefined || tab.modelVersion === undefined || !["typescript", "javascript"].includes(tab.document.languageMode)) {
+        return IdeOutlineStateSchema.cases.Unavailable.make({
+          reason: "language_service_not_admitted",
+          message: "Project symbols are not started for this document type.",
+        })
+      }
+      const result = state.language.results.findLast(candidate => candidate.capability === "document_symbols" &&
+        candidate.documentRef === tab.documentRef && candidate.documentGeneration === tab.generation &&
+        candidate.documentVersion === tab.modelVersion && candidate.state._tag !== "Stale" && candidate.state._tag !== "Cancelled")
+      if (result === undefined) return state.language.activeRequestRefs.length > 0
+        ? IdeOutlineStateSchema.cases.Loading.make({})
+        : IdeOutlineStateSchema.cases.Unavailable.make({
+            reason: "language_service_not_admitted",
+            message: state.language.lastRejection?.message ?? "No current project-language symbol receipt is available.",
+          })
+      const symbols = result.items.flatMap(item => item._tag === "Symbol" && item.range !== null && item.pathRef === tab.pathRef
+        ? [{ symbolRef: item.symbolRef, label: item.name, selection: { start: item.range.start.offset, end: item.range.end.offset } }]
+        : []).slice(0, 2_000)
+      if (symbols.length === 0) return IdeOutlineStateSchema.cases.Empty.make({})
+      if (result.state._tag === "Partial" || result.state._tag === "Truncated") return IdeOutlineStateSchema.cases.Partial.make({
+        message: result.state._tag === "Partial" ? result.state.reason : `${result.state.omitted} symbols were omitted.`,
+      })
+      if (result.state._tag === "Degraded" || result.state._tag === "Unavailable") return IdeOutlineStateSchema.cases.Degraded.make({
+        message: result.state._tag === "Degraded" ? result.state.reason : result.state.message,
+      })
+      return IdeOutlineStateSchema.cases.Ready.make({ symbols })
+    })(),
+  },
 })
 
 const withWorkspaceEditorNavigation = (
@@ -1005,6 +1095,16 @@ export const WorkspaceEditorSaveAsChanged = defineIntent("WorkspaceEditorSaveAsC
 export const WorkspaceEditorSaveAsSubmitted = defineIntent("WorkspaceEditorSaveAsSubmitted", Schema.Null)
 export const WorkspaceEditorSaveAsCancelled = defineIntent("WorkspaceEditorSaveAsCancelled", Schema.Null)
 export const WorkspaceEditorRecoveryRequested = defineIntent("WorkspaceEditorRecoveryRequested", WorkspaceEditorRecoveryPayloadSchema)
+export const WorkspaceEditorLanguageRefreshRequested = defineIntent("WorkspaceEditorLanguageRefreshRequested", Schema.Null)
+export const WorkspaceEditorLanguageCapabilityRequested = defineIntent("WorkspaceEditorLanguageCapabilityRequested", Schema.Struct({
+  capability: IdeLanguageCapabilitySchema,
+  query: Schema.NullOr(Schema.String.check(Schema.isMaxLength(300))),
+}))
+export const WorkspaceEditorLanguageEditsApplied = defineIntent("WorkspaceEditorLanguageEditsApplied", IdeLanguageResultRefSchema)
+export const WorkspaceEditorProblemSelected = defineIntent("WorkspaceEditorProblemSelected", Schema.NullOr(Schema.String.check(Schema.isMaxLength(192))))
+export const WorkspaceEditorSymbolSelected = defineIntent("WorkspaceEditorSymbolSelected", Schema.NullOr(Schema.String.check(Schema.isMaxLength(192))))
+export const WorkspaceEditorLanguageLocationSelected = defineIntent("WorkspaceEditorLanguageLocationSelected", IdeLanguageItemRefSchema)
+export const WorkspaceEditorProblemsFilterChanged = defineIntent("WorkspaceEditorProblemsFilterChanged", Schema.Literals(["all", "errors", "warnings"]))
 
 export const workspaceEditorIntents = [
   WorkspaceEditorOpenRequested,
@@ -1053,6 +1153,13 @@ export const workspaceEditorIntents = [
   WorkspaceEditorSaveAsSubmitted,
   WorkspaceEditorSaveAsCancelled,
   WorkspaceEditorRecoveryRequested,
+  WorkspaceEditorLanguageRefreshRequested,
+  WorkspaceEditorLanguageCapabilityRequested,
+  WorkspaceEditorLanguageEditsApplied,
+  WorkspaceEditorProblemSelected,
+  WorkspaceEditorSymbolSelected,
+  WorkspaceEditorLanguageLocationSelected,
+  WorkspaceEditorProblemsFilterChanged,
 ] as const
 
 export type WorkspaceEditorCapableState = Readonly<{ workspaceEditor: WorkspaceEditorState }>
@@ -1063,10 +1170,22 @@ export type WorkspaceDocumentBridge = Readonly<{
   saveWorkspaceDocumentAs: (value: unknown) => Promise<unknown>
 }>
 
+export type WorkspaceLanguageBridge = Readonly<{
+  requestWorkspaceLanguage: (value: unknown) => Promise<unknown>
+  cancelWorkspaceLanguage: (value: unknown) => Promise<unknown>
+  stopWorkspaceLanguage: (value: unknown) => Promise<unknown>
+}>
+
 export const unavailableWorkspaceDocumentBridge: WorkspaceDocumentBridge = {
   openWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace documents are unavailable." }),
   saveWorkspaceDocument: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace document saving is unavailable." }),
   saveWorkspaceDocumentAs: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace Save As is unavailable." }),
+}
+
+export const unavailableWorkspaceLanguageBridge: WorkspaceLanguageBridge = {
+  requestWorkspaceLanguage: async () => null,
+  cancelWorkspaceLanguage: async () => null,
+  stopWorkspaceLanguage: async () => null,
 }
 
 export type WorkspaceEditorPreferenceHost = Readonly<{
@@ -1087,11 +1206,152 @@ const suggestedSaveAsPathRef = (pathRef: string): string => {
     : `${directory}${name.slice(0, dot)}-copy${name.slice(dot)}`
 }
 
+const fnv1aLanguage = (value: string): string => {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+const languagePositionAt = (content: string, offset: number) => {
+  const bounded = Math.max(0, Math.min(content.length, Math.trunc(offset)))
+  let line = 1
+  let lineStart = 0
+  for (let index = 0; index < bounded; index += 1) {
+    if (content.charCodeAt(index) !== 10) continue
+    line += 1
+    lineStart = index + 1
+  }
+  return { line, column: bounded - lineStart + 1, offset: bounded }
+}
+
+const languageRequestFor = (
+  editor: WorkspaceEditorState,
+  capability: IdeLanguageCapability,
+  query: string | null = null,
+): IdeLanguageRequest | null => {
+  const tab = activeTab(editor)
+  const identity = editor.languageIdentity
+  if (
+    tab === null ||
+    tab.document === null ||
+    tab.documentRef === undefined ||
+    tab.generation === undefined ||
+    identity === null ||
+    !["typescript", "javascript"].includes(tab.document.languageMode)
+  ) return null
+  const serviceGeneration = editor.language.service._tag === "Ready"
+    ? editor.language.service.serviceGeneration
+    : null
+  const selectionStart = languagePositionAt(tab.draft, tab.selection.start)
+  const selectionEnd = languagePositionAt(tab.draft, tab.selection.end)
+  const suffix = fnv1aLanguage(`${tab.documentRef}:${capability}:${editor.language.nextRequestOrdinal}:${tab.modelVersion ?? 1}`)
+  return IdeLanguageRequestSchema.make({
+    schemaVersion: "openagents.desktop.ide-language-request.v1",
+    grantRef: tab.document.grantRef,
+    requestRef: IdeLanguageRequestRefSchema.make(`ide.language-request.${suffix}`),
+    capability,
+    projectRef: IdeProjectRefSchema.make(identity.projectRef),
+    rootRef: IdeRootRefSchema.make(identity.rootRef),
+    worktreeRef: IdeWorktreeRefSchema.make(identity.worktreeRef),
+    attachmentRef: identity.attachmentRef,
+    attachmentGeneration: IdeAttachmentGenerationSchema.make(identity.attachmentGeneration),
+    languageGeneration: editor.languageGeneration,
+    documentRef: tab.documentRef,
+    fileRef: IdeFileRefSchema.make(`ide.file.${fnv1aLanguage(`${identity.rootRef}:${tab.pathRef}`)}`),
+    pathRef: tab.pathRef,
+    documentGeneration: tab.generation,
+    documentVersion: tab.modelVersion ?? IdeMonacoModelVersion.make(1),
+    expectedServiceGeneration: serviceGeneration,
+    requestedAt: new Date().toISOString(),
+    language: tab.document.languageMode,
+    content: tab.draft,
+    position: selectionEnd,
+    range: { start: selectionStart, end: selectionEnd },
+    query,
+    limit: capability === "workspace_symbols" ? 2_000 : 1_000,
+    timeoutMs: capability === "workspace_symbols" ? 10_000 : 5_000,
+  })
+}
+
+export const withWorkspaceEditorLanguageEdits = (
+  state: WorkspaceEditorState,
+  resultRef: string,
+): WorkspaceEditorState => {
+  const tab = activeTab(state)
+  if (
+    tab === null ||
+    tab.documentRef === undefined ||
+    tab.generation === undefined ||
+    tab.modelVersion === undefined
+  ) return state
+  const result = state.language.results.find(candidate => candidate.resultRef === resultRef)
+  if (
+    result === undefined ||
+    result.documentRef !== tab.documentRef ||
+    result.documentGeneration !== tab.generation ||
+    result.documentVersion !== tab.modelVersion ||
+    result.state._tag === "Stale" ||
+    result.state._tag === "Cancelled"
+  ) return state
+  const edits = result.items.filter(item => item._tag === "TextEdit")
+  if (
+    edits.length === 0 ||
+    edits.some(edit => edit.pathRef !== tab.pathRef || edit.range === null ||
+      edit.expectedDocumentGeneration !== tab.generation ||
+      edit.expectedDocumentVersion !== tab.modelVersion)
+  ) return state
+  let content = tab.draft
+  for (const edit of [...edits].sort((left, right) => right.range!.start.offset - left.range!.start.offset)) {
+    content = `${content.slice(0, edit.range!.start.offset)}${edit.newText}${content.slice(edit.range!.end.offset)}`
+  }
+  return updateTab(state, tab.pathRef, current => ({
+    ...current,
+    draft: content.slice(0, 1_000_000),
+    undo: [...current.undo, current.draft].slice(-maxHistory),
+    redo: [],
+    incrementalSequence: IdeDocumentSequence.make((current.incrementalSequence ?? 0) + 1),
+    modelVersion: IdeMonacoModelVersion.make((current.modelVersion ?? 1) + 1),
+    saveState: "idle",
+    reason: null,
+  }))
+}
+
+const withWorkspaceEditorLanguageSelection = (
+  state: WorkspaceEditorState,
+  selectionRef: string,
+  kind: "problem" | "symbol" | "location",
+): WorkspaceEditorState => {
+  const tab = activeTab(state)
+  if (tab === null || tab.documentRef === undefined || tab.generation === undefined || tab.modelVersion === undefined) return state
+  const item = state.language.results.flatMap(result =>
+    result.documentRef === tab.documentRef &&
+    result.documentGeneration === tab.generation &&
+    result.documentVersion === tab.modelVersion &&
+    result.state._tag !== "Stale" && result.state._tag !== "Cancelled"
+      ? result.items
+      : [],
+  ).find(candidate => kind === "problem"
+    ? candidate._tag === "Diagnostic" && candidate.diagnosticRef === selectionRef
+    : kind === "symbol"
+      ? candidate._tag === "Symbol" && candidate.symbolRef === selectionRef
+      : candidate.itemRef === selectionRef)
+  if (item === undefined || item.range === null || item.pathRef !== tab.pathRef) return state
+  return updateTab(state, tab.pathRef, current => ({
+    ...current,
+    selection: { start: item.range!.start.offset, end: item.range!.end.offset },
+    selectionVersion: current.selectionVersion + 1,
+  }))
+}
+
 export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: WorkspaceDocumentBridge = unavailableWorkspaceDocumentBridge,
   onStateChange?: (state: S) => void,
   preferenceHost: WorkspaceEditorPreferenceHost = unavailableWorkspaceEditorPreferenceHost,
+  languageBridge: WorkspaceLanguageBridge = unavailableWorkspaceLanguageBridge,
 ) => {
   const setEditor = (mutate: (editor: WorkspaceEditorState) => WorkspaceEditorState) =>
     Effect.gen(function* () {
@@ -1100,6 +1360,46 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
         onStateChange(yield* SubscriptionRef.get(state))
       }
     })
+
+  const requestLanguageCapability = Effect.fn("WorkspaceEditor.requestLanguageCapability")(
+    function* (capability: IdeLanguageCapability, query: string | null = null) {
+      const before = yield* SubscriptionRef.get(state)
+      const request = languageRequestFor(before.workspaceEditor, capability, query)
+      if (request === null) return
+      yield* setEditor(editor => ({
+        ...editor,
+        language: withLanguageRequestStarted(editor.language, request),
+      }))
+      const raw = yield* Effect.promise(() => languageBridge.requestWorkspaceLanguage(request).catch(() => null))
+      const decoded = decodeIdeLanguageRequestResponse(raw)
+      const current = yield* SubscriptionRef.get(state)
+      const response = decoded ?? IdeLanguageRequestResponseSchema.cases.Rejected.make({
+        requestRef: request.requestRef,
+        reason: "provider_unavailable",
+        message: "The project language provider returned no schema-valid response.",
+        service: current.workspaceEditor.language.service,
+      })
+      yield* setEditor(editor => withSynchronizedWorkbench({
+        ...editor,
+        language: withLanguageResponse(editor.language, response),
+      }))
+    },
+  )
+
+  const refreshActiveLanguage = Effect.fn("WorkspaceEditor.refreshActiveLanguage")(
+    function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const tab = activeTab(current.workspaceEditor)
+      if (tab?.document === null || tab === null || !["typescript", "javascript"].includes(tab.document.languageMode)) return
+      yield* Effect.all([
+        requestLanguageCapability("diagnostics"),
+        requestLanguageCapability("document_symbols"),
+        requestLanguageCapability("semantic_tokens"),
+        requestLanguageCapability("inlay_hints"),
+        requestLanguageCapability("folding_ranges"),
+      ], { concurrency: 2 })
+    },
+  )
 
   const savePath = Effect.fn("WorkspaceEditor.savePath")(function* (pathRef: string) {
     const current = yield* SubscriptionRef.get(state)
@@ -1220,12 +1520,19 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
         const before = yield* SubscriptionRef.get(state)
         if (tabFor(before.workspaceEditor, pathRef) !== null) {
           yield* setEditor(editor => withWorkspaceEditorNavigation(
-            withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null }), pathRef, source, identity,
+            withLanguageIdentity(
+              withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null }),
+              identity,
+            ), pathRef, source, identity,
           ))
+          yield* refreshActiveLanguage()
           return
         }
         yield* setEditor(editor => {
-          const opening = withWorkspaceEditorOpening(editor, pathRef, grantRef)
+          const opening = withLanguageIdentity(
+            withWorkspaceEditorOpening(editor, pathRef, grantRef),
+            identity,
+          )
           return preview ? withWorkspaceEditorTabMode(opening, pathRef, "preview") : opening
         })
         const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({ grantRef, pathRef }).catch(() => null))
@@ -1237,9 +1544,12 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
         yield* setEditor(editor => withWorkspaceEditorNavigation(
           withWorkspaceEditorOpened(editor, pathRef, result), pathRef, source, identity,
         ))
+        yield* refreshActiveLanguage()
       }),
-    WorkspaceEditorTabSelected: (pathRef: string) =>
-      setEditor(editor => tabFor(editor, pathRef) === null ? editor : withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null })),
+    WorkspaceEditorTabSelected: (pathRef: string) => Effect.gen(function* () {
+      yield* setEditor(editor => tabFor(editor, pathRef) === null ? editor : withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null }))
+      yield* refreshActiveLanguage()
+    }),
     WorkspaceEditorTabModeChanged: ({ pathRef, tabMode }: { pathRef: string; tabMode: "preview" | "pinned" }) =>
       setEditor(editor => withWorkspaceEditorTabMode(editor, pathRef, tabMode)),
     WorkspaceEditorTabMoved: ({ pathRef, delta }: { pathRef: string; delta: -1 | 1 }) =>
@@ -1287,7 +1597,12 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       ? saveDocument(event)
       : event._tag === "Close"
         ? closeDocument(event)
-        : setEditor(editor => withWorkspaceEditorMonacoEvent(editor, event)),
+        : event._tag === "Edit"
+          ? Effect.gen(function* () {
+              yield* setEditor(editor => withWorkspaceEditorMonacoEvent(editor, event))
+              yield* refreshActiveLanguage()
+            })
+          : setEditor(editor => withWorkspaceEditorMonacoEvent(editor, event)),
     WorkspaceEditorSaveRequested: () => saveActive,
     WorkspaceEditorSaveAllRequested: () => saveAll,
     WorkspaceEditorUndoRequested: () => setEditor(withWorkspaceEditorUndo),
@@ -1377,6 +1692,27 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
     })),
     WorkspaceEditorSaveAsSubmitted: () => saveActiveAs,
     WorkspaceEditorSaveAsCancelled: () => setEditor(editor => ({ ...editor, saveAsPathRef: null })),
+    WorkspaceEditorLanguageRefreshRequested: () => refreshActiveLanguage(),
+    WorkspaceEditorLanguageCapabilityRequested: ({ capability, query }: { capability: IdeLanguageCapability; query: string | null }) =>
+      requestLanguageCapability(capability, query),
+    WorkspaceEditorLanguageEditsApplied: (resultRef: string) => Effect.gen(function* () {
+      yield* setEditor(editor => withWorkspaceEditorLanguageEdits(editor, resultRef))
+      yield* refreshActiveLanguage()
+    }),
+    WorkspaceEditorProblemSelected: (diagnosticRef: string | null) => setEditor(editor => ({
+      ...withWorkspaceEditorLanguageSelection(editor, diagnosticRef ?? "", "problem"),
+      language: withLanguageProblemSelected(editor.language, diagnosticRef),
+    })),
+    WorkspaceEditorSymbolSelected: (symbolRef: string | null) => setEditor(editor => ({
+      ...withWorkspaceEditorLanguageSelection(editor, symbolRef ?? "", "symbol"),
+      language: withLanguageSymbolSelected(editor.language, symbolRef),
+    })),
+    WorkspaceEditorLanguageLocationSelected: (itemRef: string) =>
+      setEditor(editor => withWorkspaceEditorLanguageSelection(editor, itemRef, "location")),
+    WorkspaceEditorProblemsFilterChanged: (filter: "all" | "errors" | "warnings") => setEditor(editor => ({
+      ...editor,
+      language: withLanguageProblemsFilter(editor.language, filter),
+    })),
     WorkspaceEditorRecoveryRequested: ({ grantRef, snapshot }: { grantRef: string; snapshot: WorkspaceEditorRecoverySnapshot }) =>
       Effect.gen(function* () {
         const before = yield* SubscriptionRef.get(state)

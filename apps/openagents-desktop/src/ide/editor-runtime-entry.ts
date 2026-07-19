@@ -1,9 +1,10 @@
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js"
 import "monaco-editor/min/vs/editor/editor.main.css"
+import "./language-projection.css"
 import "monaco-editor/esm/vs/language/css/monaco.contribution.js"
 import "monaco-editor/esm/vs/language/html/monaco.contribution.js"
-import "monaco-editor/esm/vs/language/json/monaco.contribution.js"
-import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js"
+import * as jsonContributionModule from "monaco-editor/esm/vs/language/json/monaco.contribution.js"
+import * as typeScriptContributionModule from "monaco-editor/esm/vs/language/typescript/monaco.contribution.js"
 import CssWorkerUrl from "monaco-editor/esm/vs/language/css/css.worker?worker&url"
 import EditorWorkerUrl from "monaco-editor/esm/vs/editor/editor.worker?worker&url"
 import HtmlWorkerUrl from "monaco-editor/esm/vs/language/html/html.worker?worker&url"
@@ -26,6 +27,12 @@ import {
   type IdeMonacoMountedView,
   type IdeMonacoRuntime,
 } from "./monaco-runtime-loader.ts"
+import {
+  IdeMonacoLocalLanguageStateSchema,
+  type IdeMonacoLocalLanguageState,
+  type IdeMonacoProjectLanguageProjection,
+} from "./language-contract.ts"
+import { IdeServiceGenerationSchema } from "./project-contract.ts"
 import { tokyoNightMonacoThemeData } from "./tokyo-night-theme.ts"
 
 const workerUrls: Readonly<Record<string, string>> = {
@@ -45,6 +52,7 @@ const workers = new Set<Worker>()
 let runtimeState: "ready" | "stopped" = "ready"
 let listenerCount = 0
 let vimHandlerCount = 0
+let localWorkerGeneration = 0
 
 const createTrackedWorker = (url: string, label: string): Worker => {
   const worker = new Worker(url, { type: "module", name: `oa-ide-${label || "editor"}` })
@@ -72,6 +80,11 @@ type ModelEntry = {
   generation: number
   sequence: number
   syncing: boolean
+  localLanguage: IdeMonacoLocalLanguageState
+  localLanguageName: string | null
+  localLanguageCallbacks: Set<(state: IdeMonacoLocalLanguageState) => void>
+  localManualWorker: Worker | null
+  localInput: IdeMonacoAttachInput
 }
 
 type ViewEntry = {
@@ -79,6 +92,9 @@ type ViewEntry = {
   readonly modelEntry: ModelEntry
   readonly subscriptions: ReadonlyArray<monaco.IDisposable>
   readonly vim: VimModeController
+  readonly localLanguageCallback: (state: IdeMonacoLocalLanguageState) => void
+  readonly projectDecorations: monaco.editor.IEditorDecorationsCollection
+  projectFoldingProvider: monaco.IDisposable | null
   input: IdeMonacoAttachInput
   disposed: boolean
 }
@@ -382,9 +398,161 @@ const modelFor = (input: IdeMonacoAttachInput): ModelEntry => {
     generation: input.generation as number,
     sequence: input.sequence as number,
     syncing: false,
+    localLanguage: IdeMonacoLocalLanguageStateSchema.cases.Unsupported.make({ language: languageFor(input.language) }),
+    localLanguageName: null,
+    localLanguageCallbacks: new Set(),
+    localManualWorker: null,
+    localInput: input,
   }
   models.set(key, entry)
   return entry
+}
+
+const supportedLocalLanguages = new Set(["typescript", "javascript", "json", "css", "scss", "less", "html", "handlebars", "razor"])
+
+type TypeScriptContribution = {
+  readonly getTypeScriptWorker: () => Promise<(uri: monaco.Uri) => Promise<unknown>>
+  readonly getJavaScriptWorker: () => Promise<(uri: monaco.Uri) => Promise<unknown>>
+}
+
+type JsonContribution = {
+  readonly getWorker: () => Promise<(uri: monaco.Uri) => Promise<unknown>>
+}
+
+const isTypeScriptContribution = (value: unknown): value is TypeScriptContribution =>
+  typeof value === "object" && value !== null &&
+  typeof Reflect.get(value, "getTypeScriptWorker") === "function" &&
+  typeof Reflect.get(value, "getJavaScriptWorker") === "function"
+
+const isJsonContribution = (value: unknown): value is JsonContribution =>
+  typeof value === "object" && value !== null &&
+  typeof Reflect.get(value, "getWorker") === "function"
+
+const publishLocalLanguage = (entry: ModelEntry, state: IdeMonacoLocalLanguageState): void => {
+  entry.localLanguage = IdeMonacoLocalLanguageStateSchema.make(state)
+  for (const callback of entry.localLanguageCallbacks) callback(entry.localLanguage)
+}
+
+const activateLocalLanguage = (entry: ModelEntry, input: IdeMonacoAttachInput): void => {
+  const language = languageFor(input.language)
+  entry.localInput = input
+  if (!supportedLocalLanguages.has(language)) {
+    entry.localManualWorker?.terminate()
+    entry.localManualWorker = null
+    entry.localLanguageName = language
+    publishLocalLanguage(entry, IdeMonacoLocalLanguageStateSchema.cases.Unsupported.make({ language }))
+    return
+  }
+  if (entry.localLanguageName === language && (entry.localLanguage._tag === "Loading" || entry.localLanguage._tag === "Ready")) {
+    publishLocalLanguage(entry, entry.localLanguage)
+    return
+  }
+  entry.localManualWorker?.terminate()
+  entry.localManualWorker = null
+  entry.localLanguageName = language
+  localWorkerGeneration += 1
+  const workerGeneration = IdeServiceGenerationSchema.make(localWorkerGeneration)
+  publishLocalLanguage(entry, IdeMonacoLocalLanguageStateSchema.cases.Loading.make({ language, workerGeneration }))
+  void (async () => {
+    if (language === "typescript" || language === "javascript") {
+      const contribution: unknown = typeScriptContributionModule
+      if (!isTypeScriptContribution(contribution)) throw new Error("The packaged TypeScript contribution is unavailable.")
+      const worker = language === "typescript"
+        ? await contribution.getTypeScriptWorker()
+        : await contribution.getJavaScriptWorker()
+      await worker(entry.model.uri)
+    } else if (language === "json") {
+      const contribution: unknown = jsonContributionModule
+      if (!isJsonContribution(contribution)) throw new Error("The packaged JSON contribution is unavailable.")
+      await (await contribution.getWorker())(entry.model.uri)
+    }
+    else {
+      entry.localManualWorker = createTrackedWorker(workerUrls[language] ?? workerUrls.editor!, language)
+      await Promise.resolve()
+    }
+  })().then(() => {
+    if (entry.localLanguageName !== language || entry.model.isDisposed()) return
+    const current = entry.localInput
+    publishLocalLanguage(entry, IdeMonacoLocalLanguageStateSchema.cases.Ready.make({
+      language,
+      workerGeneration,
+      documentRef: current.documentRef,
+      documentGeneration: current.generation,
+      documentVersion: current.documentVersion,
+      evidenceTier: "document_local",
+      capabilities: language === "typescript" || language === "javascript"
+        ? ["syntax", "completion", "hover", "format", "folding"]
+        : ["syntax", "completion", "hover", "format", "folding"],
+    }))
+  }).catch(cause => {
+    if (entry.localLanguageName !== language || entry.model.isDisposed()) return
+    publishLocalLanguage(entry, IdeMonacoLocalLanguageStateSchema.cases.Failed.make({
+      language,
+      workerGeneration,
+      message: cause instanceof Error ? cause.message.slice(0, 500) : "The document-local worker failed to start.",
+      recoverable: true,
+    }))
+  })
+}
+
+const monacoRange = (range: IdeMonacoProjectLanguageProjection["diagnostics"][number]["range"]): monaco.Range =>
+  new monaco.Range(range.start.line, range.start.column, range.end.line, range.end.column)
+
+const projectLanguageMatches = (input: IdeMonacoAttachInput): input is IdeMonacoAttachInput & {
+  readonly projectLanguage: IdeMonacoProjectLanguageProjection
+} => input.projectLanguage !== null &&
+  input.projectLanguage.documentRef === input.documentRef &&
+  input.projectLanguage.documentGeneration === input.generation &&
+  input.projectLanguage.documentVersion === input.documentVersion
+
+const applyProjectLanguage = (view: ViewEntry, input: IdeMonacoAttachInput): void => {
+  view.projectFoldingProvider?.dispose()
+  view.projectFoldingProvider = null
+  const project = projectLanguageMatches(input) ? input.projectLanguage : null
+  monaco.editor.setModelMarkers(view.modelEntry.model, "openagents-project-language", project === null ? [] : project.diagnostics.map(diagnostic => ({
+    ...monacoRange(diagnostic.range),
+    severity: diagnostic.severity === "error" ? monaco.MarkerSeverity.Error
+      : diagnostic.severity === "warning" ? monaco.MarkerSeverity.Warning
+      : diagnostic.severity === "information" ? monaco.MarkerSeverity.Info
+      : monaco.MarkerSeverity.Hint,
+    message: diagnostic.message,
+    source: diagnostic.source,
+    code: diagnostic.diagnosticRef,
+  })))
+  view.projectDecorations.set(project === null ? [] : [
+    ...project.semanticTokens.map(token => ({
+      range: monacoRange(token.range),
+      options: {
+        inlineClassName: `oa-ide-project-semantic-${token.tokenType.replaceAll(/[^A-Za-z0-9_-]/gu, "-")}`,
+        description: `Project semantic token ${token.itemRef}`,
+      },
+    })),
+    ...project.inlayHints.map(hint => ({
+      range: monacoRange(hint.range),
+      options: {
+        after: {
+          content: ` ${hint.label}`,
+          inlineClassName: `oa-ide-project-inlay oa-ide-project-inlay--${hint.hintKind}`,
+        },
+        description: `Project inlay hint ${hint.itemRef}`,
+      },
+    })),
+  ])
+  if (project === null || project.foldingRanges.length === 0) return
+  const model = view.modelEntry.model
+  view.projectFoldingProvider = monaco.languages.registerFoldingRangeProvider(model.getLanguageId(), {
+    provideFoldingRanges(candidate) {
+      if (candidate !== model || model.isDisposed()) return []
+      return project.foldingRanges.map(fold => ({
+        start: fold.range.start.line,
+        end: Math.max(fold.range.start.line, fold.range.end.line),
+        kind: fold.foldKind === "comment" ? monaco.languages.FoldingRangeKind.Comment
+          : fold.foldKind === "imports" ? monaco.languages.FoldingRangeKind.Imports
+          : fold.foldKind === "region" ? monaco.languages.FoldingRangeKind.Region
+          : undefined,
+      }))
+    },
+  })
 }
 
 const disposeView = (viewRef: string): void => {
@@ -392,6 +560,9 @@ const disposeView = (viewRef: string): void => {
   if (entry === undefined || entry.disposed) return
   entry.disposed = true
   entry.vim.dispose()
+  entry.modelEntry.localLanguageCallbacks.delete(entry.localLanguageCallback)
+  entry.projectFoldingProvider?.dispose()
+  entry.projectDecorations.clear()
   for (const subscription of entry.subscriptions) subscription.dispose()
   listenerCount = Math.max(0, listenerCount - entry.subscriptions.length)
   entry.editor.dispose()
@@ -399,12 +570,14 @@ const disposeView = (viewRef: string): void => {
   views.delete(viewRef)
   if (entry.modelEntry.views.size === 0) {
     const modelKey = entry.input.documentRef as string
+    monaco.editor.setModelMarkers(entry.modelEntry.model, "openagents-project-language", [])
+    entry.modelEntry.localManualWorker?.terminate()
     entry.modelEntry.model.dispose()
     models.delete(modelKey)
   }
 }
 
-const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
+const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim, onLocalLanguage) => {
   if (runtimeState === "stopped") throw new Error("The Monaco runtime has stopped.")
   const input = decodeIdeMonacoAttachInput(rawInput)
   const viewKey = input.viewRef as string
@@ -483,20 +656,45 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
   vim.setEnabled(input.vimEnabled)
   const subscriptions = [content, selection]
   listenerCount += subscriptions.length
-  const viewEntry: ViewEntry = { editor, modelEntry, subscriptions, vim, input, disposed: false }
+  const localLanguageCallback = (state: IdeMonacoLocalLanguageState): void => onLocalLanguage(IdeMonacoLocalLanguageStateSchema.make(state))
+  modelEntry.localLanguageCallbacks.add(localLanguageCallback)
+  const viewEntry: ViewEntry = {
+    editor,
+    modelEntry,
+    subscriptions,
+    vim,
+    localLanguageCallback,
+    projectDecorations: editor.createDecorationsCollection(),
+    projectFoldingProvider: null,
+    input,
+    disposed: false,
+  }
   views.set(viewKey, viewEntry)
+  activateLocalLanguage(modelEntry, input)
+  applyProjectLanguage(viewEntry, input)
 
   const update = (rawNext: IdeMonacoAttachInput): void => {
     if (viewEntry.disposed) return
     const next = decodeIdeMonacoAttachInput(rawNext)
     if (next.documentRef !== viewEntry.input.documentRef || next.generation !== viewEntry.input.generation || next.viewRef !== viewEntry.input.viewRef) return
+    modelEntry.localInput = next
     if ((next.sequence as number) >= modelEntry.sequence && modelEntry.model.getValue() !== next.value) {
       modelEntry.syncing = true
       modelEntry.model.setValue(next.value)
       modelEntry.syncing = false
       modelEntry.sequence = next.sequence as number
     }
-    if (modelEntry.model.getLanguageId() !== languageFor(next.language)) monaco.editor.setModelLanguage(modelEntry.model, languageFor(next.language))
+    if (modelEntry.model.getLanguageId() !== languageFor(next.language)) {
+      monaco.editor.setModelLanguage(modelEntry.model, languageFor(next.language))
+      activateLocalLanguage(modelEntry, next)
+    } else if (modelEntry.localLanguage._tag === "Ready" && modelEntry.localLanguage.documentVersion !== next.documentVersion) {
+      publishLocalLanguage(modelEntry, IdeMonacoLocalLanguageStateSchema.cases.Ready.make({
+        ...modelEntry.localLanguage,
+        documentRef: next.documentRef,
+        documentGeneration: next.generation,
+        documentVersion: next.documentVersion,
+      }))
+    }
     editor.updateOptions({
       ariaLabel: `Code editor for ${next.pathLabel}`,
       minimap: { enabled: next.minimap },
@@ -525,6 +723,7 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
       editor.revealPositionInCenter(start)
     }
     vim.setEnabled(next.vimEnabled)
+    applyProjectLanguage(viewEntry, next)
     viewEntry.input = next
   }
   const dispose = (): void => disposeView(viewKey)

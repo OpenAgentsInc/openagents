@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 export type DesktopWorkerBasename =
   | "codex-history-worker.js"
+  | "language-utility-worker.js"
   | "workspace-search-worker.js"
 
 /**

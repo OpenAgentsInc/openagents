@@ -118,6 +118,7 @@ export interface RuntimeBuildOptions {
   readonly minify?: boolean
   readonly external?: ReadonlyArray<string>
   readonly define?: Readonly<Record<string, string>>
+  readonly banner?: string
   readonly sourcemap?: boolean | "inline" | "external"
   readonly plugins?: ReadonlyArray<{
     readonly name: string
@@ -151,7 +152,10 @@ export const build = async (options: RuntimeBuildOptions): Promise<RuntimeBuildR
       format: options.format ?? "esm",
       ...(
         options.target !== "browser" && (options.format ?? "esm") === "esm"
-          ? { banner: { js: 'import { createRequire as __openagentsCreateRequire } from "node:module";const require=__openagentsCreateRequire(import.meta.url);' } }
+          ? { banner: { js: [
+              'import { createRequire as __openagentsCreateRequire } from "node:module";const require=__openagentsCreateRequire(import.meta.url);',
+              options.banner,
+            ].filter((value): value is string => value !== undefined).join("\n") } }
           : {}
       ),
       minify: options.minify ?? false,

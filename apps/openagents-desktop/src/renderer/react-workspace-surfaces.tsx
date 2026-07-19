@@ -15,6 +15,11 @@ import { resolveIdeMonacoEditorOptions } from "../ide/workbench-contract.ts"
 import { PierreReviewAdapter, type PierreDiffAnnotation } from "../ide/pierre-diffs-adapter.tsx"
 import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
 import { activeGitReviewSource } from "./ide/review-source.ts"
+import {
+  languageItemsFor,
+  languageResultFor,
+  monacoProjectLanguageProjection,
+} from "../ide/language-workbench-contract.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -107,11 +112,65 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
   const editor = state.workspaceEditor
   const tab = editor.tabs.find(candidate => candidate.pathRef === editor.activePathRef) ?? null
   const [quickQuery, setQuickQuery] = useState("")
+  const [symbolQuery, setSymbolQuery] = useState("")
+  const [renameQuery, setRenameQuery] = useState("")
   const [settingsOpen, setSettingsOpen] = useState(false)
   const paths = (state.workspaceBrowser.pathIndexProjection?.nodes ?? [])
     .filter(node => node.kind === "file")
     .map(node => node.pathRef)
   const editorOptions = resolveIdeMonacoEditorOptions(editor.workbench.settings)
+  const projectLanguage = tab?.documentRef === undefined || tab.generation === undefined || tab.modelVersion === undefined
+    ? null
+    : monacoProjectLanguageProjection(editor.language, {
+        documentRef: tab.documentRef,
+        documentGeneration: tab.generation,
+        documentVersion: tab.modelVersion,
+      })
+  const languageBinding = tab?.documentRef === undefined || tab.generation === undefined || tab.modelVersion === undefined
+    ? null
+    : { documentRef: tab.documentRef, documentGeneration: tab.generation, documentVersion: tab.modelVersion }
+  const languageItems = <Capability extends Parameters<typeof languageItemsFor>[1]["capability"]>(capability: Capability) =>
+    languageBinding === null ? [] : languageItemsFor(editor.language, { ...languageBinding, capability })
+  const diagnosticResult = languageBinding === null ? null : languageResultFor(editor.language, { ...languageBinding, capability: "diagnostics" })
+  const diagnostics = languageItems("diagnostics").filter(item => item._tag === "Diagnostic")
+    .filter(item => editor.language.problemsFilter === "all" ||
+      (editor.language.problemsFilter === "errors" && item.severity === "error") ||
+      (editor.language.problemsFilter === "warnings" && item.severity === "warning"))
+  const allSymbols = languageItems("document_symbols").filter(item => item._tag === "Symbol")
+  const symbols = allSymbols
+    .filter(item => symbolQuery.trim() === "" || item.name.toLocaleLowerCase().includes(symbolQuery.trim().toLocaleLowerCase()))
+  const references = languageItems("references").filter(item => item._tag === "Location")
+  const definitions = languageItems("definition").filter(item => item._tag === "Location")
+  const editResult = languageBinding === null ? null : [...editor.language.results].reverse().find(result =>
+    result.documentRef === languageBinding.documentRef &&
+    result.documentGeneration === languageBinding.documentGeneration &&
+    result.documentVersion === languageBinding.documentVersion &&
+    result.items.some(item => item._tag === "TextEdit") &&
+    result.state._tag !== "Stale" && result.state._tag !== "Cancelled") ?? null
+  const activeSymbol = allSymbols.find(symbol => symbol.range !== null && tab !== null &&
+    tab.selection.start >= symbol.range.start.offset && tab.selection.start <= symbol.range.end.offset) ?? null
+  const projectEligible = tab?.document !== null && tab !== null && ["typescript", "javascript"].includes(tab.document.languageMode)
+  const languageStatus = !projectEligible ? "Project language off for this document"
+    : editor.language.service._tag === "Ready" ? `Project ${editor.language.service.providerVersion} · generation ${editor.language.service.serviceGeneration}`
+    : editor.language.service._tag === "Starting" ? "Project language starting…"
+    : editor.language.service._tag === "Degraded" ? `Project language degraded · ${editor.language.service.reason}`
+    : editor.language.service._tag === "Failed" ? `Project language failed · ${editor.language.service.reason}`
+    : editor.language.service._tag === "Stopped" ? "Project language stopped"
+    : "Project language idle"
+  const selectLanguageLocation = (location: { readonly itemRef: string; readonly pathRef: string }): void => {
+    if (location.pathRef === tab?.pathRef) {
+      dispatch(report, "WorkspaceEditorLanguageLocationSelected", location.itemRef)
+      return
+    }
+    const grantRef = state.workspaceBrowser.grantRef
+    const identity = state.workspaceBrowser.pathIndexSnapshot?.identity
+    if (grantRef !== null && identity !== undefined) dispatch(report, "WorkspaceEditorOpenRequested", {
+      grantRef,
+      pathRef: location.pathRef,
+      source: "workspace_search",
+      identity,
+    })
+  }
   const openQuickOpen = (): void => {
     setQuickQuery("")
     dispatch(report, "WorkspaceEditorQuickOpenChanged", { query: "", paths })
@@ -149,7 +208,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
       {editor.workbench.quickOpen.phase === "empty" ? <p>No indexed file matches this path query.</p> : null}
     </div>}
     {tab === null ? <div className="oa-react-editor-empty"><File aria-hidden="true" /><h3>No document open</h3><p>Select a text file from the workspace tree.</p></div> : <>
-      <nav className="oa-react-editor-breadcrumbs" aria-label="Document breadcrumbs">{editor.workbench.breadcrumbs.map((item, index) => <span key={`${item.kind}:${index}`}>{index === 0 ? null : <ChevronRight aria-hidden="true" />}{item.label}</span>)}</nav>
+      <nav className="oa-react-editor-breadcrumbs" aria-label="Document breadcrumbs">{editor.workbench.breadcrumbs.map((item, index) => <span key={`${item.kind}:${index}`}>{index === 0 ? null : <ChevronRight aria-hidden="true" />}{item.label}</span>)}{activeSymbol === null ? null : <span><ChevronRight aria-hidden="true" />{activeSymbol.name}</span>}</nav>
       <header className="oa-react-editor-toolbar">
         <span title={tab.pathRef}>{tab.pathRef}</span>
         <div>
@@ -157,6 +216,12 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
           <Button size="sm" variant="ghost" disabled={tab.redo.length === 0} onClick={() => dispatch(report, "WorkspaceEditorRedoRequested")}>Redo</Button>
           <Button size="sm" variant="ghost" aria-pressed={editor.wordWrap} onClick={() => dispatch(report, "WorkspaceEditorWordWrapToggled")}>Wrap</Button>
           <Button size="sm" variant="ghost" aria-pressed={editor.minimap} onClick={() => dispatch(report, "WorkspaceEditorMinimapToggled")}>Minimap</Button>
+          <span className="oa-react-language-status" data-language-service={editor.language.service._tag.toLocaleLowerCase()} title={languageStatus}>{languageStatus}</span>
+          <Button size="sm" variant="ghost" disabled={!projectEligible} onClick={() => dispatch(report, "WorkspaceEditorLanguageRefreshRequested")}>Refresh language</Button>
+          <Button size="sm" variant="ghost" disabled={!projectEligible} onClick={() => dispatch(report, "WorkspaceEditorLanguageCapabilityRequested", { capability: "definition", query: null })}>Definition</Button>
+          <Button size="sm" variant="ghost" disabled={!projectEligible} onClick={() => dispatch(report, "WorkspaceEditorLanguageCapabilityRequested", { capability: "references", query: null })}>References</Button>
+          <Button size="sm" variant="ghost" disabled={!projectEligible} onClick={() => dispatch(report, "WorkspaceEditorLanguageCapabilityRequested", { capability: "format_document", query: null })}>Format</Button>
+          <Button size="sm" variant="ghost" disabled={!projectEligible} onClick={() => dispatch(report, "WorkspaceEditorLanguageCapabilityRequested", { capability: "code_actions", query: null })}>Code actions</Button>
           <Button size="sm" variant="ghost" aria-pressed={editor.split} onClick={() => dispatch(report, "WorkspaceEditorSplitToggled")}><Columns2 aria-hidden="true" />Split</Button>
           {editor.workbench.groups.map((group, index) => <Button size="sm" variant={editor.workbench.focusedGroupRef === group.groupRef ? "secondary" : "ghost"} key={group.groupRef} onClick={() => dispatch(report, "WorkspaceEditorGroupFocused", group.groupRef)}>Group {index + 1}</Button>)}
           <Button size="sm" variant={editor.vimEnabled ? "default" : "outline"} aria-pressed={editor.vimEnabled} onClick={() => dispatch(report, "WorkspaceEditorVimToggled")}>{editor.vimEnabled ? "Vim on" : "Vim off"}</Button>
@@ -175,7 +240,6 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
         <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSettingReset", { id: "editor.tabSize", scope: "workspace" })}>Reset workspace tab size</Button>
         {editor.workbench.settings.errors.map(error => <p role="alert" key={error}>{error}</p>)}
       </section>}
-      <aside className="oa-react-editor-outline" aria-label="Outline"><strong>Outline</strong><span>{editor.workbench.outline._tag === "Unavailable" ? editor.workbench.outline.message : editor.workbench.outline._tag}</span></aside>
       {editor.saveAsPathRef === null ? null : <div className="oa-react-editor-save-as">
         <Input aria-label="New relative document path" placeholder="src/new-file.ts" value={editor.saveAsPathRef} onChange={event => dispatch(report, "WorkspaceEditorSaveAsChanged", event.currentTarget.value)} />
         <Button size="sm" disabled={editor.saveAsPathRef.trim() === ""} onClick={() => dispatch(report, "WorkspaceEditorSaveAsSubmitted")}>Create copy</Button>
@@ -183,6 +247,13 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
       </div>}
       {editor.closeConfirmRef !== tab.pathRef ? null : <div className="oa-react-editor-conflict" role="alert"><span>Discard unsaved changes?</span><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorTabCloseConfirmed", tab.pathRef)}>Discard</Button><Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorTabCloseCancelled")}>Keep editing</Button></div>}
       {tab.phase !== "conflict" ? null : <div className="oa-react-editor-conflict" role="alert"><span>{tab.externalDocument === null ? "The file is no longer available. Your draft is retained." : "Changed outside the editor."}</span>{tab.externalDocument === null ? null : <><Button size="sm" variant="outline" onClick={() => dispatch(report, "WorkspaceEditorConflictReload")}>Reload theirs</Button><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorConflictKeepMine")}>Save mine</Button></>}</div>}
+      <div className="oa-react-editor-work-area">
+        <aside className="oa-react-editor-outline" aria-label="Outline">
+          <header><strong>Outline</strong><Input aria-label="Filter document symbols" placeholder="Filter symbols" value={symbolQuery} onChange={event => setSymbolQuery(event.currentTarget.value)} /></header>
+          {!projectEligible ? <p>Project symbols are not started for this document type.</p>
+            : symbols.length === 0 ? <p>{editor.language.activeRequestRefs.length > 0 ? "Reading project symbols…" : editor.language.lastRejection?.message ?? "No current symbols."}</p>
+            : <ol>{symbols.slice(0, 200).map(symbol => <li key={symbol.symbolRef}><button aria-current={editor.language.selectedSymbolRef === symbol.symbolRef} style={{ paddingInlineStart: `${8 + symbol.depth * 10}px` }} type="button" onClick={() => dispatch(report, "WorkspaceEditorSymbolSelected", symbol.symbolRef)}><span>{symbol.name}</span><small>{symbol.kind}</small></button></li>)}</ol>}
+        </aside>
       {tab.phase === "loading" ? <p role="status">Opening document…</p>
         : tab.phase === "unavailable" ? <p role="alert">{tab.reason ?? "This document is unavailable."}</p>
         : <div className="oa-react-monaco-splits" data-split={editor.split ? "true" : "false"}>
@@ -194,6 +265,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
               minimap={editor.minimap}
               vimEnabled={editor.vimEnabled}
               editorOptions={editorOptions}
+              projectLanguage={projectLanguage}
               onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
             />
             {!editor.split ? null : <MonacoEditorHost
@@ -204,9 +276,36 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
               minimap={editor.minimap}
               vimEnabled={editor.vimEnabled}
               editorOptions={editorOptions}
+              projectLanguage={projectLanguage}
               onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
             />}
           </div>}
+      </div>
+      <section className="oa-react-language-panel" aria-label="Project language results">
+        <header>
+          <strong>Problems</strong>
+          <button aria-pressed={editor.language.problemsFilter === "all"} type="button" onClick={() => dispatch(report, "WorkspaceEditorProblemsFilterChanged", "all")}>All {languageItems("diagnostics").filter(item => item._tag === "Diagnostic").length}</button>
+          <button aria-pressed={editor.language.problemsFilter === "errors"} type="button" onClick={() => dispatch(report, "WorkspaceEditorProblemsFilterChanged", "errors")}>Errors</button>
+          <button aria-pressed={editor.language.problemsFilter === "warnings"} type="button" onClick={() => dispatch(report, "WorkspaceEditorProblemsFilterChanged", "warnings")}>Warnings</button>
+          <span>{diagnosticResult === null ? "No current diagnostic receipt" : `${diagnosticResult.state._tag} · ${diagnosticResult.freshnessMs} ms old · ${diagnosticResult.evidenceTier}`}</span>
+        </header>
+        <div className="oa-react-language-panel-grid">
+          <div className="oa-react-problems-list">
+            {!projectEligible ? <p>Project diagnostics are not started for this document type.</p>
+              : diagnostics.length === 0 ? <p>{editor.language.activeRequestRefs.length > 0 ? "Checking the project…" : editor.language.lastRejection?.message ?? "No problems in the current project receipt."}</p>
+              : <ol>{diagnostics.slice(0, 500).map(problem => <li key={problem.diagnosticRef}><button aria-current={editor.language.selectedProblemRef === problem.diagnosticRef} type="button" onClick={() => dispatch(report, "WorkspaceEditorProblemSelected", problem.diagnosticRef)}><b aria-label={problem.severity}>{problem.severity === "error" ? "E" : problem.severity === "warning" ? "W" : "I"}</b><span>{problem.message}</span><small>{problem.pathRef}:{problem.range?.start.line ?? "?"}</small></button></li>)}</ol>}
+          </div>
+          <aside className="oa-react-language-actions" aria-label="Language actions and locations">
+            <form onSubmit={event => { event.preventDefault(); if (renameQuery.trim() !== "") dispatch(report, "WorkspaceEditorLanguageCapabilityRequested", { capability: "rename_preview", query: renameQuery.trim() }) }}>
+              <Input aria-label="Rename symbol to" placeholder="Rename symbol to…" value={renameQuery} onChange={event => setRenameQuery(event.currentTarget.value)} />
+              <Button size="sm" variant="outline" disabled={!projectEligible || renameQuery.trim() === ""} type="submit">Preview rename</Button>
+            </form>
+            {editResult === null ? null : <div className="oa-react-language-edit-preview"><span>{editResult.capability.replaceAll("_", " ")} · {editResult.items.filter(item => item._tag === "TextEdit").length} canonical edit(s)</span><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorLanguageEditsApplied", editResult.resultRef)}>Apply exact receipt</Button></div>}
+            {definitions.length === 0 ? null : <div><strong>Definitions</strong>{definitions.slice(0, 20).map(location => <button key={location.itemRef} type="button" onClick={() => selectLanguageLocation(location)}>{location.pathRef}:{location.range?.start.line ?? "?"}</button>)}</div>}
+            {references.length === 0 ? null : <div><strong>References</strong>{references.slice(0, 50).map(location => <button key={location.itemRef} type="button" onClick={() => selectLanguageLocation(location)}>{location.pathRef}:{location.range?.start.line ?? "?"}</button>)}</div>}
+          </aside>
+        </div>
+      </section>
     </>}
   </section>
 }

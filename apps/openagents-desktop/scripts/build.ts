@@ -111,6 +111,18 @@ export const buildDesktop = async (): Promise<string> => {
   )
 
   assertSuccess(
+    "ide-language-utility-worker",
+    await Runtime.build({
+      entrypoints: [path.join(appRoot, "src/ide/language-utility-worker.ts")],
+      outdir: path.join(dist, "workers"),
+      target: "node",
+      format: "esm",
+      minify: BUILD_MINIFY,
+      banner: 'import { fileURLToPath as __oaFileURLToPath } from "node:url";import { dirname as __oaDirname } from "node:path";const __filename=__oaFileURLToPath(import.meta.url);const __dirname=__oaDirname(__filename);',
+    }),
+  )
+
+  assertSuccess(
     "preload",
     await Runtime.build({
       entrypoints: [path.join(appRoot, "src/preload.cts")],

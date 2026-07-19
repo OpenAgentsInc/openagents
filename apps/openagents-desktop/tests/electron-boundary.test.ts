@@ -383,12 +383,15 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
       "../ide/monaco-document-contract.ts",
       "../ide/monaco-runtime-loader.ts",
       "../ide/workbench-contract.ts",
+      "../ide/language-contract.ts",
     ]);
     const ownedWorkspaceEditorImports = new Set([
       "../ide/monaco-document-contract.ts",
       "../ide/path-index-contract.ts",
       "../ide/project-contract.ts",
       "../ide/workbench-contract.ts",
+      "../ide/language-contract.ts",
+      "../ide/language-workbench-contract.ts",
     ]);
     const ownedReviewImports = new Set([
       "../ide/pierre-diffs-adapter.tsx",
@@ -411,7 +414,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
                 ((name === "react-review.tsx" || name === "react-workspace-surfaces.tsx") &&
                   ownedReviewImports.has(specifier)) ||
                 (name === "react-workspace-surfaces.tsx" &&
-                  (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts")))),
+                  (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts" ||
+                    specifier === "../ide/language-workbench-contract.ts")))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }
