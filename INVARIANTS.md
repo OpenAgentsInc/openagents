@@ -2362,13 +2362,13 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   separate authorities while IDE-11+ debug/SCM/portable breadth remains open.
 - Desktop terminal, task, test, and Output behavior has one main-owned Effect
   run graph at `apps/openagents-desktop/src/ide/run-contract.ts`. Boundary data
-  is strictly decoded from Effect Schema; attachment, run, stream, task,
+  is strictly decoded from Effect Schema. Attachment, run, stream, task,
   discovery, test, and artifact identities carry exact generations. Xterm is a
   disposable screen projection and has no process, filesystem, policy,
   persistence, or evidence authority. Only an explicit named environment
   allowlist crosses into child processes. Task dependency order, readiness,
   timeout, literal artifact paths, test semantic outcomes, sequence gaps,
-  byte-bounded retention, and redaction are canonical graph facts; exit zero
+  byte-bounded retention, and redaction are canonical graph facts. Exit zero
   alone cannot fabricate task or test success. Process groups terminate on
   cancellation, replacement, and scope finalization. Actor-bearing commands
   create bounded receipts, exports are mode-restricted, private roots and raw

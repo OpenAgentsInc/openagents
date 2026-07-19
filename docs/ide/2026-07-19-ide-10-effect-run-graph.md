@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 Issue: [#9038](https://github.com/OpenAgentsInc/openagents/issues/9038)
-State: implemented; owner disposition remains unreviewed
+State: implemented. Owner disposition remains unreviewed
 Next packet: IDE-11 debug/DAP
 
 ## Result
@@ -41,17 +41,17 @@ loss facts.
 
 `apps/openagents-desktop/src/ide/run-contract.ts` defines:
 
-- project and worktree run bindings;
-- named environment sources and a value-free environment manifest;
-- executable admission with separate display text and argv;
+- project and worktree run bindings.
+- named environment sources and a value-free environment manifest.
+- executable admission with separate display text and argv.
 - terminal profile, split, session, reconnect, dimensions, shell capability,
-  and lifecycle data;
+  and lifecycle data.
 - task definitions, dependencies, readiness, problem matchers, timeouts,
-  artifacts, runs, semantic outcomes, and evidence references;
+  artifacts, runs, semantic outcomes, and evidence references.
 - test controllers, discovery generations, item trees, locations, profiles,
-  results, coverage facts, retries, and semantic outcomes;
+  results, coverage facts, retries, and semantic outcomes.
 - Output producers, channels, chunks, sequence numbers, locations, byte limits,
-  dropped-byte and gap facts, redaction facts, and disposal; and
+  dropped-byte and gap facts, redaction facts, and disposal. And
 - actor-bound public-safe run receipts.
 
 Boundary decoders reject excess properties. A renderer cannot add an
@@ -150,12 +150,12 @@ owner-private mode-0600 file. Export adds an actor-bound receipt.
 The terminal surface provides:
 
 - session tabs, create, close, rename support in the graph, split identity,
-  focus, resize, interrupt, restart, and exit state;
-- direct PTY input frames without line-to-shell interpolation;
+  focus, resize, interrupt, restart, and exit state.
+- direct PTY input frames without line-to-shell interpolation.
 - xterm screen rendering, bounded scrollback, search, copy/select behavior,
-  screen-reader mode, and 4.5 minimum contrast;
+  screen-reader mode, and 4.5 minimum contrast.
 - only terminal-announced localhost links, with the existing explicit open
-  confirmation; and
+  confirmation. And
 - Khala colors by default with the built-in Tokyo Night fallback retained.
 
 Close and host disposal signal the owned process group. A grace timer escalates
@@ -193,22 +193,22 @@ pnpm --dir apps/openagents-desktop run verify:ide-10
 
 The gate runs:
 
-- Desktop typecheck;
+- Desktop typecheck.
 - schema, service, host, terminal, renderer, Electron boundary,
-  accessibility, behavior-contract, and architecture tests;
-- the IDE authority boundary oracle;
-- the deterministic p50/p95/p99 run benchmark;
-- a current macOS arm64 package;
+  accessibility, behavior-contract, and architecture tests.
+- the IDE authority boundary oracle.
+- the deterministic p50/p95/p99 run benchmark.
+- a current macOS arm64 package.
 - the packaged xterm, task dependency, task artifact, redaction, gap, test
-  tree, keyboard, theme, and teardown journey; and
+  tree, keyboard, theme, and teardown journey. And
 - the schema-decoded IDE-10 acceptance evaluator.
 
 Evidence files are under `apps/openagents-desktop/benchmarks/ide/`:
 
-- `2026-07-19-ide-10-run.json`;
-- `2026-07-19-ide-10-packaged-run.json`;
-- `2026-07-19-ide-10-packaged-run.png`;
-- `2026-07-19-ide-10-packaged-run-trace.json`; and
+- `2026-07-19-ide-10-run.json`.
+- `2026-07-19-ide-10-packaged-run.json`.
+- `2026-07-19-ide-10-packaged-run.png`.
+- `2026-07-19-ide-10-packaged-run-trace.json`. And
 - `2026-07-19-ide-10-acceptance.json`.
 
 These receipts are implementation evidence. The Desktop and Cursor
