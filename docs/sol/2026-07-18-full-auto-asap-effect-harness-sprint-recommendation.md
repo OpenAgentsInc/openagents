@@ -1,10 +1,10 @@
 # Full Auto ASAP Effect/Harness sprint recommendation
 
 - Class: authority
-- Status: implemented; owner-real development acceptance complete
+- Status: implemented. Owner-real development acceptance complete
 - Snapshot: 2026-07-18
-- Dispatch: no; #9000, #9001, #9002, and #8976 are completed by the linked
-  implementation receipt; #8978 and #8979 retain assurance/release authority
+- Dispatch: no. #9000, #9001, #9002, And #8976 are completed by the linked
+  implementation receipt. #8978 And #8979 retain assurance/release authority
 - Owner: OpenAgents Desktop Full Auto / epic #8967
 - Product authority:
   [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
@@ -41,10 +41,10 @@ admission, owner-bounded routing, guardrails, handoff receipts, liveness,
 reports, analyzer, launcher, and read-only run view. The shortest path is:
 
 1. deliver the durable objective and done condition to every real provider
-   turn;
+   turn.
 2. keep an active run's host thread addressable under ordinary chat pressure
-   and classify host-store failures truthfully;
-3. prove Codex and Claude in both directions through the real Desktop UI; and
+   and classify host-store failures truthfully.
+3. prove Codex and Claude in both directions through the real Desktop UI. And
 4. use the already-working Vercel Harness experiment only as a time-boxed
    provider adapter fallback if a native coding-agent lane still fails.
 
@@ -76,14 +76,14 @@ away from the requested product outcome.
 
 | Gap                                                                                 | Current evidence                                                                                                                                                                                               | Required correction                                                                                                                                                |
 | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The mission is not dispatched.                                                      | The launcher persists `objective` and `doneCondition` on `FullAutoRun`, but reconciliation sends the constant `FULL_AUTO_CONTINUE_MESSAGE`; the real Codex/Claude prompt does not contain the durable mission. | Compile a typed mission packet from the run and handoff for every first, continued, rotated, resumed, and restart-recovered turn.                                  |
+| The mission is not dispatched.                                                      | The launcher persists `objective` and `doneCondition` on `FullAutoRun`, but reconciliation sends the constant `FULL_AUTO_CONTINUE_MESSAGE`. The real Codex/Claude prompt does not contain the durable mission. | Compile a typed mission packet from the run and handoff for every first, continued, rotated, resumed, and restart-recovered turn.                                  |
 | The active run thread can be evicted.                                               | `ThreadStore` is a five-entry composer cache. Opening six chats while the Full Auto turn is in flight can evict its `threadRef` before the run re-touches it.                                                  | Protect every nonterminal run thread or resolve it from a separate durable authority until terminal settlement.                                                    |
-| The July 18 failure was misclassified.                                              | `provider-lane.ts` returns `That conversation no longer exists.` on a host thread-store miss; liveness maps that literal to `provider_session_missing`. Codex was never invoked on this path.                  | Carry a typed host-thread failure through lane, liveness, report, IPC, and UI. Reserve `provider_session_missing` for evidence returned after provider invocation. |
+| The July 18 failure was misclassified.                                              | `provider-lane.ts` returns `That conversation no longer exists.` on a host thread-store miss. Liveness maps that literal to `provider_session_missing`. Codex was never invoked on this path.                  | Carry a typed host-thread failure through lane, liveness, report, IPC, and UI. Reserve `provider_session_missing` for evidence returned after provider invocation. |
 | Real Claude proof is blocked by the proof environment, not by the product contract. | The isolated Desktop harness forbids Keychain access, while the small Harness app succeeds by letting the pinned SDK use the operator's already-authenticated configuration.                                   | Add an explicit double-gated proof seam that never reads or copies credentials and lets the SDK return typed auth evidence.                                        |
 | The six real rows are incomplete.                                                   | Fixture coverage is broad, but #8976 has not produced successful real receipts for both directions, objective retention, three Codex turns, Claude restart, and in-flight six-chat pressure.                   | Execute those exact rows after the two correctness fixes and close only on real public-safe receipts.                                                              |
 
 This changes the interpretation of the July 18 receipt. The first observed
-`provider_session_missing` was a host cache-residency bug and a taxonomy bug;
+`provider_session_missing` was a host cache-residency bug and a taxonomy bug.
 it was not evidence that Codex bootstrap or conversation resume failed.
 
 ## Selected architecture
@@ -128,11 +128,11 @@ needs to build.
 | Existing capability                                                               | Sprint use                                                                                                                                                               |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Prompt`, `Response`, `AiError`, `Tool`, and `Toolkit`                            | Reuse selectively for any new generic prompt/tool/error boundary instead of creating duplicate `effect-ai-schema` and `effect-ai-core` packages.                         |
-| `LanguageModel.generateText`, `generateObject`, and `streamText`                  | Use for direct model-provider work, evaluators, or classifiers; these APIs are not Codex/Claude Code coding-agent sessions.                                              |
+| `LanguageModel.generateText`, `generateObject`, and `streamText`                  | Use for direct model-provider work, evaluators, or classifiers. These APIs are not Codex/Claude Code coding-agent sessions.                                              |
 | Schema-typed tool parameters, success/failure, `failureMode`, and `needsApproval` | Useful for host-owned tools and typed adapter translation when semantics match.                                                                                          |
 | `Chat` with serialized turns and JSON/persisted history                           | Useful for ordinary Effect model chats. Do not make it canonical history for a Codex or Claude Code session.                                                             |
 | `ExecutionPlan` ordered Layers, attempts, schedules, and conditions               | Reuse as a design reference or inside a stateless model call. Do not replace Full Auto's durable owner-admitted routing policy, leases, rotation history, or guardrails. |
-| `ResponseIdTracker`                                                               | Useful for response-ID continuation on compatible model APIs; it is not a coding-agent resume handle.                                                                    |
+| `ResponseIdTracker`                                                               | Useful for response-ID continuation on compatible model APIs. It is not a coding-agent resume handle.                                                                    |
 
 All of this surface is unstable. Any production import must use the exact
 workspace Effect v4 pin and sit behind an owned OpenAgents service boundary.
@@ -213,7 +213,7 @@ second scheduler, or replace the Desktop application.
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Codex to Claude      | Claude receives the same objective and bounded accepted Codex history, acts usefully, and records the provider transition.                                 |
 | Claude to Codex      | Codex receives the same objective and bounded accepted Claude history, acts usefully, and records the provider transition.                                 |
-| Objective retention  | Every provider invocation contains the durable objective/done condition; the receipt proves hashes/refs and bounded summaries without leaking raw prompts. |
+| Objective retention  | Every provider invocation contains the durable objective/done condition. The receipt proves hashes/refs and bounded summaries without leaking raw prompts. |
 | Three Codex turns    | One run survives three actual Codex continuations without losing host or provider session identity.                                                        |
 | Claude restart       | A restarted Desktop reconciles and resumes or fails with a truthful typed recovery disposition.                                                            |
 | More than five chats | Six ordinary chats opened while a run turn is in flight cannot evict or orphan the run thread.                                                             |
@@ -225,13 +225,13 @@ completion.
 
 ## Explicitly not in this sprint
 
-- no production Desktop renderer rewrite to AI SDK UI or AI Elements;
-- no second Full Auto implementation in `apps/electron-ai-sdk-test/`;
-- no broad Vercel AI SDK source conversion;
-- no duplicate Effect prompt/tool/chat SDK;
+- no production Desktop renderer rewrite to AI SDK UI or AI Elements.
+- no second Full Auto implementation in `apps/electron-ai-sdk-test/`.
+- no broad Vercel AI SDK source conversion.
+- no duplicate Effect prompt/tool/chat SDK.
 - no autonomous provider choice outside the owner-admitted ordered routing
-  policy;
-- no credential copying, Keychain scraping, or weaker sandbox policy;
+  policy.
+- no credential copying, Keychain scraping, or weaker sandbox policy.
 - no release claim before #8976, #8978, and #8979 close with exact evidence.
 
 ## Source basis and pinned facts

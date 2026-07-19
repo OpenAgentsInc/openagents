@@ -19,6 +19,15 @@ An owner must separately approve these expansions.
 This index points to the authorities.
 It does not store the roadmap revision or issue count.
 
+## Controlled language status
+
+The 17 active Sol records use ASD-STE100 and the controlled agent compact profile.
+The compact profile permits reviewed density only when it improves fast and precise agent use.
+It does not weaken authority, safety, evidence, or ambiguity controls.
+
+The Sol document manifest classifies current, historical, evidence, redirect, and tombstone records.
+The P5 receipt in [`docs/ste`](../ste/p5-active-plan-and-audit-conversion-receipt.md) records the conversion set.
+
 ## Dispatch-safe reading order
 
 When documents disagree, use this order:

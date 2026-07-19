@@ -45,7 +45,7 @@ an adoption of Optibox source, or a second control plane.
 6. Durable lifecycle separates lease, guest, filesystem, ingress, and runtime
    turn facts. Silence is not completion. Idle stop can arm only after a
    structural runtime settlement.
-7. IDE-13 consumes the managed project capability; IDE-17 consumes background
+7. IDE-13 consumes the managed project capability. IDE-17 consumes background
    and long-running agent execution. Neither gets a second project, session,
    work-unit, or agent graph.
 8. Sarah ProductSpec revision 4 owns the conversational action outcome.
@@ -58,7 +58,7 @@ an adoption of Optibox source, or a second control plane.
 9. Mobile revision 7, portable sessions revision 4, Desktop revision 7, and
    Cursor parity revision 3 already admit managed placement and bounded
    supervision. Their bytes do not change. This program supplies a concrete
-   target dependency; it does not claim their broader acceptance.
+   target dependency. It does not claim their broader acceptance.
 10. Full Auto revision 14 still excludes cross-machine run admission. A
     sandbox work unit is not silently a remote `FullAutoRun`. Any later
     composition must revise and rebind the Full Auto ProductSpec and
@@ -93,7 +93,7 @@ or cleanup truth.
 | ------ | ---------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
 | SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan                                                   | complete                                               |
 | SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | complete                                               |
-| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete; default-off live component accepted          |
+| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete, default-off live component accepted          |
 | SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                  |
 | SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | complete, default-off driver component accepted        |
 | SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | next                                                   |
@@ -103,7 +103,7 @@ or cleanup truth.
 | SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                            |
 | SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                            |
 
-The issues are native subissues of #9023. Each child owns one bounded claim;
+The issues are native subissues of #9023. Each child owns one bounded claim.
 the epic is not a mutation claim. SBX-01, SBX-03, and the Assurance/model lane
 may proceed in parallel only after SBX-00 freezes their shared schemas. SBX-02
 owns Cloud image and provisioner hot contracts. SBX-06 and SBX-07 may proceed
@@ -114,15 +114,15 @@ live-acceptance and rollout gate.
 
 The first compatibility milestone covers:
 
-- `GET /me` and `GET /limits`;
-- `GET|POST /boxes`;
-- `GET|PATCH|DELETE /boxes/{boxId}`;
-- `POST /boxes/{boxId}/stop` and `/resume`;
-- `POST /boxes/{boxId}/prompt`;
-- `GET /boxes/{boxId}/prompts/{promptId}` and `/events`;
-- `POST /boxes/{boxId}/interrupt`;
-- `GET|PUT /boxes/{boxId}/files`;
-- `POST /boxes/{boxId}/commands`; and
+- `GET /me` and `GET /limits`.
+- `GET|POST /boxes`.
+- `GET|PATCH|DELETE /boxes/{boxId}`.
+- `POST /boxes/{boxId}/stop` and `/resume`.
+- `POST /boxes/{boxId}/prompt`.
+- `GET /boxes/{boxId}/prompts/{promptId}` and `/events`.
+- `POST /boxes/{boxId}/interrupt`.
+- `GET|PUT /boxes/{boxId}/files`.
+- `POST /boxes/{boxId}/commands`. And
 - `GET /boxes/{boxId}/artifacts`.
 
 This method list is compatibility scope, not canonical server architecture.
@@ -140,7 +140,7 @@ attachment truth. IDE-17 owns background agent and automation experience.
 Sandbox lifecycle never bypasses IDE-08 proposal/evidence, IDE-10 runtime
 process, or IDE-12 worktree/delivery contracts. The current P0 IDE-07 daily-
 use gate remains independent and is not delayed or promoted by this program.
-The canonical post-basic-IDE epic is #9035; SBX-06 supplies the managed target
+The canonical post-basic-IDE epic is #9035. SBX-06 supplies the managed target
 consumed by IDE-13 #9041 and IDE-17 #9045 without claiming their broader exits.
 
 ### Sarah
@@ -149,7 +149,7 @@ Sarah revision 4 states the desired brokered action. SBX-00 must change the
 root and Sarah authority profiles only after the closed action/resource/
 condition contract and its denial tests exist. SBX-07 then composes the same
 ManagedSandboxService used by Desktop. Every conversational tool call emits
-ordered owner-visible activity plus authority and target receipts; pending,
+ordered owner-visible activity plus authority and target receipts. Pending,
 failed, refused, recovery-required, and complete stay distinct.
 
 ### Mobile and web
@@ -173,18 +173,18 @@ bodies must not work around this boundary by renaming a remote Full Auto run.
 Phase 1 requires:
 
 - ProductSpec, AssuranceSpec, Effect Schema, model, and compatibility-corpus
-  validation;
+  validation.
 - unmodified SDK conformance against fake, staging, and owner-gated live base
-  URLs with exact OpenAPI/package/translator identities;
+  URLs with exact OpenAPI/package/translator identities.
 - deterministic retry/conflict, lifecycle interleaving, tenant/generation
-  isolation, cursor, interrupt, capability, budget, crash, and cleanup faults;
-- one real Codex and one real Claude managed turn;
+  isolation, cursor, interrupt, capability, budget, crash, and cleanup faults.
+- one real Codex and one real Claude managed turn.
 - packaged Desktop and real Sarah owner-thread journeys through the same
-  broker;
-- bounded mobile/web supervision faults at their named proof rungs;
+  broker.
+- bounded mobile/web supervision faults at their named proof rungs.
 - observed GCP readiness, incremental cost under the standing cap, zero
   residual compute/firewall/ingress/scratch/process/grant evidence, rollback,
-  and independent review; and
+  and independent review. And
 - exact release/promise gating before any public availability or parity claim.
 
 Fake mode, configured job IDs, and SDK terminal state cannot prove live
@@ -210,13 +210,13 @@ rollout gate. Bounded guest I/O remains typed unavailable until SBX-05.
 ## Hot contracts
 
 - `specs/openagents/managed-agent-sandboxes.product-spec.md` and its future
-  AssuranceSpec;
-- `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, and authority receipts;
+  AssuranceSpec.
+- `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, and authority receipts.
 - sandbox/workroom/portable-session schemas, lifecycle generations, Cloud SQL
-  migrations, event cursor, and capability broker;
-- GCP image/provisioner configuration and Cloud invariants;
-- IDE project/placement and agent graph contracts;
-- Sarah tool-call schema and runtime event ordering; and
+  migrations, event cursor, and capability broker.
+- GCP image/provisioner configuration and Cloud invariants.
+- IDE project/placement and agent graph contracts.
+- Sarah tool-call schema and runtime event ordering. And
 - package pins, compatibility fixtures, route table, and OpenAPI publication.
 
 Each hot contract has one integration owner before parallel mutation.

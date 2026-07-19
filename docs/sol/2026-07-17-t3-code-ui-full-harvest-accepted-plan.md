@@ -27,15 +27,15 @@ are the implementation authority.
 copy. Every component in the pinned T3 `apps/web/src/components`, `browser`,
 `cloud`, and UI-support inventory must receive an explicit terminal disposition:
 
-- **adopt** when OpenAgents needs the same visible user job;
+- **adopt** when OpenAgents needs the same visible user job.
 - **adapt** when the visible job remains but its state, provider, or authority
-  must be OpenAgents-native;
+  must be OpenAgents-native.
 - **covered** when a mounted OpenAgents component already meets the parity
-  definition; or
+  definition. Or
 - **reject** only when the component is T3 branding, a T3 service/account
   boundary, light/system theming, or an authority OpenAgents intentionally does
   not expose. Rejection requires a visible OpenAgents alternative or a written
-  product reason; omission is not a disposition.
+  product reason. Omission is not a disposition.
 
 The source is MIT-licensed. Substantial copied code retains the required T3
 copyright/license notice in the applicable third-party notice. Source identity,
@@ -47,14 +47,14 @@ component provenance, and adaptation notes stay reviewable by exact revision.
 
 - preserve T3's information architecture, component composition, density,
   geometry, hierarchy, interaction sequence, responsive mode, keyboard path,
-  loading/empty/error/success families, and motion timing where the job matches;
+  loading/empty/error/success families, and motion timing where the job matches.
 - project those recipes through OpenAgents' Khala tokens, fonts, icon catalog,
-  focus language, reduced-motion policy, and semantic radius taxonomy;
+  focus language, reduced-motion policy, and semantic radius taxonomy.
 - preserve OpenAgents Queue/Steer/Stop, Full Auto, ProductSpec, AssuranceSpec,
-  disclosure, redaction, and typed refusal semantics;
+  disclosure, redaction, and typed refusal semantics.
 - connect every enabled action to an existing or newly admitted typed intent and
   host capability. A decorative control, fabricated result, raw renderer shell,
-  ambient filesystem access, or string-routed tool selector is not parity; and
+  ambient filesystem access, or string-routed tool selector is not parity. And
 - count only the current mounted React product. Dormant components, static
   fixtures, and legacy Effect-Native views are implementation inputs, not
   completion evidence.
@@ -97,7 +97,7 @@ companion
    toast/tooltip/sheet primitives through the OpenAgents design system.
 10. **T3UI-10 — remote/mobile/connect surfaces:** adapt T3 pairing, environment,
     relay, SSH prompt, connection, and mobile-client management UI to admitted
-    OpenAgents placement and portable-session contracts; do not copy T3 service
+    OpenAgents placement and portable-session contracts. Do not copy T3 service
     authority or credentials.
 11. **T3UI-11 — responsive, accessibility, and performance closure:** prove
     wide/standard/minimum window modes, off-canvas/sheet behavior, focus order,
@@ -128,11 +128,11 @@ Owned paths:
 Required behavior:
 
 - every non-test `.tsx` component below the pinned T3 component root has its
-  exact source path and Git blob id recorded once;
+  exact source path and Git blob id recorded once.
 - every row has one explicit adapted, covered, or rejected disposition,
-  existing OpenAgents evidence, and valid mounted fixture references;
+  existing OpenAgents evidence, and valid mounted fixture references.
 - the checked mounted fixture catalog is identical to the deterministic visual
-  baseline lane; and
+  baseline lane. And
 - local packaging proves staged-source isolation and packaged-content closure,
   while signing, notarization, and release promotion remain separate authorities.
 
@@ -155,15 +155,15 @@ cross-platform distribution evidence without those separate ceremonies.
 
 ### CLAIM-STATUS
 
-- implementation: complete and published; the exact 151-row census contains 99
+- implementation: complete and published. The exact 151-row census contains 99
   adapted, 46 covered, 6 explicitly rejected, and zero undisposed components
 - focused proof: 216 Desktop files / 2,079 passing / 39 skipped, production and
   both source Electron smokes, the packaged canonical React journey, exact
   packaged Codex identity, and all 24 zero-drift visual frames pass
-- packaged source: `1f42cd2998b352575f3092e0ae5b88e5190e1fad`; staged ledger
+- packaged source: `1f42cd2998b352575f3092e0ae5b88e5190e1fad`. Staged ledger
   `sha256:6295cbd544c445835c3f1d1bf9484eedef8dac600373cee26a82ea63288b4b5c`
 - receipt: [`2026-07-17-t3ui-12-census-packaged-evidence-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md)
-- residual: the unsigned-development package is not signed-release evidence;
+- residual: the unsigned-development package is not signed-release evidence.
   current signing/notarization/promotion, cross-platform artifacts, and one
   compatibility-renderer packaged editor-recovery miss remain explicit
 

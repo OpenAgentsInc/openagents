@@ -13,9 +13,9 @@
 Reboot Sarah as `principal.sarah`, the owner's authenticated, persistent
 orchestrator inside supported OpenAgents clients. The first production surface
 is the existing OpenAgents mobile conversation system. One stable owner-private
-Khala Sync thread provides relationship continuity and conversation memory;
-fresh bounded source adapters provide business state; the hosted Khala runtime
-answers with cited context; Effect authority and existing target adapters own
+Khala Sync thread provides relationship continuity and conversation memory.
+fresh bounded source adapters provide business state. The hosted Khala runtime
+answers with cited context. Effect authority and existing target adapters own
 actions and receipts.
 
 The reboot deliberately does not restore `apps/sarah`, the public `/sarah`
@@ -30,7 +30,7 @@ owner's primary relationship, persistent owner memory, fleet/company context,
 and a phone-first conversation. It also contained expensive duplication that
 the July 10 removal correctly killed. The current owner direction supersedes
 the blanket persona removal only for an authenticated capability on the
-supported app; it does not supersede the standalone-surface tombstone.
+supported app. It does not supersede the standalone-surface tombstone.
 
 ## Fastest implementation path
 
@@ -54,7 +54,7 @@ supported app; it does not supersede the standalone-surface tombstone.
 7. Revision 2 adds a bounded Gemma 4 function-calling loop over existing
    brokers: read/dispatch/status for owner-linked Codex workers and
    read/pause/resume/stop for existing Full Auto runs. Every call emits visible
-   runtime activity plus an authority receipt; pending is never presented as
+   runtime activity plus an authority receipt. Pending is never presented as
    completed. MemoHarness bank, adaptation, and promotion remain unavailable.
 8. The 2026-07-19 managed-sandbox expansion proceeds only through epic #9023:
    SBX-00 freezes and admits the exact authority/resource/condition contract,
@@ -76,7 +76,7 @@ This is a gated intent revision, not a live tool grant. `AUTHORITY.md` revision
 SBX-00 lands their exact successor profiles with denial tests. Sarah never
 receives raw `gcloud`, shell, database, topology, service-account, provider
 credential, host-path, or generic container-admin access. A sandbox work unit
-also remains distinct from `FullAutoRun`; remote Full Auto start stays excluded
+also remains distinct from `FullAutoRun`. Remote Full Auto start stays excluded
 unless Full Auto receives its own exact ProductSpec and AssuranceSpec revision.
 
 ## Capability rollout
@@ -85,34 +85,34 @@ The first release has live owner conversation, durable thread memory, GitHub
 release/issue context, recent public Forum activity, Full Auto/Fleet context,
 cloud health, and contract context. Repository delivery, GCP operations, RC
 publication, and GitHub/Forum communication are brokered through the existing
-mechanisms; no new super-adapter bypasses them. Richer company-priority
+mechanisms. No new super-adapter bypasses them. Richer company-priority
 projections, semantic memory compaction, and more target receipts can land
 incrementally without changing the principal or UI contract.
 
 Managed-sandbox lifecycle and dispatch are a later broker capability under
 #9023, not part of the already-landed Sarah reboot claim. They reuse the same
 principal, thread, ordered runtime activity, authority receipts, and target
-receipts; they do not add a Sarah-only control plane or state model.
+receipts. They do not add a Sarah-only control plane or state model.
 
 ## Verification and release gates
 
 - package tests: authority allow/deny/condition behavior and Sarah prompt
-  citations;
-- Worker route: owner authentication, opaque stable thread, connection close;
+  citations.
+- Worker route: owner authentication, opaque stable thread, connection close.
 - mobile Effect Native: pinned identity, authority label, Sarah composer, and
-  hosted-lane routing;
-- behavior registry coverage for the exact owner statement;
-- Worker and mobile typechecks plus repository `pnpm run check`;
+  hosted-lane routing.
+- behavior registry coverage for the exact owner statement.
+- Worker and mobile typechecks plus repository `pnpm run check`.
 - production deploy health, `/sarah` tombstone, authenticated principal, and
   real Sarah hosted-turn plus tool receipts. Revision 2 is server-only because
-  the installed mobile client already renders ordered runtime tool events; no
+  the installed mobile client already renders ordered runtime tool events. No
   manufactured OTA or native release is required.
 
 ## Hot contracts
 
 Changes touch root authority and invariants, the shared behavior registry,
 Khala hosted dispatch, Worker exact-route wiring, mobile experience selection,
-and the Effect Native home program. These files are one atomic packet; no
+and the Effect Native home program. These files are one atomic packet. No
 parallel writer may change their contract during this landing without an
 explicit handoff.
 

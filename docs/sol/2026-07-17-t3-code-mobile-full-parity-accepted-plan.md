@@ -98,21 +98,21 @@ packet does not version a wire schema or alter conversation authority.
 Required behavior:
 
 - assistant bodies are bounded and deterministically parsed into the existing
-  typed Markdown and CodeBlock catalog; arbitrary HTML never renders;
+  typed Markdown and CodeBlock catalog. Arbitrary HTML never renders.
 - headings, paragraphs, emphasis, inline code, safe HTTP(S) links, lists,
-  blockquotes, and fenced code remain selectable and accessible;
-- external links open only through the native host's safe-link capability;
+  blockquotes, and fenced code remain selectable and accessible.
+- external links open only through the native host's safe-link capability.
 - assistant prose and code expose real clipboard actions through the injected
-  native clipboard driver;
+  native clipboard driver.
 - user bubble geometry, exact message keys, status, ordering, attachments,
-  runtime interactions, and confirmed transcript authority remain unchanged;
+  runtime interactions, and confirmed transcript authority remain unchanged.
 - malformed or oversized markup degrades to bounded readable text.
 
 Proof: focused parser, mobile Home/Khala, RN renderer, accessibility, behavior
 contract, mobile typecheck, and repository-required `pnpm run check`.
 
 Close rule: this closes only `T3M-A1`. Work groups, decision-card polish,
-attachments/viewer, and scroll/history state remain `T3M-A2`–`T3M-A4`; full
+attachments/viewer, and scroll/history state remain `T3M-A2`–`T3M-A4`. Full
 mobile parity remains open through `T3M-F2`.
 
 ### CLAIM
@@ -130,22 +130,22 @@ mobile parity remains open through `T3M-F2`.
 ### CLAIM-STATUS
 
 - implementation: bounded assistant Markdown and fenced code now lower into
-  typed Effect Native content; native text/code selection, safe external-link
+  typed Effect Native content. Native text/code selection, safe external-link
   opening, and clipboard-backed message/code actions are wired without changing
   message identity, order, authority, or user-bubble geometry
 - focused proof: 76 tests passed across the new mobile transcript oracle,
   authoritative Home, accessibility, RN renderer, and behavior contracts
 - type proof: OpenAgents mobile TypeScript passed
 - repository gate: `pnpm run check` passed
-- residual: `T3M-A2` through `T3M-F2`; this is not a full-parity claim
+- residual: `T3M-A2` through `T3M-F2`. This is not a full-parity claim
 
 ### CLAIM-RELEASE
 
 - landed: `72a841ea4ef7ce5f1b4289d3b5a2b1a29e11063d` on `main`
-- verification: post-rebase mobile typecheck; 76 focused mobile, renderer,
-  accessibility, and behavior-contract tests; `pnpm run check`; pre-push fast
+- verification: post-rebase mobile typecheck. 76 Focused mobile, renderer,
+  accessibility, and behavior-contract tests. `pnpm run check`. Pre-push fast
   policy, generated-contract, retired-surface, and Cloud-authority checks
-- residual: `T3M-A2` grouped runtime work is the next ordered packet; full
+- residual: `T3M-A2` grouped runtime work is the next ordered packet. Full
   mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-A2
@@ -173,24 +173,24 @@ Required behavior:
 
 - confirmed reasoning, connection, tool, non-interactive plan, usage,
   reconnect, stale, interruption, terminal, and error events group by exact
-  run into a bounded work log rather than competing as generic system messages;
+  run into a bounded work log rather than competing as generic system messages.
 - the group names running/success/failure/canceled state, elapsed time when
-  derivable, and causal runtime/backend identity without displaying raw refs;
+  derivable, and causal runtime/backend identity without displaying raw refs.
 - the collapsed state keeps the latest five useful items and names the exact
-  hidden remainder; typed disclosure reveals all bounded items;
+  hidden remainder. Typed disclosure reveals all bounded items.
 - rows carry stable status icons/labels, concise detail, selectable full detail,
-  and independent typed disclosure without changing runtime authority;
+  and independent typed disclosure without changing runtime authority.
 - assistant text and interaction cards retain their causal transcript order,
-  and malformed timestamps/details degrade truthfully without invented time;
+  and malformed timestamps/details degrade truthfully without invented time.
 - accessibility exposes group/item status and expanded state with minimum
-  mobile targets; disclosure remains local view state.
+  mobile targets. Disclosure remains local view state.
 
 Proof: focused projection, Effect Native intent, authoritative Home,
 accessibility, behavior-contract, mobile typecheck, and repository-required
 `pnpm run check`.
 
 Close rule: this closes grouped runtime work only. Decision-card visual parity
-remains `T3M-A3`; attachment and scroll/history parity remains `T3M-A4`.
+remains `T3M-A3`. Attachment and scroll/history parity remains `T3M-A4`.
 
 ### CLAIM
 
@@ -210,22 +210,22 @@ remains `T3M-A3`; attachment and scroll/history parity remains `T3M-A4`.
   work group with causal runtime/backend identity, truthful running/settled
   summary, derivable elapsed time, five-row collapsed density, exact bounded
   remainder accounting, and typed group/item disclosure with selectable copyable
-  detail; generic runtime diagnostic messages are removed
+  detail. Generic runtime diagnostic messages are removed
 - focused proof: 60 tests passed across work-log projection/disclosure,
   authoritative Home, accessibility, and behavior contracts
 - type proof: OpenAgents mobile TypeScript passed
 - repository gate: `pnpm run check` passed
-- residual: `T3M-A3` decision-card parity through `T3M-F2`; this is not a
+- residual: `T3M-A3` decision-card parity through `T3M-F2`. This is not a
   full-parity claim
 
 ### CLAIM-RELEASE
 
 - landed: `61f8b0ad4b1f5884dccfd19aca75b034addcd927` on `main`
-- verification: post-rebase mobile typecheck; 60 focused work-log,
-  authoritative Home, accessibility, and behavior-contract tests; `pnpm run
+- verification: post-rebase mobile typecheck. 60 Focused work-log,
+  authoritative Home, accessibility, and behavior-contract tests. `pnpm run
   check`
 - residual: `T3M-A3` compact approval/input/plan cards is the next ordered
-  packet; full mobile parity remains open through `T3M-F2`
+  packet. Full mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-A3
 
@@ -249,18 +249,18 @@ not version the runtime-interaction schema or add a new decision outcome.
 Required behavior:
 
 - tool approval, provider input, and plan review use distinct compact card
-  hierarchy, status tone, disclosure copy, and action emphasis;
+  hierarchy, status tone, disclosure copy, and action emphasis.
 - approvals summarize the bounded requested operation, state that allowance is
   request-scoped, and distinguish allow-once from deny without inventing a
-  session-wide grant;
+  session-wide grant.
 - provider questions group prompts, distinguish single from multiple choice,
-  show option descriptions, selected state, validation, and submitting state;
-  free text appears only when future authority explicitly allows it;
+  show option descriptions, selected state, validation, and submitting state.
+  free text appears only when future authority explicitly allows it.
 - plans render as readable bounded Markdown with anchored accept,
-  request-changes, and replan actions;
-- pending, submitting, resolved, expired, and revoked states are complete;
+  request-changes, and replan actions.
+- pending, submitting, resolved, expired, and revoked states are complete.
   terminal states are read-only and show a confirmed audit summary without
-  displaying raw refs;
+  displaying raw refs.
 - all actions retain exact interaction/thread/turn/kind/idempotency authority,
   minimum touch targets, labels, and disabled/loading semantics.
 
@@ -285,27 +285,27 @@ viewer, streaming, and scroll/history parity remain `T3M-A4`.
 
 ### CLAIM-STATUS
 
-- status: implementation complete; ready to commit and land
+- status: implementation complete. Ready to commit and land
 - completed_at: `2026-07-17T21:15:38Z`
 - delivered: kind-specific compact provider-question, request-scoped tool
-  approval, and plan-review cards; bounded plan Markdown and native copy;
-  complete selected/validation/submitting and terminal state presentation;
-  accessible 44pt minimum actions; no invented session grant or free-text
+  approval, and plan-review cards. Bounded plan Markdown and native copy.
+  complete selected/validation/submitting and terminal state presentation.
+  accessible 44pt minimum actions. No invented session grant or free-text
   authority
-- verification: mobile typecheck passed; 63 focused interaction-card,
-  authoritative Home, accessibility, and behavior-contract tests passed;
+- verification: mobile typecheck passed. 63 Focused interaction-card,
+  authoritative Home, accessibility, and behavior-contract tests passed.
   `pnpm run check` passed
-- close boundary: presentation only; exact confirmed decision settlement and
-  runtime schemas remain unchanged; `T3M-A4` remains next
+- close boundary: presentation only. Exact confirmed decision settlement and
+  runtime schemas remain unchanged. `T3M-A4` remains next
 
 ### CLAIM-RELEASE
 
 - landed: `1a47f6252890eed3a30de86f59c1d601c1621b0f` on `main`
-- verification: post-rebase mobile typecheck; 63 focused interaction-card,
-  authoritative Home, accessibility, and behavior-contract tests; pre-rebase
+- verification: post-rebase mobile typecheck. 63 Focused interaction-card,
+  authoritative Home, accessibility, and behavior-contract tests. Pre-rebase
   `pnpm run check`
 - residual: `T3M-A4` attachments, viewer, streaming, scroll/history, and
-  deep-transcript parity is the next ordered packet; full mobile parity remains
+  deep-transcript parity is the next ordered packet. Full mobile parity remains
   open through `T3M-F2`
 
 ## Active packet — T3M-A4
@@ -340,16 +340,16 @@ Required behavior:
 
 - confirmed image attachments use content-aware thumbnail cards with accessible
   file metadata, native load/failure/retry state, and a dismissable full-screen
-  contain-fit viewer; unsupported non-image payloads are never fabricated from
-  the image-only authority schema;
-- active reasoning/work/message rows retain stable keys and update in place;
-  reduced motion never gates content or uses app-owned animation;
-- auto-pin follows the latest row only while the user remains at the end; user
+  contain-fit viewer. Unsupported non-image payloads are never fabricated from
+  the image-only authority schema.
+- active reasoning/work/message rows retain stable keys and update in place.
+  reduced motion never gates content or uses app-owned animation.
+- auto-pin follows the latest row only while the user remains at the end. User
   scrolling suspends it, new rows increment an inline unread boundary, and a
-  touch-safe jump-to-latest action clears the boundary and restores pinning;
+  touch-safe jump-to-latest action clears the boundary and restores pinning.
 - retained history opens newest-first in bounded pages, loads earlier retained
   rows through a typed local action, preserves the first visible keyed row when
-  prepending, and names server-retained omissions exactly;
+  prepending, and names server-retained omissions exactly.
 - list rendering remains virtualized and bounded, and stale/foreign image,
   pagination, scroll, or load callbacks fail closed.
 
@@ -358,7 +358,7 @@ Home, accessibility, behavior-contract, mobile typecheck, and repository
 checks.
 
 Close rule: this closes Epic A's transcript surface only. Composer intelligence
-begins at `T3M-B1`; physical image gestures and screen-reader/device evidence
+begins at `T3M-B1`. Physical image gestures and screen-reader/device evidence
 remain `T3M-F2`.
 
 ### CLAIM
@@ -378,36 +378,36 @@ remain `T3M-F2`.
 
 ### CLAIM-STATUS
 
-- status: implementation complete; ready to commit and land
+- status: implementation complete. Ready to commit and land
 - completed_at: `2026-07-17T21:35:03Z`
-- delivered: typed Effect Native image press/load/error lifecycle; confirmed
-  attachment loading/failure/retry cards and ready-only contain-fit viewer;
-  60-row retained-history pagination with exact non-retained accounting;
-  keyed anchor preservation and targeted-scroll fallback; real end-pin
+- delivered: typed Effect Native image press/load/error lifecycle. Confirmed
+  attachment loading/failure/retry cards and ready-only contain-fit viewer.
+  60-row retained-history pagination with exact non-retained accounting.
+  keyed anchor preservation and targeted-scroll fallback. Real end-pin
   detection, inline unread boundary, jump-to-latest, and stable-key active-row
-  replacement; reduced-motion-safe and Dynamic-Type touch targets
+  replacement. Reduced-motion-safe and Dynamic-Type touch targets
 - verification: 94 focused transcript, interaction, authoritative Home,
   accessibility, local-first registry, RN renderer, and behavior-contract tests
-  passed; seven Effect Native vendor-guard tests passed; Effect Native core,
-  RN renderer, and mobile typechecks passed; `pnpm run check` passed
+  passed. Seven Effect Native vendor-guard tests passed. Effect Native core,
+  RN renderer, and mobile typechecks passed. `pnpm run check` passed
 - expanded-sweep note: the package-level `test` script ran the unscoped whole
-  workspace (17,982 passed / 21 failed); failures were current-head/shared-host
+  workspace (17,982 passed / 21 failed). Failures were current-head/shared-host
   Postgres SHM exhaustion, Pylon/packaging timeouts, fixture drift, and Git
   `core.bare` mutation. Its one relevant registry failure exposed three
-  presentation contracts carrying invalid seam metadata; that metadata was
+  presentation contracts carrying invalid seam metadata. That metadata was
   removed and the focused local-first registry oracle is green.
-- close boundary: no attachment wire-schema widening or remote retention claim;
-  physical zoom/VoiceOver/TalkBack evidence remains `T3M-F2`; `T3M-B1` is next
+- close boundary: no attachment wire-schema widening or remote retention claim.
+  physical zoom/VoiceOver/TalkBack evidence remains `T3M-F2`. `T3M-B1` is next
 
 ### CLAIM-RELEASE
 
 - landed: `f337bbaf1bce8c40b9d22dfbe05c98f904856d66` on `main`
 - verification: post-rebase 113 focused transcript, interaction,
   authoritative Home, accessibility, local-first registry, RN renderer,
-  behavior-contract, and Sol tests; Effect Native core, RN renderer, and
-  mobile typechecks; pre-rebase vendor guard and `pnpm run check`
-- residual: Epic A is complete; `T3M-B1` composer-local target/model/mode
-  toolbar and grouped picker is the next ordered packet; full mobile parity
+  behavior-contract, and Sol tests. Effect Native core, RN renderer, and
+  mobile typechecks. Pre-rebase vendor guard and `pnpm run check`
+- residual: Epic A is complete. `T3M-B1` composer-local target/model/mode
+  toolbar and grouped picker is the next ordered packet. Full mobile parity
   remains open through `T3M-F2`
 
 ## Active packet — T3M-B1
@@ -436,16 +436,16 @@ authoritative execution target or enable shell/command semantics reserved for
 Required behavior:
 
 - repository/worktree identity and the current target/model become one compact
-  composer-local toolbar instead of a diagnostic block above the input;
+  composer-local toolbar instead of a diagnostic block above the input.
 - the target control opens a dismissable, searchable native sheet grouped by
   provider, with selected state, model label, account label, readiness, and
-  exact unavailable/revoked/offline explanations;
+  exact unavailable/revoked/offline explanations.
 - selection continues through the existing typed target intent and persisted
-  draft mutation; stale, foreign, non-ready, or missing targets fail closed;
-- current mode is visibly `Code`; no alternate/shell mode is presented as
-  actionable until `T3M-B2` owns command admission and transport;
+  draft mutation. Stale, foreign, non-ready, or missing targets fail closed.
+- current mode is visibly `Code`. No alternate/shell mode is presented as
+  actionable until `T3M-B2` owns command admission and transport.
 - catalog-unavailable and empty-search states preserve the draft and explain
-  why target choice is unavailable;
+  why target choice is unavailable.
 - actions meet Dynamic Type touch targets and sheet dismissal restores the
   composer path without changing transcript authority.
 
@@ -475,23 +475,23 @@ commands, `@` context, attachment editing, and active-run queue/stop remain
 
 - status: implementation complete and release gates green
 - verification: 62 focused composer-toolbar, authoritative Home,
-  accessibility, local-first registry, and behavior-contract tests; mobile
-  typecheck; `pnpm run check`; `git diff --check`
+  accessibility, local-first registry, and behavior-contract tests. Mobile
+  typecheck. `pnpm run check`. `git diff --check`
 - state-safety note: picker visibility and search reset on chat creation,
   conversation selection, coding-session selection, attention navigation,
   active-thread removal, and sync-authority loss
 - close boundary: no slash-command, `@` context, attachment editing, or
-  active-run queue/stop claim; those remain `T3M-B2`
+  active-run queue/stop claim. Those remain `T3M-B2`
 - verified_at: `2026-07-17T21:42:38Z`
 
 ### CLAIM-RELEASE
 
 - landed: `9cc111a8ee5a07a369c24752411d9828e181d9d3` on `main`
 - verification: post-rebase 81 focused composer-toolbar, authoritative Home,
-  accessibility, local-first registry, behavior-contract, and Sol tests;
-  mobile typecheck; pre-rebase `pnpm run check` and manifest generation
-- residual: `T3M-B1` is complete; `T3M-B2` slash commands, `@` context,
-  attachment editing, and active-run queue/stop is the next ordered packet;
+  accessibility, local-first registry, behavior-contract, and Sol tests.
+  mobile typecheck. Pre-rebase `pnpm run check` and manifest generation
+- residual: `T3M-B1` is complete. `T3M-B2` slash commands, `@` context,
+  attachment editing, and active-run queue/stop is the next ordered packet.
   full mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-B2.1
@@ -526,15 +526,15 @@ Required behavior:
 
 - every selected attachment renders in a bounded composer strip as an image
   preview or file card with filename, size, type, and exact staged/uploading/
-  ready/error state;
+  ready/error state.
 - remove applies the canonical `RemoveAttachment` transaction to the exact
-  active draft, persists it, and cannot remove a stale or foreign attachment;
+  active draft, persists it, and cannot remove a stale or foreign attachment.
 - retry is shown only for a failed item and routes through a host verifier that
   must re-read and re-hash the original device-local bytes before the item can
-  return to ready;
+  return to ready.
 - pending mutation disables only the affected item and preserves the text,
-  target, other attachments, and transcript;
-- limits and delivery failures remain explicit; no binary-delivery or remote-
+  target, other attachments, and transcript.
+- limits and delivery failures remain explicit. No binary-delivery or remote-
   upload support is implied.
 
 Proof: canonical composer transaction tests, attachment projection/intent
@@ -542,7 +542,7 @@ journeys, authoritative submit regression, accessibility, behavior contracts,
 mobile typecheck, and repository checks.
 
 Close rule: this closes attachment preview/removal/retry only. Typed slash
-commands and repository-backed `@` context remain `T3M-B2.2`; active-run
+commands and repository-backed `@` context remain `T3M-B2.2`. Active-run
 queue/stop remains `T3M-B2.3`.
 
 ### CLAIM
@@ -563,13 +563,13 @@ queue/stop remains `T3M-B2.3`.
 - status: implementation complete and release gates green
 - verification: 71 focused composer attachment, canonical draft, native
   picker/delivery, authoritative Home, accessibility, local-first registry,
-  and behavior-contract tests; Khala Sync client and mobile typechecks;
-  `pnpm run check`; `git diff --check`
-- authority note: preview URIs name only the app-managed persistent copy;
-  remove uses canonical composer transactions; retry requires exact failed
+  and behavior-contract tests. Khala Sync client and mobile typechecks.
+  `pnpm run check`. `git diff --check`
+- authority note: preview URIs name only the app-managed persistent copy.
+  remove uses canonical composer transactions. Retry requires exact failed
   attachment identity plus matching size and SHA-256 from re-read local bytes
-- close boundary: no binary runtime delivery or remote upload claim; slash and
-  `@` discovery remain `T3M-B2.2`; queue/stop remains `T3M-B2.3`
+- close boundary: no binary runtime delivery or remote upload claim. Slash and
+  `@` discovery remain `T3M-B2.2`. Queue/stop remains `T3M-B2.3`
 - verified_at: `2026-07-17T21:50:50Z`
 
 ### CLAIM-RELEASE
@@ -577,10 +577,10 @@ queue/stop remains `T3M-B2.3`.
 - landed: `baec3e49b1d3b61171a8c8d3780f20b2523ef791` on `main`
 - verification: post-rebase 90 focused composer attachment, canonical draft,
   picker/delivery, authoritative Home, accessibility, local-first registry,
-  behavior-contract, and Sol tests; Khala Sync client and mobile typechecks;
+  behavior-contract, and Sol tests. Khala Sync client and mobile typechecks.
   pre-rebase `pnpm run check`
-- residual: `T3M-B2.1` is complete; `T3M-B2.2` typed slash-command and
-  repository-backed `@` context discovery is next; full mobile parity remains
+- residual: `T3M-B2.1` is complete. `T3M-B2.2` typed slash-command and
+  repository-backed `@` context discovery is next. Full mobile parity remains
   open through `T3M-F2`
 
 ## Active packet — T3M-B2.2a
@@ -605,14 +605,14 @@ Required behavior:
 
 - a leading slash token opens composer-local autocomplete with bounded built-in
   commands, typed labels/descriptions, filtered results, and an honest empty
-  state;
+  state.
 - selection accepts only a closed command id and dispatches its exact existing
-  Home intent/authority path; arbitrary command text never becomes tool or
-  runtime routing;
+  Home intent/authority path. Arbitrary command text never becomes tool or
+  runtime routing.
 - target and attachment commands preserve the remaining draft, while new-chat
   and stop use their existing authority checks and clear command text only
-  after admission;
-- unavailable commands remain visible with a reason and cannot dispatch;
+  after admission.
+- unavailable commands remain visible with a reason and cannot dispatch.
 - touch, screen-reader, and keyboard selection use the Effect Native Combobox
   contract rather than a bespoke overlay.
 
@@ -621,7 +621,7 @@ authority regressions, accessibility, RN Composer/Combobox tests, behavior
 contracts, mobile typecheck, and repository checks.
 
 Close rule: this closes slash-command discovery only. Repository-backed `@`
-context remains `T3M-B2.2b`; active-run queue/stop presentation remains
+context remains `T3M-B2.2b`. Active-run queue/stop presentation remains
 `T3M-B2.3` (the slash Stop command reuses current exact cancel authority).
 
 ### CLAIM
@@ -640,12 +640,12 @@ context remains `T3M-B2.2b`; active-run queue/stop presentation remains
 - status: implementation complete and release gates green
 - verification: 84 focused slash discovery, authoritative Home, composer
   toolbar/attachments, accessibility, local-first registry, RN Composer/
-  Combobox, and behavior-contract tests; mobile typecheck; `pnpm run check`;
+  Combobox, and behavior-contract tests. Mobile typecheck. `pnpm run check`.
   `git diff --check`
 - routing note: deterministic parsing starts only at the explicit trailing
-  slash token; selection is a closed schema literal and dispatches existing
+  slash token. Selection is a closed schema literal and dispatches existing
   Home authority paths, never free-form tool selection
-- close boundary: repository-backed `@` context remains `T3M-B2.2b`;
+- close boundary: repository-backed `@` context remains `T3M-B2.2b`.
   active-run queue/stop presentation remains `T3M-B2.3`
 - verified_at: `2026-07-17T21:56:45Z`
 
@@ -654,16 +654,16 @@ context remains `T3M-B2.2b`; active-run queue/stop presentation remains
 - landed: `14b41ed2b25f0ce5f24f73ade8a911c815b9aa2e` on `main`
 - verification: post-rebase 103 focused slash discovery, authoritative Home,
   composer toolbar/attachments, accessibility, local-first registry, RN
-  Composer/Combobox, behavior-contract, and Sol tests; mobile typecheck;
+  Composer/Combobox, behavior-contract, and Sol tests. Mobile typecheck.
   pre-rebase `pnpm run check`
-- residual: `T3M-B2.2a` is complete; repository-backed `@` context remains
-  `T3M-B2.2b`; full mobile parity remains open through `T3M-F2`
+- residual: `T3M-B2.2a` is complete. Repository-backed `@` context remains
+  `T3M-B2.2b`. Full mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-B2.2b
 
 Outcome: add the exact repository/worktree-scoped `@` path-search contract,
 autocomplete states, and mention insertion boundary. This slice must expose
-missing environment transport honestly; it cannot manufacture paths from the
+missing environment transport honestly. It cannot manufacture paths from the
 coding catalog's display labels.
 
 Owned paths:
@@ -683,14 +683,14 @@ Native mention autocomplete, behavior registry, and Sol manifest.
 Required behavior:
 
 - an explicit trailing `@` token queries at most twenty entries against the
-  exact repository and worktree refs already bound to the composer;
-- results carry safe relative path, kind, and revision identity; stale,
-  foreign, traversal, oversized, or duplicate results are rejected;
+  exact repository and worktree refs already bound to the composer.
+- results carry safe relative path, kind, and revision identity. Stale,
+  foreign, traversal, oversized, or duplicate results are rejected.
 - loading, empty, unavailable, and failed states render honestly in the native
-  composer autocomplete;
+  composer autocomplete.
 - selecting an exact current result replaces only the trigger token with a
-  mention and persists the resulting draft text; arbitrary path text cannot
-  bypass the result set;
+  mention and persists the resulting draft text. Arbitrary path text cannot
+  bypass the result set.
 - when no environment search transport is connected, the UI says so and keeps
   the draft. Full transport closure is a dependency shared with `T3M-D1` and
   `T3M-F1`, not permission to synthesize repository contents.
@@ -701,7 +701,7 @@ contracts, mobile typecheck, and repository checks.
 
 Close rule: this closes the mobile query/presentation/admission boundary. A
 real paired environment provider remains a named `T3M-D1`/`T3M-F1` release
-dependency; active-run queue/stop remains `T3M-B2.3`.
+dependency. Active-run queue/stop remains `T3M-B2.3`.
 
 ### CLAIM
 
@@ -719,14 +719,14 @@ dependency; active-run queue/stop remains `T3M-B2.3`.
 - status: implementation complete and release gates green
 - verification: 87 focused repository-path, slash discovery, composer toolbar/
   attachments, authoritative Home, accessibility, local-first registry, RN
-  renderer, and behavior-contract tests; mobile typecheck; `pnpm run check`;
+  renderer, and behavior-contract tests. Mobile typecheck. `pnpm run check`.
   `git diff --check`
 - authority note: queries and decoded pages must match the exact composer-bound
-  repository/worktree/query; only a current decoded result can be inserted, and
+  repository/worktree/query. Only a current decoded result can be inserted, and
   stale, foreign, traversal, oversized, or duplicate results are refused
 - close boundary: the current mobile composition reports an unavailable search
-  transport honestly; connecting a real paired environment provider remains a
-  `T3M-D1`/`T3M-F1` release dependency; queue/stop remains `T3M-B2.3`
+  transport honestly. Connecting a real paired environment provider remains a
+  `T3M-D1`/`T3M-F1` release dependency. Queue/stop remains `T3M-B2.3`
 - verified_at: `2026-07-17T22:04:49Z`
 
 ### CLAIM-RELEASE
@@ -734,11 +734,11 @@ dependency; active-run queue/stop remains `T3M-B2.3`.
 - landed: `31f2aa4683055c9e75ac911a53a070e4fecf44c3` on `main`
 - verification: post-rebase 106 repository-path, slash discovery, composer
   toolbar/attachments, authoritative Home, accessibility, local-first registry,
-  RN renderer, behavior-contract, and Sol tests; mobile typecheck; pre-rebase
+  RN renderer, behavior-contract, and Sol tests. Mobile typecheck. Pre-rebase
   `pnpm run check`
-- residual: `T3M-B2.2b` query/presentation/admission is complete; the real paired
-  environment provider remains a `T3M-D1`/`T3M-F1` dependency; active-run
-  queue/stop presentation is next in `T3M-B2.3`; full mobile parity remains open
+- residual: `T3M-B2.2b` query/presentation/admission is complete. The real paired
+  environment provider remains a `T3M-D1`/`T3M-F1` dependency. Active-run
+  queue/stop presentation is next in `T3M-B2.3`. Full mobile parity remains open
   through `T3M-F2`
 
 ## Active packet — T3M-B2.3a
@@ -770,16 +770,16 @@ destructive confirmation, behavior registry, and Sol manifest.
 Required behavior:
 
 - queued, running, waiting-for-input, and stop-pending states are named beside
-  the composer; the placeholder and action copy state whether text will steer
-  the exact current run, wait, or start a new turn;
+  the composer. The placeholder and action copy state whether text will steer
+  the exact current run, wait, or start a new turn.
 - running and waiting-for-input follow-ups use the exact active run and never
-  fall through to start a concurrent turn;
-- when an active draft is empty, the composer action becomes Stop; a first tap
-  requests confirmation and only the exact current run can be confirmed;
+  fall through to start a concurrent turn.
+- when an active draft is empty, the composer action becomes Stop. A first tap
+  requests confirmation and only the exact current run can be confirmed.
 - Stop pending preserves the editable draft, disables duplicate control, and
-  remains pending until a confirmed runtime update or typed failure;
-- terminal and replaced runs clear stale confirmation; unavailable control
-  authority remains visibly disabled;
+  remains pending until a confirmed runtime update or typed failure.
+- terminal and replaced runs clear stale confirmation. Unavailable control
+  authority remains visibly disabled.
 - this slice does not call same-run steering a durable queue. A provider-neutral
   `turn.queue` adapter remains the immediately following `T3M-B2.3b` slice.
 
@@ -789,7 +789,7 @@ accessibility, behavior contracts, mobile/package typechecks, and repository
 checks.
 
 Close rule: this closes exact active-run admission, steering, and composer Stop.
-It does not close B2.3 queue parity; `T3M-B2.3b` must connect a real
+It does not close B2.3 queue parity. `T3M-B2.3b` must connect a real
 provider-neutral queue-next transport and render its durable outcome.
 
 ### CLAIM
@@ -808,13 +808,13 @@ provider-neutral queue-next transport and render its durable outcome.
 - status: implementation complete and release gates green
 - verification: 109 focused run-control, mobile conversation, authoritative
   Home, composer discovery/toolbar/attachments, accessibility, local-first,
-  Effect Native core/native renderer, and behavior-contract tests; Effect
-  Native core, native renderer, and mobile typechecks; `pnpm run check`;
+  Effect Native core/native renderer, and behavior-contract tests. Effect
+  Native core, native renderer, and mobile typechecks. `pnpm run check`.
   `git diff --check`
 - authority note: running and waiting follow-ups bind to the exact confirmed
-  run; empty composer Stop first creates an exact-run confirmation and dispatch
+  run. Empty composer Stop first creates an exact-run confirmation and dispatch
   remains pending until confirmed runtime replacement
-- close boundary: same-run steering and confirmed composer Stop are complete;
+- close boundary: same-run steering and confirmed composer Stop are complete.
   no durable queue-next claim is made, and provider-neutral `turn.queue`
   transport remains the immediately following `T3M-B2.3b` slice
 - verified_at: `2026-07-17T22:13:41Z`
@@ -824,10 +824,10 @@ provider-neutral queue-next transport and render its durable outcome.
 - landed: `05d6bf4d0d8ab92000063c471156bb484dfc7f7f` on `main`
 - verification: post-rebase 128 active-run control, conversation, authoritative
   Home, composer discovery/toolbar/attachments, accessibility, local-first,
-  Effect Native core/native renderer, behavior-contract, and Sol tests; Effect
-  Native core, native renderer, and mobile typechecks; pre-rebase `pnpm run check`
+  Effect Native core/native renderer, behavior-contract, and Sol tests. Effect
+  Native core, native renderer, and mobile typechecks. Pre-rebase `pnpm run check`
 - residual: `T3M-B2.3a` exact-run steering and confirmed composer Stop are
-  complete; provider-neutral durable queue-next remains `T3M-B2.3b`; full
+  complete. Provider-neutral durable queue-next remains `T3M-B2.3b`. Full
   mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-B2.3b
@@ -859,17 +859,17 @@ Required behavior:
 
 - text submitted during a confirmed running or waiting turn mints exact
   `turn.queue` identity and lowers only through the proven queue-until-idle
-  `message.append` adapter; it is never labeled or dispatched as steer;
+  `message.append` adapter. It is never labeled or dispatched as steer.
 - queue identity binds the exact thread, current run generation, durable chat
-  message ref, ordering key, origin, idempotency key, and deadline;
+  message ref, ordering key, origin, idempotency key, and deadline.
 - the composer clears only after the chat message and legacy queue mutation are
-  confirmed admitted; pending, expired, rejected, or mismatched outcomes retain
-  the draft with explicit copy;
+  confirmed admitted. Pending, expired, rejected, or mismatched outcomes retain
+  the draft with explicit copy.
 - a compact queued-follow-up receipt names accepted admission separately from
   pending delivery/promotion and remains until a replacement run proves
-  promotion or a typed failure replaces it;
+  promotion or a typed failure replaces it.
 - Stop continues to target the active run and never cancels or silently consumes
-  the queued follow-up;
+  the queued follow-up.
 - this packet corrects B2.3a presentation language: current Pylon
   `message.append` is queue-until-idle, not literal mid-stream steering.
 
@@ -879,7 +879,7 @@ behavior contracts, mobile typecheck, and repository checks.
 
 Close rule: this closes B2.3 mobile queue/Stop product semantics for the current
 Pylon runtime adapter. Cross-restart delivery proof and physical-device evidence
-remain release gates in `T3M-F1`/`T3M-F2`; genuine provider steering remains a
+remain release gates in `T3M-F1`/`T3M-F2`. Genuine provider steering remains a
 separate capability and is not claimed.
 
 ### CLAIM
@@ -899,16 +899,16 @@ separate capability and is not claimed.
 - verification: 118 focused provider-neutral queue, mobile conversation,
   run-control, authoritative Home, composer discovery/toolbar/attachments,
   accessibility, local-first, native renderer, agent-runtime-schema, and
-  behavior-contract tests; mobile typecheck; `pnpm run check`;
+  behavior-contract tests. Mobile typecheck. `pnpm run check`.
   `git diff --check`
 - authority note: active text mints `turn.queue` bound to exact confirmed
   thread/run generation/message identity and lowers only to Pylon's existing
-  queue-until-idle adapter; admission, delivery, and promotion remain distinct
+  queue-until-idle adapter. Admission, delivery, and promotion remain distinct
 - correction: B2.3a's interim "steer" presentation is superseded for the
-  current Pylon adapter; `message.append` is queue-until-idle and the product
+  current Pylon adapter. `message.append` is queue-until-idle and the product
   now labels it Queue without claiming genuine mid-stream steering
 - close boundary: B2.3 mobile queue/Stop semantics are complete for the current
-  adapter; cross-restart promotion proof remains `T3M-F1` and physical-device
+  adapter. Cross-restart promotion proof remains `T3M-F1` and physical-device
   evidence remains `T3M-F2`
 - verified_at: `2026-07-17T22:23:13Z`
 
@@ -917,12 +917,12 @@ separate capability and is not claimed.
 - landed: `9c380f28430e697e431f5c32d8b3efe273473bf6` on `main`
 - verification: post-first-rebase 137 provider-neutral queue, conversation,
   run-control, authoritative Home, composer, accessibility, local-first, native
-  renderer, schema, behavior-contract, and Sol tests plus mobile typecheck;
+  renderer, schema, behavior-contract, and Sol tests plus mobile typecheck.
   post-final-rebase 62 queue/conversation/Home/local-first/Sol tests plus mobile
-  typecheck; pre-rebase `pnpm run check`
+  typecheck. Pre-rebase `pnpm run check`
 - residual: `T3M-B2.3` mobile queue/Stop semantics are complete for the current
-  Pylon adapter; transcript/composer group B is complete; ordered parity work
-  advances to `T3M-C1`; full mobile parity remains open through `T3M-F2`
+  Pylon adapter. Transcript/composer group B is complete. Ordered parity work
+  advances to `T3M-C1`. Full mobile parity remains open through `T3M-F2`
 
 ## Active packet — T3M-C1
 
@@ -951,15 +951,15 @@ Required behavior:
 - one bounded row model joins coding sessions to repository/project,
   branch/worktree identity, recency, run/readiness state, attention, selected
   state, and exact navigation intent while ordinary chat rows retain confirmed
-  thread identity and sync state;
+  thread identity and sync state.
 - local search and status/project filters are deterministic, bounded, and
   operate only on already-authorized projections, with predictable empty
-  results and a clear-filters path;
+  results and a clear-filters path.
 - pending attention appears in the same row grammar and dispatches the exact
-  confirmed attention target so selection lands on the causal transcript card;
+  confirmed attention target so selection lands on the causal transcript card.
 - conversation lifecycle controls are row-local, archived threads have a
   dedicated filtered destination, and rename/delete confirmation remains
-  explicit and server-authoritative;
+  explicit and server-authoritative.
 - raw refs remain out of the primary row label, withheld cached rows remain
   counted but hidden, and all controls preserve Dynamic Type touch targets and
   accessible labels.
@@ -970,14 +970,14 @@ repository-required checks.
 
 Close rule: this closes only `T3M-C1`. Adaptive phone/tablet shell composition,
 native headers/sheets/gestures/keyboard focus, and all files/change/Git/terminal
-surfaces remain `T3M-C2` through `T3M-F2`; this is not a full-parity claim.
+surfaces remain `T3M-C2` through `T3M-F2`. This is not a full-parity claim.
 
 ### CLAIM
 
 - packet: `T3M-C1`
 - base: `1b8a738b7df2a8c614b148476b8004719f11b6a4`
 - claimed_at: `2026-07-17T22:27:38Z`
-- scope: bounded project-aware workspace row projection; drawer search,
+- scope: bounded project-aware workspace row projection. Drawer search,
   filters, attention causal jumps, row-local lifecycle actions, archived
   destination, tests, behavior contract, and Sol receipt
 - exclusions: adaptive shell/native navigation (`T3M-C2`), repository files and
@@ -988,15 +988,15 @@ surfaces remain `T3M-C2` through `T3M-F2`; this is not a full-parity claim.
 
 - landed: `159f6dff775b35cf19e183e9a58997d10468d413` on `main`
 - verification: post-rebase 195 mobile tests, mobile typecheck, and 19 Sol
-  policy tests; pre-rebase repository lint/format and the same mobile/Sol
-  suites; `git diff --check`
+  policy tests. Pre-rebase repository lint/format and the same mobile/Sol
+  suites. `git diff --check`
 - authority note: rows project only confirmed conversation, coding-directory,
-  and personal-attention state; exact refs stay in typed actions, invalid or
+  and personal-attention state. Exact refs stay in typed actions, invalid or
   withheld authority stays hidden, and lifecycle effects remain confirmed by
   the existing server writeback path
 - close boundary: `T3M-C1` project-aware rows, bounded local search/status and
   project filters, causal attention jumps, row-local lifecycle actions, and
-  archived navigation are complete; adaptive/native workspace composition is
+  archived navigation are complete. Adaptive/native workspace composition is
   `T3M-C2`, and full mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:34:08Z`
 
@@ -1017,16 +1017,16 @@ Owned paths:
 - `apps/openagents-mobile/src/contracts/ux-contracts.ts`
 - this ledger and Sol manifest files
 
-Required behavior: width classification is deterministic and bounded; compact
-mode keeps the current full-screen drawer/content exclusivity; regular mode
+Required behavior: width classification is deterministic and bounded. Compact
+mode keeps the current full-screen drawer/content exclusivity. Regular mode
 uses the typed Effect Native split-pane contract with persistent navigation and
 detail, a bounded adjustable sidebar, no duplicate transcript authority, and a
-route-aware header/navigation affordance; transitions restore focus to the
+route-aware header/navigation affordance. Transitions restore focus to the
 selected row or main transcript through typed serializable focus identity.
 
 Close rule: this closes only adaptive composition and route/focus semantics.
 Native sheet presentation, swipe actions, hardware keyboard commands, and
-their physical-device evidence remain `T3M-C2.2`; files/change/Git/terminal and
+their physical-device evidence remain `T3M-C2.2`. Files/change/Git/terminal and
 release finish remain `T3M-D1` through `T3M-F2`.
 
 ### CLAIM
@@ -1044,15 +1044,15 @@ release finish remain `T3M-D1` through `T3M-F2`.
 
 - landed: `420fa1b5ff43ce065f1b52b9b45f1f843ce62212` on `main`
 - verification: pre-rebase 200 mobile tests, mobile and RN-renderer typechecks,
-  repository lint/format, and 19 Sol tests; post-rebase 47 adaptive/Home/
-  accessibility/renderer/behavior tests, mobile typecheck, and 19 Sol tests;
+  repository lint/format, and 19 Sol tests. Post-rebase 47 adaptive/Home/
+  accessibility/renderer/behavior tests, mobile typecheck, and 19 Sol tests.
   `git diff --check`
 - authority note: viewport changes update only layout state in the live Home
-  program, preserving draft/transcript authority; regular mode mounts the sole
+  program, preserving draft/transcript authority. Regular mode mounts the sole
   detail tree once beside confirmed navigation through typed SplitPane data
 - close boundary: `T3M-C2.1` compact/regular composition, bounded sidebar,
   route-aware navigation copy, rotation continuity, and focus-return identity
-  are complete; native sheet/swipe/keyboard focus behavior remains `T3M-C2.2`
+  are complete. Native sheet/swipe/keyboard focus behavior remains `T3M-C2.2`
   and full mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:39:47Z`
 
@@ -1063,14 +1063,14 @@ and express row archive/restore/delete affordances through the typed swipe-item
 contract with an accessible press fallback.
 
 Required behavior: compact More opens one dismissable bottom sheet bound to the
-exact thread; regular layout retains its in-pane actions; active and archived
-rows expose only valid lifecycle actions; full-swipe defaults only to reversible
-archive/restore, never delete; delete remains a second explicit confirmation;
+exact thread. Regular layout retains its in-pane actions. Active and archived
+rows expose only valid lifecycle actions. Full-swipe defaults only to reversible
+archive/restore, never delete. Delete remains a second explicit confirmation.
 stale/foreign action IDs and dismissal during confirmed writeback are refused.
 
 Close rule: this closes sheet and row-action composition only. A genuine native
 gesture driver plus hardware keyboard commands and host focus application remain
-`T3M-C2.2b`; physical gesture/focus evidence remains `T3M-F2`.
+`T3M-C2.2b`. Physical gesture/focus evidence remains `T3M-F2`.
 
 ### CLAIM
 
@@ -1081,19 +1081,19 @@ gesture driver plus hardware keyboard commands and host focus application remain
   grammar, reversible full-swipe policy, explicit destructive confirmation,
   renderer/accessibility tests, behavior contract, and Sol receipt
 - exclusions: genuine gesture driver, hardware shortcuts, and host-applied
-  focus (`T3M-C2.2b`); physical evidence (`T3M-F2`)
+  focus (`T3M-C2.2b`). Physical evidence (`T3M-F2`)
 
 ### CLAIM-RELEASE
 
 - landed: `b4dc67bcb97ae04a3da3af2589dbe78c3852548d` on `main`
 - verification: pre-push 223 mobile/RN-renderer tests, mobile typecheck,
-  repository lint/format, and 19 Sol tests; post-commit 22 workspace-action/
-  authoritative-Home/behavior tests and mobile typecheck; `git diff --check`
+  repository lint/format, and 19 Sol tests. Post-commit 22 workspace-action/
+  authoritative-Home/behavior tests and mobile typecheck. `git diff --check`
 - authority note: swipe-item action IDs are accepted only after exact current
-  active/archived membership and valid state/action checks; Delete never owns
+  active/archived membership and valid state/action checks. Delete never owns
   full swipe and remains explicit confirmed writeback
 - close boundary: `T3M-C2.2a` compact native-lowered lifecycle sheet and typed
-  row-action grammar are complete; genuine native gesture/keyboard/focus host
+  row-action grammar are complete. Genuine native gesture/keyboard/focus host
   behavior remains `T3M-C2.2b`, and full parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:43:45Z`
 
@@ -1104,9 +1104,9 @@ driver for typed row actions and a bounded hardware-key command adapter, while
 keeping host-applied accessibility focus evidence honest.
 
 Required behavior: horizontal pan must win only after an axis/threshold check,
-dispatch at most the declared reversible full-swipe action, and always settle;
+dispatch at most the declared reversible full-swipe action, and always settle.
 press actions remain available to switch/assistive users. Hardware commands are
-closed and layout-aware (new task, navigation, detail, dismiss); unknown or
+closed and layout-aware (new task, navigation, detail, dismiss). Unknown or
 unmodified keys do nothing. Focus announcements/targets never select authority.
 
 ### CLAIM
@@ -1123,14 +1123,14 @@ unmodified keys do nothing. Focus announcements/targets never select authority.
 
 - landed: `6eb235ebb85810903a17bd35dac11779ec695297` on `main`
 - verification: pre-rebase 226 mobile/RN-renderer tests, mobile and RN
-  typechecks, repository lint/format, and 19 Sol tests; post-rebase 26 native-
+  typechecks, repository lint/format, and 19 Sol tests. Post-rebase 26 native-
   input/workspace/behavior tests, mobile typecheck, and 19 Sol tests
 - authority note: PanResponder dispatch is axis-, threshold-, side-, and
-  declaration-gated; hardware keys map through one closed typed command set and
+  declaration-gated. Hardware keys map through one closed typed command set and
   layout/focus state only
 - close boundary: `T3M-C2.2b` native gesture and keyboard host semantics are
-  complete in code; physical keyboard and screen-reader receipts remain
-  `T3M-F2`. Epic C is complete and ordered work advances to `T3M-D1`; full
+  complete in code. Physical keyboard and screen-reader receipts remain
+  `T3M-F2`. Epic C is complete and ordered work advances to `T3M-D1`. Full
   mobile parity remains open through `T3M-F2`
 - verified_at: `2026-07-17T22:48:42Z`
 
@@ -1143,21 +1143,21 @@ states, without manufacturing repository data while transport is absent.
 Required behavior:
 
 - every tree/read request is bound to the selected session, repository,
-  worktree, directory/path, revision/cursor, and a bounded limit;
+  worktree, directory/path, revision/cursor, and a bounded limit.
 - decoders reject foreign scope, traversal, duplicate/oversized pages,
   unsupported media, unsafe image URLs, stale revisions, malformed UTF-8, and
-  content beyond the mobile preview limits;
+  content beyond the mobile preview limits.
 - the Files route preserves the transcript and its anchor, exposes loading,
   empty, unavailable, failed, and stale states, and supports deterministic
-  folder expansion, selection, refresh, path copy, and return-to-conversation;
+  folder expansion, selection, refresh, path copy, and return-to-conversation.
 - source uses the typed code/line presentation, Markdown uses the safe existing
   parser/renderer, and images use only an authenticated or short-lived HTTPS
-  content URL carrying exact revision/digest identity;
+  content URL carrying exact revision/digest identity.
 - a missing provider is visible and cannot be counted as D1 completion.
 
 Close rule: this closes only the mobile contract and route. `T3M-D1.2` must
 connect and prove a real authenticated paired-environment provider before D1
-closes; D2 and later epics remain open.
+closes. D2 and later epics remain open.
 
 ### CLAIM
 
@@ -1174,14 +1174,14 @@ closes; D2 and later epics remain open.
 
 - landed: `812ecf10a3ea3af37081ce2570e9981e902e0ed4` on `main`
 - verification: pre-rebase 211 mobile tests, 36 behavior-contract tests,
-  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 60
+  mobile typecheck, repository lint/format, and 19 Sol tests. Post-rebase 60
   repository-files/behavior/Sol tests and mobile typecheck
 - authority note: Files navigation binds every request and response to the
-  exact session/repository/worktree/path/revision and request epoch; invalid,
+  exact session/repository/worktree/path/revision and request epoch. Invalid,
   stale, foreign, unsafe, and oversized content fails closed, while opening and
   closing the route preserves transcript state and its scroll target
 - close boundary: `T3M-D1.1` contract, state machine, and source/Markdown/image
-  workbench are complete; the real authenticated paired-environment provider
+  workbench are complete. The real authenticated paired-environment provider
   remains `T3M-D1.2`, so Epic D1 and full parity remain open
 - verified_at: `2026-07-17T22:59:22Z`
 
@@ -1192,7 +1192,7 @@ owned authenticated environment client for tree, read, and path-search
 operations, without moving bearer custody into the Effect Native view tree.
 
 Required behavior: only a server-verified native session may construct the
-client; requests use exact HTTPS POST endpoints, bearer headers, omitted ambient
+client. Requests use exact HTTPS POST endpoints, bearer headers, omitted ambient
 credentials, disabled redirects, and exact session/repository/worktree payloads.
 Responses must be successful JSON within operation-specific byte bounds before
 the D1.1 decoders see them. Invalid base URLs, malformed tokens, redirects,
@@ -1200,7 +1200,7 @@ non-JSON, failures, and oversized responses fail closed.
 
 Close rule: this closes the D1 application/provider seam in code. Environment
 registration, pairing/health UI, endpoint availability on a paired installation,
-and installed physical-device proof remain `T3M-F1`/`T3M-F2`; D1 does not claim
+and installed physical-device proof remain `T3M-F1`/`T3M-F2`. D1 does not claim
 those release proofs early.
 
 ### CLAIM
@@ -1218,15 +1218,15 @@ those release proofs early.
 
 - landed: `7ef1cfe155bd84db19791ea9768485c8b178c432` on `main`
 - verification: pre-rebase 213 mobile tests, 36 behavior-contract tests,
-  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 26
+  mobile typecheck, repository lint/format, and 19 Sol tests. Post-rebase 26
   environment/files/Sol tests and mobile typecheck
 - authority note: the verified native session host alone constructs the
-  authenticated client; bearer material stays in headers, redirects and ambient
+  authenticated client. Bearer material stays in headers, redirects and ambient
   credentials are disabled, and response bytes are bounded before exact D1.1
   decoding
 - close boundary: `T3M-D1` is complete in application code. Environment
   registration/pairing/health and installed live endpoint evidence remain
-  explicitly `T3M-F1`/`T3M-F2`; ordered work advances to `T3M-D2`
+  explicitly `T3M-F1`/`T3M-F2`. Ordered work advances to `T3M-D2`
 - verified_at: `2026-07-17T23:08:02Z`
 
 ## Active packet — T3M-D2
@@ -1239,15 +1239,15 @@ Required behavior: status, diff, and review traffic is bound to the exact
 session/repository/worktree/status/path/source/revision/row identity and request
 epoch. Bounded decoders reject foreign, duplicate, traversal, stale, malformed,
 binary, unmerged, unsupported, and oversized data. Only a current selectable
-row may open the instruction editor; only a nonempty bounded instruction may be
-submitted; and success appears only from an exact recorded receipt. Opening,
+row may open the instruction editor. Only a nonempty bounded instruction may be
+submitted. And success appears only from an exact recorded receipt. Opening,
 closing, refreshing, and hardware dismissal preserve the conversation state and
 invalidate stale workbench requests.
 
 Close rule: this closes the D2 mobile contract, Changes state machine, native
 diff/comment affordance, and authenticated provider seam in application code.
 Live paired endpoint provisioning and installed iOS/Android writeback evidence
-remain `T3M-F1`/`T3M-F2`; Git, terminal, connections, and release remain open.
+remain `T3M-F1`/`T3M-F2`. Git, terminal, connections, and release remain open.
 
 ### CLAIM
 
@@ -1265,15 +1265,15 @@ remain `T3M-F1`/`T3M-F2`; Git, terminal, connections, and release remain open.
 - landed: `dadc663647aaab6f88a39794353e50af6dac2f19` on `main`
 - verification: pre-rebase 243 mobile tests, 21 RN renderer tests, mobile and
   RN typechecks, 36 behavior-contract tests, repository lint/format, and 19 Sol
-  tests; post-rebase 45 review/environment/RN/Sol tests, mobile typecheck, and
+  tests. Post-rebase 45 review/environment/RN/Sol tests, mobile typecheck, and
   the 141-document Sol manifest check
 - authority note: every status, diff, and review operation is exact-scope,
-  bounded, revision- and epoch-fenced; native row selection mints no authority,
+  bounded, revision- and epoch-fenced. Native row selection mints no authority,
   and only an exact recorded receipt becomes visible. Late receipts after route
   dismissal are ignored while transcript state remains unchanged
 - close boundary: `T3M-D2` is complete in application code. Live paired
   endpoint provisioning and installed writeback remain explicit `T3M-F1/F2`
-  evidence; ordered work advances to `T3M-E1`
+  evidence. Ordered work advances to `T3M-E1`
 - verified_at: `2026-07-17T23:17:18Z`
 
 ## Active packet — T3M-E1
@@ -1290,13 +1290,13 @@ against the current snapshot, require explicit confirmation carrying exact
 status and HEAD fences, and include idempotency identity. Stale status, dirty
 tree, conflict, non-fast-forward, auth, hook, detached, missing-upstream, and
 generic failures are typed, visible, and cannot mint success. Only a decoded
-exact receipt may replace status or display success; route dismissal invalidates
+exact receipt may replace status or display success. Route dismissal invalidates
 late responses and preserves the conversation state.
 
 Close rule: this closes the E1 mobile contract, Git route/state machine,
 authenticated environment seam, confirmation flow, failures, and receipts in
 application code. Live endpoint provisioning and installed iOS/Android Git
-mutation evidence remain `T3M-F1`/`T3M-F2`; terminal and native finish remain
+mutation evidence remain `T3M-F1`/`T3M-F2`. Terminal and native finish remain
 open.
 
 ### CLAIM
@@ -1315,17 +1315,17 @@ open.
 
 - landed: `ea8c6e2d5e16f9da3ad69fe13fc808c4bdff4fe5` on `main`
 - verification: pre-rebase 246 mobile tests, 36 behavior-contract tests,
-  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 24
+  mobile typecheck, repository lint/format, and 19 Sol tests. Post-rebase 24
   Git/environment/Sol tests, mobile typecheck, and the 141-document Sol
   manifest check
 - authority note: status and all mutations are exact session/repository/
   worktree/status/HEAD fenced. Checkout, commit, and push each require explicit
-  confirmation and idempotency identity; typed failures mint no receipt, and
+  confirmation and idempotency identity. Typed failures mint no receipt, and
   only decoded receipts replace visible status while the transcript remains
   unchanged
 - close boundary: `T3M-E1` is complete in application code. Live paired Git
   endpoint provisioning and installed mutation evidence remain explicit
-  `T3M-F1/F2`; ordered work advances to `T3M-E2`
+  `T3M-F1/F2`. Ordered work advances to `T3M-E2`
 - verified_at: `2026-07-17T23:24:58Z`
 
 ## Active packet — T3M-E2
@@ -1337,7 +1337,7 @@ and foreground recovery without granting mobile shell/cwd/process authority.
 Required behavior: snapshot, create, replay, and command operations bind to the
 exact session/repository/worktree and host-minted terminal/version. The host
 alone chooses shell, cwd, and environment. Mobile may send only bounded stdin,
-bounded geometry, interrupt, restart, and close operations; each requires an
+bounded geometry, interrupt, restart, and close operations. Each requires an
 exact receipt. Replay is contiguous, monotonically sequenced, version-fenced,
 event- and byte-bounded, and names gaps/truncation instead of inventing output.
 The native host emits only typed data/resize events, provides a bounded
@@ -1367,17 +1367,17 @@ remain `T3M-F1`/`T3M-F2`.
 
 - landed: `b20873eab90c3dd2d4f19b79edf46cad18e5001c` on `main`
 - verification: pre-rebase 249 mobile tests, 36 behavior-contract tests,
-  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 24
+  mobile typecheck, repository lint/format, and 19 Sol tests. Post-rebase 24
   terminal/environment/Sol tests, mobile typecheck, and the 141-document Sol
   manifest check
-- authority note: the paired host alone chooses shell/cwd/environment; mobile
+- authority note: the paired host alone chooses shell/cwd/environment. Mobile
   can send only bounded typed terminal operations against exact host-minted
   terminal/version identity. Output replay is contiguous and bounded, gaps are
   explicit, command success requires a receipt, and foreground recovery only
   refreshes an already-open Terminal route
 - close boundary: `T3M-E2` is complete in application code. Live paired PTY
   endpoint provisioning, packaged native-emulator evidence, and physical
-  background journeys remain explicit `T3M-F1/F2`; ordered work advances to
+  background journeys remain explicit `T3M-F1/F2`. Ordered work advances to
   `T3M-F1`
 - verified_at: `2026-07-17T23:34:56Z`
 
@@ -1393,7 +1393,7 @@ diagnostics, legal, and pending-share destinations. Environment directory,
 pair, and reconnect traffic uses the verified-session authenticated client,
 bounded public-safe projections, explicit health/capabilities, idempotency
 identity, and exact receipts. Notification permission is requested only after
-an explicit tap; native token material never enters view state; preferences are
+an explicit tap. Native token material never enters view state. Preferences are
 persisted in native secure storage. Initial and live share links accept only
 bounded text and safe HTTP(S) URLs, require review, and insert into the composer
 without auto-submit or transcript mutation. Existing controller, environment,
@@ -1423,30 +1423,30 @@ receipts remain `T3M-F2`.
 
 ### CLAIM-STATUS
 
-- implementation: Settings is a transcript-preserving workbench route; account
-  state and actions reuse the existing session authority; connection health,
+- implementation: Settings is a transcript-preserving workbench route. Account
+  state and actions reuse the existing session authority. Connection health,
   pairing, and reconnect are bounded and receipt-driven over exact authenticated
-  endpoints; permission prompting is explicit-only; notification preferences
-  stay in native secure storage; native registration material never crosses
-  into Effect Native; and safe shares require review before composer insertion
+  endpoints. Permission prompting is explicit-only. Notification preferences
+  stay in native secure storage. Native registration material never crosses
+  into Effect Native. And safe shares require review before composer insertion
 - focused proof: 254 mobile tests passed, including the new settings,
   environment transport, permission, preference, share-delivery, and transcript
-  preservation journey; 36 behavior-contract tests and mobile typecheck passed
+  preservation journey. 36 Behavior-contract tests and mobile typecheck passed
 - repository gate: `pnpm run check` passed
 - residual: `T3M-F2` complete component census, layout/motion/haptic and
   screen-reader finish, installed iOS/Android journeys, signed distribution,
-  and owner acceptance; this is not a full-parity claim
+  and owner acceptance. This is not a full-parity claim
 
 ### CLAIM-RELEASE
 
 - landed: `dc1658917fbf08f0a26ec8fd9ca5af777d55e98a` on `main`
 - verification: pre-rebase 254 mobile tests, 36 behavior-contract tests,
-  mobile typecheck, repository lint/format, and 19 Sol tests; post-rebase 17
+  mobile typecheck, repository lint/format, and 19 Sol tests. Post-rebase 17
   settings/Home tests, mobile typecheck, and the 141-document Sol manifest
   check
-- authority note: credentials and native push registration stay in the host;
-  permission is explicit-only; environment pairing/reconnect becomes visible
-  only from exact receipts; and reviewed share intake changes composer draft,
+- authority note: credentials and native push registration stay in the host.
+  permission is explicit-only. Environment pairing/reconnect becomes visible
+  only from exact receipts. And reviewed share intake changes composer draft,
   never transcript history or submission state
 - close boundary: `T3M-F1` is complete in application code. Installed live
   environment observation, physical iOS/Android journeys, packaged native
@@ -1462,10 +1462,10 @@ and Android release-mode journeys without manufacturing physical-device,
 signed-distribution, or owner-acceptance evidence.
 
 Required behavior: every named T3 mobile component is accounted for once with
-source evidence and an explicit complete/adapted disposition; compact and
-regular layout selection is deterministic; route motion honors Reduce Motion;
-haptics are bounded to a closed semantic intent set; native controls retain
-authored accessible names; and release-mode iOS/Android simulator builds must
+source evidence and an explicit complete/adapted disposition. Compact and
+regular layout selection is deterministic. Route motion honors Reduce Motion.
+haptics are bounded to a closed semantic intent set. Native controls retain
+authored accessible names. And release-mode iOS/Android simulator builds must
 install and complete the transcript → settings → notifications journey.
 
 Close rule: implementation and installed-simulator evidence may close while
@@ -1486,29 +1486,29 @@ acceptance.
 
 ### CLAIM-STATUS
 
-- implementation: all 43 named components have exact evidence; 41 are
-  complete and two are intentional OpenAgents adaptations; route-only layout
-  motion honors Reduce Motion; a closed haptic policy covers selection,
-  action, and warning semantics; and native glass controls expose authored
+- implementation: all 43 named components have exact evidence. 41 Are
+  complete and two are intentional OpenAgents adaptations. Route-only layout
+  motion honors Reduce Motion. A closed haptic policy covers selection,
+  action, and warning semantics. And native glass controls expose authored
   action names instead of SF Symbol names
 - installed proof: an iPhone 17 Pro / iOS 26.5 Release simulator build and an
   Android API 35 Release APK both installed and passed the Khala → Settings →
   Notifications Maestro journey
 - automated proof: 259 mobile tests, 22 RN renderer tests, and 36 behavior
-  contract tests passed; mobile and renderer TypeScript passed
+  contract tests passed. Mobile and renderer TypeScript passed
 - receipt: `docs/sol/receipts/2026-07-17-t3m-f2-mobile-native-finish.md`
 - residual: signed physical iOS/Android compact and regular journeys, real
-  VoiceOver/TalkBack traversal, and owner acceptance; the full-parity contract
+  VoiceOver/TalkBack traversal, and owner acceptance. The full-parity contract
   remains pending and this is not a full-parity release claim
 
 ### CLAIM-RELEASE
 
 - landed: `be13f49c3d` on `main`
 - verification: post-rebase 317 combined mobile, RN renderer, and behavior
-  contract tests; mobile and renderer typechecks; 19 Sol tests and the
-  142-document manifest/check suite; pre-rebase `pnpm run check`; installed
+  contract tests. Mobile and renderer typechecks. 19 Sol tests and the
+  142-document manifest/check suite. Pre-rebase `pnpm run check`. Installed
   release-mode iOS 26.5 and Android API 35 simulator journeys
 - close boundary: all ordered source and installed-simulator packets A1-F2 are
   landed. The owner-level full-parity contract remains pending on signed
   physical iOS/Android journeys, real VoiceOver/TalkBack traversal, and owner
-  acceptance; no store-release claim is made
+  acceptance. No store-release claim is made

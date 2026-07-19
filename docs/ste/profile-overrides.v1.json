@@ -20,6 +20,126 @@
       "ste_reviewer": "codex/forensic-review-20260719",
       "ste_reviewed_at": "2026-07-19T17:54:47Z"
     },
+    "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-17-t3-code-mobile-full-parity-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-17-t3-code-ui-full-harvest-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-full-auto-one-click-concurrent-runs-implementation.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-18-sarah-terminal-history-harness-implementation.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-19-asd-ste100-adoption-audit.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
+    "docs/sol/CHALLENGE_LEDGER.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:15:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.2"]
+    },
     "docs/sol/CLAIM_PROTOCOL.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
@@ -91,6 +211,12 @@
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
       "ste_reviewed_at": "2026-07-19T20:50:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
+    "docs/ste/p5-active-plan-and-audit-conversion-receipt.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T21:20:00Z",
       "ste_accepted_screening_rules": ["STE-2.4"]
     },
     "docs/ste/templates/receipt.md": {

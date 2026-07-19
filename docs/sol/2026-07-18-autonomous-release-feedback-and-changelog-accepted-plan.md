@@ -3,7 +3,7 @@
 - Class: accepted authority and implementation plan
 - Date: 2026-07-18
 - Owner authority: current owner conversation
-- Status: active; revision-2 RC authority admitted, concrete matrix adapters remain #8917/#8926
+- Status: active. Revision-2 RC authority admitted, concrete matrix adapters remain #8917/#8926
 - Trigger evidence: [#8995](https://github.com/OpenAgentsInc/openagents/issues/8995) and Desktop RC17–RC20
 - Normative release contract: [cross-platform Desktop ProductSpec](../deploy/openagents-desktop-cross-platform-release.md)
 
@@ -48,11 +48,11 @@ Ed25519 ReleaseSet remains update authority.
 The implementation adds four bounded ports around that graph:
 
 - `release:impact` deterministically selects web, mobile OTA/native,
-  update-service, Desktop matrix, or no-binary lanes from changed paths;
+  update-service, Desktop matrix, or no-binary lanes from changed paths.
 - `release:github` validates local file length/digest, creates a draft,
-  uploads, verifies GitHub's reported digest, then publishes the prerelease;
+  uploads, verifies GitHub's reported digest, then publishes the prerelease.
 - `release:communicate` idempotently posts candidate/published/rolled-back
-  updates to linked GitHub issues and Forum `release-candidates`; and
+  updates to linked GitHub issues and Forum `release-candidates`. And
 - `release:feedback` reads only requested-tester replies after the candidate
   marker, records PASS, or creates one linked issue for BLOCKED/unstructured
   feedback. It also repairs GitHub's non-collaborator label drop on a direct
@@ -90,21 +90,21 @@ mandatory until those gates land in a reviewed ProductSpec revision.
 
 Within revision 2, the release operator may:
 
-1. claim the exact source issue(s) and classify impact;
-2. run affected owned build/deploy lanes and required machine verification;
-3. create an immutable GitHub prerelease candidate;
-4. ask named relevant testers on the linked issue and Forum candidate topic;
-5. ingest their structured replies and create linked remediation issues;
-6. fix and publish a strictly newer RC without asking the owner to re-delegate;
+1. claim the exact source issue(s) and classify impact.
+2. run affected owned build/deploy lanes and required machine verification.
+3. create an immutable GitHub prerelease candidate.
+4. ask named relevant testers on the linked issue and Forum candidate topic.
+5. ingest their structured replies and create linked remediation issues.
+6. fix and publish a strictly newer RC without asking the owner to re-delegate.
 7. promote a complete signed ReleaseSet, deploy web/mobile OTA when selected,
-   or roll back/revoke on a typed failure; and
+   or roll back/revoke on a typed failure. And
 8. publish `/changelog` with trigger, actor, authority, release, and feedback
    links.
 
 Stable publication, new spending beyond the profile, arbitrary bulk outreach,
 support claims without native receipts, and any unsafe/unsigned delivery remain
 reserved. A credential or unavailable device is routed through existing scoped
-seams, substitute owned capacity, or honest narrowing; it is not converted into
+seams, substitute owned capacity, or honest narrowing. It is not converted into
 an indefinite owner wait.
 
 ## Implemented now
@@ -132,11 +132,11 @@ The remaining gap is machine execution, not release authority:
    GitHub publication, tester communication, feedback intake, and attributed
    changelog/deploy evidence under revision 2.
 4. Promote to the signed feed only when all five target/native receipts
-   converge; otherwise preserve the candidate's explicit experimental limits.
+   converge. Otherwise preserve the candidate's explicit experimental limits.
 
 The release operator owns this sequence and should continue around unavailable
 machines using admitted owned substitutes. Missing evidence narrows the public
-claim; it does not authorize inventing support.
+claim. It does not authorize inventing support.
 
 ## Close rule
 

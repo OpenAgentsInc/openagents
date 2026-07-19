@@ -3,25 +3,20 @@
 - Date: 2026-07-19
 - Class: current-status
 - Source snapshot: `030754d52632673f17cdd7b2a71a93866dd34800`
-- Status: active company requirement with incomplete repository enforcement
+- Status: P0 through P5 complete. P6 legacy conversion remains.
 - Dispatch: no
 - Owner: OpenAgents documentation
 - Requirement: All OpenAgents documentation and specifications must use ASD-STE100 Simplified Technical English.
 
 ## Result
 
-The OpenAgents document estate does not conform to ASD-STE100 today.
-The repository has no STE glossary, document profile, checker, or inspection gate.
-The Sol checks examine status, links, manifests, and roadmap facts.
-They do not examine language.
+OpenAgents has completed P0 through P5 of this conversion.
+The repository now has an STE policy, glossary, document profiles, a checker, and owned gates.
+The team converted the control documents, active specifications, high-risk procedures, public technical text, and active plans.
 
-The conversion must start with the documents that control agents and authors.
-It must then change active specifications and high-risk instructions to STE.
-A company glossary and a document checker are necessary before bulk conversion.
-An expert must also examine each important document.
-
-This audit starts the conversion.
-It does not show that the document estate is compliant now.
+The remaining legacy documents are in the P6 migration set.
+The complete document estate does not yet have a terminal disposition.
+Thus, this audit does not claim complete repository conformance.
 
 ## Implementation status
 
@@ -37,7 +32,11 @@ It requires an authorized Issue 9 dictionary outside Git.
 The root fast check and the deploy check run the migration ratchet.
 Thus, local hooks and OpenAgents-owned runners use the same checker.
 This control does not show full conformance.
-The P1 through P6 conversions and inspections are still necessary.
+The P6 conversion and final inspection are still necessary.
+
+P1 through P5 are now complete.
+Their receipts are in [`docs/ste`](../ste/README.md).
+P6 must classify and complete the remaining legacy estate.
 
 The policy has a controlled agent compact profile.
 Human-facing text continues to use the base STE profile.
@@ -601,28 +600,17 @@ Record these program measures:
 
 ## Next work packet
 
-The next packet must make the P0 control system.
-It must not start a large text change.
-
-The packet must deliver:
-
-1. The root STE policy and invariant
-2. The OpenAgents glossary schema and seed terms
-3. The document profile schema
-4. The deterministic checker and test corpus
-5. The owned infrastructure gate
-6. The migration ledger
-7. The first P1 conversion plan.
-
-After P0 passes, change the author control plane to STE as one inspected program.
-Then start the active specification conversions.
+The next packet is P6.
+It must classify each remaining governed document as mutable text, immutable evidence, third-party source data, or superseded text.
+It must convert mutable text and record provenance for the other categories.
+It must reduce the legacy migration count to zero.
 
 ## Audit limitation
 
-This audit uses short sentences, active voice, controlled terms, and direct procedures.
-The author did a manual STE structure inspection.
-The repository has no approved-word checker or approved company glossary.
-Thus, one more lexical inspection is still necessary.
+This audit uses the agent compact profile.
+The structural checker and an identified review accept the recorded screening results.
+The repository has an OpenAgents glossary and a strict lexical-check path.
+The strict check needs an authorized Issue 9 dictionary outside Git.
 
-The audit gives enough information to start the conversion program.
-It is not a conformance receipt for the repository.
+The audit records the current conversion program.
+It is not a conformance receipt for the complete repository.

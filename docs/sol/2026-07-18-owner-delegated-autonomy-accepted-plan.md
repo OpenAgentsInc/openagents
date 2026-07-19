@@ -3,7 +3,7 @@
 - Class: authority and accepted implementation plan
 - Status: active
 - Date: 2026-07-18
-- Dispatch: no; `MASTER_ROADMAP.md`, live issues, claims, and bounded packets
+- Dispatch: no. `MASTER_ROADMAP.md`, live issues, claims, and bounded packets
   remain the dispatch queue
 - Owner authority: current owner conversation
 - Authority profile: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 4
@@ -20,15 +20,15 @@ outcomes. Only actions explicitly reserved by the profile return to the owner.
 
 Revision 4 retains Sarah as the owner's persistent orchestrator and single point
 of contact. She coordinates this same ordered program through cited
-owner-scoped projections and existing capability brokers; see
+owner-scoped projections and existing capability brokers. See
 [`2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md`](./2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md).
 
 The immediate company program is:
 
-1. make Full Auto release-grade on the real system;
-2. drive every root `specs/` intent/model to an honest terminal disposition;
-3. execute the complete admitted Fast Follow harvest;
-4. reconcile recent transcript promises into priorities; and
+1. make Full Auto release-grade on the real system.
+2. drive every root `specs/` intent/model to an honest terminal disposition.
+3. execute the complete admitted Fast Follow harvest.
+4. reconcile recent transcript promises into priorities. And
 5. ship bounded user-growth and revenue experiments.
 
 This order concentrates autonomy rather than broadening the active product
@@ -40,10 +40,10 @@ but it does not replace the Full Auto critical path.
 The live issue audit on 2026-07-18 found three recurring patterns:
 
 - an old owner-observation sentence remained a gate after real owner-profile
-  evidence had already landed;
+  evidence had already landed.
 - a named device or signing credential was treated as the only route despite
   available Google Cloud workers, local signing identity, alternate proof
-  rungs, or an implementable adapter; and
+  rungs, or an implementable adapter. And
 - implementation landings remained open behind broad “production receipt” or
   “owner acceptance” language instead of being decomposed into exact
   independently executable gates.
@@ -70,13 +70,13 @@ target-local proof, and release/promise gates.
 
 For every blocker, agents must:
 
-1. refresh live evidence and claim ownership;
-2. use the documented automation identity or existing authenticated app state;
-3. use a typed API or visible UI without secret extraction;
-4. substitute an admitted owned worker/device/provider/proof rung;
-5. implement the missing automation adapter;
-6. repair or reprovision within budget;
-7. narrow the claim honestly and continue independent packets; and only then
+1. refresh live evidence and claim ownership.
+2. use the documented automation identity or existing authenticated app state.
+3. use a typed API or visible UI without secret extraction.
+4. substitute an admitted owned worker/device/provider/proof rung.
+5. implement the missing automation adapter.
+6. repair or reprovision within budget.
+7. narrow the claim honestly and continue independent packets. And only then
 8. record the smallest irreducible reserved owner action.
 
 “Waiting on owner,” “waiting on device,” and “credentials unavailable” are not
@@ -85,18 +85,18 @@ valid terminal states without that audit.
 ## Sprint A — Full Auto assurance and release
 
 The Full Auto critical path remains the live #8967 family and release chain.
-Issue state must be refreshed before dispatch; the snapshot below records the
+Issue state must be refreshed before dispatch. The snapshot below records the
 2026-07-18 audit, not permanent truth.
 
 | Live issue                                                                                                                                                                                           | Actual residual                                                                                                                          | Autonomous route                                                                                                          |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [#8978](https://github.com/OpenAgentsInc/openagents/issues/8978)                                                                                                                                     | Complete all remaining AssuranceSpec obligation designs, reconcile stale owner-real evidence language, independently reproduce and admit | separate producer/reviewer claims; use the admitted `independent_reviewer` role; keep release separate                    |
-| [#8917](https://github.com/OpenAgentsInc/openagents/issues/8917)                                                                                                                                     | Replace fixture-only coordinator ports with concrete worker/feed adapters and a real candidate graph                                     | use existing GCP x64/arm64/Windows workers; start or reprovision within profile caps; implement missing adapters          |
+| [#8978](https://github.com/OpenAgentsInc/openagents/issues/8978)                                                                                                                                     | Complete all remaining AssuranceSpec obligation designs, reconcile stale owner-real evidence language, independently reproduce and admit | separate producer/reviewer claims, use the admitted `independent_reviewer` role, keep release separate                    |
+| [#8917](https://github.com/OpenAgentsInc/openagents/issues/8917)                                                                                                                                     | Replace fixture-only coordinator ports with concrete worker/feed adapters and a real candidate graph                                     | use existing GCP x64/arm64/Windows workers, start or reprovision within profile caps, implement missing adapters          |
 | [#8926](https://github.com/OpenAgentsInc/openagents/issues/8926)                                                                                                                                     | Close the ten independently reported release-graph contract gaps                                                                         | bounded packets for ordering, binding, idempotence, redaction, ref validation, signer freshness, and final receipt        |
-| [#8919](https://github.com/OpenAgentsInc/openagents/issues/8919), [#8920](https://github.com/OpenAgentsInc/openagents/issues/8920), [#8921](https://github.com/OpenAgentsInc/openagents/issues/8921) | Produce honest macOS/Linux/Windows signed candidate evidence                                                                             | prefer available GCP workers and current local signing identity; substitute/reprovision before asking for a named machine |
-| [#8993](https://github.com/OpenAgentsInc/openagents/issues/8993)                                                                                                                                     | Sign/tag/promote v2, staged packaged rehearsal, first production receipt, real update acceptance                                         | run only after exact assurance/signing/release gates are green; roll back on failed acceptance                            |
+| [#8919](https://github.com/OpenAgentsInc/openagents/issues/8919), [#8920](https://github.com/OpenAgentsInc/openagents/issues/8920), [#8921](https://github.com/OpenAgentsInc/openagents/issues/8921) | Produce honest macOS/Linux/Windows signed candidate evidence                                                                             | prefer available GCP workers and current local signing identity, substitute/reprovision before asking for a named machine |
+| [#8993](https://github.com/OpenAgentsInc/openagents/issues/8993)                                                                                                                                     | Sign/tag/promote v2, staged packaged rehearsal, first production receipt, real update acceptance                                         | run only after exact assurance/signing/release gates are green, roll back on failed acceptance                            |
 | [#8979](https://github.com/OpenAgentsInc/openagents/issues/8979)                                                                                                                                     | Final Full Auto release admission and promise reconciliation                                                                             | release operator resolves the profile again and consumes exact signed/admitted receipts                                   |
-| [#8967](https://github.com/OpenAgentsInc/openagents/issues/8967) and [#8913](https://github.com/OpenAgentsInc/openagents/issues/8913)                                                                | Close epics after child/release evidence is terminal                                                                                     | close with links and residual-free evidence; no umbrella issue stays open for ceremony                                    |
+| [#8967](https://github.com/OpenAgentsInc/openagents/issues/8967) and [#8913](https://github.com/OpenAgentsInc/openagents/issues/8913)                                                                | Close epics after child/release evidence is terminal                                                                                     | close with links and residual-free evidence, no umbrella issue stays open for ceremony                                    |
 
 Definition of done is a real Full Auto run through the release candidate, with
 real Codex/Claude provider evidence, admitted independent assurance, exact
@@ -108,14 +108,14 @@ and evidence-bound promise state. A development-only pass does not round up.
 After—or in genuinely non-colliding capacity beside—the Full Auto path:
 
 1. enumerate every `.product-spec.md`, `.assurance-spec.md`, TLA module, and
-   model config beneath `specs/`;
+   model config beneath `specs/`.
 2. bind each to current ProductSpec revision, roadmap authority, live issues,
-   implementation, verification, promises, and residual gaps;
+   implementation, verification, promises, and residual gaps.
 3. disposition each criterion as implemented-and-proven, actionable packet,
-   deliberately deferred by current authority, or superseded;
-4. create missing AssuranceSpec/formal-model work only where risk warrants it;
+   deliberately deferred by current authority, or superseded.
+4. create missing AssuranceSpec/formal-model work only where risk warrants it.
 5. turn counterexamples into regression tests without weakening runtime
-   policy; and
+   policy. And
 6. close every actionable packet with exact receipts.
 
 “Complete the specs” means complete the intended product/proof/model program,
@@ -130,7 +130,7 @@ research distinct from mutation. Each candidate becomes target-native code
 only through an admitted packet and target-local proof.
 
 The current multi-run Full Auto product supports up to eight distinct active
-runs; capacity allocation still requires claims that prevent shared-thread,
+runs. Capacity allocation still requires claims that prevent shared-thread,
 worktree, schema, release, and hot-contract collisions. No target is “matched”
 because a teardown exists.
 
@@ -144,11 +144,11 @@ the promise registry, user evidence, and economics.
 
 Then maintain a small rolling priority set scored by:
 
-- existing promise gap and user pain;
-- time to first user value;
-- activation, retention, or paid-conversion leverage;
-- evidence cost and reversibility;
-- differentiation from provider-native coding tools; and
+- existing promise gap and user pain.
+- time to first user value.
+- activation, retention, or paid-conversion leverage.
+- evidence cost and reversibility.
+- differentiation from provider-native coding tools. And
 - operational cost and support burden.
 
 Revision 1 authority permits product/onboarding/pricing/instrumentation work and
@@ -179,10 +179,10 @@ program proceeds, not used as a reason to pause it.
 ## Exit criteria
 
 - no actionable issue remains parked on a generic owner/device/credential
-  blocker;
-- every reserved owner request is exact, UI-first, and irreducible;
-- Full Auto has real admitted release proof and its open issue chain is closed;
-- root specs and all admitted Fast Follow directives have terminal evidence;
-- transcript promises have current product/promise dispositions; and
+  blocker.
+- every reserved owner request is exact, UI-first, and irreducible.
+- Full Auto has real admitted release proof and its open issue chain is closed.
+- root specs and all admitted Fast Follow directives have terminal evidence.
+- transcript promises have current product/promise dispositions. And
 - the next user/revenue program is backed by observed metrics rather than
   unsupported narrative.

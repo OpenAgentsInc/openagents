@@ -3,7 +3,7 @@
 - Class: authority
 - Status: retained owner-directed provider oracle/fallback
 - Snapshot: 2026-07-18
-- Dispatch: no; this is a bounded implementation sequence, not the canonical
+- Dispatch: no. This is a bounded implementation sequence, not the canonical
   Sol queue
 - Owner: Electron AI SDK Full Auto experiment
 - Target: `apps/electron-ai-sdk-test/`
@@ -18,7 +18,7 @@
 
 The native Desktop path met #9002's proof gate before this fallback was needed.
 Candidate `3123d926a3` completed the six owner-real Codex/Claude rows and an
-automatic same-pass Claude-to-Codex rotation; see the
+automatic same-pass Claude-to-Codex rotation. See the
 [`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
 This roadmap therefore remains a provider oracle and possible future adapter
 experiment. It is not the active Full Auto implementation queue.
@@ -42,10 +42,10 @@ roadmap's second scheduler or `useChat` state into production.
 Rewrite `apps/electron-ai-sdk-test/` into one owner-local Full Auto experiment
 with exactly two coding lanes:
 
-1. Codex acts first;
-2. the host accepts one typed handoff from Codex;
-3. Claude Code acts from that handoff in the same workspace;
-4. the host accepts one typed handoff from Claude Code;
+1. Codex acts first.
+2. the host accepts one typed handoff from Codex.
+3. Claude Code acts from that handoff in the same workspace.
+4. the host accepts one typed handoff from Claude Code.
 5. the host alternates until a lane declares completion, declares a block, the
    operator stops the run, or the turn cap is reached.
 
@@ -60,11 +60,11 @@ Nothing else belongs in this rewrite.
 The owner's instruction in this roadmap is the target authority for this
 experiment. It does not replace or amend:
 
-- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md);
-- the production Desktop Full Auto ProductSpec;
+- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md).
+- the production Desktop Full Auto ProductSpec.
 - the production rule that permits typed failover only inside a human-bound,
-  ordered routing policy and still forbids provider choice outside that grant;
-- the repository-wide Effect Native UI destination; or
+  ordered routing policy and still forbids provider choice outside that grant.
+- the repository-wide Effect Native UI destination. Or
 - the production sandbox, release, mobile, Sync, fleet, account-rotation, or
   evidence-reporting programs.
 
@@ -78,21 +78,21 @@ containment.
 This rewrite is done only when one live owner-local run proves all of the
 following:
 
-- the operator supplies an objective, a done condition, and a bounded turn cap;
-- Codex starts the run;
-- Codex and Claude Code alternate deterministically;
-- both lanes work in the exact same filesystem directory;
-- each lane keeps its own native Harness session and conversation history;
+- the operator supplies an objective, a done condition, and a bounded turn cap.
+- Codex starts the run.
+- Codex and Claude Code alternate deterministically.
+- both lanes work in the exact same filesystem directory.
+- each lane keeps its own native Harness session and conversation history.
 - the host, rather than either provider, owns the run state and next-provider
-  decision;
-- every completed turn ends with exactly one schema-valid handoff tool call;
-- the next lane receives a bounded host-compiled handoff envelope;
-- either lane can complete or block the run through that typed handoff;
-- Stop prevents another provider turn from starting;
+  decision.
+- every completed turn ends with exactly one schema-valid handoff tool call.
+- the next lane receives a bounded host-compiled handoff envelope.
+- either lane can complete or block the run through that typed handoff.
+- Stop prevents another provider turn from starting.
 - the renderer visibly distinguishes provider output, handoffs, current lane,
-  turn count, and terminal outcome;
+  turn count, and terminal outcome.
 - the UI is built from AI SDK messages plus selected AI Elements rather than a
-  new transcript component system; and
+  new transcript component system. And
 - an acceptance run proves that one lane writes a workspace fact, the other
   reads and changes it, and the first lane verifies the change.
 
@@ -118,33 +118,33 @@ The current app is a useful single-provider Harness test, not a Full Auto run.
 
 ### In scope
 
-- one active run;
-- Codex and Claude Code only;
-- Codex first, then strict alternation;
-- one shared owner-local workspace;
-- one native Harness session per provider lane;
-- a typed handoff tool;
-- explicit complete, blocked, failed, stopped, and turn-cap outcomes;
-- a hard turn cap, default `6`, minimum `2`, maximum `12`;
-- one Stop action;
-- an in-memory run record while the app is open;
-- AI SDK stream projection, `useChat`, and selected AI Elements;
+- one active run.
+- Codex and Claude Code only.
+- Codex first, then strict alternation.
+- one shared owner-local workspace.
+- one native Harness session per provider lane.
+- a typed handoff tool.
+- explicit complete, blocked, failed, stopped, and turn-cap outcomes.
+- a hard turn cap, default `6`, minimum `2`, maximum `12`.
+- one Stop action.
+- an in-memory run record while the app is open.
+- AI SDK stream projection, `useChat`, and selected AI Elements.
 - deterministic fixture tests and one live acceptance proof.
 
 ### Out of scope
 
-- choosing which provider should act next;
-- starting with Claude;
-- parallel agents, subagents, swarms, or fan-out;
-- provider account rotation or failover;
-- an ordinary chat composer during a run;
-- Pause, approval inboxes, plan editing, follow-up chat, or run mutation;
-- process restart recovery or cross-device continuation;
-- cloud persistence, Sync, mobile, web, or production Desktop integration;
-- release signing, distribution, telemetry, usage billing, or public claims;
-- new Rust services, Effect orchestration, or Effect Native components;
+- choosing which provider should act next.
+- starting with Claude.
+- parallel agents, subagents, swarms, or fan-out.
+- provider account rotation or failover.
+- an ordinary chat composer during a run.
+- Pause, approval inboxes, plan editing, follow-up chat, or run mutation.
+- process restart recovery or cross-device continuation.
+- cloud persistence, Sync, mobile, web, or production Desktop integration.
+- release signing, distribution, telemetry, usage billing, or public claims.
+- new Rust services, Effect orchestration, or Effect Native components.
 - arbitrary MCP/tool routing beyond the Harness built-ins and the one handoff
-  tool;
+  tool.
 - semantic routing or parsing completion from model prose.
 
 If an implementation packet needs one of these items, stop and seek a new owner
@@ -208,7 +208,7 @@ last accepted handoff, per-lane Harness resume state, streamed UI messages, a
 stop flag, and a terminal error if present.
 
 There is exactly one active controller. A second Start request returns a typed
-conflict. State transitions are serialized; Codex and Claude never execute at
+conflict. State transitions are serialized. Codex and Claude never execute at
 the same time.
 
 ### 2. One shared sandbox, two native sessions
@@ -219,8 +219,8 @@ requirements.
 
 Both `HarnessAgent` instances receive:
 
-- the same sandbox provider object;
-- the same stable run session ID; and
+- the same sandbox provider object.
+- the same stable run session ID. And
 - `sandboxConfig.workDir: "workspace"`.
 
 This matters because the local provider reuses the same network sandbox for a
@@ -233,7 +233,7 @@ lane against the same run session ID. Sequential detach/resume also keeps the
 single ephemeral bridge-port path simple.
 
 Never pass Codex resume state to Claude or Claude resume state to Codex. The
-filesystem and typed envelope cross the boundary; provider-private state does
+filesystem and typed envelope cross the boundary. Provider-private state does
 not.
 
 ### 3. One typed handoff tool
@@ -259,14 +259,14 @@ inspectable.
 For every turn, send the active native session exactly one new user prompt. The
 host compiles it from:
 
-- run reference;
-- current turn and cap;
-- objective;
-- done condition;
-- shared workspace path;
-- prior provider;
-- prior typed summary;
-- prior next instruction; and
+- run reference.
+- current turn and cap.
+- objective.
+- done condition.
+- shared workspace path.
+- prior provider.
+- prior typed summary.
+- prior next instruction. And
 - bounded evidence strings.
 
 The first Codex turn has no prior handoff. When a lane acts again later, its
@@ -284,8 +284,8 @@ Keep the loopback server and Electron privilege denials. Replace the generic
 chat route with a minimal run transport:
 
 - Start validates the run spec, launches the controller, and returns an AI SDK
-  UI-message stream;
-- Stop sets the controller's stop flag and aborts the active Harness turn;
+  UI-message stream.
+- Stop sets the controller's stop flag and aborts the active Harness turn.
 - a small current-run read returns the in-memory snapshot needed to re-render
   during the same app process.
 
@@ -304,10 +304,10 @@ Use the official AI Elements registry as source-owned UI components in this
 app. Install only the components needed for this run:
 
 - `Conversation`, `ConversationContent`, and
-  `ConversationScrollButton`;
-- `Message`, `MessageContent`, and `MessageResponse`;
-- `Reasoning`;
-- `Tool`; and
+  `ConversationScrollButton`.
+- `Message`, `MessageContent`, and `MessageResponse`.
+- `Reasoning`.
+- `Tool`. And
 - `Loader`.
 
 Do not install a broad component catalog. Do not use `PromptInput`: the launch
@@ -317,23 +317,23 @@ The renderer has two modes.
 
 ### Launch mode
 
-- objective textarea;
-- done-condition textarea;
-- bounded turn-cap input;
-- one `Start Full Auto` action;
+- objective textarea.
+- done-condition textarea.
+- bounded turn-cap input.
+- one `Start Full Auto` action.
 - a short local-experiment warning.
 
 There is no provider selector. Codex-first is part of the contract.
 
 ### Run mode
 
-- compact run header with status, current provider, and turn count;
-- one Stop action while running;
-- read-only AI Elements conversation;
-- provider labels on assistant messages;
+- compact run header with status, current provider, and turn count.
+- one Stop action while running.
+- read-only AI Elements conversation.
+- provider labels on assistant messages.
 - a visible `Codex -> Claude` or `Claude -> Codex` handoff divider containing
-  the accepted summary and next instruction;
-- streamed reasoning and tool state through AI Elements;
+  the accepted summary and next instruction.
+- streamed reasoning and tool state through AI Elements.
 - a distinct completed, blocked, failed, stopped, or cap-reached terminal card.
 
 After Start, hide the launcher and do not expose a composer. A Full Auto run is
@@ -348,7 +348,7 @@ Keep the implementation compact.
 
 | Path | Change |
 | --- | --- |
-| `src/main.ts` | Retain Electron hardening and local bridge patches; replace chat routing and provider-specific runtime maps with the controller and shared sandbox wiring. |
+| `src/main.ts` | Retain Electron hardening and local bridge patches. Replace chat routing and provider-specific runtime maps with the controller and shared sandbox wiring. |
 | `src/full-auto-contract.ts` | Add the bounded run, lifecycle, handoff, lane, and event schemas. |
 | `src/full-auto-controller.ts` | Add the serialized Codex-Claude loop, turn latch, detach/resume, stop, cap, and terminal transitions. |
 | `src/full-auto-controller.test.ts` | Prove alternation, handoff validation, completion, failure, Stop, and cap with fixture lanes. |
@@ -356,7 +356,7 @@ Keep the implementation compact.
 | `src/components/ai-elements/*` | Add only the selected registry components. |
 | `src/styles.css` | Reduce styles to layout, run-state treatment, and any tokens the selected components need. |
 | `README.md` | Replace the single-provider chat instructions with the Full Auto experiment contract and live proof steps. |
-| `WORK_PACKET.md` | Reconcile the accepted scope and record final evidence; do not retain the old provider-toggle acceptance contract. |
+| `WORK_PACKET.md` | Reconcile the accepted scope and record final evidence. Do not retain the old provider-toggle acceptance contract. |
 
 Avoid adding a framework-sized service layer. The controller, contract, and
 fixture test are the only new runtime modules required.
@@ -371,13 +371,13 @@ a terminal disposition or cap.
 
 Required work:
 
-1. add the run and handoff schemas;
-2. instantiate one shared local sandbox provider;
+1. add the run and handoff schemas.
+2. instantiate one shared local sandbox provider.
 3. configure both agents with the same fixed work directory and the handoff
-   tool;
-4. implement the serialized alternator;
-5. detach and retain per-lane native resume state after each turn;
-6. implement Stop and turn-cap checks before every dispatch; and
+   tool.
+4. implement the serialized alternator.
+5. detach and retain per-lane native resume state after each turn.
+6. implement Stop and turn-cap checks before every dispatch. And
 7. add deterministic controller tests with fake lane streams.
 
 Gate: fixture tests prove exact provider order, exactly-once handoff acceptance,
@@ -390,11 +390,11 @@ provider toggle or chat composer.
 
 Required work:
 
-1. replace `/api/chat` with the run transport;
-2. attach Harness `UIMessage` streams and host handoff events to one run stream;
-3. implement the custom `ChatTransport` and `useChat` projection;
-4. add only the selected AI Elements;
-5. replace `HarnessChat` with launch and run modes; and
+1. replace `/api/chat` with the run transport.
+2. attach Harness `UIMessage` streams and host handoff events to one run stream.
+3. implement the custom `ChatTransport` and `useChat` projection.
+4. add only the selected AI Elements.
+5. replace `HarnessChat` with launch and run modes. And
 6. render provider, turn, handoff, tool, reasoning, Stop, and terminal state.
 
 Gate: a fixture-driven renderer run shows Codex, a Codex-to-Claude receipt,
@@ -414,13 +414,13 @@ Use this bounded mission:
 
 Required evidence:
 
-- provider sequence is exactly Codex, Claude, Codex;
-- all three turns report the same shared work directory;
-- two accepted handoff receipts are visible;
-- Claude reads Codex's nonce from disk rather than receiving it only in prose;
-- Codex reads Claude's digest from disk and verifies it;
-- the terminal state is completed;
-- no fourth provider turn starts; and
+- provider sequence is exactly Codex, Claude, Codex.
+- all three turns report the same shared work directory.
+- two accepted handoff receipts are visible.
+- Claude reads Codex's nonce from disk rather than receiving it only in prose.
+- Codex reads Claude's digest from disk and verifies it.
+- the terminal state is completed.
+- no fourth provider turn starts. And
 - the app still denies browser privileges and external navigation.
 
 Gate: focused tests and repository checks pass, the live run succeeds once,
@@ -433,7 +433,7 @@ production containment or product Full Auto.
 | --- | --- |
 | Alternation | Starting at turn 1 yields Codex, Claude, Codex, Claude with no model-selected routing. |
 | Continue handoff | A valid `continue` handoff dispatches exactly one turn to the other lane. |
-| Duplicate handoff | A second handoff call in one turn fails the run; it is never silently ignored. |
+| Duplicate handoff | A second handoff call in one turn fails the run. It is never silently ignored. |
 | Missing handoff | A lane ending without the tool fails visibly and does not dispatch the other lane. |
 | Completion | `complete` records evidence and prevents all later dispatch. |
 | Block | `blocked` records evidence and prevents all later dispatch. |
@@ -471,13 +471,13 @@ correct state rendering.
 
 This decision was derived from:
 
-- the complete current `apps/electron-ai-sdk-test/` implementation;
-- [`../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md);
-- [`../fable/2026-07-17-full-auto-implementation-audit.md`](../fable/2026-07-17-full-auto-implementation-audit.md);
-- [`../fable/2026-07-17-effect-vs-rust-architecture-analysis.md`](../fable/2026-07-17-effect-vs-rust-architecture-analysis.md);
-- [`2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md);
-- [`2026-07-17-t3-code-ui-full-harvest-accepted-plan.md`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md);
-- [`../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md`](../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md);
-- the installed Harness and local-sandbox source used by the app;
-- [Vercel AI Elements documentation](https://elements.ai-sdk.dev/docs); and
+- the complete current `apps/electron-ai-sdk-test/` implementation.
+- [`../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md).
+- [`../fable/2026-07-17-full-auto-implementation-audit.md`](../fable/2026-07-17-full-auto-implementation-audit.md).
+- [`../fable/2026-07-17-effect-vs-rust-architecture-analysis.md`](../fable/2026-07-17-effect-vs-rust-architecture-analysis.md).
+- [`2026-07-17-t3-code-mobile-full-parity-accepted-plan.md`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md).
+- [`2026-07-17-t3-code-ui-full-harvest-accepted-plan.md`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md).
+- [`../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md`](../teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md).
+- the installed Harness and local-sandbox source used by the app.
+- [Vercel AI Elements documentation](https://elements.ai-sdk.dev/docs).
 - [Vercel's AI Elements component registry](https://github.com/vercel/ai-elements).

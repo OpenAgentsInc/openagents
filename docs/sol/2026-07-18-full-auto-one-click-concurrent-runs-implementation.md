@@ -1,7 +1,7 @@
 # Full Auto: one-click launcher, concurrent runs, and operator monitor
 
 Date: 2026-07-18
-Status: implemented; real-system verification in progress
+Status: implemented. Real-system verification in progress
 Authority: `specs/desktop/full-auto.product-spec.md` rev 13
 
 ## Decision
@@ -25,7 +25,7 @@ catalog from which an owner could monitor and stop an arbitrary run.
 
 The 2026-07-18 real owner-profile run also showed that provider turns can be
 healthy for minutes at a time. A running state with an unchanged attempt
-counter is not itself a stall; liveness continues to use the durable journal
+counter is not itself a stall. Liveness continues to use the durable journal
 and existing watchdog instead of UI polling heuristics.
 
 ## Implemented contract
@@ -39,21 +39,21 @@ and existing watchdog instead of UI polling heuristics.
 - Title, done condition, workspace, primary provider, model, fallback order,
   turn cap, and wall-clock guardrail live in a collapsed **Advanced** section.
 - Objective and done-condition textareas have bounded initial and maximum
-  heights; resizing is explicit rather than layout-consuming.
+  heights. Resizing is explicit rather than layout-consuming.
 - Up to eight non-terminal `FullAutoRun` records may coexist. A ninth start
   refuses before minting a thread. Each admitted run has a distinct
-  `runRef` and `threadRef`; lifecycle, liveness, report, Pause/Resume/Stop, and
+  `runRef` and `threadRef`. Lifecycle, liveness, report, Pause/Resume/Stop, and
   handoff stay scoped to the exact run.
 - The existing durable per-thread lease still permits at most one Full Auto
   turn on any given thread. Distinct run threads can be admitted and in flight
-  independently; no global lifecycle boolean is introduced.
+  independently. No global lifecycle boolean is introduced.
 - A persistent run monitor lists every active run plus recent terminal runs,
   refreshes from main, opens an exact run, and stops any active run by
   `runRef`. Starting a new run never hides or mutates existing ones.
 - Agent control is the same authenticated loopback surface used before:
   `GET /v1/full-auto/runs` monitors all runs and
   `POST /v1/full-auto/runs/{runRef}/stop` cancels exactly one. CLI equivalents
-  are `full-auto runs` and `full-auto run-stop <runRef>`; MCP remains a thin
+  are `full-auto runs` and `full-auto run-stop <runRef>`. MCP remains a thin
   client of the same routes.
 
 ## Safety and invariant change
@@ -85,7 +85,7 @@ owner-admitted ordered policy.
    authenticated run-start route while the first remains non-terminal.
 3. Confirm `runs` reports two distinct active run/thread identities.
 4. Observe each run through at least one accepted real provider turn.
-5. Stop one run from the UI monitor and the other through the control API;
+5. Stop one run from the UI monitor and the other through the control API.
    confirm their terminal transitions are independent.
 6. Start a normal Codex→Claude Full Auto mission and retain the bounded report
    and public-safe receipt. Inspect raw provider evidence only in owner-private
