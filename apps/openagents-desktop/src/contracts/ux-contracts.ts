@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.5",
+    version: "2026-07-18.6",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -5052,6 +5052,54 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Issue #9010 owns Forge configuration, pre-ready Electron delivery, relative-path reduction, the existing Files/editor transition, and inspection of a real packaged macOS Info.plist before Launch Services registration.",
+      },
+      {
+        contractId: "openagents_desktop.macos.document_open_editor_first_startup.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Desktop macOS document-open startup performance",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-18" },
+        statement:
+          "So it does work, except it stays on the original loading screen for about six seconds and then spends like one or two seconds showing the usual chat view before it pops over to the editor. So this is like way too slow. Every part of that needs to be dramatically sped up. Fix it.",
+        authorityBoundary:
+          "A validated pre-ready macOS open-file selection contributes only its already-reduced relative filename to the sandboxed renderer launch context. That bounded hint selects Files and an honest loading tree for the first shell paint; it does not carry the absolute path, grant a workspace, or open a document. Main remains the sole workspace authority and delivers the existing typed system-document command after admitting the selected file's containing directory. The renderer drains that command before history hydration, opens the tree and requested document before refreshing secondary coding-catalog metadata, and defers chat-host, provider-capability, Fable-availability, and voice metadata probes until after the editor-first shell mounts. Ordinary chat startup and unsupported selections keep their existing behavior.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/desktop-launch-context.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#9011",
+        ],
+        oracles: [
+          {
+            id: "macos.document_open_startup.relative_launch_context",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/desktop-launch-context.test.ts",
+            description:
+              "Proves the renderer launch argument round-trips one relative filename and rejects absolute, nested, and malformed inputs.",
+          },
+          {
+            id: "macos.document_open_startup.editor_first_ordering",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
+            description:
+              "Proves a document launch initializes Files/loading, drains commands before history hydration, and bypasses chat/provider probes before mount.",
+          },
+          {
+            id: "macos.document_open_startup.packaged_timing",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The packaged startup trace waits for the real documentEditorReady mark and records process-start-to-editor timing without waiting for chat-history hydration.",
+          },
+        ],
+        verification:
+          "Issue #9011 owns the exact-revision macOS package, cold Finder-open startup trace, no-chat-flash oracle, Desktop verification gate, and local RC replacement for owner testing.",
       },
     ],
   };

@@ -131,6 +131,8 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(mainSource).toContain("resolveMacOSDocumentOpenTarget(selectedPath");
     expect(mainSource).toContain('{ kind: "path", pathRef: target.pathRef }');
     expect(mainSource).toContain('"open_file"');
+    expect(mainSource).toContain("desktopDocumentOpenRendererArgument(launchDocumentTarget.pathRef)");
+    expect(mainSource).toContain("additionalArguments:");
   });
 
   test("integrates the macOS traffic lights into the blue application chrome", () => {

@@ -274,6 +274,39 @@ describe("startup contract: shell mounts before history hydration (boot.ts)", ()
   })
 })
 
+describe("startup contract: Finder-open is editor-first", () => {
+  test("the launch state paints Files immediately and marks its tree as loading", () => {
+    const state = initialDesktopShellState("test-host", "12:00", "files")
+    expect(state.workspace).toBe("files")
+    expect(state.workspaceBrowser.phase).toBe("loading")
+  })
+
+  test("the command bridge drains after mount but before history hydration", () => {
+    const shellMounted = bootSource.indexOf("marks.shellMounted = Date.now()")
+    const attach = bootSource.indexOf("yield* attachDesktopCommandBridge", shellMounted)
+    const hydrate = bootSource.indexOf("yield* hydrateAfterMount", shellMounted)
+    expect(shellMounted).toBeGreaterThan(-1)
+    expect(attach).toBeGreaterThan(shellMounted)
+    expect(hydrate).toBeGreaterThan(attach)
+  })
+
+  test("the timing probe cannot miss an already-finished renderer load", () => {
+    expect(mainSource).toContain("if (window.webContents.isLoadingMainFrame())")
+    expect(mainSource).toContain('window.webContents.once("did-finish-load", captureStartupMarks)')
+    expect(mainSource).toContain("captureStartupMarks()")
+    expect(mainSource).toContain('document.getElementById("openagents-desktop-root")?.childElementCount')
+  })
+
+  test("document launch bypasses chat/provider probes on the pre-mount path", () => {
+    expect(bootSource).toContain("const documentLaunch = launchContext.documentOpenPathRef !== null")
+    expect(bootSource).toContain("const selection = documentLaunch")
+    expect(bootSource).toContain("const laneCapabilities = documentLaunch")
+    expect(bootSource).toContain("if (!documentLaunch && fableLocalBridge !== null")
+    expect(bootSource).toContain('if (!documentLaunch && typeof bridge?.runtimeRequest === "function")')
+    expect(bootSource).toContain("if (!documentLaunch && restoredWorkspace !== null")
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 3. index.html: branded boot frame, colors mechanically synced to tokens.
 // ---------------------------------------------------------------------------

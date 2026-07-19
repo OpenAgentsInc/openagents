@@ -547,6 +547,7 @@ import {
   makeDesktopCommandHost,
   parseDesktopCommandUrl,
 } from "./desktop-command-host.ts"
+import { desktopDocumentOpenRendererArgument } from "./desktop-launch-context.ts"
 import {
   commandBindingForNativeMenu,
   openDesktopCommandBindingStore,
@@ -1796,7 +1797,6 @@ const admitMacOSDocumentOpen = (selectedPath: string): void => {
     revokeOutgoingWorkspaceTerminals()
     catalog.selectWorkspace(target.workspaceRoot)
     activateCodingCatalogRoot()
-    publishCodingCatalog()
     app.addRecentDocument(selectedPath)
     desktopCommandHost.enqueue(deferredDesktopCommand(
       systemDocumentOpenCommand,
@@ -1805,6 +1805,11 @@ const admitMacOSDocumentOpen = (selectedPath: string): void => {
       { kind: "path", pathRef: target.pathRef },
     ))
     focusDesktopCommandWindow()
+    // Catalog/thread metadata is not required to open the selected file.
+    // Keep it off the critical launch path so main remains responsive to the
+    // renderer's tree/document IPC while the editor becomes visible.
+    const catalogPublishTimer = setTimeout(publishCodingCatalog, 750)
+    catalogPublishTimer.unref?.()
   } catch {
     // A stale, unreadable, or revoked OS selection does not widen workspace
     // authority and never reaches renderer state.
@@ -4815,6 +4820,12 @@ const createWindow = (): BrowserWindow => {
   const launchWorkArea = electronScreen.getDisplayNearestPoint(
     electronScreen.getCursorScreenPoint(),
   ).workArea
+  const launchDocumentTarget = [...pendingMacOSDocumentOpenPaths]
+    .reverse()
+    .map(selectedPath => resolveMacOSDocumentOpenTarget(selectedPath, candidate => {
+      try { return statSync(candidate).isFile() } catch { return false }
+    }))
+    .find(target => target !== null) ?? null
   const window = new BrowserWindow({
     x: launchWorkArea.x,
     y: launchWorkArea.y,
@@ -4851,6 +4862,9 @@ const createWindow = (): BrowserWindow => {
       spellcheck: false,
       backgroundThrottling: false,
       preload: path.join(here, "preload.cjs"),
+      ...(launchDocumentTarget === null ? {} : {
+        additionalArguments: [desktopDocumentOpenRendererArgument(launchDocumentTarget.pathRef)],
+      }),
     },
   })
   primaryDesktopWindow = window
@@ -7213,10 +7227,17 @@ const runStartupMarks = (
     const deadline = Date.now() + 30000
     while (Date.now() < deadline &&
       (typeof marks().shellMounted !== "number" ||
-       document.querySelector('[data-en-key="shell-root"]') === null)) {
+       (document.getElementById("openagents-desktop-root")?.childElementCount ?? 0) === 0)) {
       await wait(20)
     }
     const bridge = globalThis.openagentsDesktop
+    const documentLaunch = typeof bridge?.launchContext?.documentOpenPathRef === "string"
+    if (documentLaunch) {
+      const documentDeadline = Date.now() + 30000
+      while (Date.now() < documentDeadline && typeof marks().documentEditorReady !== "number") {
+        await wait(20)
+      }
+    }
     let bootstrapWall = null
     if (typeof bridge?.runtimeRequest === "function") {
       const started = Date.now()
@@ -7231,9 +7252,11 @@ const runStartupMarks = (
     // Post-mount hydration (2026-07-13 startup incident): the shell above is
     // already interactable and capabilityReady already measured; now wait
     // (bounded) for the hydrated thread-list content mark.
-    const hydrateDeadline = Date.now() + 30000
-    while (Date.now() < hydrateDeadline && typeof marks().historyHydrated !== "number") {
-      await wait(50)
+    if (!documentLaunch) {
+      const hydrateDeadline = Date.now() + 30000
+      while (Date.now() < hydrateDeadline && typeof marks().historyHydrated !== "number") {
+        await wait(50)
+      }
     }
     const paint = performance.getEntriesByType("paint")
     const fcp = paint.find((entry) => entry.name === "first-contentful-paint")
@@ -7242,20 +7265,22 @@ const runStartupMarks = (
       bootStart: marks().bootStart ?? null,
       shellMounted: marks().shellMounted ?? null,
       historyHydrated: marks().historyHydrated ?? null,
-      shellPresent: document.querySelector('[data-en-key="shell-root"]') !== null,
+      documentEditorReady: marks().documentEditorReady ?? null,
+      shellPresent: (document.getElementById("openagents-desktop-root")?.childElementCount ?? 0) > 0,
       timeOrigin: performance.timeOrigin,
       firstPaintOffset: fp ? fp.startTime : null,
       firstContentfulPaintOffset: fcp ? fcp.startTime : null,
       bootstrapWall,
     }
   })()`
-  window.webContents.once("did-finish-load", () => {
+  const captureStartupMarks = (): void => {
     void (async () => {
       try {
         const readback = await window.webContents.executeJavaScript(rendererReadback, true) as {
           bootStart: number | null
           shellMounted: number | null
           historyHydrated: number | null
+          documentEditorReady: number | null
           shellPresent: boolean
           timeOrigin: number
           firstPaintOffset: number | null
@@ -7287,6 +7312,7 @@ const runStartupMarks = (
           firstPaint: rel(paintWall),
           shellMounted: rel(readback.shellMounted),
           historyHydrated: rel(readback.historyHydrated),
+          documentEditorReady: rel(readback.documentEditorReady),
           capabilityReady: rel(readback.bootstrapWall),
         }
         mkdirSync(path.dirname(file), { recursive: true })
@@ -7306,7 +7332,15 @@ const runStartupMarks = (
         finish(1)
       }
     })()
-  })
+  }
+  // Real provider initialization can settle after the renderer already
+  // emitted did-finish-load. Never arm a one-shot listener after the event and
+  // then misreport a healthy fast launch as a 45-second timeout.
+  if (window.webContents.isLoadingMainFrame()) {
+    window.webContents.once("did-finish-load", captureStartupMarks)
+  } else {
+    captureStartupMarks()
+  }
 }
 
 const runSmoke = (window: BrowserWindow): void => {

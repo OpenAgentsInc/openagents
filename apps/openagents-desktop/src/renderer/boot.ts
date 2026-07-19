@@ -68,6 +68,7 @@ import {
   desktopShellIntents,
   desktopShellView,
   desktopConversationShortcutTargets,
+  formatShellTimestamp,
   initialDesktopShellState,
   makeDesktopShellHandlers,
   withFullAutoLiveState,
@@ -144,6 +145,7 @@ import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
 import { desktopCommandShortcutMatches } from "./command-shortcuts.ts"
 import { decodeDesktopPreviewChangeEvent } from "../dev-preview-contract.ts"
 import { desktopPreviewReloadRisk } from "./dev-preview.ts"
+import { decodeDesktopLaunchContext } from "../desktop-launch-context.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -154,6 +156,7 @@ const DesktopBridgeSchema = Schema.Struct({
 type DesktopBridge = Readonly<{
   host: string
   platform: string
+  launchContext?: unknown
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   controlOutcomes?: Readonly<{
@@ -682,9 +685,15 @@ export const decodeBridgeHost = (bridge: unknown): string => {
 
 const mountDesktopShell = (root: HTMLElement, host: string) =>
   Effect.gen(function* () {
-    const state = yield* SubscriptionRef.make(initialDesktopShellState(host))
-    const program = makeViewProgramFromState(state, desktopShellView)
     const bridge = readBridge()
+    const launchContext = decodeDesktopLaunchContext(bridge?.launchContext)
+    const documentLaunch = launchContext.documentOpenPathRef !== null
+    const state = yield* SubscriptionRef.make(initialDesktopShellState(
+      host,
+      formatShellTimestamp(new Date()),
+      documentLaunch ? "files" : "chat",
+    ))
+    const program = makeViewProgramFromState(state, desktopShellView)
     document.documentElement.dataset.desktopPlatform = bridge?.platform ?? "unknown"
     if (typeof bridge?.localTurnRecovery?.onUpdate === "function") {
       const unsubscribeRecovery = bridge.localTurnRecovery.onUpdate(thread => {
@@ -849,11 +858,13 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             : current))
       },
     })
-    const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({
-      request: bridge?.runtimeRequest,
-      subscribe: bridge?.runtimeSubscribe,
-      local: localHarnessChat,
-    }))
+    const selection = documentLaunch
+      ? { host: localHarnessChat, mode: "local" as const }
+      : yield* Effect.promise(() => selectDesktopChatHostSelection({
+          request: bridge?.runtimeRequest,
+          subscribe: bridge?.runtimeSubscribe,
+          local: localHarnessChat,
+        }))
     // The initial selection gates first-paint lane chrome, but it is never a
     // lifetime routing decision: verified Sync may still be catching up. The
     // converging facade re-admits each operation with one authoritative query
@@ -957,7 +968,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     // Evidence-gated composer lanes (#8712), resolved BEFORE first mount so
     // the chips never flash an unproven state.
-    if (fableLocalBridge !== null && selection.mode === "local") {
+    if (!documentLaunch && fableLocalBridge !== null && selection.mode === "local") {
       const rawAvailability = yield* Effect.promise(() =>
         fableLocalBridge.availability().catch(() => null))
       fableAvailability = decodeFableLocalAvailability(rawAvailability)
@@ -982,9 +993,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         }
       : localLanes()
     yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
-    const laneCapabilities = decodeProviderLaneComposerProjections(
-      yield* Effect.promise(() => bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
-    )
+    const laneCapabilities = documentLaunch
+      ? null
+      : decodeProviderLaneComposerProjections(
+          yield* Effect.promise(() => bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
+        )
     if (laneCapabilities !== null) {
       yield* SubscriptionRef.update(state, current =>
         withProviderLaneCapabilities(current, laneCapabilities))
@@ -1244,7 +1257,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
       }, fullAutoRunHost),
     )
-    if (typeof bridge?.runtimeRequest === "function") {
+    if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({
         kind: "query",
         requestId: "renderer-voice-initial",
@@ -1416,6 +1429,67 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // honest scanning state — and this hydration streams the history catalog,
     // coding sessions, update projection, threads, session view, and deferred
     // commands into the already-mounted state afterwards.
+    const dispatchDeferredCommand = (command: DesktopDeferredCommand) => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const resolution = resolveDesktopDeferredCommandIntent(command, {
+        sessionReady: current.settings.openAgentsSession === "session_ready",
+        verifiedOwner: current.settings.openAgentsSession === "session_ready",
+        workspaceReady: current.workingDirectory !== null || current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0 || documentLaunch,
+      })
+      if (resolution.state === "rejected") {
+        yield* noticeController.setTransientNotice(
+          resolution.reason === "duplicate"
+            ? "That command request was already handled. The duplicate was ignored."
+            : "That command is unavailable for the current session or workspace.",
+        )
+        return
+      }
+      yield* noticeController.dismissNotice
+      const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
+      yield* registry.dispatch(resolveIntentRef(ref))
+    })
+    const attachDesktopCommandBridge = Effect.gen(function* () {
+      if (typeof bridge?.commands?.onCommand !== "function") return
+      const unsubscribeCommands = bridge.commands.onCommand(command => {
+        void Effect.runPromise(dispatchDeferredCommand(command))
+      })
+      window.addEventListener("pagehide", () => unsubscribeCommands(), { once: true })
+      if (typeof bridge.commands.ready === "function") {
+        yield* Effect.promise(bridge.commands.ready)
+      }
+    })
+    const hydrateDocumentLaunchMetadata = (): void => {
+      if (!documentLaunch) return
+      if (fableLocalBridge !== null) {
+        void fableLocalBridge.availability().catch(() => null).then(async raw => {
+          fableAvailability = decodeFableLocalAvailability(raw)
+          await Effect.runPromise(SubscriptionRef.update(state, current =>
+            withHarnessLanes(current, localLanes())))
+        })
+      }
+      void (bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null))
+        .then(async raw => {
+          const capabilities = decodeProviderLaneComposerProjections(raw)
+          if (capabilities !== null) {
+            await Effect.runPromise(SubscriptionRef.update(state, current =>
+              withProviderLaneCapabilities(current, capabilities)))
+          }
+        })
+      if (typeof bridge?.runtimeRequest === "function") {
+        void bridge.runtimeRequest({
+          kind: "query",
+          requestId: "renderer-voice-document-launch",
+          query: { id: "voice.state" },
+        }).then(async response => {
+          if (response.kind === "voice_state") {
+            await Effect.runPromise(SubscriptionRef.update(state, current => ({
+              ...current,
+              voice: withVoiceHostState(current.voice, response.state),
+            })))
+          }
+        }).catch(() => undefined)
+      }
+    }
     const hydrateAfterMount = Effect.gen(function* () {
     // The shell is live while this hydration runs: a user selection made in
     // that window OWNS the workspace. Capture the at-mount workspace so the
@@ -1509,29 +1583,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       ...current,
       settings: { ...current.settings, openAgentsSession: sessionView },
     }))
-    const dispatchDeferredCommand = (command: DesktopDeferredCommand) => Effect.gen(function* () {
-      const current = yield* SubscriptionRef.get(state)
-      const resolution = resolveDesktopDeferredCommandIntent(command, {
-        sessionReady: current.settings.openAgentsSession === "session_ready",
-        verifiedOwner: current.settings.openAgentsSession === "session_ready",
-        workspaceReady: current.workingDirectory !== null || current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0,
-      })
-      if (resolution.state === "rejected") {
-        // CUT-15: the command IS still rejected/ignored. Only the notice
-        // presentation is now transient (a self-dismissing toast) instead of a
-        // permanent top banner.
-        yield* noticeController.setTransientNotice(
-          resolution.reason === "duplicate"
-            ? "That command request was already handled. The duplicate was ignored."
-            : "That command is unavailable for the current session or workspace.",
-        )
-        return
-      }
-      yield* noticeController.dismissNotice
-      const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
-      yield* registry.dispatch(resolveIntentRef(ref))
-    })
-    if (restoredWorkspace !== null && (yield* SubscriptionRef.get(state)).workspace === workspaceAtMount) {
+    if (!documentLaunch && restoredWorkspace !== null &&
+      (yield* SubscriptionRef.get(state)).workspace === workspaceAtMount) {
       const commandId = restoredWorkspace === "chat" ? "chat.open" : `workspace.${restoredWorkspace}`
       const definition = desktopCanonicalCommandRegistry.find(value => value.id === commandId)
       if (definition !== undefined) {
@@ -1543,15 +1596,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           source: "restore",
           delivery: "dispatch",
         })
-      }
-    }
-    if (typeof bridge?.commands?.onCommand === "function") {
-      const unsubscribeCommands = bridge.commands.onCommand(command => {
-        void Effect.runPromise(dispatchDeferredCommand(command))
-      })
-      window.addEventListener("pagehide", () => unsubscribeCommands(), { once: true })
-      if (typeof bridge.commands.ready === "function") {
-        yield* Effect.promise(bridge.commands.ready)
       }
     }
     // A Files selection that landed BEFORE the coding catalog hydrated could
@@ -1965,6 +2009,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // The static branded boot frame (index.html) has done its job the moment
     // the real shell is mounted underneath it.
     document.getElementById("openagents-boot-frame")?.remove()
+    // Finder-open commands are drained before any history/catalog hydration.
+    // The launch context already made Files the first shell; this completes
+    // the real workspace/editor transition without ever painting chat.
+    yield* attachDesktopCommandBridge
+    hydrateDocumentLaunchMetadata()
     // One boot-time diagnostics gather so the watchdog panel has live health the
     // first time Settings is opened (CUT-24 #8704). Event-driven, not a poll.
     void Effect.runPromise(

@@ -71,6 +71,10 @@ The ordered implementation ledger is:
    Alternate-ranked editor for Markdown and bounded common source/text types,
    and Finder `open-file` delivery enters the same Files mode and existing
    document bridge with only a validated relative filename crossing renderer.
+6. [#9011](https://github.com/OpenAgentsInc/openagents/issues/9011) removes the
+   cold-open latency regression: a bounded filename launch hint makes Files the
+   first shell, the typed document command drains before history hydration, and
+   chat/provider metadata moves behind the requested editor paint.
 
 Implementation status: #9006 and #9007 landed the contract, typed toggle, and
 mounted current-worktree surface. #9008 upgrades that surface to the real
@@ -80,6 +84,9 @@ shell composition explicit without changing the workspace authority boundary.
 #9010 extends the explicit-authority set to a user-selected macOS document,
 bounded to its containing directory, and makes the association release-build
 only so a dev-server process cannot masquerade as an installed editor.
+#9011 preserves that authority while making document-open editor-first: no chat
+surface is painted, and secondary history/provider/catalog work cannot delay the
+tree or selected document.
 
 This quick-files slice is a prerequisite interaction rung, not a substitute
 for IDE-00 through IDE-07. IDE-02 still owns the complete indexed, watched,

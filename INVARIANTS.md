@@ -1298,7 +1298,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   macOS bundle advertises only the bounded source/text formats the UTF-8 editor
   can represent, with `CFBundleTypeRole=Editor` and `LSHandlerRank=Alternate`;
   development launches make no system-registration claim and the app never
-  silently replaces the owner's default handler. The new recursive
+  silently replaces the owner's default handler. A pre-ready document selection
+  may expose only that reduced filename as a sandboxed renderer launch hint so
+  Files is the first shell paint; the hint is not a workspace grant. Main still
+  admits the containing directory and sends the typed open-file command. That
+  command drains before coding-history hydration, and chat/provider metadata
+  cannot block or replace the editor-first launch surface. The new recursive
   tree/search projections carry the opaque grant ref, relative path refs,
   bounded page/result counts, and a declared cache key/epoch/freshness fact;
   they never carry the selected absolute root, a native handle, or an ambient

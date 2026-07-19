@@ -98,6 +98,7 @@ import {
   type DesktopWorkspaceChange,
 } from "./workspace-contract.ts"
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
+import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
 import { invokeDesktopThreadEventSearch } from "./thread-event-search-bridge-contract.ts"
@@ -371,6 +372,7 @@ const subscribeWorkspaceChanges = (
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
+  launchContext: desktopLaunchContextFromArgv(process.argv),
   toggleFullScreen: async (): Promise<boolean> => {
     const result = await ipcRenderer.invoke(DesktopWindowFullscreenChannel)
     return result === true

@@ -580,6 +580,7 @@ export const formatRelativeTimestamp = (updatedAt: string, now: Date = new Date(
 export const initialDesktopShellState = (
   host: string,
   timestamp: string = formatShellTimestamp(new Date()),
+  launchWorkspace: "chat" | "files" = "chat",
 ): DesktopShellState => ({
   host,
   input: "",
@@ -635,13 +636,15 @@ export const initialDesktopShellState = (
   codingSessionQuery: "",
   codingSessionDeleteConfirmRef: null,
   workingDirectory: null,
-  workspace: "chat",
+  workspace: launchWorkspace,
   presentation: {
     sidebarCollapsed: false,
     sessionSearchOpen: false,
   },
   navigation: emptyDesktopNavigationProjection(),
-  workspaceBrowser: emptyWorkspaceBrowserState(),
+  workspaceBrowser: launchWorkspace === "files"
+    ? { ...emptyWorkspaceBrowserState(), phase: "loading" }
+    : emptyWorkspaceBrowserState(),
   workspaceEditor: emptyWorkspaceEditorState(),
   commandPaletteOpen: false,
   commandNotice: null,
@@ -3853,10 +3856,12 @@ export const makeDesktopShellHandlers = (
     // Main has already replaced the WorkContext from the explicit macOS file
     // selection. Refresh only the public-safe catalog projection, then reuse
     // the canonical Files/browser/editor intents with the relative path.
-    const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
     yield* SubscriptionRef.update(state, current => ({
       ...current,
-      codingCatalog,
+      workspace: "files" as const,
+      workspaceBrowser: current.workspaceBrowser.phase === "idle"
+        ? { ...current.workspaceBrowser, phase: "loading" as const }
+        : current.workspaceBrowser,
       workspaceEditor: emptyWorkspaceEditorState(),
     }))
     yield* selectSurfaceWorkspace("files")
@@ -3866,6 +3871,14 @@ export const makeDesktopShellHandlers = (
       grantRef: current.workspaceBrowser.grantRef,
       pathRef,
     })
+    ;((globalThis as { __oaStartupMarks?: Record<string, number> }).__oaStartupMarks ??= {})
+      .documentEditorReady = Date.now()
+    // Catalog labels/history are secondary to the selected document. Refresh
+    // them only after the editor has opened so a large local coding catalog
+    // can never hold the requested file hostage.
+    void codingCatalogHost.snapshot().then(codingCatalog =>
+      Effect.runPromise(SubscriptionRef.update(state, latest => ({ ...latest, codingCatalog }))),
+    ).catch(() => undefined)
   }),
   DesktopWorkspacePickerRequested: () =>
     Effect.gen(function* () {
