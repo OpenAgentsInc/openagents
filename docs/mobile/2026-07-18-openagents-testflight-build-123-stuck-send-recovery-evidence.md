@@ -70,6 +70,11 @@ The App Store Connect API returned the exact `0.5.2 (123)` build record in
 `VALID` state. This proves Apple accepted this exact candidate for TestFlight;
 it does not authorize or claim stable App Store promotion.
 
+Both internal groups (`Team (Expo)` and `Internal Testers`) have access to all
+builds, and the App Store Connect API returns build 123 in both groups. The
+owner can therefore install this candidate from TestFlight without a separate
+manual group-assignment step.
+
 ## Gates
 
 - Shared Sync suite: 31 files passed and 1 skipped; 221 tests passed and 3
