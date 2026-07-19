@@ -354,6 +354,12 @@ avatar/voice/video revival.
 
 ## 10. Recommended next steps (non-binding)
 
+> **Update (2026-07-19, later):** owner direction now targets immediate
+> activation — Sarah live, sandbox usage, coding delegation, and mobile push
+> updates. The decomposition and issue ledger for that direction live in
+> **`2026-07-19-sarah-activation-gap-analysis.md`** (#9062–#9065, plus SBX-09
+> #9033 re-prioritized to P0). The steps below remain the release-grade view.
+
 1. **Advance the Sarah AssuranceSpec from `proposed` toward `needs_design →
    designed`** for AC-01..20, starting with the highest-risk criteria
    (AC-01 identity isolation, AC-05 redaction, AC-06 intersection authority,
